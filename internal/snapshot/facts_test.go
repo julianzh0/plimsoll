@@ -156,8 +156,12 @@ func TestBuildGivesEachHistoryPathItsArea(t *testing.T) {
 	areas := map[string]snapshot.Area{
 		"src/a.ts": snapshot.AreaProduct, "tests/a.test.ts": snapshot.AreaTests, "docs/a.md": snapshot.AreaDocs,
 		"README.md": snapshot.AreaDocs, "package.json": snapshot.AreaOther, "scripts/x.ts": snapshot.AreaOther,
-		"gone/old.ts":                 snapshot.AreaProduct,
-		"docs/superpowers/plans/a.md": snapshot.AreaRecords, "projects/notes.md": snapshot.AreaRecords,
+		"gone/old.ts":                     snapshot.AreaProduct,
+		"app/src/androidTest/kotlin/A.kt": snapshot.AreaTests, "lib/src/testFixtures/java/A.java": snapshot.AreaTests,
+		"src/testDemo/a.ts": snapshot.AreaTests, "src/latest/a.ts": snapshot.AreaProduct, "src/testing/a.ts": snapshot.AreaProduct,
+		"lib/androidTest/a.ts": snapshot.AreaProduct, "gradle.properties": snapshot.AreaOther,
+		"src/main/resources/META-INF/services/a.B": snapshot.AreaOther,
+		"docs/superpowers/plans/a.md":              snapshot.AreaRecords, "projects/notes.md": snapshot.AreaRecords,
 		"docs/qualification/run.json": snapshot.AreaRecords, "evidence/run.txt": snapshot.AreaRecords,
 		"src/projects/list.ts": snapshot.AreaProduct,
 	}
@@ -174,6 +178,7 @@ func TestWantsNamesWhatTheReaderReads(t *testing.T) {
 	paths := map[string]bool{
 		"src/a.ts": true, "README.md": false, "package.json": true, "web/package.json": false, ".env.example": true,
 		"tsconfig.json": true, "web/tsconfig.json": false, "go.mod": true, "web/go.mod": false, "pyproject.toml": true, "web/pyproject.toml": false, "pytest.ini": false, "pytest.toml": false,
+		"src/main/resources/application.properties": false, "docs/design.pdf": false, "src/main/resources/META-INF/services/a.B": false,
 		"pubspec.yaml": true, "app/pubspec.yaml": true, "packages/core/pubspec.yaml": true, "node_modules/x/pubspec.yaml": false,
 		"docs/.env.example": false, "node_modules/x/a.js": false, "assets/logo.bin": true,
 		"docker-compose.yml": true, "deploy/compose.prod.yaml": true, "node_modules/x/compose.yml": false, "compose.txt": false,

@@ -33,6 +33,7 @@ type Rules struct {
 	DocFolders       []string       // top-level folders that are documentation
 	DocSuffixes      []string       // suffixes that are documentation
 	TestFolders      []string       // folder names, at any depth, that hold test code
+	TestSourceSets   []string       // name patterns of a folder directly in a folder src that holds test code, beside TestFolders
 	TestPaths        []string       // folders, as paths from the repository root, that hold test code; empty in the shared rules
 	TestEndings      []string       // endings of a file name without its suffix
 	TestBeginnings   []string       // beginnings of a file name
@@ -121,15 +122,16 @@ type Declaration struct {
 func Default() Rules {
 	return Rules{
 		NotCode: []string{
-			".md", ".rst", ".txt", ".json", ".arb", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".lock", ".csv", ".tsv",
+			".md", ".rst", ".txt", ".json", ".arb", ".properties", ".pdf", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".lock", ".csv", ".tsv",
 			".svg", ".xml", ".html", ".css", ".snap", ".golden",
 			"", ".mod", ".sum", ".example", ".crt", ".pem", ".key", ".diff", ".patch", ".sha256",
 		},
-		SkippedFolders: []string{"node_modules", "dist", "build", "vendor", "migrations", ".venv", "coverage", "testdata", "__pycache__", ".dart_tool"},
+		SkippedFolders: []string{"node_modules", "dist", "build", "vendor", "migrations", ".venv", "coverage", "testdata", "__pycache__", ".dart_tool", "META-INF"},
 		OtherFolders:   []string{"scripts", "examples", ".github", "docs"},
 		DocFolders:     []string{"docs"},
 		DocSuffixes:    []string{".md"},
 		TestFolders:    []string{"tests", "test", "__tests__", "spec", "integration_test"},
+		TestSourceSets: []string{"test[A-Z]*", "*Test*"},
 		TestEndings:    []string{".test", ".spec", "_test", "-test"},
 		TestBeginnings: []string{"test_"},
 		TestDefinition: testDefinition,
@@ -205,6 +207,9 @@ func (r Rules) TestRule() string {
 	var parts []string
 	for _, folder := range r.TestFolders {
 		parts = append(parts, "`"+folder+"/`")
+	}
+	for _, pattern := range r.TestSourceSets {
+		parts = append(parts, "`src/"+pattern+"/`")
 	}
 	for _, ending := range r.TestEndings {
 		parts = append(parts, "`*"+ending+".*`")

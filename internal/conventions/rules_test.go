@@ -58,7 +58,8 @@ func TestLanguageOfAPath(t *testing.T) {
 }
 
 func TestRuleNamesHowTestCodeIsRecognized(t *testing.T) {
-	want := "`tests/`, `test/`, `__tests__/`, `spec/`, `integration_test/`, `*.test.*`, `*.spec.*`, `*_test.*`, `*-test.*`, `test_*`"
+	want := "`tests/`, `test/`, `__tests__/`, `spec/`, `integration_test/`, `src/test[A-Z]*/`, `src/*Test*/`, " +
+		"`*.test.*`, `*.spec.*`, `*_test.*`, `*-test.*`, `test_*`"
 	if got := Default().TestRule(); got != want {
 		t.Errorf("TestRule() = %q, want %q", got, want)
 	}

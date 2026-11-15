@@ -41,7 +41,8 @@ func generatedOrBinary(rules conventions.Rules, content []byte) bool {
 
 // testPath says whether a path is test code by its folders or its name.
 func testPath(rules conventions.Rules, filePath string) bool {
-	if inFolders(filePath, rules.TestFolders) || slices.ContainsFunc(rules.TestPaths, func(folder string) bool { _, in := under(filePath, folder); return in }) {
+	if inFolders(filePath, rules.TestFolders) || underTestSourceSet(rules, path.Dir(filePath)) ||
+		slices.ContainsFunc(rules.TestPaths, func(folder string) bool { _, in := under(filePath, folder); return in }) {
 		return true
 	}
 	name := path.Base(filePath)
@@ -53,6 +54,26 @@ func testPath(rules conventions.Rules, filePath string) bool {
 	}
 	for _, beginning := range rules.TestBeginnings {
 		if strings.HasPrefix(name, beginning) {
+			return true
+		}
+	}
+	return false
+}
+
+// testSourceSet says whether the name of a folder directly in a folder src makes it a test source set: a shared test
+// folder name, or one of the rules' patterns.
+func testSourceSet(rules conventions.Rules, name string) bool {
+	return slices.Contains(rules.TestFolders, name) || slices.ContainsFunc(rules.TestSourceSets, func(pattern string) bool {
+		matched, _ := path.Match(pattern, name)
+		return matched
+	})
+}
+
+// underTestSourceSet says whether a folder is a test source set or lies under one.
+func underTestSourceSet(rules conventions.Rules, folder string) bool {
+	parts := strings.Split(folder, "/")
+	for i := 1; i < len(parts); i++ {
+		if parts[i-1] == "src" && testSourceSet(rules, parts[i]) {
 			return true
 		}
 	}
