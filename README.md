@@ -4,7 +4,7 @@
 
 <h1 align="center">plimsoll</h1>
 
-<p align="center">The load line for your repository: what a change did to its shape, measured, never guessed.</p>
+<p align="center"><strong>The load line for your repository: what a change did to its shape, measured, never guessed.</strong></p>
 
 <p align="center">
   <a href="https://github.com/juzhxng/plimsoll/releases/latest"><img src="https://img.shields.io/github/v/release/juzhxng/plimsoll" alt="Release"></a>
