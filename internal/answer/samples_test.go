@@ -128,6 +128,14 @@ func detectorSamples() []snapshot.Source {
 		}, map[string]string{
 			"src/store.ts": "y\n", "tests/fakes/store.ts": "x\n", "src/b.ts": "x\n", "src/c.ts": "x\n",
 		}), 1, append(append([][]string{append(pair, "src/b.ts", "src/c.ts")}, repeat(4, pair...)...), repeat(5, "src/b.ts", "src/c.ts")...)...),
+		// rust: a crate whose modules use each other, and a product file whose test code a change grows
+		snapshottest.Files(map[string]string{
+			"src/lib.rs": "mod a;\npub struct Root;\n",
+			"src/a.rs":   "use crate::Root;\n\n#[cfg(test)]\nmod tests {\n    #[test]\n    fn t() {}\n}\n",
+		}, map[string]string{
+			"src/lib.rs": "mod a;\npub struct Root;\n",
+			"src/a.rs":   "use crate::Root;\n\n#[cfg(test)]\nmod tests {\n    #[test]\n    fn t() {}\n\n    #[test]\n    fn u() {}\n}\n",
+		}),
 	}
 }
 
@@ -164,6 +172,8 @@ func TestTheSamplesShowEveryRuleAndChange(t *testing.T) {
 		"is or holds a package root", "holds test folders of its own", "leaves the repository or holds a pattern",
 		"`pythonpath` could not be read", "is not read: test folders", "depend on each other in a cycle", "folder cycles: between the folders",
 		"a package that lies in several folders", "under a test folder directly in `src/`", "an import names a package, not a file",
+		"counts as test lines, not as product lines", "the footprint counts, in 1 changed product file",
+		"a crate's modules use each other", "not seen: a path written in code",
 	} {
 		if !strings.Contains(texts.String(), phrase) {
 			t.Errorf("no sample text holds %q", phrase)

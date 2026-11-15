@@ -62,7 +62,7 @@ Each detector compares now with a base you choose, such as `main`, so old debt s
 - **One binary** // no runtime and nothing to configure, `git` is all it needs
 - **Change-based** // compares now with a base revision, so standing debt stays quiet and new growth is named
 - **Honest** // every number names its limit and source, and whatever it could not read is listed as "not analysed"
-- **Language-agnostic** // the same detectors for Go, TypeScript, Python, Dart, Java and Kotlin, and a language is one data file
+- **Language-agnostic** // the same detectors for Go, TypeScript, Python, Dart, Java, Kotlin and Rust, and a language is one data file
 
 ## Install
 
@@ -154,11 +154,11 @@ hide: what it leaves out it counts ("3 more: `report` lists them"), and `report`
 
 Every number is measured at the base and now, from the tracked files only:
 
-- product, test and other code lines, and the test ratio (test lines per product line)
+- product, test and other code lines, and the test ratio (test lines per product line). Test code inside a product file counts as test lines where a language marks it
 - when the ratio is over its limit, test code split into files that define tests and test infrastructure that
   defines none, with the largest infrastructure files
 - the three largest code files
-- the settings in `.env.example` and the runtime dependencies of `package.json`, `go.mod`, `pyproject.toml` (`[project] dependencies`), `pubspec.yaml`, `pom.xml`, and `build.gradle` or `build.gradle.kts`
+- the settings in `.env.example` and the runtime dependencies of `package.json`, `go.mod`, `pyproject.toml` (`[project] dependencies`), `pubspec.yaml`, `pom.xml`, `build.gradle` or `build.gradle.kts`, and `Cargo.toml`
 - the footprint of the change since the base
 - churn by area (product, tests, docs, other) over the last 150 non-merge commits
 - tracked planning and review files, and documentation churn against product and test churn since the base
@@ -175,21 +175,22 @@ What it could not see is always named under "not analysed".
 Every detector works the same way for every language. A language only adds how its files are written, as one data
 file in `internal/conventions/`.
 
-| | TypeScript and JavaScript | Go | Python | Dart | Java and Kotlin |
-|---|---|---|---|---|---|
-| Files | `.ts`, `.tsx`, `.js`, `.mjs`, `.cjs` | `.go` | `.py`, `.pyi` | `.dart` | `.java`, `.kt`, `.kts` |
-| Imports | `import … from`, `export … from`, `import "x"`, `import()` and `require()`, relative or through the paths of `tsconfig.json` | the import path of a folder, under the module named in `go.mod` | `import x` and `from x import y`, relative with leading dots, `import_module()`, the project's packages at the root and under `src/` | `import`, `export`, `part` and `part of`, relative when the target has no scheme, `package:<name>/` for the package `pubspec.yaml` names and for the members of its `workspace:` | `import a.b.C`, `import static` and `a.b.*` name the package `a.b`: the folders whose files under `src/<set>/java` and `src/<set>/kotlin` declare it. A folder under a test source set is reached only from files under one |
-| Type-only imports, left out of rings | `import type`, `export type` | none, and no rings are looked for: the compiler rejects them | imports under `if TYPE_CHECKING:` | none | none, and no rings are looked for: an import names a package, not a file |
-| Declared test folders and roots | the defaults | the defaults | pytest's `testpaths` and `pythonpath` in `pyproject.toml` | the defaults | the defaults |
-| Runtime dependencies | `package.json`, `dependencies` | `go.mod`, `require` without `// indirect` | `pyproject.toml`, `[project] dependencies` | `pubspec.yaml`, `dependencies` | `pom.xml`, `dependencies` in compile or runtime scope. `build.gradle` and `build.gradle.kts`, `implementation`, `api` and `runtimeOnly` |
-| Setting reads, besides the name as a word | a computed `process.env[…]` is counted | a computed `os.Getenv(…)` or `os.LookupEnv(…)` is counted | a computed `os.environ[…]` or `os.getenv(…)` is counted, and a pydantic `env_prefix` plus a field of the same file counts as read | a computed `Platform.environment[…]`, `String.fromEnvironment(…)` or `dotenv.env[…]` is counted | a computed `System.getenv(…)` is counted |
-| One unit when files change together | the file | the package folder | the file | the file | the package folder |
+| | TypeScript and JavaScript | Go | Python | Dart | Java and Kotlin | Rust |
+|---|---|---|---|---|---|---|
+| Files | `.ts`, `.tsx`, `.js`, `.mjs`, `.cjs` | `.go` | `.py`, `.pyi` | `.dart` | `.java`, `.kt`, `.kts` | `.rs` |
+| Imports | `import … from`, `export … from`, `import "x"`, `import()` and `require()`, relative or through the paths of `tsconfig.json` | the import path of a folder, under the module named in `go.mod` | `import x` and `from x import y`, relative with leading dots, `import_module()`, the project's packages at the root and under `src/` | `import`, `export`, `part` and `part of`, relative when the target has no scheme, `package:<name>/` for the package `pubspec.yaml` names and for the members of its `workspace:` | `import a.b.C`, `import static` and `a.b.*` name the package `a.b`: the folders whose files under `src/<set>/java` and `src/<set>/kotlin` declare it. A folder under a test source set is reached only from files under one | `mod x;` is `x.rs` or `x/mod.rs` below the file that declares it. A `use` or `extern crate` path that starts with `crate`, `self`, `super`, a module declared beside it or the name of a crate whose `Cargo.toml` is tracked names the file of its longest leading run of modules. Every path of a `use` group counts, and a module written in braces moves the paths inside it |
+| Type-only imports, left out of rings | `import type`, `export type` | none, and no rings are looked for: the compiler rejects them | imports under `if TYPE_CHECKING:` | none | none, and no rings are looked for: an import names a package, not a file | none, and no rings are looked for: a crate's modules use each other |
+| Declared test folders and roots | the defaults | the defaults | pytest's `testpaths` and `pythonpath` in `pyproject.toml` | the defaults | the defaults | the defaults |
+| Runtime dependencies | `package.json`, `dependencies` | `go.mod`, `require` without `// indirect` | `pyproject.toml`, `[project] dependencies` | `pubspec.yaml`, `dependencies` | `pom.xml`, `dependencies` in compile or runtime scope. `build.gradle` and `build.gradle.kts`, `implementation`, `api` and `runtimeOnly` | `Cargo.toml`, `[dependencies]` and the `dependencies` of `[target.…]` tables |
+| Setting reads, besides the name as a word | a computed `process.env[…]` is counted | a computed `os.Getenv(…)` or `os.LookupEnv(…)` is counted | a computed `os.environ[…]` or `os.getenv(…)` is counted, and a pydantic `env_prefix` plus a field of the same file counts as read | a computed `Platform.environment[…]`, `String.fromEnvironment(…)` or `dotenv.env[…]` is counted | a computed `System.getenv(…)` is counted | a computed `env::var(…)` or `env::var_os(…)` is counted |
+| One unit when files change together | the file | the package folder | the file | the file | the package folder | the file |
 
 The defaults, shared by all: test code lives in folders named `tests`, `test`, `__tests__`, `spec` or `integration_test`, in folders directly in `src/` named `test[A-Z]*` or `*Test*` (`androidTest`, `testFixtures`), in files whose
 name ends in `.test`, `.spec`, `_test` or `-test` or starts with `test_`, and in files that define a test
-(`func Test…`, `def test_…`, `test(…)`, `testWidgets(…)`, `it(…)`, `@Test`).
+(`func Test…`, `def test_…`, `test(…)`, `testWidgets(…)`, `it(…)`, `@Test`, `#[test]`). Test code inside a product file counts as test lines where a language marks it: Rust's
+`#[cfg(test)]` items.
 
-Next languages: Rust, C#, C and C++, and Swift.
+Next languages: C#, C and C++, and Swift.
 
 ## Rules
 
