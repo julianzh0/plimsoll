@@ -39,6 +39,8 @@ const (
 	DotSlash
 	// LeadingDots is ".x" and "..x": the importing file's folder, one folder up per dot after the first.
 	LeadingDots
+	// NoScheme is any target without a scheme ("x.dart", "../x.dart"), starting at the importing file's folder.
+	NoScheme
 )
 
 // TargetKind is what an import of the project's own code names.
@@ -72,6 +74,8 @@ const (
 	TSConfigPaths
 	// OwnPackages are the packages and modules found under the prefix's roots in the tracked paths.
 	OwnPackages
+	// PubspecName is the name of a pubspec.yaml: "package:<name>/x" is the file x under lib/.
+	PubspecName
 )
 
 // Candidates are the tracked paths a file import may mean when the path as written is not a tracked file.

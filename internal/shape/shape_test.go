@@ -69,6 +69,7 @@ func TestDetectOnEachLanguageSample(t *testing.T) {
 			map[string]string{"go.mod": "github.com/a/b"}, []string{"no `.env.example`, so no settings count"}},
 		{"python", 13, 10, 3, 0.8, []string{"src/app/store.py", "tests/test_store.py", "src/app/config.py"},
 			map[string]string{"pyproject.toml": "httpx, pydantic-settings"}, nil},
+		{"dart", 33, 19, 0, 0.6, []string{"integration_test/app_test.dart", "lib/src/app.dart", "test/store_test.dart"}, map[string]string{"pubspec.yaml": "flutter, http, provider"}, nil},
 		{"mixed", 8, 10, 0, 1.3, []string{"service/main_test.go", "service/main.go", "web/src/app.test.ts"},
 			map[string]string{"go.mod": "", "package.json": ""}, []string{"no `.env.example`, so no settings count"}},
 		{"python-declared", 9, 12, 0, 1.3, []string{"checks/test_flow.py", "src/app/service.py", "tests/test_service.py"},

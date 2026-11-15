@@ -48,8 +48,8 @@ func TestEveryLanguageNamesItsImportForms(t *testing.T) {
 		}
 		switch imports.Target {
 		case FileTarget:
-			if len(imports.Candidates.Add) == 0 || imports.FolderExcept != nil {
-				t.Errorf("%s: a file target needs Candidates.Add and no FolderExcept", l.Name)
+			if imports.FolderExcept != nil {
+				t.Errorf("%s: a file target takes no FolderExcept", l.Name)
 			}
 		case FolderTarget:
 			if imports.FolderExcept == nil {
@@ -103,6 +103,16 @@ func importCases() map[string]map[string][]string {
 			"\"\"\"Docs.\n\nimport of the module is deferred.\n\"\"\"\n":  nil,
 			"x = 1  # import a\n# from a import b\n":                      nil,
 			"m = importlib.import_module(\"a.b\")\nn = __import__('c')\n": {"a.b", "c"},
+		},
+		"dart": {
+			"import 'package:app/a.dart';\n":                        {"package:app/a.dart"},
+			"import \"b.dart\" as b show c;\nexport '../c.dart';\n": {"../c.dart", "b.dart"},
+			"part 'a.g.dart';\npart of 'lib.dart';\n":               {"a.g.dart", "lib.dart"},
+			"part of my.library;\n":                                 nil,
+			"import 'dart:io';\n":                                   {"dart:io"},
+			"// import 'x.dart';\n":                                 nil,
+			"import 'a.dart' if (dart.library.io) 'b.dart';\n":      {"a.dart"},
+			"import 'package:a/a.dart'\n    deferred as a;\n":       {"package:a/a.dart"},
 		},
 	}
 }
@@ -169,6 +179,12 @@ func passesOnCases() map[string]map[string]bool {
 			"from .a import A\nVERSION = \"1\"\n":                                                             false,
 			"from .a import A; import os\n":                                                                   false,
 		},
+		"dart": {
+			"library app;\n\nexport 'src/a.dart';\nexport \"src/b.dart\" show B;\n": true,
+			"/// Barrel.\n/* all */\nexport 'a.dart' hide x;\n":                     true,
+			"export 'a.dart';\nconst x = 1;\n":                                      false,
+			"import 'a.dart';\nexport 'b.dart';\n":                                  false,
+		},
 	}
 }
 
@@ -225,7 +241,7 @@ func TestAFormMatchesOnlyTextThatHoldsOneOfItsWords(t *testing.T) {
 				}
 			}
 		}
-		if want := map[string]int{"typescript": 2, "go": 0, "python": 2}[l.Name]; worded != want {
+		if want := map[string]int{"typescript": 2, "go": 0, "python": 2, "dart": 0}[l.Name]; worded != want {
 			t.Errorf("%s: %d forms with words, want %d", l.Name, worded, want)
 		}
 	}

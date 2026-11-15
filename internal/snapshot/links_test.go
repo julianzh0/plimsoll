@@ -270,6 +270,29 @@ func pythonTree() map[string]string {
 	}
 }
 
+func TestBuildFollowsDartImportsToFiles(t *testing.T) {
+	got := snapshot.Build(snapshottest.Load(t, "testdata/dart"), conventions.Default()).Now.Links
+	// note.dart's part note.g.dart resolves, but a generated file is no code, so the list leaves that link out.
+	want := []snapshot.LanguageImports{{Language: "dart", Resolved: 10, Outside: 5, PrefixFile: "pubspec.yaml", Prefix: snapshot.PrefixRead, Implicit: []string{"main.dart"}}}
+	if !reflect.DeepEqual(got.Languages, want) {
+		t.Errorf("Languages = %+v, want %+v", got.Languages, want)
+	}
+	wantList := []snapshot.Link{
+		link("integration_test/app_test.dart", 2, "lib/main.dart"),
+		link("lib/main.dart", 2, "lib/notes.dart"),
+		link("lib/notes.dart", 3, "lib/src/app.dart"), link("lib/notes.dart", 4, "lib/src/store.dart"),
+		link("lib/src/app.dart", 2, "lib/src/store.dart"),
+		link("lib/src/store.dart", 1, "lib/config.dart"), link("lib/src/store.dart", 2, "lib/src/note.dart"),
+		link("test/fakes/fake_store.dart", 1, "lib/src/store.dart"), link("test/store_test.dart", 2, "lib/src/store.dart"),
+	}
+	if !reflect.DeepEqual(got.List, wantList) {
+		t.Errorf("List = %+v, want %+v", got.List, wantList)
+	}
+	if !reflect.DeepEqual(got.PassOn, []string{"lib/notes.dart"}) {
+		t.Errorf("PassOn = %q, want the barrel lib/notes.dart", got.PassOn)
+	}
+}
+
 func TestBuildFollowsPythonImportsToFiles(t *testing.T) {
 	got := linksOf(pythonTree())
 	want := []snapshot.LanguageImports{{

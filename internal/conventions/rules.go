@@ -13,8 +13,8 @@ import (
 // The two shared patterns are compiled once; everything else is built by Default. Each language's own patterns live
 // in its file: typescript.go, golang.go, python.go.
 var (
-	testDefinition = regexp.MustCompile(`(?m)^[ \t]*(?:export[ \t]+)?(?:async[ \t]+)?(?:func[ \t]+(?:Test|Benchmark|Fuzz|Example)\w*[ \t]*\(|def[ \t]+test_\w*[ \t]*\(|class[ \t]+Test\w*|(?:await[ \t]+)?(?:t\.)?(?:test|it|describe)(?:\.\w+)*[ \t]*\()`)
-	generated      = regexp.MustCompile(`(?i)generated.*do not edit`)
+	testDefinition = regexp.MustCompile(`(?m)^[ \t]*(?:export[ \t]+)?(?:async[ \t]+)?(?:func[ \t]+(?:Test|Benchmark|Fuzz|Example)\w*[ \t]*\(|def[ \t]+test_\w*[ \t]*\(|class[ \t]+Test\w*|(?:await[ \t]+)?(?:t\.)?(?:test|testWidgets|it|describe)(?:\.\w+)*[ \t]*\()`)
+	generated      = regexp.MustCompile(`(?i)generated.*do not (?:edit|modify)`)
 )
 
 const (
@@ -62,6 +62,8 @@ const (
 	GoModRequire
 	// PyprojectDependencies reads the names of the [project] table's dependencies array.
 	PyprojectDependencies
+	// PubspecDependencies reads the keys of the top-level dependencies block of a pubspec.yaml.
+	PubspecDependencies
 )
 
 // Limits are every number a mark compares with. No detector holds one.
@@ -118,15 +120,15 @@ type Declaration struct {
 func Default() Rules {
 	return Rules{
 		NotCode: []string{
-			".md", ".rst", ".txt", ".json", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".lock", ".csv", ".tsv",
+			".md", ".rst", ".txt", ".json", ".arb", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".lock", ".csv", ".tsv",
 			".svg", ".xml", ".html", ".css", ".snap", ".golden",
 			"", ".mod", ".sum", ".example", ".crt", ".pem", ".key", ".diff", ".patch", ".sha256",
 		},
-		SkippedFolders: []string{"node_modules", "dist", "build", "vendor", "migrations", ".venv", "coverage", "testdata", "__pycache__"},
+		SkippedFolders: []string{"node_modules", "dist", "build", "vendor", "migrations", ".venv", "coverage", "testdata", "__pycache__", ".dart_tool"},
 		OtherFolders:   []string{"scripts", "examples", ".github", "docs"},
 		DocFolders:     []string{"docs"},
 		DocSuffixes:    []string{".md"},
-		TestFolders:    []string{"tests", "test", "__tests__", "spec"},
+		TestFolders:    []string{"tests", "test", "__tests__", "spec", "integration_test"},
 		TestEndings:    []string{".test", ".spec", "_test", "-test"},
 		TestBeginnings: []string{"test_"},
 		TestDefinition: testDefinition,
@@ -135,6 +137,7 @@ func Default() Rules {
 			{File: "package.json", Format: JSONDependencies},
 			{File: "go.mod", Format: GoModRequire},
 			{File: "pyproject.toml", Format: PyprojectDependencies},
+			{File: "pubspec.yaml", Format: PubspecDependencies},
 		},
 		PlanningPaths: []string{
 			"docs/superpowers/", "docs/stories/", "docs/plans/", "docs/specs/", "projects/", ".review-work/",
@@ -154,7 +157,7 @@ func Default() Rules {
 			ImportsNotFollowed: Limit{Value: 0.10, Source: "links checked against go list and dependency-cruiser, 2026-11"},
 		},
 		// One entry per language, each in its own file. A new language is one file and one line here.
-		Languages: []Language{typescriptLanguage(), goLanguage(), pythonLanguage()},
+		Languages: []Language{typescriptLanguage(), goLanguage(), pythonLanguage(), dartLanguage()},
 	}
 }
 

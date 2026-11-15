@@ -47,6 +47,7 @@ func languageCases() map[string]struct{ file, testFile, static, dynamic string }
 		"typescript": {"src/config.ts", "tests/config.test.ts", "process.env.%s", "process.env[name]"},
 		"go":         {"internal/config/config.go", "internal/config/config_test.go", `os.Getenv("%s")`, "os.Getenv(name)"},
 		"python":     {"src/app/config.py", "tests/test_config.py", `os.environ["%s"]`, "os.environ[name]"},
+		"dart":       {"lib/config.dart", "test/config_test.dart", "Platform.environment['%s']", "Platform.environment[name]"},
 	}
 }
 

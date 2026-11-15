@@ -63,6 +63,17 @@ func TestBuildClassifiesEachSampleLanguage(t *testing.T) {
 			{"web/src/app.test.ts", "typescript", snapshot.Test, 4},
 			{"web/src/app.ts", "typescript", snapshot.Product, 3},
 		},
+		"dart": {
+			{"integration_test/app_test.dart", "dart", snapshot.Test, 8},
+			{"lib/config.dart", "dart", snapshot.Product, 4},
+			{"lib/main.dart", "dart", snapshot.Product, 4},
+			{"lib/notes.dart", "dart", snapshot.Product, 4},
+			{"lib/src/app.dart", "dart", snapshot.Product, 8},
+			{"lib/src/note.dart", "dart", snapshot.Product, 6},
+			{"lib/src/store.dart", "dart", snapshot.Product, 7},
+			{"test/fakes/fake_store.dart", "dart", snapshot.TestInfrastructure, 3},
+			{"test/store_test.dart", "dart", snapshot.Test, 8},
+		},
 		"unproven": {
 			{"bin/run.sh", "", snapshot.Product, 4},
 			{"tests/check.sh", "", snapshot.TestInfrastructure, 3},

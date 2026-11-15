@@ -293,6 +293,8 @@ func (s side) basesOf(imports conventions.Imports, own prefix, from, spec string
 	case imports.Relative == conventions.DotSlash &&
 		(spec == "." || spec == ".." || strings.HasPrefix(spec, "./") || strings.HasPrefix(spec, "../")):
 		relative = path.Join(path.Dir(from), spec)
+	case imports.Relative == conventions.NoScheme && !strings.Contains(spec, ":"):
+		relative = path.Join(path.Dir(from), spec)
 	case imports.Relative == conventions.LeadingDots && strings.HasPrefix(spec, "."):
 		rest := strings.TrimLeft(spec, ".")
 		up := strings.Repeat("../", len(spec)-len(rest)-1)

@@ -83,6 +83,32 @@ func languageCases() map[string]languageCase {
 				return strings.Join(lines, "\n") + "\n"
 			},
 		},
+		"dart": {
+			setup:    map[string]string{"pubspec.yaml": "name: app\n"},
+			product:  func(name string) string { return "lib/src/" + name + ".dart" },
+			placed:   func(folder, name string) string { return "lib/" + folder + "/" + name + ".dart" },
+			under:    "lib",
+			test:     func(name string) string { return "test/" + name + "_test.dart" },
+			support:  func(name string) string { return "test/support/" + name + ".dart" },
+			testBody: "test('x', () {});",
+			outside:  []string{"dart:io", "package:flutter/material.dart", "package:http/http.dart"},
+			nowhere:  "package:app/gone.dart",
+			importing: func(from string, targets []string, specs ...string) string {
+				var lines []string
+				for _, target := range targets {
+					if rest, inLib := strings.CutPrefix(target, "lib/"); inLib {
+						lines = append(lines, "import 'package:app/"+rest+"';")
+						continue
+					}
+					relative, _ := filepath.Rel(path.Dir(from), target)
+					lines = append(lines, "import '"+filepath.ToSlash(relative)+"';")
+				}
+				for _, spec := range specs {
+					lines = append(lines, "import '"+spec+"';")
+				}
+				return strings.Join(lines, "\n") + "\n"
+			},
+		},
 		"go": {
 			setup:    map[string]string{"go.mod": "module " + goModule + "\n"},
 			product:  func(name string) string { return "internal/" + name + "/" + name + ".go" },

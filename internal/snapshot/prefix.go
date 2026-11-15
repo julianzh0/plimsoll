@@ -60,6 +60,8 @@ func readPrefix(rules conventions.Rules, imports conventions.Imports, content ma
 		return fromFile(func(file []byte) prefix { return tsconfigPaths(rules, file) })
 	case conventions.OwnPackages:
 		return ownPackages(imports, tracked)
+	case conventions.PubspecName:
+		return fromFile(pubspecName)
 	}
 	return prefix{state: PrefixRead} // the language declares no prefix
 }

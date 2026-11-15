@@ -58,6 +58,11 @@ func TestBuildReadsRuntimeDependencies(t *testing.T) {
 		{"pyproject with inline tables and a long string first", pyproject("[project]\nauthors = [{name = \"a\", email = \"b\"}]\ndescription = \"\"\"\nline\n\"\"\"\ndependencies = [\"httpx\"]\n"), pyprojectNames("httpx")},
 		{"pyproject with a byte order mark", pyproject("\uFEFF[project]\ndependencies = [\"a\"]\n"), pyprojectNames("a")},
 		{"a nested pyproject", snapshottest.Files(nil, map[string]string{"pkg/pyproject.toml": "[project]\ndependencies = [\"a\"]\n"}), nil},
+		{"dart", snapshottest.Load(t, "testdata/dart"), pubspecNames("flutter", "http", "provider")},
+		{"pubspec with quoted names and a nested git entry", pubspec("name: 'x'\ndependencies:\n    'a': ^1.0.0\n    b:\n      git:\n        url: https://x.example/b\n    c: any # why\nflutter:\n  assets: []\n"),
+			pubspecNames("a", "b", "c")},
+		{"pubspec without dependencies", pubspec("name: x\ndev_dependencies:\n  test: ^1.0.0\n"), pubspecNames()},
+		{"pubspec without a name", pubspec("dependencies:\n  a: ^1.0.0\n"), nil},
 	}
 	for _, tc := range cases {
 		if got := snapshot.Build(tc.source, conventions.Default()).Now.Manifests; !reflect.DeepEqual(got, tc.want) {
@@ -72,6 +77,7 @@ func TestBuildLeavesAnUnreadableManifestOut(t *testing.T) {
 		{"pyproject.toml", "[project]\nname = \"x\"\ndynamic = [\"dependencies\"]\n"},
 		{"pyproject.toml", "[project]\ndependencies = [\n  \"a\",\n"},
 		{"pyproject.toml", "[project]\ndependencies = \"a\"\n"},
+		{"pubspec.yaml", "name: x\ndependencies: {a: ^1.0.0}\n"},
 	} {
 		s := snapshot.Build(snapshottest.Files(nil, map[string]string{tc.file: tc.content}), conventions.Default())
 		if len(s.Now.Manifests) != 0 || !reflect.DeepEqual(s.Unreadable, []string{tc.file}) {
@@ -82,6 +88,14 @@ func TestBuildLeavesAnUnreadableManifestOut(t *testing.T) {
 
 func pyproject(content string) snapshot.Source {
 	return snapshottest.Files(nil, map[string]string{"pyproject.toml": content})
+}
+
+func pubspec(content string) snapshot.Source {
+	return snapshottest.Files(nil, map[string]string{"pubspec.yaml": content})
+}
+
+func pubspecNames(names ...string) []snapshot.Manifest {
+	return []snapshot.Manifest{{Path: "pubspec.yaml", Dependencies: append([]string{}, names...)}}
 }
 
 func pyprojectNames(names ...string) []snapshot.Manifest {
@@ -159,6 +173,7 @@ func TestWantsNamesWhatTheReaderReads(t *testing.T) {
 	paths := map[string]bool{
 		"src/a.ts": true, "README.md": false, "package.json": true, "web/package.json": false, ".env.example": true,
 		"tsconfig.json": true, "web/tsconfig.json": false, "go.mod": true, "web/go.mod": false, "pyproject.toml": true, "web/pyproject.toml": false, "pytest.ini": false, "pytest.toml": false,
+		"pubspec.yaml": true, "app/pubspec.yaml": false,
 		"docs/.env.example": false, "node_modules/x/a.js": false, "assets/logo.bin": true,
 		"docker-compose.yml": true, "deploy/compose.prod.yaml": true, "node_modules/x/compose.yml": false, "compose.txt": false,
 	}

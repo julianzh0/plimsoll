@@ -11,7 +11,7 @@ func TestTestDefinitionMatchesOnlyStatementStarts(t *testing.T) {
 		`test("stores a note", () => {`, `  it("works", async () => {`, `describe.each(rows)("%s", (row) => {`,
 		`await t.test("inner", () => {`, `func TestStore(t *testing.T) {`, `func BenchmarkStore(b *testing.B) {`,
 		`func FuzzParse(f *testing.F) {`, `func ExampleStore() {`, `def test_store(self):`,
-		`    async def test_store():`, `class TestStore:`,
+		`    async def test_store():`, `class TestStore:`, `  testWidgets('shows a note', (tester) async {`,
 	}
 	misses := []string{
 		`const ok = pattern.test(value)`, `  return re.test(input);`, `func helper() {`,
@@ -43,7 +43,7 @@ func TestSuffixIsTheLastExtension(t *testing.T) {
 }
 
 func TestLanguageOfAPath(t *testing.T) {
-	cases := map[string]string{"a.tsx": "typescript", "a.mjs": "typescript", "a.go": "go", "a.py": "python", "a.pyi": "python", "a.sh": "", "Makefile": ""}
+	cases := map[string]string{"a.tsx": "typescript", "a.mjs": "typescript", "a.go": "go", "a.py": "python", "a.pyi": "python", "a.dart": "dart", "a.sh": "", "Makefile": ""}
 	rules := Default()
 	for path, want := range cases {
 		language, found := rules.LanguageOf(path)
@@ -54,7 +54,7 @@ func TestLanguageOfAPath(t *testing.T) {
 }
 
 func TestRuleNamesHowTestCodeIsRecognized(t *testing.T) {
-	want := "`tests/`, `test/`, `__tests__/`, `spec/`, `*.test.*`, `*.spec.*`, `*_test.*`, `*-test.*`, `test_*`"
+	want := "`tests/`, `test/`, `__tests__/`, `spec/`, `integration_test/`, `*.test.*`, `*.spec.*`, `*_test.*`, `*-test.*`, `test_*`"
 	if got := Default().TestRule(); got != want {
 		t.Errorf("TestRule() = %q, want %q", got, want)
 	}
@@ -122,6 +122,8 @@ func TestEveryLanguageNamesItsDynamicRead(t *testing.T) {
 		"go":         {[]string{"os.Getenv(name)", `os.LookupEnv(prefix + "X")`}, []string{`os.Getenv("X")`, `os.Getenv( "X")`}},
 		"python": {[]string{"os.environ[name]", `os.getenv(prefix + "X")`, `os.environ.get(f"A_{x}")`},
 			[]string{`os.environ["X"]`, `os.getenv('X')`, `os.environ.get("X", "d")`}},
+		"dart": {[]string{"Platform.environment[name]", "String.fromEnvironment(key)", "bool.fromEnvironment(flag)", "dotenv.env[k]"},
+			[]string{"Platform.environment['X']", `String.fromEnvironment("X")`, "dotenv.env['X']", "const int.fromEnvironment('N')"}},
 	}
 	for _, language := range Default().Languages {
 		if language.DynamicRead == nil {
