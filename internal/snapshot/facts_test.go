@@ -290,6 +290,10 @@ func TestBuildGivesEachHistoryPathItsArea(t *testing.T) {
 		"docs/superpowers/plans/a.md":              snapshot.AreaRecords, "projects/notes.md": snapshot.AreaRecords,
 		"docs/qualification/run.json": snapshot.AreaRecords, "evidence/run.txt": snapshot.AreaRecords,
 		"src/projects/list.ts": snapshot.AreaProduct,
+		"Acme.Tests/A.cs":      snapshot.AreaTests, "src/Acme.Core.Test/Util/A.cs": snapshot.AreaTests,
+		"Acme.Testing/A.cs": snapshot.AreaProduct, "src/Contests/A.cs": snapshot.AreaProduct, "UnitTests/A.cs": snapshot.AreaProduct,
+		"Acme.tests/A.cs": snapshot.AreaProduct, "src/Acme/Acme.csproj": snapshot.AreaOther, "Acme.sln": snapshot.AreaOther,
+		"Directory.Build.props": snapshot.AreaOther, "src/Acme/Form1.Designer.cs": snapshot.AreaProduct,
 	}
 	for p, want := range areas {
 		source := snapshot.Source{Commits: []snapshot.Commit{{ID: "x", Files: []snapshot.FileChange{{Path: p}}}}}
@@ -306,6 +310,9 @@ func TestWantsNamesWhatTheReaderReads(t *testing.T) {
 		"tsconfig.json": true, "web/tsconfig.json": false, "go.mod": true, "web/go.mod": false, "pyproject.toml": true, "web/pyproject.toml": false, "pytest.ini": false, "pytest.toml": false,
 		"src/main/resources/application.properties": false, "docs/design.pdf": false, "src/main/resources/META-INF/services/a.B": false,
 		"pom.xml": true, "core/pom.xml": false, "build.gradle": true, "build.gradle.kts": true,
+		"Acme.sln": false, "Acme.slnx": false, "Directory.Build.props": false, "eng/Common.targets": false, "NuGet.Config": false,
+		"nuget.config": false, "Acme.sln.DotSettings": false, "src/Acme/Strings.resx": false,
+		"src/Acme/Form1.Designer.cs": true, "src/Acme/Views.g.cs": true,
 		"Cargo.toml": true, "Cargo.lock": true, "crates/cli/Cargo.toml": true, "vendor/x/Cargo.toml": false, "src/main.rs": true,
 		"pubspec.yaml": true, "app/pubspec.yaml": true, "packages/core/pubspec.yaml": true, "node_modules/x/pubspec.yaml": false,
 		"docs/.env.example": false, "node_modules/x/a.js": false, "assets/logo.bin": true,

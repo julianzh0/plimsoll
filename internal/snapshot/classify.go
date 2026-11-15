@@ -41,7 +41,7 @@ func generatedOrBinary(rules conventions.Rules, content []byte) bool {
 
 // testPath says whether a path is test code by its folders or its name.
 func testPath(rules conventions.Rules, filePath string) bool {
-	if inFolders(filePath, rules.TestFolders) || underTestSourceSet(rules, path.Dir(filePath)) ||
+	if inFolders(filePath, rules.TestFolders) || inFoldersEnding(filePath, rules.TestFolderEndings) || underTestSourceSet(rules, path.Dir(filePath)) ||
 		slices.ContainsFunc(rules.TestPaths, func(folder string) bool { _, in := under(filePath, folder); return in }) {
 		return true
 	}
@@ -58,6 +58,22 @@ func testPath(rules conventions.Rules, filePath string) bool {
 		}
 	}
 	return false
+}
+
+// inFoldersEnding says whether any folder of a path has a name that ends in one of the endings.
+func inFoldersEnding(filePath string, endings []string) bool {
+	folders := strings.Split(path.Dir(filePath), "/")
+	return slices.ContainsFunc(folders, func(folder string) bool {
+		return slices.ContainsFunc(endings, func(ending string) bool { return strings.HasSuffix(folder, ending) })
+	})
+}
+
+// generatedName says whether a file's name marks it as generated.
+func generatedName(rules conventions.Rules, filePath string) bool {
+	return slices.ContainsFunc(rules.GeneratedNames, func(pattern string) bool {
+		matched, _ := path.Match(pattern, path.Base(filePath))
+		return matched
+	})
 }
 
 // testSourceSet says whether the name of a folder directly in a folder src makes it a test source set: a shared test

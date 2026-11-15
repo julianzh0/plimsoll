@@ -123,7 +123,7 @@ func tree(rules conventions.Rules, entries []Entry, known map[string]File) Tree 
 }
 
 func codeFile(rules conventions.Rules, entry Entry) (File, bool) {
-	if entry.Binary || entry.Content == nil || excluded(rules, entry.Path) || generatedOrBinary(rules, entry.Content) {
+	if entry.Binary || entry.Content == nil || excluded(rules, entry.Path) || generatedName(rules, entry.Path) || generatedOrBinary(rules, entry.Content) {
 		return File{}, false
 	}
 	file := File{Path: entry.Path, Role: role(rules, entry.Path, entry.Content), Lines: countLines(entry.Content), Limit: rules.FileLimit(entry.Path)}

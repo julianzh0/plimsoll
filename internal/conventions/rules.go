@@ -15,7 +15,7 @@ import (
 // function or test class, a JUnit-family annotation, a .NET test attribute, a Rust attribute whose last name is test, or a test-runner call (test, testWidgets, describe, it).
 var (
 	testDefinition = regexp.MustCompile(`(?m)^[ \t]*(?:export[ \t]+)?(?:async[ \t]+)?(?:func[ \t]+(?:Test|Benchmark|Fuzz|Example)\w*[ \t]*\(|def[ \t]+test_\w*[ \t]*\(|class[ \t]+Test\w*[ \t]*(?:\([^)]*\))?[ \t]*:[ \t\r]*(?:#[^\n]*)?$|@(?:\w+\.)*(?:Test|ParameterizedTest|RepeatedTest|TestFactory|TestTemplate)\b|\[(?:\w+\.)*(?:Fact|Theory|Test|TestMethod|TestCase)(?:Attribute)?[ \t]*[\](,]|#\[(?:\w+::)*test[(\]]|(?:await[ \t]+)?(?:t\.)?(?:(?:test|testWidgets|describe)(?:\.\w+)*|it(?:\.(?:only|skip|each|todo|concurrent|failing|fails|skipIf|runIf|sequential|for))*)[ \t]*\()`)
-	generated      = regexp.MustCompile(`(?i)generated.*do not (?:edit|modify)`)
+	generated      = regexp.MustCompile(`(?i)generated.*do not (?:edit|modify)|<auto-?generated`)
 )
 
 const (
@@ -27,25 +27,29 @@ const (
 
 // Rules are the shared rules: which files are code, which code is test, product or other, and the limits.
 type Rules struct {
-	NotCode          []string       // suffixes of documentation, data and lockfiles; "" stands for no suffix
-	SkippedFolders   []string       // folder names skipped at any depth
-	OtherFolders     []string       // top-level folders whose code is other code
-	DocFolders       []string       // top-level folders that are documentation
-	DocSuffixes      []string       // suffixes that are documentation
-	TestFolders      []string       // folder names, at any depth, that hold test code
-	TestSourceSets   []string       // name patterns of a folder directly in a folder src that holds test code, beside TestFolders
-	TestPaths        []string       // folders, as paths from the repository root, that hold test code; empty in the shared rules
-	TestEndings      []string       // endings of a file name without its suffix
-	TestBeginnings   []string       // beginnings of a file name
-	TestDefinition   *regexp.Regexp // a line that defines a test, anchored to the start of a statement
-	Generated        *regexp.Regexp // the generated-file marker, searched in the first GeneratedHeaderLines lines
-	Manifests        []Manifest     // the known dependency manifests, read at the repository root
-	CommitPaths      int            // the most paths a commit may touch and still count for a history detector
-	PlanningPaths    []string       // planning and review records: an entry ending in "/" is a folder, at the root when it is one name, at any depth when it is a chain; any other a file-name pattern
-	MeasurementPaths []string       // measurement records, in the syntax of PlanningPaths
-	ComposeFiles     []string       // file-name patterns of compose files, read for their environment keys
-	Limits           Limits         // the shared defaults
-	Languages        []Language     // the language entries
+	NotCode        []string // suffixes of documentation, data and lockfiles; "" stands for no suffix
+	SkippedFolders []string // folder names skipped at any depth
+	OtherFolders   []string // top-level folders whose code is other code
+	DocFolders     []string // top-level folders that are documentation
+	DocSuffixes    []string // suffixes that are documentation
+	TestFolders    []string // folder names, at any depth, that hold test code
+	TestSourceSets []string // name patterns of a folder directly in a folder src that holds test code, beside TestFolders
+	// TestFolderEndings are endings of a folder's name, at any depth, that make it hold test code.
+	TestFolderEndings []string
+	TestPaths         []string       // folders, as paths from the repository root, that hold test code; empty in the shared rules
+	TestEndings       []string       // endings of a file name without its suffix
+	TestBeginnings    []string       // beginnings of a file name
+	TestDefinition    *regexp.Regexp // a line that defines a test, anchored to the start of a statement
+	Generated         *regexp.Regexp // the generated-file marker, searched in the first GeneratedHeaderLines lines
+	// GeneratedNames are file-name patterns of generated files: such a file is read, and it is no code file.
+	GeneratedNames   []string
+	Manifests        []Manifest // the known dependency manifests, read at the repository root
+	CommitPaths      int        // the most paths a commit may touch and still count for a history detector
+	PlanningPaths    []string   // planning and review records: an entry ending in "/" is a folder, at the root when it is one name, at any depth when it is a chain; any other a file-name pattern
+	MeasurementPaths []string   // measurement records, in the syntax of PlanningPaths
+	ComposeFiles     []string   // file-name patterns of compose files, read for their environment keys
+	Limits           Limits     // the shared defaults
+	Languages        []Language // the language entries
 }
 
 // Manifest is a known dependency manifest and how its runtime dependencies are read.
@@ -138,17 +142,20 @@ func Default() Rules {
 			".md", ".rst", ".txt", ".json", ".arb", ".properties", ".pdf", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".lock", ".csv", ".tsv",
 			".svg", ".xml", ".html", ".css", ".snap", ".golden",
 			"", ".mod", ".sum", ".example", ".crt", ".pem", ".key", ".diff", ".patch", ".sha256",
+			".csproj", ".props", ".targets", ".sln", ".slnx", ".config", ".Config", ".DotSettings", ".resx",
 		},
-		SkippedFolders: []string{"node_modules", "dist", "build", "vendor", "migrations", ".venv", "coverage", "testdata", "__pycache__", ".dart_tool", "META-INF"},
-		OtherFolders:   []string{"scripts", "examples", ".github", "docs"},
-		DocFolders:     []string{"docs"},
-		DocSuffixes:    []string{".md"},
-		TestFolders:    []string{"tests", "test", "__tests__", "spec", "integration_test"},
-		TestSourceSets: []string{"test[A-Z]*", "*Test*"},
-		TestEndings:    []string{".test", ".spec", "_test", "-test"},
-		TestBeginnings: []string{"test_"},
-		TestDefinition: testDefinition,
-		Generated:      generated,
+		SkippedFolders:    []string{"node_modules", "dist", "build", "vendor", "migrations", ".venv", "coverage", "testdata", "__pycache__", ".dart_tool", "META-INF"},
+		OtherFolders:      []string{"scripts", "examples", ".github", "docs"},
+		DocFolders:        []string{"docs"},
+		DocSuffixes:       []string{".md"},
+		TestFolders:       []string{"tests", "test", "__tests__", "spec", "integration_test"},
+		TestSourceSets:    []string{"test[A-Z]*", "*Test*"},
+		TestFolderEndings: []string{".Tests", ".Test"},
+		GeneratedNames:    []string{"*.g.cs", "*.Designer.cs"},
+		TestEndings:       []string{".test", ".spec", "_test", "-test"},
+		TestBeginnings:    []string{"test_"},
+		TestDefinition:    testDefinition,
+		Generated:         generated,
 		Manifests: []Manifest{
 			{File: "package.json", Format: JSONDependencies, Lockfiles: []string{"package-lock.json", "pnpm-lock.yaml", "yarn.lock"}},
 			{File: "go.mod", Format: GoModRequire, Lockfiles: []string{"go.sum"}},
@@ -227,6 +234,9 @@ func (r Rules) TestRule() string {
 	}
 	for _, pattern := range r.TestSourceSets {
 		parts = append(parts, "`src/"+pattern+"/`")
+	}
+	for _, ending := range r.TestFolderEndings {
+		parts = append(parts, "`*"+ending+"/`")
 	}
 	for _, ending := range r.TestEndings {
 		parts = append(parts, "`*"+ending+".*`")
