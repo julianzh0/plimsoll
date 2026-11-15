@@ -23,7 +23,7 @@ func sample() snapshot.Snapshot {
 		},
 		History:    snapshot.History{Read: 12, Usable: 11},
 		Unverified: []snapshot.Extension{{Suffix: ".sh", Files: 2, Lines: 7}},
-		Untracked:  3,
+		Untracked:  3, Missing: []string{"data/big.bin"},
 	}
 }
 
@@ -65,7 +65,7 @@ func TestStatusWithMarksReadsWordForWord(t *testing.T) {
 		"Standing (already at the base, not grown): 1 standing.\n" +
 		"History: 12 commits read, 11 usable.\n" +
 		"Detectors run: shape.\n" +
-		"Not analysed: no `.env.example`, so no settings count; not verified for `.sh` (7 lines in 2 files); 3 untracked files.\n"
+		"Not analysed: no `.env.example`, so no settings count; not verified for `.sh` (7 lines in 2 files); 3 untracked files; content not in this partial clone, so its lines and history are not counted: 1 file (`data/big.bin`).\n"
 	got := Render(Assemble(Status, "0.1.0", sample(), []Result{{"shape", findings()}}), wording())
 	if got != want {
 		t.Fatalf("Render(status) =\n%s\nwant\n%s", got, want)
@@ -126,7 +126,8 @@ func TestReportListsEverythingInAFixedLayout(t *testing.T) {
 		"Not analysed:\n" +
 		"- shape: no `.env.example`, so no settings count\n" +
 		"- repository: not verified for `.sh` (7 lines in 2 files)\n" +
-		"- repository: 3 untracked files\n"
+		"- repository: 3 untracked files\n" +
+		"- repository: content not in this partial clone, so its lines and history are not counted: 1 file (`data/big.bin`)\n"
 	if !strings.HasSuffix(report, wantTail) {
 		t.Fatalf("Render(report) =\n%s\nwant it to end with\n%s", report, wantTail)
 	}
@@ -191,7 +192,7 @@ func TestStatusShowsFiveMarksAndStaysInsideFortyLines(t *testing.T) {
 	if lines := strings.Count(text, "\n"); lines > 40 {
 		t.Errorf("Render(status) has %d lines, want at most 40", lines)
 	}
-	for _, want := range []string{"7 more: `report` lists them.", "and 7 more in `report`", "and 27 more in `report`"} {
+	for _, want := range []string{"7 more: `report` lists them.", "and 7 more in `report`", "and 28 more in `report`"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("Render(status) lacks %q:\n%s", want, text)
 		}

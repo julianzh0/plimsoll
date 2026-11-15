@@ -71,6 +71,7 @@ func Build(source Source, rules conventions.Rules) Snapshot {
 		Untracked:    source.Untracked,
 		Submodules:   source.Submodules,
 		Unreadable:   slices.Compact(unreadable),
+		Missing:      source.Missing,
 	}
 }
 

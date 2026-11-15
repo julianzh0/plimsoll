@@ -23,6 +23,7 @@ type Snapshot struct {
 	Untracked    int
 	Submodules   []string
 	Unreadable   []string
+	Missing      []string // paths whose content a partial clone lacks; their lines and history are not counted
 	Named        []string // the files the caller named, cleaned, sorted, each once; nil when none
 }
 

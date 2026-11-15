@@ -8,6 +8,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -202,5 +204,49 @@ func TestIntegrationReadFetchesNothingFromARemote(t *testing.T) {
 	_, _ = read(t, clone, "HEAD~1") // the old content is missing; whether the read refuses or reads around it, it fetches nothing
 	if after := objects(); after != before {
 		t.Errorf("Read fetched objects from the remote:\nbefore %s\nafter %s", before, after)
+	}
+}
+
+func TestIntegrationAPartialCloneIsReadAroundItsMissingContent(t *testing.T) {
+	big := func(fill string) string { return strings.Repeat(fill+"\n", 20000) } // 40 kB, over the clone's limit
+	origin := gitrepotest.New(t,
+		gitrepotest.Commit{Message: "base", Files: map[string]string{"src/a.ts": "a\n", "data/big.txt": big("1"), "package.json": `{"dependencies": {"x": "1"}}`}},
+		gitrepotest.Commit{Message: "grow", Files: map[string]string{"src/a.ts": "a\nb\n", "data/big.txt": big("2")}},
+		gitrepotest.Commit{Message: "only the big file", Files: map[string]string{"data/big.txt": big("4")}},
+		gitrepotest.Commit{Message: "change", Files: map[string]string{"src/a.ts": "a\nb\nc\n", "src/b.ts": "b\n", "data/big.txt": big("3")}},
+	)
+	origin.Git("config", "uploadpack.allowFilter", "true")
+	clone := filepath.Join(t.TempDir(), "clone")
+	if out, err := exec.Command("git", "clone", "-q", "--filter=blob:limit=10k", "file://"+origin.Dir, clone).CombinedOutput(); err != nil {
+		t.Fatalf("partial clone: %v: %s", err, out)
+	}
+	partial, err := read(t, clone, "HEAD~3")
+	if err != nil {
+		t.Fatalf("Read(partial clone) = %v, want an answer", err)
+	}
+	if want := []string{"data/big.txt"}; !slices.Equal(partial.Missing, want) {
+		t.Errorf("Read(partial clone).Missing = %q, want %q", partial.Missing, want)
+	}
+	full, err := read(t, origin.Dir, "HEAD~3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	without := func(source snapshot.Source) ([]snapshot.Commit, []snapshot.Change) {
+		var commits []snapshot.Commit
+		for _, c := range source.Commits {
+			c.Files = slices.DeleteFunc(slices.Clone(c.Files), func(f snapshot.FileChange) bool { return f.Path == "data/big.txt" })
+			if len(c.Files) == 0 {
+				c.Files = nil // a commit that only changed the missing file stays, with no files
+			}
+			commits = append(commits, c)
+		}
+		return commits, slices.DeleteFunc(slices.Clone(source.Changes), func(c snapshot.Change) bool { return c.Path == "data/big.txt" })
+	}
+	fullCommits, fullChanges := without(full)
+	if !reflect.DeepEqual(partial.Commits, fullCommits) || !reflect.DeepEqual(partial.Changes, fullChanges) {
+		t.Errorf("partial clone: commits %+v, changes %+v; want the full clone's without data/big.txt: %+v, %+v", partial.Commits, partial.Changes, fullCommits, fullChanges)
+	}
+	if !reflect.DeepEqual(partial.Now, full.Now) {
+		t.Errorf("partial clone: Now = %v, want the full clone's %v", paths(partial.Now), paths(full.Now))
 	}
 }

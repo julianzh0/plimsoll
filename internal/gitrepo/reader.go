@@ -71,41 +71,57 @@ func (r *Reader) Read(ctx context.Context, repository, base string, wants snapsh
 	}
 	source.Modified, source.Untracked = parseStatus(status)
 
-	if source.Changes, err = changes(run, source.Base); err != nil {
+	missing, err := missingContent(run)
+	if err != nil {
+		return snapshot.Source{}, err
+	}
+	exclude := excluding(missing)
+	if source.Changes, err = changes(run, source.Base, exclude); err != nil {
 		return snapshot.Source{}, err
 	}
 	if source.Now, err = now(run, top, wants, &source); err != nil {
 		return snapshot.Source{}, err
 	}
-	if source.Before, err = before(run, source.Base, source.Changes, wants); err != nil {
+	var absent []string
+	if source.Before, absent, err = before(run, source.Base, source.Changes, wants); err != nil {
 		return snapshot.Source{}, err
 	}
+	source.Missing = slices.Compact(slices.Sorted(slices.Values(append(missing, absent...))))
 	since, err := run(nil, "rev-list", source.Base+"..HEAD")
 	if err != nil {
 		return snapshot.Source{}, gitFailed(err)
 	}
 	source.Since = strings.Fields(string(since))
-	if source.Commits, err = r.history(run, top, source.Head); err != nil {
+	if source.Commits, err = r.history(run, top, source.Head, exclude); err != nil {
 		return snapshot.Source{}, err
 	}
 	return source, nil
 }
 
-// history returns the whole non-merge history, newest first, read once per head commit.
-func (r *Reader) history(run runner, top, head string) ([]snapshot.Commit, error) {
+// history returns the whole non-merge history, newest first, read once per head commit, without the excluded paths.
+func (r *Reader) history(run runner, top, head string, exclude []string) ([]snapshot.Commit, error) {
 	r.mu.Lock()
 	kept, found := r.histories[top]
 	r.mu.Unlock()
 	if found && kept.head == head {
 		return kept.commits, nil
 	}
-	output, err := run(nil, "log", "--no-merges", "--no-show-signature", "--numstat", "-z", "-M50%", "-l1000", "--no-textconv", "--no-ext-diff", "--format=%x01%H")
+	output, err := run(nil, append([]string{"log", "--no-merges", "--no-show-signature", "--numstat", "-z", "-M50%", "-l1000", "--no-textconv", "--no-ext-diff", "--format=%x01%H"}, exclude...)...)
 	if err != nil {
 		return nil, gitFailed(err)
 	}
 	commits, err := parseLog(output)
 	if err != nil {
 		return nil, gitFailed(err)
+	}
+	if len(exclude) > 0 {
+		// A path left out also leaves out the commits that changed nothing else; they stay, with no files, so the
+		// history keeps its length and every window over it stays the same.
+		ids, err := run(nil, "rev-list", "--no-merges", "HEAD")
+		if err != nil {
+			return nil, gitFailed(err)
+		}
+		commits = withEveryCommit(strings.Fields(string(ids)), commits)
 	}
 	r.mu.Lock()
 	r.histories[top] = keptHistory{head: head, commits: commits}
@@ -115,8 +131,8 @@ func (r *Reader) history(run runner, top, head string) ([]snapshot.Commit, error
 
 type runner func(input []byte, args ...string) ([]byte, error)
 
-func changes(run runner, base string) ([]snapshot.Change, error) {
-	output, err := run(nil, "diff-index", "--numstat", "-z", "-M50%", "-l1000", "--no-textconv", "--no-ext-diff", base)
+func changes(run runner, base string, exclude []string) ([]snapshot.Change, error) {
+	output, err := run(nil, append([]string{"diff-index", "--numstat", "-z", "-M50%", "-l1000", "--no-textconv", "--no-ext-diff", base}, exclude...)...)
 	if err != nil {
 		return nil, gitFailed(err)
 	}
@@ -196,11 +212,12 @@ func readFile(root *os.Root, path string, wants snapshot.Wants) ([]byte, error) 
 	return append(head[:n:n], rest...), nil
 }
 
-// before lists the tracked files at the base and reads, in one batch, only the wanted files that changed.
-func before(run runner, base string, changes []snapshot.Change, wants snapshot.Wants) ([]snapshot.Entry, error) {
+// before lists the tracked files at the base and reads, in one batch, only the wanted files that changed. absent are
+// the wanted files whose content a partial clone lacks.
+func before(run runner, base string, changes []snapshot.Change, wants snapshot.Wants) (entries []snapshot.Entry, absent []string, err error) {
 	output, err := run(nil, "ls-tree", "-r", "-z", "--full-tree", base)
 	if err != nil {
-		return nil, gitFailed(err)
+		return nil, nil, gitFailed(err)
 	}
 	changed := map[string]bool{}
 	for _, change := range changes {
@@ -209,7 +226,6 @@ func before(run runner, base string, changes []snapshot.Change, wants snapshot.W
 			changed[change.From] = true
 		}
 	}
-	var entries []snapshot.Entry
 	var wanted []string
 	objects := map[string]string{}
 	for _, tracked := range parseTracked(output, 2) {
@@ -223,30 +239,101 @@ func before(run runner, base string, changes []snapshot.Change, wants snapshot.W
 		}
 	}
 	if len(wanted) == 0 {
-		return entries, nil
+		return entries, nil, nil
 	}
 	slices.Sort(wanted)
 	batch, err := run([]byte(strings.Join(slices.Compact(wanted), "\n")+"\n"), "cat-file", "--batch")
 	if err != nil {
-		return nil, gitFailed(err)
+		return nil, nil, gitFailed(err)
 	}
 	contents, err := parseBatch(batch)
 	if err != nil {
-		return nil, gitFailed(err)
+		return nil, nil, gitFailed(err)
 	}
 	for i := range entries {
 		object, found := objects[entries[i].Path]
 		if !found {
 			continue
 		}
-		content := contents[object]
+		content, present := contents[object]
+		if !present {
+			absent = append(absent, entries[i].Path)
+			continue
+		}
 		if wants.Binary(content[:min(len(content), wants.SniffBytes)]) {
 			entries[i].Binary = true
 			continue
 		}
 		entries[i].Content = content
 	}
-	return entries, nil
+	return entries, absent, nil
+}
+
+// missingContent finds, in a partial clone, the paths whose content some commit of the head's history lacks: the
+// objects git reports missing, named by the raw log, which needs no content. A full clone has none. Nothing is
+// fetched: lazy fetching is off in every git command.
+// NOTE: a content that only a merge brings in is not looked for, so a base that is such a merge can still be
+// refused. Upgrade: read the raw log with -m.
+func missingContent(run runner) ([]string, error) {
+	promisors, err := run(nil, "config", "--get-regexp", `^remote\..*\.promisor$`)
+	if failure, ok := errors.AsType[*gitError](err); ok && failure.code == 1 {
+		return nil, nil // no promisor remote: a full clone
+	}
+	if err != nil {
+		return nil, gitFailed(err)
+	}
+	if !strings.Contains(string(promisors), " true") {
+		return nil, nil
+	}
+	objects, err := run(nil, "rev-list", "--objects", "--missing=print", "HEAD")
+	if err != nil {
+		return nil, gitFailed(err)
+	}
+	lost := map[string]bool{}
+	for line := range strings.Lines(string(objects)) {
+		if oid, isMissing := strings.CutPrefix(strings.TrimSpace(line), "?"); isMissing {
+			lost[oid] = true
+		}
+	}
+	if len(lost) == 0 {
+		return nil, nil
+	}
+	raw, err := run(nil, "log", "--raw", "--no-abbrev", "--no-renames", "-z", "--format=%x01%H", "HEAD")
+	if err != nil {
+		return nil, gitFailed(err)
+	}
+	return pathsOfObjects(raw, lost), nil
+}
+
+// withEveryCommit is the commits in the order of ids, each one read where it was, else with no files.
+func withEveryCommit(ids []string, read []snapshot.Commit) []snapshot.Commit {
+	byID := make(map[string]snapshot.Commit, len(read))
+	for _, c := range read {
+		byID[c.ID] = c
+	}
+	all := make([]snapshot.Commit, 0, len(ids))
+	for _, id := range ids {
+		c, found := byID[id]
+		if !found {
+			c = snapshot.Commit{ID: id}
+		}
+		all = append(all, c)
+	}
+	return all
+}
+
+// excluding is the pathspec that leaves the paths out, or nil when there are none. A path's glob characters are
+// escaped: the exclude magic cannot be combined with the literal one.
+func excluding(paths []string) []string {
+	if len(paths) == 0 {
+		return nil
+	}
+	spec := []string{"--", "."}
+	escape := strings.NewReplacer(`\`, `\\`, "*", `\*`, "?", `\?`, "[", `\[`)
+	for _, p := range paths {
+		spec = append(spec, ":(exclude)"+escape.Replace(p))
+	}
+	return spec
 }
 
 // refusal turns git's answer to the command that decides the kind into a refusal of that kind. Only exit codes 1

@@ -3,6 +3,7 @@ package answer
 import (
 	"fmt"
 	"reflect"
+	"strings"
 
 	"github.com/juzhxng/plimsoll/internal/snapshot"
 )
@@ -126,6 +127,10 @@ func repositoryNotAnalysed(s snapshot.Snapshot) []NotAnalysed {
 	}
 	for _, path := range s.Unreadable {
 		add(fmt.Sprintf("`%s` could not be read", path))
+	}
+	if len(s.Missing) > 0 {
+		add(fmt.Sprintf("content not in this partial clone, so its lines and history are not counted: %s (%s)",
+			Plural(len(s.Missing), "file"), strings.Join(Quoted(s.Missing), ", ")))
 	}
 	return entries
 }

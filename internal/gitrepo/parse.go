@@ -3,6 +3,7 @@ package gitrepo
 import (
 	"bytes"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -103,6 +104,10 @@ func parseBatch(output []byte) (map[string][]byte, error) {
 	for len(output) > 0 {
 		header, rest, found := bytes.Cut(output, []byte{'\n'})
 		parts := strings.Fields(string(header))
+		if found && len(parts) == 2 && parts[1] == "missing" { // a partial clone lacks it: no content
+			output = rest
+			continue
+		}
 		if !found || len(parts) != 3 {
 			return nil, fmt.Errorf("unexpected cat-file header %q", header)
 		}
@@ -114,6 +119,27 @@ func parseBatch(output []byte) (map[string][]byte, error) {
 		output = bytes.TrimPrefix(rest[size:], []byte{'\n'})
 	}
 	return contents, nil
+}
+
+// pathsOfObjects are the paths, sorted, at which `log --raw --no-abbrev -z --format=%x01%H` shows one of the objects
+// on either side of a change. A record is ":<modes> <old> <new> <status>" and then its path; the first record of a
+// commit follows its header after a newline.
+func pathsOfObjects(raw []byte, objects map[string]bool) []string {
+	records := fields(raw)
+	var found []string
+	for i := 0; i < len(records); i++ {
+		record := records[i][strings.LastIndexByte(records[i], '\n')+1:]
+		parts := strings.Fields(record)
+		if !strings.HasPrefix(record, ":") || len(parts) < 4 || i+1 >= len(records) {
+			continue
+		}
+		if objects[parts[2]] || objects[parts[3]] {
+			found = append(found, records[i+1])
+		}
+		i++
+	}
+	slices.Sort(found)
+	return slices.Compact(found)
 }
 
 // parseLog reads `log --numstat -z --format=%x01%H`: a field that starts with 0x01 opens a commit and holds its
