@@ -1,0 +1,38 @@
+name: Install
+
+# A stranger's test of every published release: on a fresh machine, install with the README's one line, then ask
+# status over MCP. Runs on each published release and by hand.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  install:
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm, macos-15]
+    timeout-minutes: 10
+    steps:
+      - name: Install with the README's command
+        run: curl -fsSL https://raw.githubusercontent.com/juzhxng/plimsoll/main/install.sh | sh
+      - name: A repository to ask about
+        run: |
+          git init -q sample && cd sample
+          printf 'export const a = 1;\n' > a.ts
+          git add a.ts && git -c user.name=t -c user.email=t@example.com commit -qm first
+      - name: Ask status
+        run: |
+          {
+            printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"install-test","version":"1"}}}'
+            printf '%s\n' '{"jsonrpc":"2.0","method":"notifications/initialized"}'
+            printf '%s\n' "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"status\",\"arguments\":{\"repository\":\"$PWD/sample\",\"base\":\"HEAD\"}}}"
+            sleep 5
+          } | "$HOME/.local/bin/plimsoll" > answers.txt
+          cat answers.txt
+          grep -q '"id":2' answers.txt && grep -q 'plimsoll [0-9.]* status: base' answers.txt
