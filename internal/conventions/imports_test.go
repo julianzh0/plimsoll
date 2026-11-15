@@ -137,6 +137,15 @@ func importCases() map[string]map[string][]string {
 			"// use a::b;\n/// use a::b;\nlet used = 1;\nfn user() {}\nmodule!(x);\n": nil,
 			"use a::b;\r\nmod c;\r\n":                                                 {"a::b", "mod c"},
 		},
+		"swift": {
+			"import Foundation\nimport struct Foo.Bar\n@testable import App\n@_exported import Kit\n@_implementationOnly import Hidden\n": {
+				"App", "Foo", "Foundation", "Hidden", "Kit",
+			},
+			"import func Darwin.sqrt\nimport class UIKit.UIView\n@preconcurrency import Dispatch\n":     {"Darwin", "Dispatch", "UIKit"},
+			"public import Kit\ninternal import Core\n#if canImport(UIKit)\n    import UIKit\n#endif\n": {"Core", "Kit", "UIKit"},
+			"// import A\nlet important = 1\nfunc imported() {}\n":                                      nil,
+			"import A\r\nimport B\r\n": {"A", "B"},
+		},
 		"csharp": {
 			"using System;\nusing Acme.Billing;\nglobal using Acme.Core;\n": {"Acme.Billing", "Acme.Core:everywhere", "System"},
 			"using static Acme.Billing.Invoice;\nusing Money = Acme.Billing.Money;\nglobal using static Acme.Core.Guard;\n": {
@@ -282,7 +291,7 @@ func TestAFormMatchesOnlyTextThatHoldsOneOfItsWords(t *testing.T) {
 				}
 			}
 		}
-		if want := map[string]int{"typescript": 2, "go": 0, "python": 2, "dart": 0, "java": 0, "kotlin": 0, "rust": 0, "csharp": 0}[l.Name]; worded != want {
+		if want := map[string]int{"typescript": 2, "go": 0, "python": 2, "dart": 0, "java": 0, "kotlin": 0, "rust": 0, "csharp": 0, "swift": 0}[l.Name]; worded != want {
 			t.Errorf("%s: %d forms with words, want %d", l.Name, worded, want)
 		}
 	}
@@ -300,6 +309,13 @@ func TestLiteralsBlankCommentsStringsAndCharacters(t *testing.T) {
 			"fn f<'a>(x: &'a str) {}":      "fn f<'a>(x: &'a str) {}",
 			"s = \"line\n}\nend\"; t":      "s =      \n \n    ; t",
 			"/**/ a /***/ b":               "     a       b",
+		},
+		"swift": {
+			"a // b\nc":                       "a     \nc",
+			"a /* b */ c":                     "a         c",
+			"s = \"\"\"\nimport X\n\"\"\"\nt": "s =    \n        \n   \nt",
+			`s = "a \" b"; t`:                 "s =         ; t",
+			`s = #"a "b" c"#; t`:              "s =            ; t",
 		},
 	}
 	blank := func(match string) string {

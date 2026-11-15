@@ -463,7 +463,7 @@ func candidatesOf(candidates conventions.Candidates, base string) []string {
 func (s side) folder(language conventions.Language, folder string) (target, kind) {
 	reached := target{to: folder, folder: true}
 	inFolder := false
-	for _, p := range s.folders[folder] {
+	for _, p := range s.filesOf(folder, language.Imports.FolderTree) {
 		suffix := conventions.Suffix(p)
 		if !slices.Contains(language.Extensions, suffix) && !slices.Contains(language.Imports.FolderAlso, suffix) ||
 			language.Imports.FolderExcept != nil && language.Imports.FolderExcept.MatchString(path.Base(p)) {
@@ -478,6 +478,21 @@ func (s side) folder(language conventions.Language, folder string) (target, kind
 		return target{}, notFound
 	}
 	return reached, resolved
+}
+
+// filesOf are the tracked paths directly in a folder, or, for a tree, at any depth below it, sorted.
+func (s side) filesOf(folder string, tree bool) []string {
+	if !tree {
+		return s.folders[folder]
+	}
+	var found []string
+	for f, paths := range s.folders {
+		if f == folder || strings.HasPrefix(f, folder+"/") || folder == "." {
+			found = append(found, paths...)
+		}
+	}
+	slices.Sort(found)
+	return found
 }
 
 // importedNames are the names a statement imports out of its target, as its "names" group writes them: comments,

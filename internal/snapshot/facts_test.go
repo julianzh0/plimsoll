@@ -75,6 +75,8 @@ func TestBuildReadsRuntimeDependencies(t *testing.T) {
 		{"a file named pom.xml with another root element", oneFile("pom.xml", "<settings/>"), nil},
 		{"a nested pom", oneFile("core/pom.xml", "<project>"+pomOwn+"</project>"), nil},
 		{"csharp", snapshottest.Load(t, "testdata/csharp"), dependenciesOf("Acme.Notes/Acme.Notes.csproj", "Microsoft.Extensions.Configuration", "Npgsql", "System.Text.Json")},
+		{"swift", snapshottest.Load(t, "testdata/swift"), []snapshot.Manifest{{Path: "Package.swift", Dependencies: []string{"swift-argument-parser", "swift-log"},
+			Lockfiles: []string{"Package.resolved"}, Unlocked: []string{"swift-log"}}}},
 		{"rust", snapshottest.Load(t, "testdata/rust"), dependenciesOf("Cargo.toml", "anyhow", "clap", "libc", "log", "notes-store", "serde")},
 		{"java", snapshottest.Load(t, "testdata/java"), dependenciesOf("pom.xml", "com.fasterxml.jackson.core:jackson-databind", "org.postgresql:postgresql")},
 		{"kotlin", snapshottest.Load(t, "testdata/kotlin"), dependenciesOf("build.gradle.kts", ":shared", "io.ktor:ktor-bom", "io.ktor:ktor-client-core", "libs.kotlinx.coroutines.core", "org.slf4j:slf4j-simple")},

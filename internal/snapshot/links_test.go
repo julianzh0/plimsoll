@@ -247,9 +247,11 @@ func TestBuildKeepsNoImportText(t *testing.T) {
 		// Outside, not found and resolved: the reader builds a folder path from the second and keeps none of them.
 		"src/main/java/com/acme/A.java": "package com.acme;\nimport zzmarker.Outside;\nimport com.acme.zzmarker.Gone;\nimport com.acme.zzmarker;\n",
 		// Not found through the project file's name, outside, and not readable: the reader keeps no name.
-		"src/Acme/Acme.csproj": "<Project Sdk=\"Microsoft.NET.Sdk\" />\n",
-		"src/Acme/A.cs":        "global using Acme.Core;\nusing Acme.zzmarker;\nusing zzmarker.Outside;\n\nnamespace Acme.Core;\n",
-		"src/lib.rs":           "mod zzmarker_gone;\nuse zzmarker::Outside;\nuse crate::zzmarker_item::{A, zzmarker_b};\nmod zzmarker_inline {\n    use super::zzmarker_x;\n}\n",
+		"src/Acme/Acme.csproj":  "<Project Sdk=\"Microsoft.NET.Sdk\" />\n",
+		"src/Acme/A.cs":         "global using Acme.Core;\nusing Acme.zzmarker;\nusing zzmarker.Outside;\n\nnamespace Acme.Core;\n",
+		"Package.swift":         "let package = Package(name: \"x\", targets: [.target(name: \"Kit\")])\n",
+		"Sources/Kit/Kit.swift": "import zzmarkerOutside\nimport Kit\n",
+		"src/lib.rs":            "mod zzmarker_gone;\nuse zzmarker::Outside;\nuse crate::zzmarker_item::{A, zzmarker_b};\nmod zzmarker_inline {\n    use super::zzmarker_x;\n}\n",
 	}
 	s := snapshot.Build(snapshottest.Files(tree, tree), conventions.Default())
 	printed := fmt.Sprintf("%+v", s)
@@ -711,5 +713,68 @@ func TestBuildFollowsCSharpUsingsToNamespaces(t *testing.T) {
 	bare := linksOf(map[string]string{"src/A.cs": "using Acme.B;\n", "src/B.cs": "class B {}\n"})
 	if l := bare.Languages[0]; l.Prefix != snapshot.PrefixAbsent || l.Outside != 1 || len(bare.List) != 0 {
 		t.Errorf("C# files that declare no namespace: %+v, want PrefixAbsent and the import outside", bare)
+	}
+}
+
+// swiftTree holds a package with a target under its default folder, one under a path of its own, a test target, a
+// target without a tracked file, and imports that are outside or inside a string.
+func swiftTree() map[string]string {
+	return map[string]string{
+		"Package.swift": strings.Join([]string{
+			"// swift-tools-version:5.9", "import PackageDescription", "", "let package = Package(", "    name: \"x\",", "    targets: [",
+			"        .target(name: \"Core\"),", "        .target(", "            name: \"Legacy\",", "            path: \"Old/Legacy\"", "        ),",
+			"        .executableTarget(name: \"tool\", dependencies: [\"Core\"]),", "        .target(name: \"Gone\"),",
+			"        .testTarget(name: \"CoreTests\", dependencies: [\"Core\"]),", "    ]", ")",
+		}, "\n") + "\n",
+		"Sources/Core/A.swift":            "import Foundation\n",
+		"Sources/Core/Deep/B.swift":       "let text = \"\"\"\nimport Legacy\n\"\"\"\n",
+		"Old/Legacy/L.swift":              "import Core\n",
+		"Sources/tool/main.swift":         "import Core\n@testable import Legacy\nimport Gone\nimport ArgumentParser\n",
+		"Tests/CoreTests/CoreTests.swift": "import XCTest\n@testable import Core\n\nfinal class CoreTests: XCTestCase {\n    func testA() {}\n}\n",
+	}
+}
+
+func TestBuildFollowsSwiftImportsToModules(t *testing.T) {
+	swift := func(resolved, outside, notFound int, state snapshot.PrefixState) []snapshot.LanguageImports {
+		return []snapshot.LanguageImports{{
+			Language: "swift", Resolved: resolved, Outside: outside, NotFound: notFound, PrefixFile: "Package.swift", Prefix: state,
+			PrefixRequired: true, Folders: true, NoRings: "an import names a module, and the compiler rejects modules that import each other",
+			Implicit: []string{"main.swift", "Package.swift"}, NotSeen: "use between the files of one module, which needs no `import`",
+		}}
+	}
+	core := []string{"Sources/NotesCore/Config.swift", "Sources/NotesCore/Model/Note.swift", "Sources/NotesCore/Store.swift"}
+	sample := snapshot.Build(snapshottest.Load(t, "testdata/swift"), conventions.Default()).Now.Links
+	wantSample := []snapshot.Link{
+		folderLink("Old/Legacy/Clock.swift", 2, "Sources/NotesCore", core...),
+		folderLink("Sources/notes/main.swift", 2, "Sources/NotesCore", core...),
+		folderLink("Tests/NotesCoreTests/Fixtures.swift", 1, "Sources/NotesCore", core...),
+		folderLink("Tests/NotesCoreTests/StoreTests.swift", 2, "Sources/NotesCore", core...),
+	}
+	if !reflect.DeepEqual(sample.Languages, swift(4, 7, 0, snapshot.PrefixRead)) || !reflect.DeepEqual(sample.List, wantSample) {
+		t.Errorf("the sample: Languages %+v, List %+v; want %+v and %+v", sample.Languages, sample.List, swift(4, 7, 0, snapshot.PrefixRead), wantSample)
+	}
+
+	// A module reaches every file below its folder; a target of its own path is found there; a target without a
+	// tracked file is not found; an import inside a string is no import.
+	coreFiles := []string{"Sources/Core/A.swift", "Sources/Core/Deep/B.swift"}
+	wantTree := []snapshot.Link{
+		folderLink("Old/Legacy/L.swift", 1, "Sources/Core", coreFiles...),
+		folderLink("Sources/tool/main.swift", 1, "Sources/Core", coreFiles...),
+		folderLink("Sources/tool/main.swift", 2, "Old/Legacy", "Old/Legacy/L.swift"),
+		folderLink("Tests/CoreTests/CoreTests.swift", 2, "Sources/Core", coreFiles...),
+	}
+	got := linksOf(swiftTree())
+	if !reflect.DeepEqual(got.Languages, swift(4, 4, 1, snapshot.PrefixRead)) || !reflect.DeepEqual(got.List, wantTree) {
+		t.Errorf("the tree: Languages %+v, List %+v; want %+v and %+v", got.Languages, got.List, swift(4, 4, 1, snapshot.PrefixRead), wantTree)
+	}
+	if crlf := linksOf(withCRLF(swiftTree())); !reflect.DeepEqual(crlf, got) {
+		t.Errorf("CRLF line ends: Links = %+v, want %+v", crlf, got)
+	}
+
+	// Without Package.swift an own module cannot be told from a framework.
+	bare := swiftTree()
+	delete(bare, "Package.swift")
+	if l := linksOf(bare); !reflect.DeepEqual(l.Languages, swift(0, 8, 0, snapshot.PrefixAbsent)) || len(l.List) != 0 {
+		t.Errorf("no Package.swift: %+v, want every import outside and no link", l)
 	}
 }

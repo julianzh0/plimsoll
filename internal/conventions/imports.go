@@ -21,6 +21,9 @@ type Imports struct {
 	// PackageLine, for SourceRoots and DeclaredNamespaces, is the declaration of a file's package; its group
 	// "package" holds the dotted name.
 	PackageLine *regexp.Regexp
+	// FolderTree, for a folder target, makes an import of a folder reach every file below it, not only those directly
+	// in it.
+	FolderTree bool
 	// Grouped is a target that may group paths in nested braces: "a::{b, c::{d, e}}" names a::b, a::c::d and
 	// a::c::e, each one import.
 	Grouped bool
@@ -103,6 +106,8 @@ const (
 	SourceRoots
 	// CargoCrates are the crates of the tracked Cargo.toml files and the modules that mod lines declare.
 	CargoCrates
+	// SwiftTargets are the targets that Package.swift declares, each in its folder.
+	SwiftTargets
 	// DeclaredNamespaces are the namespaces that the language's tracked files declare, wherever they lie.
 	DeclaredNamespaces
 )

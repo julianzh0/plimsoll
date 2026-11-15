@@ -138,6 +138,7 @@ func languageCases() map[string]languageCase {
 			},
 		},
 		"csharp": csharpCase(),
+		"swift":  swiftCase(),
 		"rust": {
 			// A library root that stays on every side: its crate's name leads from any file to a module by its path.
 			setup:    map[string]string{"Cargo.toml": "[package]\nname = \"app\"\n", "src/lib.rs": ""},
@@ -220,6 +221,59 @@ func csharpCase() languageCase {
 				lines = append(lines, "using "+spec+";")
 			}
 			return strings.Join(append(lines, "namespace "+namespaceOf(from)+";"), "\n") + "\n"
+		},
+	}
+}
+
+// swiftCase is the case of Swift. Every product file is a module of its own under Sources/, a test file one under
+// Tests/, and test support a module under Tests/ that product code may import. Package.swift declares a target for
+// every name the tests use, and one, gone, without a file.
+func swiftCase() languageCase {
+	var targets []string
+	declare := func(kind, name, folder string) {
+		targets = append(targets, fmt.Sprintf("    .%s(name: %q, path: %q),", kind, name, folder))
+	}
+	names := []string{"old", "moved", "n1", "n2", "n3", "t2", "db", "clock"}
+	for c := 'a'; c <= 'z'; c++ {
+		names = append(names, string(c), "t"+string(c), "p"+string(c))
+	}
+	for _, name := range names {
+		declare("target", name, "Sources/"+name)
+		declare("testTarget", name+"Tests", "Tests/"+name+"Tests")
+		declare("target", name+"Support", "Tests/"+name)
+	}
+	for _, folder := range []string{"a", "b", "c", "d", "a/deep", "adapters", "domain"} {
+		for _, name := range []string{"u", "v", "w", "x", "y", "z", "db", "http", "order", "policy"} {
+			declare("target", strings.ReplaceAll(folder, "/", "_")+"_"+name, "Sources/"+folder+"/"+name)
+		}
+	}
+	declare("target", "gone", "Sources/gone")
+	module := func(file string) string {
+		folder := path.Dir(file)
+		if rest, test := strings.CutPrefix(folder, "Tests/"); test && !strings.HasSuffix(rest, "Tests") {
+			return rest + "Support"
+		}
+		return strings.ReplaceAll(strings.TrimPrefix(strings.TrimPrefix(folder, "Sources/"), "Tests/"), "/", "_")
+	}
+	return languageCase{
+		setup:    map[string]string{"Package.swift": "let package = Package(name: \"app\", targets: [\n" + strings.Join(targets, "\n") + "\n])\n"},
+		product:  func(name string) string { return "Sources/" + name + "/" + name + ".swift" },
+		placed:   func(folder, name string) string { return "Sources/" + folder + "/" + name + "/" + name + ".swift" },
+		under:    "Sources",
+		test:     func(name string) string { return "Tests/" + name + "Tests/" + name + "Tests.swift" },
+		support:  func(name string) string { return "Tests/" + name + "/" + name + ".swift" },
+		testBody: "func testX() {}",
+		outside:  []string{"Foundation", "XCTest", "Dispatch"},
+		nowhere:  "gone",
+		importing: func(_ string, targets []string, specs ...string) string {
+			var lines []string
+			for _, target := range targets {
+				lines = append(lines, "import "+module(target))
+			}
+			for _, spec := range specs {
+				lines = append(lines, "import "+spec)
+			}
+			return strings.Join(append(lines, "let x = 1"), "\n") + "\n"
 		},
 	}
 }

@@ -78,6 +78,8 @@ func TestDetectOnEachLanguageSample(t *testing.T) {
 		{"csharp", 48, 26, 0, 0.5, []string{"Acme.Notes/Store/NoteStore.cs", "Acme.Notes.Tests/NoteStoreTests.cs", "Acme.Notes.Tests/Support/FixedClock.cs"},
 			map[string]string{"Acme.Notes/Acme.Notes.csproj": "Microsoft.Extensions.Configuration, Npgsql, System.Text.Json"},
 			[]string{"no `.env.example`, so no settings count"}},
+		{"swift", 56, 11, 0, 0.2, []string{"Package.swift", "Sources/NotesCore/Store.swift", "Sources/notes/main.swift"},
+			map[string]string{"Package.swift": "swift-argument-parser, swift-log"}, []string{"no `.env.example`, so no settings count"}},
 		{"rust", 86, 41, 0, 0.5, []string{"src/store/memory.rs", "src/model.rs", "src/lib.rs"},
 			map[string]string{"Cargo.toml": "anyhow, clap, libc, log, notes-store, serde"}, []string{"no `.env.example`, so no settings count"}},
 		{"mixed", 8, 10, 0, 1.3, []string{"service/main_test.go", "service/main.go", "web/src/app.test.ts"},

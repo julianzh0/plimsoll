@@ -108,6 +108,16 @@ func TestBuildClassifiesEachSampleLanguage(t *testing.T) {
 			{"Acme.Notes/Store/Clock.cs", "csharp", snapshot.Product, 8},
 			{"Acme.Notes/Store/NoteStore.cs", "csharp", snapshot.Product, 24},
 		},
+		"swift": {
+			{"Old/Legacy/Clock.swift", "swift", snapshot.Product, 4},
+			{"Package.swift", "swift", snapshot.Product, 19},
+			{"Sources/NotesCore/Config.swift", "swift", snapshot.Product, 9},
+			{"Sources/NotesCore/Model/Note.swift", "swift", snapshot.Product, 3},
+			{"Sources/NotesCore/Store.swift", "swift", snapshot.Product, 11},
+			{"Sources/notes/main.swift", "swift", snapshot.Product, 10},
+			{"Tests/NotesCoreTests/Fixtures.swift", "swift", snapshot.TestInfrastructure, 3},
+			{"Tests/NotesCoreTests/StoreTests.swift", "swift", snapshot.Test, 8},
+		},
 		"rust": {
 			{"build.rs", "rust", snapshot.Product, 3},
 			{"crates/notes-store/src/disk.rs", "rust", snapshot.Product, 1},
