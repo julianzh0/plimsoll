@@ -95,7 +95,7 @@ func TestFolderCycleMarksInEachLanguage(t *testing.T) {
 				rings++
 			}
 		}
-		if folders := len(marksOf(mutual, ruleFolderCycle)); name == "go" && (folders != 1 || rings != 0) || name != "go" && (folders != 0 || rings != 1) {
+		if folders := len(marksOf(mutual, ruleFolderCycle)); c.noRings != "" && (folders != 1 || rings != 0) || c.noRings == "" && (folders != 0 || rings != 1) {
 			t.Errorf("two files importing each other: %d folder-cycle and %d ring marks", folders, rings)
 		}
 	})

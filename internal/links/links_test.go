@@ -30,6 +30,9 @@ type languageCase struct {
 	importing func(from string, targets []string, specs ...string) string
 	placed    func(folder, name string) string // the path of product file name in a folder below under
 	under     string                           // the folder that placed files lie below
+	// Set by eachLanguage from the entry:
+	byFolder bool   // its imports name folders
+	noRings  string // why no rings are looked for among its files; "" looks for them
 }
 
 func languageCases() map[string]languageCase {
@@ -142,6 +145,7 @@ func eachLanguage(t *testing.T, body func(t *testing.T, name string, c languageC
 			t.Errorf("language %s has no links case", language.Name)
 			continue
 		}
+		c.byFolder, c.noRings = language.Imports.Target == conventions.FolderTarget, language.Imports.NoRings
 		t.Run(language.Name, func(t *testing.T) { body(t, language.Name, c) })
 	}
 }
@@ -183,9 +187,10 @@ func detect(t *testing.T, source snapshot.Source) answer.Findings {
 func same(files map[string]string) snapshot.Source { return snapshottest.Files(files, files) }
 
 const wantLinksNote = "links: imports read by text patterns; an import is a link only when it names exactly one tracked file " +
-	"of the repository, or one folder where a language imports folders; outside packages are not compared with local names"
+	"of the repository, or the folders of one package where a language imports folders; outside packages are not compared with local names"
 
-const wantFolderNote = "an import of a folder reaches the folder's files; use between files of one folder needs no import and is not seen"
+const wantFolderNote = "an import of a folder reaches the folder's files, and a package that lies in several folders is reached in each; " +
+	"use between files of one folder or one package needs no import and is not seen"
 
 func TestLinksCountImportsPerAnalysedLanguage(t *testing.T) {
 	eachLanguage(t, func(t *testing.T, name string, c languageCase) {
@@ -199,7 +204,7 @@ func TestLinksCountImportsPerAnalysedLanguage(t *testing.T) {
 		if len(f.Notes) == 0 || f.Notes[0] != wantLinksNote || len(f.NotAnalysed) != 0 {
 			t.Errorf("notes %q, not analysed %q; want the links note first and nothing not analysed", f.Notes, f.NotAnalysed)
 		}
-		if got, want := slices.Contains(f.Notes, wantFolderNote), name == "go"; got != want {
+		if got, want := slices.Contains(f.Notes, wantFolderNote), c.byFolder; got != want {
 			t.Errorf("the folder note present = %v, want %v", got, want)
 		}
 		for _, note := range []string{
@@ -519,15 +524,19 @@ func TestCycleMarks(t *testing.T) {
 }
 
 func TestRingsAreNotLookedForWhereTheEntrySaysSo(t *testing.T) {
-	golang := languageCases()["go"]
-	a, b := golang.product("a"), golang.product("b")
-	f := detect(t, same(golang.tree(map[string]string{a: golang.importing(a, []string{b}), b: golang.importing(b, []string{a})})))
-	_, rings := statisticNamed(f, "import rings")
-	if len(marksOf(f, ruleCycle)) != 0 || rings || len(f.NotAnalysed) != 0 ||
-		!slices.Contains(f.Notes, "`go`: import rings are not looked for: the Go compiler rejects import cycles") ||
-		slices.Contains(f.Notes, "rings: among imports that are not type-only") {
-		t.Errorf("go: marks %+v, rows %+v, notes %q, not analysed %q", f.Marks, f.Statistics, f.Notes, f.NotAnalysed)
-	}
+	eachLanguage(t, func(t *testing.T, name string, c languageCase) {
+		if c.noRings == "" {
+			return
+		}
+		a, b := c.product("a"), c.product("b")
+		f := detect(t, same(c.tree(map[string]string{a: c.importing(a, []string{b}), b: c.importing(b, []string{a})})))
+		_, rings := statisticNamed(f, "import rings")
+		if len(marksOf(f, ruleCycle)) != 0 || rings || len(f.NotAnalysed) != 0 ||
+			!slices.Contains(f.Notes, "`"+name+"`: import rings are not looked for: "+c.noRings) ||
+			slices.Contains(f.Notes, "rings: among imports that are not type-only") {
+			t.Errorf("%s: marks %+v, rows %+v, notes %q, not analysed %q", name, f.Marks, f.Statistics, f.Notes, f.NotAnalysed)
+		}
+	})
 }
 
 func clone(files map[string]string) map[string]string {
@@ -592,7 +601,7 @@ func TestReachCountsImportersTheChangeDidNotTouch(t *testing.T) {
 			}
 		}
 		wantSubject := a
-		if name == "go" {
+		if c.byFolder {
 			wantSubject = path.Dir(a) + "/"
 		}
 		if len(widest) != 1 || !sameStatistic(widest[0], answer.Statistic{Name: "widest reach", Subject: wantSubject, Note: "3 files; 1 product, 2 test"}) {
@@ -633,7 +642,7 @@ func TestReachCountsImportersTheChangeDidNotTouch(t *testing.T) {
 			}
 		}
 		subject := func(file string) string {
-			if name == "go" {
+			if c.byFolder {
 				return path.Dir(file) + "/"
 			}
 			return file
@@ -727,12 +736,12 @@ func TestNewProductFilesWithoutAnImporterAreListed(t *testing.T) {
 				t.Errorf("a new package file and a new module: rows for %q, want the module alone", subjects)
 			}
 		}
-		if name == "go" {
+		if c.byFolder {
 			sibling := c.product("b")
-			extra := path.Dir(sibling) + "/extra.go"
+			extra := path.Dir(sibling) + "/extra" + path.Ext(sibling)
 			imported := c.tree(map[string]string{c.product("a"): c.importing(c.product("a"), []string{sibling}), sibling: c.importing(sibling, nil)})
 			grown := clone(imported)
-			grown[extra] = "package b\n"
+			grown[extra] = c.importing(extra, nil)
 			for _, s := range detect(t, snapshottest.Files(imported, grown)).Statistics {
 				if s.Name == "new product file without an importer" {
 					t.Errorf("a new Go file in an imported folder is listed: %+v", s)

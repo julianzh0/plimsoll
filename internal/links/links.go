@@ -14,9 +14,10 @@ const name = "links"
 
 const (
 	linksNote = "links: imports read by text patterns; an import is a link only when it names exactly one tracked file " +
-		"of the repository, or one folder where a language imports folders; outside packages are not compared with local names"
-	folderNote = "an import of a folder reaches the folder's files; use between files of one folder needs no import and is not seen"
-	ringsNote  = "rings: among imports that are not type-only"
+		"of the repository, or the folders of one package where a language imports folders; outside packages are not compared with local names"
+	folderNote = "an import of a folder reaches the folder's files, and a package that lies in several folders is reached in each; " +
+		"use between files of one folder or one package needs no import and is not seen"
+	ringsNote = "rings: among imports that are not type-only"
 	// folderCyclesNote says what the folder-cycle rule compares.
 	folderCyclesNote = "folder cycles: between the folders directly under one folder, at every depth; " +
 		"a folder depends on another when a product file under it imports a product file under the other; " +
