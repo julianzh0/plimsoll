@@ -102,6 +102,9 @@ func TestBuildReadsRuntimeDependencies(t *testing.T) {
 			"[package]\nname = \"x\"\n\n[dependencies]\nlibc = \"0.2\"\n\n[target.'cfg(all(unix, target_env = \"musl\"))'.dependencies.jemalloc]\nversion = \"0.5\"\n\n"+
 				"[target.x86_64-pc-windows-msvc.dependencies]\nlibc = \"0.2\"\nwinapi = \"0.3\"\n"),
 			dependenciesOf("Cargo.toml", "jemalloc", "libc", "winapi")},
+		{"a Cargo array over lines outside the dependencies, with a bracket in a string and a comment", oneFile("Cargo.toml",
+			"[package]\nname = \"x\"\n\n[features]\ndefault = [ # all\n  \"a[\",\n]\n[dependencies]\nx = \"1\"\n"),
+			dependenciesOf("Cargo.toml", "x")},
 		{"a nested Cargo.toml", oneFile("crates/a/Cargo.toml", "[package]\nname = \"a\"\n\n[dependencies]\nlog = \"0.4\"\n"), nil},
 	}
 	for _, tc := range cases {

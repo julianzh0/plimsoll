@@ -72,25 +72,9 @@ func cargoTable(header string) (table bool, name string) {
 
 // cargoKey reads the key a line assigns, bare or quoted, up to "=" or to its first "." (log.workspace = true is log).
 func cargoKey(line string) (string, bool) {
-	var key, rest string
-	if quote := line[0]; quote == '"' || quote == '\'' {
-		end := strings.IndexByte(line[1:], quote)
-		if end < 0 {
-			return "", false
-		}
-		key, rest = line[1:1+end], line[2+end:]
-	} else {
-		bare := func(r rune) bool {
-			return r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '_' || r == '-'
-		}
-		end := strings.IndexFunc(line, func(r rune) bool { return !bare(r) })
-		if end <= 0 {
-			return "", false
-		}
-		key, rest = line[:end], line[end:]
-	}
-	rest = strings.TrimLeft(rest, " \t")
-	if key == "" || !strings.HasPrefix(rest, "=") && !strings.HasPrefix(rest, ".") {
+	name, _, assigns := strings.Cut(line, "=")
+	key, _, _ := strings.Cut(dottedName(name), ".")
+	if !assigns || key == "" || strings.ContainsAny(key, " \t") {
 		return "", false
 	}
 	return key, true
