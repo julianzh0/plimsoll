@@ -88,6 +88,21 @@ func TestBuildReadsRuntimeDependencies(t *testing.T) {
 		{"a Gradle block with test and compile-only lines alone", oneFile("build.gradle.kts", "dependencies {\n    testImplementation(kotlin(\"test\"))\n    compileOnly(\"g:a:1\")\n}\n"),
 			dependenciesOf("build.gradle.kts")},
 		{"a nested build file", oneFile("app/build.gradle.kts", "dependencies {\n    implementation(\"g:a:1\")\n}\n"), nil},
+		{"a Cargo package: keys, a value over lines, a dotted key, a sub-table, a target table", oneFile("Cargo.toml",
+			"[package]\nname = \"x\"\n\n[dependencies]\nanyhow = \"1\"\nserde = { version = \"1\", features = [\n    \"derive\",\n] }\nlog.workspace = true\n\n"+
+				"[dependencies.clap]\nversion = \"4\"\nfeatures = [\"derive\"]\n\n[target.'cfg(unix)'.dependencies]\nlibc = \"0.2\"\n\n"+
+				"[dev-dependencies]\ntempfile = \"3\"\n\n[build-dependencies]\ncc = \"1\"\n\n[workspace.dependencies]\nlog = \"0.4\"\n"),
+			dependenciesOf("Cargo.toml", "anyhow", "clap", "libc", "log", "serde")},
+		{"a Cargo workspace root without a package", oneFile("Cargo.toml", "[workspace]\nmembers = [\"a\"]\n\n[workspace.dependencies]\nlog = \"0.4\"\n"), nil},
+		{"a Cargo package without dependencies", oneFile("Cargo.toml", "[package]\nname = \"x\"\n\n[dev-dependencies]\ntempfile = \"3\"\n"), dependenciesOf("Cargo.toml")},
+		{"Cargo keys in quotes, a comment, CRLF and a byte order mark", oneFile("Cargo.toml",
+			"\uFEFF[package]\r\nname = \"x\"\r\n\r\n[dependencies] # runtime\r\n\"a\" = \"1\"\r\n'b' = { version = \"1\" } # why\r\nc.workspace = true\r\n"),
+			dependenciesOf("Cargo.toml", "a", "b", "c")},
+		{"a Cargo target sub-table, and a name in two tables", oneFile("Cargo.toml",
+			"[package]\nname = \"x\"\n\n[dependencies]\nlibc = \"0.2\"\n\n[target.'cfg(all(unix, target_env = \"musl\"))'.dependencies.jemalloc]\nversion = \"0.5\"\n\n"+
+				"[target.x86_64-pc-windows-msvc.dependencies]\nlibc = \"0.2\"\nwinapi = \"0.3\"\n"),
+			dependenciesOf("Cargo.toml", "jemalloc", "libc", "winapi")},
+		{"a nested Cargo.toml", oneFile("crates/a/Cargo.toml", "[package]\nname = \"a\"\n\n[dependencies]\nlog = \"0.4\"\n"), nil},
 	}
 	for _, tc := range cases {
 		if got := snapshot.Build(tc.source, conventions.Default()).Now.Manifests; !reflect.DeepEqual(got, tc.want) {
@@ -110,6 +125,9 @@ func TestBuildNamesDependenciesNoLockfileHolds(t *testing.T) {
 			[]snapshot.Manifest{{Path: "go.mod", Dependencies: []string{"github.com/a/b", "github.com/a/bc"}, Lockfiles: []string{"go.sum"}, Unlocked: []string{"github.com/a/b"}}}},
 		{"pubspec.lock", map[string]string{"pubspec.yaml": "name: x\ndependencies:\n  http: ^1.0.0\n  provider: ^6.0.0\n", "pubspec.lock": "packages:\n  http:\n    version: 1.0.0\n"},
 			[]snapshot.Manifest{{Path: "pubspec.yaml", Dependencies: []string{"http", "provider"}, Lockfiles: []string{"pubspec.lock"}, Unlocked: []string{"provider"}}}},
+		{"Cargo.lock by name", map[string]string{"Cargo.toml": "[package]\nname = \"x\"\n\n[dependencies]\nanyhow = \"1\"\nserde = \"1\"\n",
+			"Cargo.lock": "[[package]]\nname = \"anyhow\"\nversion = \"1.0.0\"\n"},
+			[]snapshot.Manifest{{Path: "Cargo.toml", Dependencies: []string{"anyhow", "serde"}, Lockfiles: []string{"Cargo.lock"}, Unlocked: []string{"serde"}}}},
 		{"no lockfile tracked", map[string]string{"package.json": `{"dependencies": {"a": "1"}}`},
 			[]snapshot.Manifest{{Path: "package.json", Dependencies: []string{"a"}}}},
 	}
@@ -134,6 +152,7 @@ func TestBuildLeavesAnUnreadableManifestOut(t *testing.T) {
 		{"build.gradle.kts", "dependencies {\n    implementation(\n        libs.a.b\n    )\n}\n"},
 		{"build.gradle", "dependencies {\n    implementation \"nocolon\"\n}\n"},
 		{"pom.xml", "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?><project><dependencies/></project>"},
+		{"Cargo.toml", "[package]\nname = \"x\"\n\n[dependencies]\nnot a key line\n"},
 	} {
 		s := snapshot.Build(snapshottest.Files(nil, map[string]string{tc.file: tc.content}), conventions.Default())
 		if len(s.Now.Manifests) != 0 || !reflect.DeepEqual(s.Unreadable, []string{tc.file}) {
@@ -253,6 +272,7 @@ func TestWantsNamesWhatTheReaderReads(t *testing.T) {
 		"tsconfig.json": true, "web/tsconfig.json": false, "go.mod": true, "web/go.mod": false, "pyproject.toml": true, "web/pyproject.toml": false, "pytest.ini": false, "pytest.toml": false,
 		"src/main/resources/application.properties": false, "docs/design.pdf": false, "src/main/resources/META-INF/services/a.B": false,
 		"pom.xml": true, "core/pom.xml": false, "build.gradle": true, "build.gradle.kts": true,
+		"Cargo.toml": true, "Cargo.lock": true, "crates/cli/Cargo.toml": false,
 		"pubspec.yaml": true, "app/pubspec.yaml": true, "packages/core/pubspec.yaml": true, "node_modules/x/pubspec.yaml": false,
 		"docs/.env.example": false, "node_modules/x/a.js": false, "assets/logo.bin": true,
 		"docker-compose.yml": true, "deploy/compose.prod.yaml": true, "node_modules/x/compose.yml": false, "compose.txt": false,

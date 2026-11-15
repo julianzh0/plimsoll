@@ -71,6 +71,8 @@ const (
 	PomDependencies
 	// GradleDependencies reads the implementation, api and runtimeOnly lines of the top-level dependencies block.
 	GradleDependencies
+	// CargoDependencies reads the keys of [dependencies] and of the target tables of a Cargo.toml.
+	CargoDependencies
 )
 
 // Limits are every number a mark compares with. No detector holds one.
@@ -149,6 +151,7 @@ func Default() Rules {
 			{File: "pom.xml", Format: PomDependencies},
 			{File: "build.gradle", Format: GradleDependencies},
 			{File: "build.gradle.kts", Format: GradleDependencies},
+			{File: "Cargo.toml", Format: CargoDependencies, Lockfiles: []string{"Cargo.lock"}},
 		},
 		PlanningPaths: []string{
 			"docs/superpowers/", "docs/stories/", "docs/plans/", "docs/specs/", "projects/", ".review-work/",

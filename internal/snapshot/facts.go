@@ -121,6 +121,8 @@ func dependencies(format conventions.ManifestFormat, content []byte) (names []st
 		return pomDependencies(content)
 	case conventions.GradleDependencies:
 		return gradleDependencies(content)
+	case conventions.CargoDependencies:
+		return cargoDependencies(content)
 	case conventions.JSONDependencies:
 		var parsed struct {
 			Dependencies map[string]json.RawMessage `json:"dependencies"`
