@@ -128,6 +128,12 @@ func detectorSamples() []snapshot.Source {
 		}, map[string]string{
 			"src/store.ts": "y\n", "tests/fakes/store.ts": "x\n", "src/b.ts": "x\n", "src/c.ts": "x\n",
 		}), 1, append(append([][]string{append(pair, "src/b.ts", "src/c.ts")}, repeat(4, pair...)...), repeat(5, "src/b.ts", "src/c.ts")...)...),
+		// swift: a package whose test target imports its module; and Swift files without Package.swift
+		snapshottest.Files(nil, map[string]string{
+			"Package.swift":         "let package = Package(name: \"x\", targets: [.target(name: \"Kit\"), .testTarget(name: \"KitTests\")])\n",
+			"Sources/Kit/Kit.swift": "public struct Kit {}\n", "Tests/KitTests/KitTests.swift": "@testable import Kit\n\nfunc testKit() {}\n",
+		}),
+		snapshottest.Files(nil, map[string]string{"Sources/App/App.swift": "import Kit\n", "Sources/Kit/Kit.swift": "public struct Kit {}\n"}),
 		// csharp: namespaces declared by its files; and files that declare none
 		snapshottest.Files(nil, map[string]string{
 			"src/Acme/Core/Guard.cs": "namespace Acme.Core;\n", "src/Acme/Billing/Invoice.cs": "using Acme.Core;\n\nnamespace Acme.Billing;\n",
@@ -180,6 +186,7 @@ func TestTheSamplesShowEveryRuleAndChange(t *testing.T) {
 		"counts as test lines, not as product lines", "the footprint counts, in 1 changed product file",
 		"a crate's modules use each other", "not seen: a path written in code",
 		"not seen: use of the same namespace", "declared by its files",
+		"not seen: use between the files of one module", "no `Package.swift` at the root",
 	} {
 		if !strings.Contains(texts.String(), phrase) {
 			t.Errorf("no sample text holds %q", phrase)
