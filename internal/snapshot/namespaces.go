@@ -20,19 +20,20 @@ func declaredNamespaces(language conventions.Language, content map[string][]byte
 	imports := language.Imports
 	declared := imports.PackageLine.SubexpIndex("package")
 	folders := map[string][]string{} // a namespace to its folders
-	var projects []string            // the tracked project files
+	projects := map[string]string{}  // a project file's name without its suffix to the first such file by path
 	for file := range tracked {
 		if matched, _ := path.Match(imports.Prefix.Projects, path.Base(file)); matched {
-			projects = append(projects, file)
+			name := strings.TrimSuffix(path.Base(file), conventions.Suffix(file))
+			if first, seen := projects[name]; !seen || file < first {
+				projects[name] = file
+			}
 		}
 		if !slices.Contains(language.Extensions, conventions.Suffix(file)) {
 			continue
 		}
 		for _, m := range imports.PackageLine.FindAllSubmatch(content[file], -1) {
 			name := strings.ReplaceAll(string(m[declared]), "@", "")
-			if folder := path.Dir(file); !slices.Contains(folders[name], folder) {
-				folders[name] = append(folders[name], folder)
-			}
+			folders[name] = append(folders[name], path.Dir(file))
 		}
 	}
 	if len(folders) == 0 {
@@ -41,13 +42,13 @@ func declaredNamespaces(language conventions.Language, content map[string][]byte
 	parents := map[string]bool{} // every name that holds a declared namespace
 	for name := range folders {
 		slices.Sort(folders[name])
+		folders[name] = slices.Compact(folders[name])
 		for i, r := range name {
 			if r == '.' {
 				parents[name[:i]] = true
 			}
 		}
 	}
-	slices.Sort(projects)
 	return prefix{state: PrefixRead, own: func(_, spec string, _ []string) ([]string, bool) {
 		name := strings.ReplaceAll(spec, "@", "")
 		if found := folders[name]; len(found) > 0 {
@@ -56,9 +57,11 @@ func declaredNamespaces(language conventions.Language, content map[string][]byte
 		if parents[name] {
 			return nil, false // it holds namespaces and no file of its own
 		}
-		for _, project := range projects {
-			root := strings.TrimSuffix(path.Base(project), conventions.Suffix(project))
-			if name == root || strings.HasPrefix(name, root+".") {
+		for i := range len(name) + 1 { // the name and each of its leading dotted parts
+			if i < len(name) && name[i] != '.' {
+				continue
+			}
+			if project, own := projects[name[:i]]; own {
 				return []string{project}, false // the project file is no folder, so the import is not found
 			}
 		}
