@@ -14,6 +14,8 @@ func TestTestDefinitionMatchesOnlyStatementStarts(t *testing.T) {
 		`    async def test_store():`, `class TestStore:`, `  testWidgets('shows a note', (tester) async {`,
 		`  @Test`, `    @Test fun saves() {`, `@ParameterizedTest`, `@org.junit.jupiter.api.Test`, `@RepeatedTest(3)`,
 		"#[test]", "    #[tokio::test]", `#[tokio::test(flavor = "multi_thread")]`,
+		`    [Fact]`, `[Theory]`, `    [Fact(Skip = "slow")]`, `[Test] public void X() {}`, `[TestMethod, TestCategory("x")]`,
+		`[Xunit.Fact]`, `[TestCase(1, 2)]`, `[FactAttribute]`,
 		`class TestStore(Base):  # the store`, "class TestStore(\n    Base,\n):", `it.each(rows)("%s", (row) => {`, `it.only("x", () => {`,
 	}
 	misses := []string{
@@ -22,6 +24,8 @@ func TestTestDefinitionMatchesOnlyStatementStarts(t *testing.T) {
 		`class TestClock {`, `class TestClock(private val now: Long) : Clock {`, `class TestDao : Dao {`,
 		`        it.also(saved::add)`, `it.close()`, `@TestOnly`, `@TestInstance(Lifecycle.PER_CLASS)`, `// @Test`,
 		"#[cfg(test)]", `#[test_case("a")]`, "// #[test]", "#[testing]", "#[cfg_attr(test, derive(Debug))]",
+		`[TestClass]`, `[TestFixture]`, `[TestCategory("x")]`, `[TestInitialize]`, `[TestCaseSource(nameof(Cases))]`,
+		`[DataTestMethod]`, `[Theorem]`, `// [Fact]`, `[InlineData(1)]`, `var a = [Test];`, `[Benchmark]`,
 	}
 	rules := Default()
 	for _, line := range matches {

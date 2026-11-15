@@ -12,9 +12,9 @@ import (
 
 // The two shared patterns are compiled once; everything else is built by Default. Each language's own patterns live
 // in its file: typescript.go, golang.go, python.go, dart.go, java.go, kotlin.go, rust.go. A test is defined by a Go test function, a Python test
-// function or test class, a JUnit-family annotation, a Rust attribute whose last name is test, or a test-runner call (test, testWidgets, describe, it).
+// function or test class, a JUnit-family annotation, a .NET test attribute, a Rust attribute whose last name is test, or a test-runner call (test, testWidgets, describe, it).
 var (
-	testDefinition = regexp.MustCompile(`(?m)^[ \t]*(?:export[ \t]+)?(?:async[ \t]+)?(?:func[ \t]+(?:Test|Benchmark|Fuzz|Example)\w*[ \t]*\(|def[ \t]+test_\w*[ \t]*\(|class[ \t]+Test\w*[ \t]*(?:\([^)]*\))?[ \t]*:[ \t\r]*(?:#[^\n]*)?$|@(?:\w+\.)*(?:Test|ParameterizedTest|RepeatedTest|TestFactory|TestTemplate)\b|#\[(?:\w+::)*test[(\]]|(?:await[ \t]+)?(?:t\.)?(?:(?:test|testWidgets|describe)(?:\.\w+)*|it(?:\.(?:only|skip|each|todo|concurrent|failing|fails|skipIf|runIf|sequential|for))*)[ \t]*\()`)
+	testDefinition = regexp.MustCompile(`(?m)^[ \t]*(?:export[ \t]+)?(?:async[ \t]+)?(?:func[ \t]+(?:Test|Benchmark|Fuzz|Example)\w*[ \t]*\(|def[ \t]+test_\w*[ \t]*\(|class[ \t]+Test\w*[ \t]*(?:\([^)]*\))?[ \t]*:[ \t\r]*(?:#[^\n]*)?$|@(?:\w+\.)*(?:Test|ParameterizedTest|RepeatedTest|TestFactory|TestTemplate)\b|\[(?:\w+\.)*(?:Fact|Theory|Test|TestMethod|TestCase)(?:Attribute)?[ \t]*[\](,]|#\[(?:\w+::)*test[(\]]|(?:await[ \t]+)?(?:t\.)?(?:(?:test|testWidgets|describe)(?:\.\w+)*|it(?:\.(?:only|skip|each|todo|concurrent|failing|fails|skipIf|runIf|sequential|for))*)[ \t]*\()`)
 	generated      = regexp.MustCompile(`(?i)generated.*do not (?:edit|modify)`)
 )
 
