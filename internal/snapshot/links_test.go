@@ -723,13 +723,16 @@ func swiftTree() map[string]string {
 		"Package.swift": strings.Join([]string{
 			"// swift-tools-version:5.9", "import PackageDescription", "", "let package = Package(", "    name: \"x\",", "    targets: [",
 			"        .target(name: \"Core\"),", "        .target(", "            name: \"Legacy\",", "            path: \"Old/Legacy\"", "        ),",
-			"        .executableTarget(name: \"tool\", dependencies: [\"Core\"]),", "        .target(name: \"Gone\"),",
+			"        .executableTarget(", "            name: \"tool\",",
+			"            dependencies: [\"Core\", .target(name: \"Legacy\"), .product(name: \"ArgumentParser\", package: \"swift-argument-parser\")],",
+			"            plugins: [.plugin(name: \"Lint\", package: \"LintPlugins\")]", "        ),",
+			"        // .target(name: \"Old\"),", "        .target(name: \"Gone\"),",
 			"        .testTarget(name: \"CoreTests\", dependencies: [\"Core\"]),", "    ]", ")",
 		}, "\n") + "\n",
 		"Sources/Core/A.swift":            "import Foundation\n",
 		"Sources/Core/Deep/B.swift":       "let text = \"\"\"\nimport Legacy\n\"\"\"\n",
 		"Old/Legacy/L.swift":              "import Core\n",
-		"Sources/tool/main.swift":         "import Core\n@testable import Legacy\nimport Gone\nimport ArgumentParser\n",
+		"Sources/tool/main.swift":         "import Core\n@testable import Legacy\nimport Gone\nimport ArgumentParser\nimport Old\nimport Lint\n",
 		"Tests/CoreTests/CoreTests.swift": "import XCTest\n@testable import Core\n\nfinal class CoreTests: XCTestCase {\n    func testA() {}\n}\n",
 	}
 }
@@ -764,8 +767,8 @@ func TestBuildFollowsSwiftImportsToModules(t *testing.T) {
 		folderLink("Tests/CoreTests/CoreTests.swift", 2, "Sources/Core", coreFiles...),
 	}
 	got := linksOf(swiftTree())
-	if !reflect.DeepEqual(got.Languages, swift(4, 4, 1, snapshot.PrefixRead)) || !reflect.DeepEqual(got.List, wantTree) {
-		t.Errorf("the tree: Languages %+v, List %+v; want %+v and %+v", got.Languages, got.List, swift(4, 4, 1, snapshot.PrefixRead), wantTree)
+	if !reflect.DeepEqual(got.Languages, swift(4, 6, 1, snapshot.PrefixRead)) || !reflect.DeepEqual(got.List, wantTree) {
+		t.Errorf("the tree: Languages %+v, List %+v; want %+v and %+v", got.Languages, got.List, swift(4, 6, 1, snapshot.PrefixRead), wantTree)
 	}
 	if crlf := linksOf(withCRLF(swiftTree())); !reflect.DeepEqual(crlf, got) {
 		t.Errorf("CRLF line ends: Links = %+v, want %+v", crlf, got)
@@ -774,7 +777,7 @@ func TestBuildFollowsSwiftImportsToModules(t *testing.T) {
 	// Without Package.swift an own module cannot be told from a framework.
 	bare := swiftTree()
 	delete(bare, "Package.swift")
-	if l := linksOf(bare); !reflect.DeepEqual(l.Languages, swift(0, 8, 0, snapshot.PrefixAbsent)) || len(l.List) != 0 {
+	if l := linksOf(bare); !reflect.DeepEqual(l.Languages, swift(0, 10, 0, snapshot.PrefixAbsent)) || len(l.List) != 0 {
 		t.Errorf("no Package.swift: %+v, want every import outside and no link", l)
 	}
 }

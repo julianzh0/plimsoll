@@ -27,7 +27,7 @@ func TestTestDefinitionMatchesOnlyStatementStarts(t *testing.T) {
 		"#[cfg(test)]", `#[test_case("a")]`, "// #[test]", "#[testing]", "#[cfg_attr(test, derive(Debug))]",
 		`[TestClass]`, `[TestFixture]`, `[TestCategory("x")]`, `[TestInitialize]`, `[TestCaseSource(nameof(Cases))]`,
 		`[DataTestMethod]`, `[Theorem]`, `// [Fact]`, `[InlineData(1)]`, `var a = [Test];`, `[Benchmark]`,
-		"// func testCount() {", "let test = func", "functional(test())",
+		"// func testCount() {", "let test = func", "functional(test())", "func testServer(t *testing.T) *Server {",
 	}
 	rules := Default()
 	for _, line := range matches {

@@ -66,13 +66,14 @@ const (
 
 // side is what resolving one side's imports needs: its tracked paths, by folder, and its code files.
 type side struct {
+	paths   []string // every tracked path, sorted
 	tracked map[string]bool
 	folders map[string][]string // the tracked paths directly in each folder, sorted
 	code    map[string]Role
 }
 
 func sideOf(tree Tree) side {
-	s := side{tracked: map[string]bool{}, folders: map[string][]string{}, code: rolesOf(tree.Files)}
+	s := side{paths: slices.Sorted(slices.Values(tree.Paths)), tracked: map[string]bool{}, folders: map[string][]string{}, code: rolesOf(tree.Files)}
 	for _, p := range tree.Paths {
 		s.tracked[p] = true
 		s.folders[path.Dir(p)] = append(s.folders[path.Dir(p)], p)
@@ -209,7 +210,7 @@ func grouped(target string) []string {
 		return []string{target}
 	}
 	end := len(target)
-	if at := closingBrace([]byte(target), open); target[at] == '}' {
+	if at := closing([]byte(target), open); target[at] == '}' {
 		end = at
 	}
 	prefix := strings.TrimSpace(target[:open])
@@ -480,19 +481,21 @@ func (s side) folder(language conventions.Language, folder string) (target, kind
 	return reached, resolved
 }
 
-// filesOf are the tracked paths directly in a folder, or, for a tree, at any depth below it, sorted.
+// filesOf are the tracked paths directly in a folder, or, for a tree, at any depth below it, sorted. A tree's paths
+// are a part of the side's sorted paths, shared: the caller only reads them.
 func (s side) filesOf(folder string, tree bool) []string {
-	if !tree {
+	switch {
+	case !tree:
 		return s.folders[folder]
+	case folder == ".":
+		return s.paths
 	}
-	var found []string
-	for f, paths := range s.folders {
-		if f == folder || strings.HasPrefix(f, folder+"/") || folder == "." {
-			found = append(found, paths...)
-		}
+	start, _ := slices.BinarySearch(s.paths, folder+"/")
+	end := start
+	for end < len(s.paths) && strings.HasPrefix(s.paths[end], folder+"/") {
+		end++
 	}
-	slices.Sort(found)
-	return found
+	return s.paths[start:end]
 }
 
 // importedNames are the names a statement imports out of its target, as its "names" group writes them: comments,

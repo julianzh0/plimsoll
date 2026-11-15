@@ -123,6 +123,10 @@ func TestBuildReadsRuntimeDependencies(t *testing.T) {
 				"        .package(path: \"../LocalKit\"),\n        .package(id: \"mona.LinkedList\", from: \"1.0.0\"),\n"+
 				"        .package(\n            name: \"Old\",\n            url: \"git@github.com:a/old-kit.git\", .upToNextMajor(from: \"2.0.0\")\n        ),\n    ]\n)\n"),
 			dependenciesOf("Package.swift", "localkit", "mona.linkedlist", "old-kit", "swift-argument-parser", "swift-log")},
+		{"a Swift package with dependencies in comments", oneFile("Package.swift", "let package = Package(name: \"x\", dependencies: [\n"+
+			"    // .package(url: \"https://github.com/x/old-kit\", from: \"1.0.0\"),\n    // .package(url: kitURL, from: \"1.0.0\"),\n"+
+			"    /* .package(path: \"../Gone\"), */\n    .package(url: \"https://github.com/apple/swift-log\", from: \"1.0.0\"),\n])\n"),
+			dependenciesOf("Package.swift", "swift-log")},
 		{"a Swift package without dependencies", oneFile("Package.swift", "import PackageDescription\n\nlet package = Package(name: \"x\", targets: [.target(name: \"X\")])\n"), dependenciesOf("Package.swift")},
 		{"a file named Package.swift that declares no package", oneFile("Package.swift", "print(1)\n"), nil},
 		{"a nested Package.swift", oneFile("Tools/Package.swift", "let package = Package(name: \"x\", dependencies: [.package(path: \"..\")])\n"), nil},

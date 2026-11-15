@@ -46,21 +46,24 @@ func spansOf(opener *regexp.Regexp, text []byte) []span {
 			s.name = string(text[m[2*name]:m[2*name+1]])
 		}
 		if text[s.end] == '{' {
-			s.end = closingBrace(text, s.end)
+			s.end = closing(text, s.end)
 		}
 		found = append(found, s)
 	}
 	return found
 }
 
-// closingBrace is the offset of the brace that closes the one at open, or the text's last offset when none does.
-func closingBrace(text []byte, open int) int {
+// closing is the offset of the bracket that closes the one at open, a parenthesis or a brace, or the text's last
+// offset when none does.
+func closing(text []byte, open int) int {
+	opener := text[open]
+	closer := map[byte]byte{'(': ')', '{': '}'}[opener]
 	depth := 0
 	for i := open; i < len(text); i++ {
 		switch text[i] {
-		case '{':
+		case opener:
 			depth++
-		case '}':
+		case closer:
 			depth--
 			if depth == 0 {
 				return i
