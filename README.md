@@ -23,6 +23,31 @@ new setting has no code that reads it. It is built for coding agents and speaks 
 It is not a score or a grade, not a dashboard, and not a linter: it writes nothing into the repositories it reads,
 stores nothing, and never says what to do.
 
+## Why plimsoll
+
+**plimsoll tells a coding agent, after every change, what that change did to the whole repository, as a few findings
+it can check itself, with nothing to set up.**
+
+Many tools cover one or two of these. plimsoll combines all four:
+
+| | plimsoll | Typical alternatives |
+|---|---|---|
+| Looks at | the change, against a base you choose | the whole current state (sentrux, SonarQube, Qlty) |
+| Covers | size, tests, wiring, history, settings and working habits in one answer | one aspect (linters, dependency-cruiser, diffguard) |
+| Answers with | a few findings, each with its measurement, its limit and a way to check it | a score or a grade (CodeScene, sentrux, Qlty) |
+| Needs | `git`, nothing else: no account, server, network or config file | an account or a server (CodeScene, SonarQube), or a rules file (dependency-cruiser) |
+
+It works next to your linters and CI, not instead of them: they go deeper into one thing, plimsoll keeps the overview
+of a change.
+
+### Limits
+
+- It reads imports and other forms by text patterns. On the field checks they matched each language's own parser,
+  but plimsoll does not analyse code below the import level (functions, classes, calls). That is on purpose: linters
+  do it better.
+- It supports the languages listed under "How each language is read". More follow, one data file each.
+- No study has measured yet how much better an agent's changes get with plimsoll's findings.
+
 ## What it checks
 
 Six detectors look at a change from different sides:
