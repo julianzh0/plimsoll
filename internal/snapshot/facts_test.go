@@ -114,6 +114,16 @@ func TestBuildReadsRuntimeDependencies(t *testing.T) {
 		{"central versions and a build props file are no manifest", snapshottest.Files(nil, map[string]string{
 			"Directory.Packages.props": `<Project><ItemGroup><PackageVersion Include="A" Version="1" /></ItemGroup></Project>`,
 			"Directory.Build.props":    `<Project>` + csprojOwn + `</Project>`}), nil},
+		{"a Swift package: urls with and without .git, a path, a registry id, an old name argument", oneFile("Package.swift",
+			"// swift-tools-version:5.9\nimport PackageDescription\n\nlet package = Package(\n    name: \"x\",\n    dependencies: [\n"+
+				"        .package(url: \"https://github.com/apple/swift-argument-parser.git\", from: \"1.3.0\"),\n"+
+				"        .package(url: \"https://github.com/Apple/Swift-Log\", from: \"1.5.0\"),\n"+
+				"        .package(path: \"../LocalKit\"),\n        .package(id: \"mona.LinkedList\", from: \"1.0.0\"),\n"+
+				"        .package(\n            name: \"Old\",\n            url: \"git@github.com:a/old-kit.git\", .upToNextMajor(from: \"2.0.0\")\n        ),\n    ]\n)\n"),
+			dependenciesOf("Package.swift", "localkit", "mona.linkedlist", "old-kit", "swift-argument-parser", "swift-log")},
+		{"a Swift package without dependencies", oneFile("Package.swift", "import PackageDescription\n\nlet package = Package(name: \"x\", targets: [.target(name: \"X\")])\n"), dependenciesOf("Package.swift")},
+		{"a file named Package.swift that declares no package", oneFile("Package.swift", "print(1)\n"), nil},
+		{"a nested Package.swift", oneFile("Tools/Package.swift", "let package = Package(name: \"x\", dependencies: [.package(path: \"..\")])\n"), nil},
 		{"a Cargo package: keys, a value over lines, a dotted key, a sub-table, a target table", oneFile("Cargo.toml",
 			"[package]\nname = \"x\"\n\n[dependencies]\nanyhow = \"1\"\nserde = { version = \"1\", features = [\n    \"derive\",\n] }\nlog.workspace = true\n\n"+
 				"[dependencies.clap]\nversion = \"4\"\nfeatures = [\"derive\"]\n\n[target.'cfg(unix)'.dependencies]\nlibc = \"0.2\"\n\n"+
@@ -154,6 +164,10 @@ func TestBuildNamesDependenciesNoLockfileHolds(t *testing.T) {
 			[]snapshot.Manifest{{Path: "go.mod", Dependencies: []string{"github.com/a/b", "github.com/a/bc"}, Lockfiles: []string{"go.sum"}, Unlocked: []string{"github.com/a/b"}}}},
 		{"pubspec.lock", map[string]string{"pubspec.yaml": "name: x\ndependencies:\n  http: ^1.0.0\n  provider: ^6.0.0\n", "pubspec.lock": "packages:\n  http:\n    version: 1.0.0\n"},
 			[]snapshot.Manifest{{Path: "pubspec.yaml", Dependencies: []string{"http", "provider"}, Lockfiles: []string{"pubspec.lock"}, Unlocked: []string{"provider"}}}},
+		{"Package.resolved by identity", map[string]string{"Package.swift": "let package = Package(name: \"x\", dependencies: [\n" +
+			".package(url: \"https://github.com/apple/swift-log.git\", from: \"1.0.0\"),\n.package(url: \"https://github.com/apple/swift-nio\", from: \"2.0.0\"),\n])\n",
+			"Package.resolved": "{\n  \"pins\" : [\n    {\n      \"identity\" : \"swift-log\",\n      \"kind\" : \"remoteSourceControl\"\n    }\n  ],\n  \"version\" : 2\n}\n"},
+			[]snapshot.Manifest{{Path: "Package.swift", Dependencies: []string{"swift-log", "swift-nio"}, Lockfiles: []string{"Package.resolved"}, Unlocked: []string{"swift-nio"}}}},
 		{"Cargo.lock by name", map[string]string{"Cargo.toml": "[package]\nname = \"x\"\n\n[dependencies]\nanyhow = \"1\"\nserde = \"1\"\n",
 			"Cargo.lock": "[[package]]\nname = \"anyhow\"\nversion = \"1.0.0\"\n"},
 			[]snapshot.Manifest{{Path: "Cargo.toml", Dependencies: []string{"anyhow", "serde"}, Lockfiles: []string{"Cargo.lock"}, Unlocked: []string{"serde"}}}},
@@ -182,6 +196,7 @@ func TestBuildLeavesAnUnreadableManifestOut(t *testing.T) {
 		{"build.gradle", "dependencies {\n    implementation \"nocolon\"\n}\n"},
 		{"pom.xml", "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?><project><dependencies/></project>"},
 		{"Cargo.toml", "[package]\nname = \"x\"\n\n[dependencies]\nnot a key line\n"},
+		{"Package.swift", "let package = Package(name: \"x\", dependencies: [.package(url: kitURL, from: \"1.0.0\")])\n"},
 		{"src/App/App.csproj", `<Project Sdk="Microsoft.NET.Sdk"><ItemGroup>`},
 		{"src/App/App.csproj", sdkProject(`<ItemGroup><PackageReference Include="$(Driver)" /></ItemGroup>`)},
 		{"src/App/App.csproj", sdkProject(`<ItemGroup><PackageReference Include="A;B" /></ItemGroup>`)},
@@ -352,6 +367,7 @@ func TestWantsNamesWhatTheReaderReads(t *testing.T) {
 		"src/Acme/Form1.Designer.cs": true, "src/Acme/Views.g.cs": true,
 		"src/Acme/Acme.csproj": true, "Acme.csproj": true, "tests/Acme.Tests/Acme.Tests.csproj": false, "Acme.Tests/Acme.Tests.csproj": false,
 		"examples/Demo/Demo.csproj": false, "node_modules/x/X.csproj": false, "Directory.Packages.props": false,
+		"Package.swift": true, "Package.resolved": true,
 		"Cargo.toml": true, "Cargo.lock": true, "crates/cli/Cargo.toml": true, "vendor/x/Cargo.toml": false, "src/main.rs": true,
 		"pubspec.yaml": true, "app/pubspec.yaml": true, "packages/core/pubspec.yaml": true, "node_modules/x/pubspec.yaml": false,
 		"docs/.env.example": false, "node_modules/x/a.js": false, "assets/logo.bin": true,

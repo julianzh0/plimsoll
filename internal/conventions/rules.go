@@ -81,6 +81,8 @@ const (
 	// CsprojDependencies reads the PackageReference items of a .NET project file, without those whose assets are
 	// private.
 	CsprojDependencies
+	// SwiftDependencies reads the .package(...) dependencies of a Package.swift.
+	SwiftDependencies
 	// CargoDependencies reads the keys of [dependencies] and of the target tables of a Cargo.toml.
 	CargoDependencies
 )
@@ -172,6 +174,7 @@ func Default() Rules {
 			{File: "build.gradle.kts", Format: GradleDependencies},
 			{File: "Cargo.toml", Format: CargoDependencies, Lockfiles: []string{"Cargo.lock"}},
 			{File: dotnetProject, Format: CsprojDependencies, Nested: true},
+			{File: "Package.swift", Format: SwiftDependencies, Lockfiles: []string{"Package.resolved"}},
 		},
 		PlanningPaths: []string{
 			"docs/superpowers/", "docs/stories/", "docs/plans/", "docs/specs/", "projects/", ".review-work/",

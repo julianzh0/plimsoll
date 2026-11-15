@@ -125,6 +125,8 @@ func dependencies(format conventions.ManifestFormat, content []byte) (names []st
 		return gradleDependencies(content)
 	case conventions.CsprojDependencies:
 		return csprojDependencies(content)
+	case conventions.SwiftDependencies:
+		return swiftDependencies(content)
 	case conventions.CargoDependencies:
 		return cargoDependencies(content)
 	case conventions.JSONDependencies:
