@@ -66,6 +66,11 @@ func detectorSamples() []snapshot.Source {
 		return files
 	}
 	return []snapshot.Source{
+		// java: packages under source roots, one of them under a test source set too
+		snapshottest.Files(nil, map[string]string{
+			"src/main/java/com/acme/a/A.java": "package com.acme.a;\n\nimport com.acme.b.B;\n",
+			"src/main/java/com/acme/b/B.java": "package com.acme.b;\n", "src/test/java/com/acme/b/BTest.java": "package com.acme.b;\n",
+		}),
 		// links: a test import and a ring, each new, grown, standing and resolved
 		snapshottest.Files(linkTree(nil, "a"), linkTree([]string{"db"}, "a", "b")),
 		snapshottest.Files(linkTree([]string{"db"}, "a", "b"), linkTree([]string{"db", "clock"}, "a", "b", "c")),
@@ -158,6 +163,7 @@ func TestTheSamplesShowEveryRuleAndChange(t *testing.T) {
 		"test folders declared in `pyproject.toml`", "roots declared in `pyproject.toml`", "names the repository root",
 		"is or holds a package root", "holds test folders of its own", "leaves the repository or holds a pattern",
 		"`pythonpath` could not be read", "is not read: test folders", "depend on each other in a cycle", "folder cycles: between the folders",
+		"a package that lies in several folders", "under a test folder directly in `src/`", "an import names a package, not a file",
 	} {
 		if !strings.Contains(texts.String(), phrase) {
 			t.Errorf("no sample text holds %q", phrase)
