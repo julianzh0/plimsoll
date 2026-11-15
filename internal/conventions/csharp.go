@@ -7,6 +7,10 @@ func csharpLanguage() Language {
 	return Language{Name: "csharp", Extensions: []string{".cs"}, DynamicRead: csDynamicRead, Imports: csharpImports()}
 }
 
+// dotnetProject is the file-name pattern of a .NET project file: a manifest of dependencies, and a name of the
+// project's own code.
+const dotnetProject = "*.csproj"
+
 // The parts of the C# forms: a name, with the @ that lets a keyword be one, and a dotted name.
 const (
 	csName   = `@?[A-Za-z_]\w*`
@@ -32,7 +36,7 @@ func csharpImports() Imports {
 	return Imports{
 		Statements:  []ImportForm{{Pattern: csUsing}, {Pattern: csUsingMember}},
 		Relative:    NoRelative,
-		Prefix:      Prefix{Format: DeclaredNamespaces, Projects: "*.csproj", Required: true},
+		Prefix:      Prefix{Format: DeclaredNamespaces, Projects: dotnetProject, Required: true},
 		Target:      FolderTarget,
 		PackageLine: csNamespace,
 		NoRings:     "a using names a namespace, not a file",

@@ -85,7 +85,7 @@ func TestDetectOnEachLanguageSample(t *testing.T) {
 		{"python-declared", 9, 12, 0, 1.3, []string{"checks/test_flow.py", "src/app/service.py", "tests/test_service.py"},
 			map[string]string{"pyproject.toml": ""}, []string{"no `.env.example`, so no settings count"}},
 		{"unproven", 4, 3, 0, 0.8, []string{"bin/run.sh", "tests/check.sh"}, nil, []string{
-			"no `.env.example`, so no settings count", "no known dependency manifest at the repository root, so no dependency count",
+			"no `.env.example`, so no settings count", "no known dependency manifest, at the root or as a project file outside test and other code, so no dependency count",
 		}},
 	}
 	for _, tc := range cases {

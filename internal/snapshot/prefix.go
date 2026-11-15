@@ -16,7 +16,8 @@ type PrefixState int
 const (
 	// PrefixRead is a prefix file that was read, or a language that names none.
 	PrefixRead PrefixState = iota + 1
-	// PrefixAbsent is a prefix file that is not tracked at the root.
+	// PrefixAbsent is a prefix file that is not tracked at the root, or, for a language whose files declare its
+	// packages, no file that declares one.
 	PrefixAbsent
 	// PrefixUnreadable is a prefix file that declares no prefix or could not be decoded.
 	PrefixUnreadable
@@ -39,7 +40,7 @@ type prefix struct {
 	own   ownImports // nil when no prefix was read: every import that is not relative is outside
 }
 
-// readPrefix reads a language's prefix at the root of one side: its file, its own packages, or, from the readings of the
+// readPrefix reads a language's prefix on one side: its file at the root, its own packages, or, from the readings of the
 // language's files, the modules they declare. Each format has one
 // reader; resolving an import needs only the function it returns.
 // NOTE: only the root config is read; an extended or nested config, replace, go.work and workspaces are not followed,

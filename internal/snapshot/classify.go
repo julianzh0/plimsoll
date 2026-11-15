@@ -41,7 +41,7 @@ func generatedOrBinary(rules conventions.Rules, content []byte) bool {
 
 // testPath says whether a path is test code by its folders or its name.
 func testPath(rules conventions.Rules, filePath string) bool {
-	if inFolders(filePath, rules.TestFolders) || inFoldersEnding(filePath, rules.TestFolderEndings) || underTestSourceSet(rules, path.Dir(filePath)) ||
+	if inFolders(filePath, rules.TestFolders) || inFoldersMatching(filePath, rules.TestFolderPatterns) || underTestSourceSet(rules, path.Dir(filePath)) ||
 		slices.ContainsFunc(rules.TestPaths, func(folder string) bool { _, in := under(filePath, folder); return in }) {
 		return true
 	}
@@ -60,19 +60,13 @@ func testPath(rules conventions.Rules, filePath string) bool {
 	return false
 }
 
-// inFoldersEnding says whether any folder of a path has a name that ends in one of the endings.
-func inFoldersEnding(filePath string, endings []string) bool {
-	folders := strings.Split(path.Dir(filePath), "/")
-	return slices.ContainsFunc(folders, func(folder string) bool {
-		return slices.ContainsFunc(endings, func(ending string) bool { return strings.HasSuffix(folder, ending) })
-	})
-}
-
-// generatedName says whether a file's name marks it as generated.
-func generatedName(rules conventions.Rules, filePath string) bool {
-	return slices.ContainsFunc(rules.GeneratedNames, func(pattern string) bool {
-		matched, _ := path.Match(pattern, path.Base(filePath))
-		return matched
+// inFoldersMatching says whether any folder of a path has a name that matches one of the patterns.
+func inFoldersMatching(filePath string, patterns []string) bool {
+	return slices.ContainsFunc(strings.Split(path.Dir(filePath), "/"), func(folder string) bool {
+		return slices.ContainsFunc(patterns, func(pattern string) bool {
+			matched, _ := path.Match(pattern, folder)
+			return matched
+		})
 	})
 }
 
@@ -86,8 +80,7 @@ func manifestOf(rules conventions.Rules, filePath string) (conventions.Manifest,
 			}
 			continue
 		}
-		if matched, _ := path.Match(m.File, path.Base(filePath)); matched &&
-			!inFolders(filePath, rules.SkippedFolders) && !testPath(rules, filePath) && !otherPath(rules, filePath) {
+		if onPaths(rules, filePath, []string{m.File}) && !testPath(rules, filePath) && !otherPath(rules, filePath) {
 			return m, true
 		}
 	}

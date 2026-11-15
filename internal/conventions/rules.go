@@ -34,13 +34,13 @@ type Rules struct {
 	DocSuffixes    []string // suffixes that are documentation
 	TestFolders    []string // folder names, at any depth, that hold test code
 	TestSourceSets []string // name patterns of a folder directly in a folder src that holds test code, beside TestFolders
-	// TestFolderEndings are endings of a folder's name, at any depth, that make it hold test code.
-	TestFolderEndings []string
-	TestPaths         []string       // folders, as paths from the repository root, that hold test code; empty in the shared rules
-	TestEndings       []string       // endings of a file name without its suffix
-	TestBeginnings    []string       // beginnings of a file name
-	TestDefinition    *regexp.Regexp // a line that defines a test, anchored to the start of a statement
-	Generated         *regexp.Regexp // the generated-file marker, searched in the first GeneratedHeaderLines lines
+	// TestFolderPatterns are name patterns of a folder, at any depth, that make it hold test code.
+	TestFolderPatterns []string
+	TestPaths          []string       // folders, as paths from the repository root, that hold test code; empty in the shared rules
+	TestEndings        []string       // endings of a file name without its suffix
+	TestBeginnings     []string       // beginnings of a file name
+	TestDefinition     *regexp.Regexp // a line that defines a test, anchored to the start of a statement
+	Generated          *regexp.Regexp // the generated-file marker, searched in the first GeneratedHeaderLines lines
 	// GeneratedNames are file-name patterns of generated files: such a file is read, and it is no code file.
 	GeneratedNames   []string
 	Manifests        []Manifest // the known dependency manifests, read at the repository root
@@ -150,18 +150,18 @@ func Default() Rules {
 			"", ".mod", ".sum", ".example", ".crt", ".pem", ".key", ".diff", ".patch", ".sha256",
 			".csproj", ".props", ".targets", ".sln", ".slnx", ".config", ".Config", ".DotSettings", ".resx",
 		},
-		SkippedFolders:    []string{"node_modules", "dist", "build", "vendor", "migrations", ".venv", "coverage", "testdata", "__pycache__", ".dart_tool", "META-INF"},
-		OtherFolders:      []string{"scripts", "examples", ".github", "docs"},
-		DocFolders:        []string{"docs"},
-		DocSuffixes:       []string{".md"},
-		TestFolders:       []string{"tests", "test", "__tests__", "spec", "integration_test"},
-		TestSourceSets:    []string{"test[A-Z]*", "*Test*"},
-		TestFolderEndings: []string{".Tests", ".Test"},
-		GeneratedNames:    []string{"*.g.cs", "*.Designer.cs"},
-		TestEndings:       []string{".test", ".spec", "_test", "-test"},
-		TestBeginnings:    []string{"test_"},
-		TestDefinition:    testDefinition,
-		Generated:         generated,
+		SkippedFolders:     []string{"node_modules", "dist", "build", "vendor", "migrations", ".venv", "coverage", "testdata", "__pycache__", ".dart_tool", "META-INF"},
+		OtherFolders:       []string{"scripts", "examples", ".github", "docs"},
+		DocFolders:         []string{"docs"},
+		DocSuffixes:        []string{".md"},
+		TestFolders:        []string{"tests", "test", "__tests__", "spec", "integration_test"},
+		TestSourceSets:     []string{"test[A-Z]*", "*Test*"},
+		TestFolderPatterns: []string{"*.Tests", "*.Test"},
+		GeneratedNames:     []string{"*.g.cs", "*.Designer.cs"},
+		TestEndings:        []string{".test", ".spec", "_test", "-test"},
+		TestBeginnings:     []string{"test_"},
+		TestDefinition:     testDefinition,
+		Generated:          generated,
 		Manifests: []Manifest{
 			{File: "package.json", Format: JSONDependencies, Lockfiles: []string{"package-lock.json", "pnpm-lock.yaml", "yarn.lock"}},
 			{File: "go.mod", Format: GoModRequire, Lockfiles: []string{"go.sum"}},
@@ -171,7 +171,7 @@ func Default() Rules {
 			{File: "build.gradle", Format: GradleDependencies},
 			{File: "build.gradle.kts", Format: GradleDependencies},
 			{File: "Cargo.toml", Format: CargoDependencies, Lockfiles: []string{"Cargo.lock"}},
-			{File: "*.csproj", Format: CsprojDependencies, Nested: true},
+			{File: dotnetProject, Format: CsprojDependencies, Nested: true},
 		},
 		PlanningPaths: []string{
 			"docs/superpowers/", "docs/stories/", "docs/plans/", "docs/specs/", "projects/", ".review-work/",
@@ -242,8 +242,8 @@ func (r Rules) TestRule() string {
 	for _, pattern := range r.TestSourceSets {
 		parts = append(parts, "`src/"+pattern+"/`")
 	}
-	for _, ending := range r.TestFolderEndings {
-		parts = append(parts, "`*"+ending+"/`")
+	for _, pattern := range r.TestFolderPatterns {
+		parts = append(parts, "`"+pattern+"/`")
 	}
 	for _, ending := range r.TestEndings {
 		parts = append(parts, "`*"+ending+".*`")

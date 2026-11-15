@@ -132,7 +132,7 @@ func prefixBlocks(now, before snapshot.LanguageImports, atBase bool) string {
 	switch {
 	case len(now.Roots) > 0:
 		missing = "package of its own " + places(now.Roots, "or")
-	case now.PrefixFile == "":
+	case now.PrefixFile == "": // a language whose files declare its packages, such as namespaces
 		missing = "package of its own declared by its files"
 	}
 	switch state {

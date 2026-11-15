@@ -89,7 +89,7 @@ func (Detector) Detect(s snapshot.Snapshot) answer.Findings {
 	}
 
 	if len(s.Now.Manifests) == 0 {
-		f.NotAnalysed = append(f.NotAnalysed, "no known dependency manifest at the repository root, so no dependency count")
+		f.NotAnalysed = append(f.NotAnalysed, "no known dependency manifest, at the root or as a project file outside test and other code, so no dependency count")
 	}
 	for _, manifest := range s.Now.Manifests {
 		if slices.Contains(s.Before.Broken, manifest.Path) {

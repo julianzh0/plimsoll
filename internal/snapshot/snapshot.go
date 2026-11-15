@@ -32,7 +32,7 @@ type Tree struct {
 	Files     []File        // the code files, sorted by path
 	Settings  *Settings     // nil when there is no .env.example at the root
 	Manifests []Manifest    // the known manifests found: at the root, and a nested format's wherever it is tracked
-	Broken    []string      // known manifests at the root that could not be read as their format
+	Broken    []string      // known manifests found that could not be read as their format
 	Planning  []string      // tracked files under a planning or review path, sorted
 	Uses      []SettingUse  // one per distinct setting name, sorted by name
 	Dynamic   []DynamicRead // sorted by path; read on the working tree only
@@ -137,7 +137,7 @@ type ComposeFile struct {
 	Unread int      // environment lines the reader could not read
 }
 
-// Manifest is a known manifest at the root with its runtime dependency names, sorted.
+// Manifest is a known manifest found with its runtime dependency names, sorted.
 type Manifest struct {
 	Path         string
 	Dependencies []string
