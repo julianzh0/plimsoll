@@ -40,14 +40,6 @@ Many tools cover one or two of these. plimsoll combines all four:
 It works next to your linters and CI, not instead of them: they go deeper into one thing, plimsoll keeps the overview
 of a change.
 
-### Limits
-
-- It reads imports and other forms by text patterns. On the field checks they matched each language's own parser,
-  but plimsoll does not analyse code below the import level (functions, classes, calls). That is on purpose: linters
-  do it better.
-- It supports the languages listed under "How each language is read". More follow, one data file each.
-- No study has measured yet how much better an agent's changes get with plimsoll's findings.
-
 ## What it checks
 
 Six detectors look at a change from different sides:
