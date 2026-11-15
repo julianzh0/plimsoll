@@ -76,6 +76,19 @@ claude mcp add plimsoll -- plimsoll
 opencode mcp add plimsoll -- plimsoll
 ```
 
+**Codex** (the CLI, the IDE extension and the ChatGPT desktop app share this setting)
+
+```sh
+codex mcp add plimsoll -- plimsoll
+```
+
+or in `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.plimsoll]
+command = "plimsoll"
+```
+
 **Any other MCP client** (Claude Desktop, Cursor, Antigravity and others), in its server configuration:
 
 ```json
