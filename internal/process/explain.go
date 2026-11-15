@@ -10,8 +10,16 @@ import (
 
 // Explain gives the evidence of one mark, computed again: paths and counts, never a file's content.
 func (Detector) Explain(s snapshot.Snapshot, m answer.Mark) []string {
-	if answer.RuleOf(m.ID) == ruleDocChurn {
+	switch answer.RuleOf(m.ID) {
+	case ruleDocChurn:
 		return churnEvidence(s)
+	case ruleLimitChange:
+		unit := m.Measured.Unit
+		return []string{
+			fmt.Sprintf("`%s` at the base: %s", s.LimitsFile, setOrNot(*m.Measured.Before, *m.Measured.Limit, unit)),
+			fmt.Sprintf("`%s` now: %s", s.LimitsFile, setOrNot(m.Measured.Value, *m.Measured.Limit, unit)),
+			fmt.Sprintf("plimsoll's default: %s", withUnit(*m.Measured.Limit, unit)),
+		}
 	}
 	path := m.Subject.Paths[0]
 	lines := []string{"tracked now: no"}
@@ -39,4 +47,12 @@ func churnEvidence(s snapshot.Snapshot) []string {
 		lines = append(lines, fmt.Sprintf("%s: +%s -%s", area.label, answer.Count(float64(churn.Added[area.area])), answer.Count(float64(churn.Removed[area.area]))))
 	}
 	return lines
+}
+
+// setOrNot is a side's value of a limit, as the evidence names it.
+func setOrNot(value, defaultValue float64, unit string) string {
+	if value == defaultValue {
+		return withUnit(value, unit) + ", the default"
+	}
+	return withUnit(value, unit)
 }

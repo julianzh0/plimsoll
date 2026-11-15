@@ -6,25 +6,30 @@ import "github.com/juzhxng/plimsoll/internal/conventions"
 
 // Snapshot is the common model every detector reads.
 type Snapshot struct {
-	AskedBase    string
-	Base, Head   string
-	MergeBase    bool
-	Modified     bool
-	Limits       conventions.Limits // the limits over the repository
-	Before       Tree
-	Now          Tree
-	Changes      []Change
-	Footprint    Footprint
-	History      History
-	Layout       Layout      // what the project declares in its own standard files, for both sides
-	TestRule     string      // how test code was recognized, as an answer prints it
-	PlanningRule string      // the planning and review paths, as an answer prints them
-	Unverified   []Extension // code extensions without a proven language
-	Untracked    int
-	Submodules   []string
-	Unreadable   []string
-	Missing      []string // paths whose content a partial clone lacks; their lines and history are not counted
-	Named        []string // the files the caller named, cleaned, sorted, each once; nil when none
+	AskedBase  string
+	Base, Head string
+	MergeBase  bool
+	Modified   bool
+	Limits     conventions.Limits // the limits over the repository: plimsoll's, or those its limits file sets now
+	// LimitsFile is the file in which a repository sets its own limits; DeclaredLimits are the limits it sets on either
+	// side, and LimitProblems what the file says now that is not read, each a phrase.
+	LimitsFile     string
+	DeclaredLimits []DeclaredLimit
+	LimitProblems  []string
+	Before         Tree
+	Now            Tree
+	Changes        []Change
+	Footprint      Footprint
+	History        History
+	Layout         Layout      // what the project declares in its own standard files, for both sides
+	TestRule       string      // how test code was recognized, as an answer prints it
+	PlanningRule   string      // the planning and review paths, as an answer prints them
+	Unverified     []Extension // code extensions without a proven language
+	Untracked      int
+	Submodules     []string
+	Unreadable     []string
+	Missing        []string // paths whose content a partial clone lacks; their lines and history are not counted
+	Named          []string // the files the caller named, cleaned, sorted, each once; nil when none
 }
 
 // Tree is one side of the repository.
@@ -48,7 +53,7 @@ type File struct {
 	Role      Role
 	Lines     int
 	TestLines int               // lines of test code inside a product file, by the blocks its language names; part of Lines
-	Limit     conventions.Limit // the line limit that applies: its entry's, else the shared one
+	Limit     conventions.Limit // the line limit that applies: plimsoll's, or the one the repository's limits file sets
 	Record    bool              // lies under a planning, review or measurement path; the history detectors leave it out
 }
 

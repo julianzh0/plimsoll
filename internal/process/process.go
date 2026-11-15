@@ -3,6 +3,9 @@
 package process
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/juzhxng/plimsoll/internal/answer"
 	"github.com/juzhxng/plimsoll/internal/snapshot"
 )
@@ -11,8 +14,9 @@ const name = "process"
 
 // The rules of the detector.
 const (
-	rulePlanning = "planning-file"
-	ruleDocChurn = "doc-churn"
+	rulePlanning    = "planning-file"
+	ruleDocChurn    = "doc-churn"
+	ruleLimitChange = "limit-change"
 )
 
 const (
@@ -33,7 +37,13 @@ func (Detector) Detect(s snapshot.Snapshot) answer.Findings {
 	f := answer.Findings{
 		Statistics: []answer.Statistic{{Name: "tracked planning and review files", Value: &now, Before: &before, Unit: "files"}},
 		Notes:      []string{"planning and review paths: " + s.PlanningRule},
-		Marks:      planningMarks(s),
+		Marks:      append(planningMarks(s), limitMarks(s)...),
+	}
+	if note := limitsNote(s); note != "" {
+		f.Notes = append(f.Notes, note)
+	}
+	for _, problem := range s.LimitProblems {
+		f.NotAnalysed = append(f.NotAnalysed, fmt.Sprintf("`%s`: %s; a limit it does not set keeps plimsoll's default", s.LimitsFile, problem))
 	}
 	churn := snapshot.ChurnOf(s.History.SinceBase())
 	if churn.Commits == 0 {
@@ -104,6 +114,49 @@ func planningMark(path string, atBase, now bool) []answer.Mark {
 		m.Measured.Before = &one
 	}
 	return []answer.Mark{m}
+}
+
+// limitMarks are the limits the repository's limits file sets differently now than at the base. A side that does not
+// set a limit has plimsoll's default.
+func limitMarks(s snapshot.Snapshot) []answer.Mark {
+	var marks []answer.Mark
+	for _, d := range s.DeclaredLimits {
+		now, before := valueOr(d.Now, d.Default), valueOr(d.Before, d.Default)
+		if now == before {
+			continue
+		}
+		defaultValue := d.Default
+		marks = append(marks, answer.Mark{
+			ID:         answer.ID(name, ruleLimitChange, d.Key),
+			Change:     answer.New,
+			Subject:    answer.Subject{Kind: "file", Paths: []string{s.LimitsFile}, Names: []string{d.Name}},
+			Confidence: answer.Exact,
+			Measured:   answer.Measured{Value: now, Before: &before, Limit: &defaultValue, LimitSource: "plimsoll's default", Unit: d.Unit},
+			Hint:       fmt.Sprintf("compare the [limits] table of `%s` at the base and now.", s.LimitsFile),
+		})
+	}
+	return marks
+}
+
+// limitsNote names the limits the repository's limits file sets now, or is "" when it sets none.
+func limitsNote(s snapshot.Snapshot) string {
+	var set []string
+	for _, d := range s.DeclaredLimits {
+		if d.Now != nil {
+			set = append(set, fmt.Sprintf("the %s %s (plimsoll's default: %s)", d.Name, withUnit(*d.Now, d.Unit), bare(d.Default, d.Unit)))
+		}
+	}
+	if len(set) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("limits set by `%s`: %s", s.LimitsFile, strings.Join(set, ", "))
+}
+
+func valueOr(value *float64, otherwise float64) float64 {
+	if value == nil {
+		return otherwise
+	}
+	return *value
 }
 
 func set(paths []string) map[string]bool {

@@ -87,9 +87,9 @@ func TestDefaultLimitsNameTheirSource(t *testing.T) {
 	if want := (Limit{5, 1, "at least 5 shared commits"}); rules.Limits.SharedCommits != want {
 		t.Errorf("Limits.SharedCommits = %+v, want %+v", rules.Limits.SharedCommits, want)
 	}
-	for _, language := range rules.Languages {
-		if language.FileLines != nil {
-			t.Errorf("language %s replaces the line limit, want the shared default", language.Name)
+	for _, key := range rules.LimitKeys {
+		if limits := rules.Limits; limits.ByKey(key.Key) == nil || key.Name == "" {
+			t.Errorf("limit key %+v: no limit by that key, or no name", key)
 		}
 	}
 }
@@ -103,17 +103,6 @@ func TestIsBinaryLooksForANulByteInTheFirstBytes(t *testing.T) {
 	}{{"a NUL byte", []byte{'a', 0}, true}, {"text", []byte("ab"), false}, {"a NUL byte past the sniffed bytes", late, false}} {
 		if got := IsBinary(tc.head); got != tc.want {
 			t.Errorf("IsBinary(%s) = %v, want %v", tc.name, got, tc.want)
-		}
-	}
-}
-
-func TestFileLimitTakesTheEntrysReplacement(t *testing.T) {
-	rules := Default()
-	own := Limit{Value: 800, Step: 1, Source: "the go entry"}
-	rules.Languages[1].FileLines = &own
-	for path, want := range map[string]Limit{"a.go": own, "a.ts": rules.Limits.FileLines, "a.sh": rules.Limits.FileLines} {
-		if got := rules.FileLimit(path); got != want {
-			t.Errorf("FileLimit(%q) = %+v, want %+v", path, got, want)
 		}
 	}
 }

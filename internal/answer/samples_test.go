@@ -128,6 +128,10 @@ func detectorSamples() []snapshot.Source {
 		}, map[string]string{
 			"src/store.ts": "y\n", "tests/fakes/store.ts": "x\n", "src/b.ts": "x\n", "src/c.ts": "x\n",
 		}), 1, append(append([][]string{append(pair, "src/b.ts", "src/c.ts")}, repeat(4, pair...)...), repeat(5, "src/b.ts", "src/c.ts")...)...),
+		// a limit the repository raised since the base, and a key the limits file holds that is no limit
+		snapshottest.Files(map[string]string{"src/a.ts": "a\n"}, map[string]string{
+			"src/a.ts": "a\n", ".plimsoll.toml": "[limits]\nfile_lines = 1500\nmax_depth = 3\n",
+		}),
 		// swift: a package whose test target imports its module; and Swift files without Package.swift
 		snapshottest.Files(nil, map[string]string{
 			"Package.swift":         "let package = Package(name: \"x\", targets: [.target(name: \"Kit\"), .testTarget(name: \"KitTests\")])\n",
@@ -163,7 +167,7 @@ func TestTheSamplesShowEveryRuleAndChange(t *testing.T) {
 		}
 	}
 	for _, want := range []string{
-		"process.planning-file new", "process.planning-file standing", "process.planning-file resolved", "process.doc-churn new",
+		"process.planning-file new", "process.limit-change new", "process.planning-file standing", "process.planning-file resolved", "process.doc-churn new",
 		"settings.no-reader new", "settings.no-reader resolved", "settings.defined-twice grown", "settings.defined-twice resolved",
 		"settings.compose-only standing", "settings.compose-only resolved", "co-change.pair new", "co-change.pair grown",
 		"links.test-import new", "links.test-import grown", "links.test-import resolved", "links.test-import standing",
@@ -187,6 +191,7 @@ func TestTheSamplesShowEveryRuleAndChange(t *testing.T) {
 		"a crate's modules use each other", "not seen: a path written in code",
 		"not seen: use of the same namespace", "declared by its files",
 		"not seen: use between the files of one module", "no `Package.swift` at the root",
+		"This change raised the file-size limit from 1,000 to 1,500", "limits set by `.plimsoll.toml`", "is no limit plimsoll knows",
 	} {
 		if !strings.Contains(texts.String(), phrase) {
 			t.Errorf("no sample text holds %q", phrase)

@@ -35,7 +35,7 @@ Many tools cover one or two of these. plimsoll combines all four:
 | Looks at | the change, against a base you choose | the whole current state (sentrux, SonarQube, Qlty) |
 | Covers | size, tests, wiring, history, settings and working habits in one answer | one aspect (linters, dependency-cruiser, diffguard) |
 | Answers with | a few findings, each with its measurement, its limit and a way to check it | a score or a grade (CodeScene, sentrux, Qlty) |
-| Needs | `git`, nothing else: no account, server, network or config file | an account or a server (CodeScene, SonarQube), or a rules file (dependency-cruiser) |
+| Needs | `git`, nothing else: no account, server or network, nothing to set up. An optional `.plimsoll.toml` sets your own limits | an account or a server (CodeScene, SonarQube), or a rules file (dependency-cruiser) |
 
 It works next to your linters and CI, not instead of them: they go deeper into one thing, plimsoll keeps the overview
 of a change.
@@ -202,6 +202,7 @@ Next languages: C and C++.
 | `shape.settings:.env.example` | a setting was added since the base | any addition |
 | `process.planning-file:<path>` | a file under a planning or review path is tracked now and was not at the base | repositories hold no planning records |
 | `process.doc-churn:repository` | over the commits since the base, documentation churn is above product plus test churn | documentation above code |
+| `process.limit-change:<key>` | `.plimsoll.toml` sets a limit to another value now than at the base, so a change that raised a limit to clear a mark says so | any change |
 | `settings.no-reader:<NAME>` | a setting that no product file holds as a word or reads through a declared prefix (candidate) | plimsoll's rule: a setting has a reader |
 | `settings.defined-twice:<NAME>` | a name on two or more lines of `.env.example` that are not commented out (candidate) | plimsoll's rule: one name, one setting |
 | `settings.compose-only:<NAME>` | a compose `environment` key that takes its value from the host (no value, or `$`) and that `.env.example` does not name (candidate) | the three lists agree |
@@ -212,6 +213,23 @@ Next languages: C and C++.
 
 Something over its limit at the base and no longer over it is reported as resolved. Something over it on both
 sides that did not grow is standing.
+
+### Your own limits
+
+A repository may set its own limits in `.plimsoll.toml` at its root, committed and reviewed like any other file:
+
+```toml
+[limits]
+file_lines = 1500     # a code file's line limit (default 1,000)
+test_ratio = 3.0      # test lines per product line (default 2.0)
+shared_commits = 8    # commits two files share before they are a pair (default 5)
+```
+
+Every mark then names its limit's source, for example "1,500 lines, set by `.plimsoll.toml`". A limit that changed
+since the base is itself a mark. The file holds limits only: no rule is switched off and no path is left out. A key
+plimsoll does not know, a value that is no number above 0 (a whole number for a limit that counts), a line outside
+`[limits]` or a key set twice is named under "not analysed". Such a limit keeps its default, and a key set twice its
+first value.
 
 ## Guarantees
 

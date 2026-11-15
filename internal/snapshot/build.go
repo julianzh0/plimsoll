@@ -21,6 +21,8 @@ func Build(source Source, rules conventions.Rules) Snapshot {
 	nowContent, beforeContent := contentOf(source.Now), contentOf(beforeEntries)
 	layout := declaredLayout(rules, nowContent, beforeContent)
 	rules = withLayout(rules, layout)
+	limits, declaredLimits, limitProblems := declaredLimits(rules, nowContent, beforeContent)
+	rules.Limits = limits
 	now := tree(rules, source.Now, nil)
 	unchanged := map[string]File{}
 	for _, file := range now.Files {
@@ -53,25 +55,28 @@ func Build(source Source, rules conventions.Rules) Snapshot {
 	unreadable = append(unreadable, unreadableNow...)
 	slices.Sort(unreadable)
 	return Snapshot{
-		AskedBase:    source.AskedBase,
-		Base:         source.Base,
-		Head:         source.Head,
-		MergeBase:    source.MergeBase,
-		Modified:     source.Modified,
-		Limits:       rules.Limits,
-		Before:       before,
-		Now:          now,
-		Changes:      source.Changes,
-		Footprint:    footprint(rules, source.Changes, len(source.Since), now, before),
-		History:      history(rules, source.Commits, source.Since),
-		Layout:       layout,
-		TestRule:     rules.TestRule(),
-		PlanningRule: rules.PlanningRule(),
-		Unverified:   unverified(now.Files),
-		Untracked:    source.Untracked,
-		Submodules:   source.Submodules,
-		Unreadable:   slices.Compact(unreadable),
-		Missing:      source.Missing,
+		AskedBase:      source.AskedBase,
+		Base:           source.Base,
+		Head:           source.Head,
+		MergeBase:      source.MergeBase,
+		Modified:       source.Modified,
+		Limits:         rules.Limits,
+		LimitsFile:     rules.LimitsFile,
+		DeclaredLimits: declaredLimits,
+		LimitProblems:  limitProblems,
+		Before:         before,
+		Now:            now,
+		Changes:        source.Changes,
+		Footprint:      footprint(rules, source.Changes, len(source.Since), now, before),
+		History:        history(rules, source.Commits, source.Since),
+		Layout:         layout,
+		TestRule:       rules.TestRule(),
+		PlanningRule:   rules.PlanningRule(),
+		Unverified:     unverified(now.Files),
+		Untracked:      source.Untracked,
+		Submodules:     source.Submodules,
+		Unreadable:     slices.Compact(unreadable),
+		Missing:        source.Missing,
 	}
 }
 
@@ -127,7 +132,7 @@ func codeFile(rules conventions.Rules, entry Entry) (File, bool) {
 	if entry.Binary || entry.Content == nil || excluded(rules, entry.Path) || onPaths(rules, entry.Path, rules.GeneratedNames) || generatedOrBinary(rules, entry.Content) {
 		return File{}, false
 	}
-	file := File{Path: entry.Path, Role: role(rules, entry.Path, entry.Content), Lines: countLines(entry.Content), Limit: rules.FileLimit(entry.Path)}
+	file := File{Path: entry.Path, Role: role(rules, entry.Path, entry.Content), Lines: countLines(entry.Content), Limit: rules.Limits.FileLines}
 	file.Record = onPaths(rules, entry.Path, rules.PlanningPaths) || onPaths(rules, entry.Path, rules.MeasurementPaths)
 	if language, found := rules.LanguageOf(entry.Path); found {
 		file.Language = language.Name

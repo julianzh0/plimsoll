@@ -288,16 +288,15 @@ func TestAdditionMarks(t *testing.T) {
 	}
 }
 
-func TestOwnLineLimitChangesOnlyThatLanguage(t *testing.T) {
-	source := snapshottest.Files(nil, map[string]string{"src/a.go": snapshottest.Lines(900), "src/a.ts": snapshottest.Lines(900)})
-	if marks := marksOf(detect(t, source, conventions.Default()), "file-size"); len(marks) != 0 {
+func TestARepositorysOwnLineLimitAppliesToEveryFile(t *testing.T) {
+	files := map[string]string{"src/a.go": snapshottest.Lines(900), "src/a.ts": snapshottest.Lines(900)}
+	if marks := marksOf(detect(t, snapshottest.Files(nil, files), conventions.Default()), "file-size"); len(marks) != 0 {
 		t.Errorf("default rules: marks %+v, want none", marks)
 	}
-	rules := conventions.Default()
-	rules.Languages[1].FileLines = &conventions.Limit{Value: 800, Step: 1, Source: "the go entry"}
-	marks := marksOf(detect(t, source, rules), "file-size")
-	if len(marks) != 1 || marks[0].Subject.Paths[0] != "src/a.go" || *marks[0].Measured.Limit != 800 || marks[0].Measured.LimitSource != "the go entry" {
-		t.Errorf("with the go entry's limit: marks %+v, want one on src/a.go with limit 800 from the go entry", marks)
+	files[".plimsoll.toml"] = "[limits]\nfile_lines = 800\n"
+	marks := marksOf(detect(t, snapshottest.Files(nil, files), conventions.Default()), "file-size")
+	if len(marks) != 2 || *marks[0].Measured.Limit != 800 || marks[0].Measured.LimitSource != "set by `.plimsoll.toml`" {
+		t.Errorf("with .plimsoll.toml: marks %+v, want two with limit 800 set by `.plimsoll.toml`", marks)
 	}
 }
 

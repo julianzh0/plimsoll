@@ -200,35 +200,6 @@ func TestBuildCountsLinesOfAwkwardContent(t *testing.T) {
 	}
 }
 
-func TestBuildGivesEachFileItsLineLimit(t *testing.T) {
-	rules := conventions.Default()
-	own := conventions.Limit{Value: 800, Step: 1, Source: "the go entry"}
-	for i := range rules.Languages {
-		if rules.Languages[i].Name == "go" {
-			rules.Languages[i].FileLines = &own
-		}
-	}
-	mixed := snapshot.Build(snapshottest.Load(t, "testdata/mixed"), rules)
-	for _, file := range mixed.Now.Files {
-		want := rules.Limits.FileLines
-		if file.Language == "go" {
-			want = own
-		}
-		if file.Limit != want {
-			t.Errorf("Build(mixed): %s has limit %+v, want %+v", file.Path, file.Limit, want)
-		}
-	}
-	unproven := snapshot.Build(snapshottest.Load(t, "testdata/unproven"), rules)
-	for _, file := range unproven.Now.Files {
-		if file.Limit != rules.Limits.FileLines {
-			t.Errorf("Build(unproven): %s has limit %+v, want the shared one", file.Path, file.Limit)
-		}
-	}
-	if unproven.Limits != rules.Limits {
-		t.Errorf("Build(unproven).Limits = %+v, want %+v", unproven.Limits, rules.Limits)
-	}
-}
-
 func TestBuildCopiesAnUnchangedFileFromNow(t *testing.T) {
 	source := snapshot.Source{
 		Now: []snapshot.Entry{

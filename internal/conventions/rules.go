@@ -42,9 +42,13 @@ type Rules struct {
 	TestDefinition     *regexp.Regexp // a line that defines a test, anchored to the start of a statement
 	Generated          *regexp.Regexp // the generated-file marker, searched in the first GeneratedHeaderLines lines
 	// GeneratedNames are file-name patterns of generated files: such a file is read, and it is no code file.
-	GeneratedNames   []string
-	Manifests        []Manifest // the known dependency manifests, read at the repository root
-	CommitPaths      int        // the most paths a commit may touch and still count for a history detector
+	GeneratedNames []string
+	Manifests      []Manifest // the known dependency manifests, read at the repository root
+	CommitPaths    int        // the most paths a commit may touch and still count for a history detector
+	// LimitsFile is the file at a repository's root in which it sets its own limits, and LimitKeys the keys of its
+	// [limits] table, in the order an answer names them.
+	LimitsFile       string
+	LimitKeys        []LimitKey
 	PlanningPaths    []string   // planning and review records: an entry ending in "/" is a folder, at the root when it is one name, at any depth when it is a chain; any other a file-name pattern
 	MeasurementPaths []string   // measurement records, in the syntax of PlanningPaths
 	ComposeFiles     []string   // file-name patterns of compose files, read for their environment keys
@@ -97,6 +101,25 @@ type Limits struct {
 	ImportsNotFollowed Limit
 }
 
+// LimitKey is a key of a repository's limits file: the limit it sets, as an answer names it, and what the value
+// counts ("" for a ratio, printed with one decimal).
+type LimitKey struct {
+	Key, Name, Unit string
+}
+
+// ByKey is the limit a repository's limits file names by its key, or nil for a key that is no limit.
+func (l *Limits) ByKey(key string) *Limit {
+	switch key {
+	case "file_lines":
+		return &l.FileLines
+	case "test_ratio":
+		return &l.TestRatio
+	case "shared_commits":
+		return &l.SharedCommits
+	}
+	return nil
+}
+
 // Limit is one limit: its value, the smallest rise that counts as grown, and where the value comes from.
 type Limit struct {
 	Value  float64
@@ -108,7 +131,6 @@ type Limit struct {
 type Language struct {
 	Name        string
 	Extensions  []string       // the suffixes the entry speaks for
-	FileLines   *Limit         // replaces the shared line limit for this language's files; nil keeps the default
 	DynamicRead *regexp.Regexp // a settings read whose name is computed at run time
 	// Literals are comments, strings and character literals; they are blanked before imports are read. Nil reads
 	// the text as written.
@@ -176,6 +198,12 @@ func Default() Rules {
 			{File: dotnetProject, Format: CsprojDependencies, Nested: true},
 			{File: "Package.swift", Format: SwiftDependencies, Lockfiles: []string{"Package.resolved"}},
 		},
+		LimitsFile: ".plimsoll.toml",
+		LimitKeys: []LimitKey{
+			{Key: "file_lines", Name: "file-size limit", Unit: "lines"},
+			{Key: "test_ratio", Name: "test-ratio limit"},
+			{Key: "shared_commits", Name: "co-change limit", Unit: "shared commits"},
+		},
 		PlanningPaths: []string{
 			"docs/superpowers/", "docs/stories/", "docs/plans/", "docs/specs/", "projects/", ".review-work/",
 			"*review-packet*", "REQUIREMENTS.md", "SPEC.md",
@@ -206,14 +234,6 @@ func Suffix(filePath string) string {
 // IsBinary says whether the first bytes of a file make it binary: a NUL byte in the first BinarySniffBytes.
 func IsBinary(head []byte) bool {
 	return bytes.IndexByte(head[:min(len(head), BinarySniffBytes)], 0) >= 0
-}
-
-// FileLimit is the line limit of a path: its language entry's replacement, else the shared default.
-func (r Rules) FileLimit(filePath string) Limit {
-	if language, found := r.LanguageOf(filePath); found && language.FileLines != nil {
-		return *language.FileLines
-	}
-	return r.Limits.FileLines
 }
 
 // LanguageOf returns the entry that speaks for a path's suffix.

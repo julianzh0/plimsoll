@@ -155,3 +155,47 @@ func TestProcessWordingStandingAndEvidence(t *testing.T) {
 		t.Errorf("evidence of a renamed planning file = %q", evidence)
 	}
 }
+
+func TestALimitChangedSinceTheBaseIsMarked(t *testing.T) {
+	files := func(limits string) map[string]string {
+		f := map[string]string{"src/a.ts": "a\n"}
+		if limits != "" {
+			f[".plimsoll.toml"] = "[limits]\n" + limits
+		}
+		return f
+	}
+	cases := []struct {
+		name, base, now string
+		sentences       []string
+	}{
+		{"raised from the default", "", "file_lines = 1500\n",
+			[]string{"This change raised the file-size limit from 1,000 to 1,500 lines in `.plimsoll.toml` (plimsoll's default: 1,000)."}},
+		{"lowered, and one removed", "test_ratio = 3\nshared_commits = 8\n", "shared_commits = 3\n", []string{
+			"This change lowered the test-ratio limit from 3.0 to 2.0 in `.plimsoll.toml` (plimsoll's default: 2.0).",
+			"This change lowered the co-change limit from 8 to 3 shared commits in `.plimsoll.toml` (plimsoll's default: 5).",
+		}},
+		{"unchanged", "file_lines = 1500\n", "file_lines = 1500\n", nil},
+		{"no file", "", "", nil},
+	}
+	for _, tc := range cases {
+		s, f := detect(t, snapshottest.Files(files(tc.base), files(tc.now)))
+		var got []string
+		for _, m := range f.Marks {
+			if answer.RuleOf(m.ID) == ruleLimitChange {
+				if m.Change != answer.New || m.Confidence != answer.Exact || len(Detector{}.Explain(s, m)) == 0 {
+					t.Errorf("%s: mark %+v, want a new exact mark with evidence", tc.name, m)
+				}
+				got = append(got, Detector{}.Wording(m))
+			}
+		}
+		if !slices.Equal(got, tc.sentences) {
+			t.Errorf("%s: limit-change sentences %q, want %q", tc.name, got, tc.sentences)
+		}
+	}
+	_, f := detect(t, snapshottest.Files(nil, files("file_lines = 1500\ntest_ratio = 2.5\nmax_depth = 3\n")))
+	note := "limits set by `.plimsoll.toml`: the file-size limit 1,500 lines (plimsoll's default: 1,000), the test-ratio limit 2.5 (plimsoll's default: 2.0)"
+	problem := "`.plimsoll.toml`: `max_depth` is no limit plimsoll knows; a limit it does not set keeps plimsoll's default"
+	if !slices.Contains(f.Notes, note) || !slices.Contains(f.NotAnalysed, problem) {
+		t.Errorf("notes %q, not analysed %q; want %q and %q", f.Notes, f.NotAnalysed, note, problem)
+	}
+}
