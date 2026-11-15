@@ -35,6 +35,7 @@ type LanguageImports struct {
 	Roots          []string // for a language that names no prefix file: the folders whose packages are its own
 	Implicit       []string // file names the language runs without an import of them
 	SourceSets     bool     // its packages lie under source roots, and a test source set is reached only from one
+	NotSeen        string   // the entry's sentence on use between files without an import statement; "" for none
 }
 
 // Own is the language's imports of the repository's own code: all but those outside.
@@ -102,6 +103,7 @@ type statement struct {
 	names    []string // the names it imports out of its target; nil when it has no names group or names only "*"
 	line     int
 	typeOnly bool
+	within   []string // the inline modules it stands in, the outermost first
 }
 
 // reading is what one file's content says about its imports, before they are resolved against a side.
@@ -124,7 +126,7 @@ func readImports(rules conventions.Rules, content map[string][]byte, files []Fil
 			found[file.Path] = r
 			continue
 		}
-		found[file.Path] = scan(language.Imports, content[file.Path])
+		found[file.Path] = scan(language.Imports, masked(language.Literals, content[file.Path]))
 	}
 	return found
 }
@@ -137,7 +139,7 @@ func tries(form conventions.ImportForm, text []byte) bool {
 	return len(form.Words) == 0 || slices.ContainsFunc(form.Words, func(word string) bool { return bytes.Contains(text, []byte(word)) })
 }
 
-// scan finds the import statements of one file's content.
+// scan finds the import statements of one file's content, its literals blanked.
 func scan(imports conventions.Imports, text []byte) reading {
 	r := reading{passesOn: imports.PassesOn != nil && imports.PassesOn.Match(text)}
 	if imports.Until != nil {
@@ -152,24 +154,83 @@ func scan(imports conventions.Imports, text []byte) reading {
 	if tries(imports.TypeOnlyBlock, text) {
 		typeOnlyBlocks = imports.TypeOnlyBlock.Pattern.FindAllIndex(text, -1)
 	}
+	modules := spansOf(imports.Module, text)
 	for _, form := range imports.Statements {
 		if !tries(form, text) {
 			continue
 		}
 		spec, typeGroup, namesGroup := form.Pattern.SubexpIndex("spec"), form.Pattern.SubexpIndex("type"), form.Pattern.SubexpIndex("names")
 		for _, m := range form.Pattern.FindAllSubmatchIndex(text, -1) {
+			at, written := m[2*spec], string(text[m[2*spec]:m[2*spec+1]])
 			st := statement{
-				spec: string(text[m[2*spec]:m[2*spec+1]]), line: 1 + bytes.Count(text[:m[2*spec]], []byte("\n")),
+				line: 1 + bytes.Count(text[:at], []byte("\n")),
 				typeOnly: typeGroup >= 0 && m[2*typeGroup] >= 0 ||
-					slices.ContainsFunc(typeOnlyBlocks, func(block []int) bool { return block[0] <= m[2*spec] && m[2*spec] < block[1] }),
+					slices.ContainsFunc(typeOnlyBlocks, func(block []int) bool { return block[0] <= at && at < block[1] }),
+				within: modulesAt(modules, at),
 			}
 			if namesGroup >= 0 && m[2*namesGroup] >= 0 {
 				st.names = importedNames(string(text[m[2*namesGroup]:m[2*namesGroup+1]]))
 			}
-			r.statements = append(r.statements, st)
+			targets := []string{written}
+			if imports.Grouped {
+				targets = grouped(written)
+			}
+			for _, target := range targets {
+				st.spec = target
+				r.statements = append(r.statements, st)
+			}
 		}
 	}
 	return r
+}
+
+// modulesAt are the names of the module spans that hold an offset, the outermost first.
+func modulesAt(modules []span, at int) []string {
+	var names []string
+	for _, m := range modules {
+		if m.start < at && at <= m.end {
+			names = append(names, m.name)
+		}
+	}
+	return names
+}
+
+// grouped expands a target that groups paths in braces into its leaves: the text before a "{" is the prefix of every
+// part up to the brace that closes it, parts split at commas outside inner braces. "a::{b, c::{d, e}}" gives a::b,
+// a::c::d and a::c::e. A leaf is trimmed; an empty part is dropped.
+func grouped(target string) []string {
+	target = strings.TrimSpace(target)
+	open := strings.IndexByte(target, '{')
+	if open < 0 {
+		return []string{target}
+	}
+	end := len(target)
+	if at := closingBrace([]byte(target), open); target[at] == '}' {
+		end = at
+	}
+	prefix, inner := strings.TrimSpace(target[:open]), target[open+1:end]
+	var leaves []string
+	depth, start := 0, 0
+	for i := 0; i <= len(inner); i++ {
+		if i < len(inner) {
+			switch inner[i] {
+			case '{':
+				depth++
+			case '}':
+				depth--
+			}
+			if inner[i] != ',' || depth != 0 {
+				continue
+			}
+		}
+		if part := strings.TrimSpace(inner[start:i]); part != "" {
+			for _, leaf := range grouped(part) {
+				leaves = append(leaves, prefix+leaf)
+			}
+		}
+		start = i + 1
+	}
+	return leaves
 }
 
 // links resolves the readings of one side's code files against that side's tracked paths and prefix files.
@@ -190,12 +251,12 @@ func links(rules conventions.Rules, content map[string][]byte, tree Tree, readin
 		if len(files) == 0 {
 			continue
 		}
-		own := readPrefix(rules, language, content, s.tracked)
+		own := readPrefix(rules, language, content, s.tracked, readings)
 		counts := LanguageImports{
 			Language: language.Name, PrefixFile: imports.Prefix.File, Prefix: own.state,
 			PrefixRequired: imports.Prefix.Required, Folders: imports.Target == conventions.FolderTarget,
 			NoRings: imports.NoRings, Roots: imports.Prefix.Roots, Implicit: imports.Implicit,
-			SourceSets: imports.Prefix.Format == conventions.SourceRoots,
+			SourceSets: imports.Prefix.Format == conventions.SourceRoots, NotSeen: imports.NotSeen,
 		}
 		for _, file := range files {
 			r := readings[file.Path]
@@ -235,7 +296,8 @@ func (s side) resolveAll(language conventions.Language, own prefix, from string,
 		}
 		for _, t := range reached {
 			files := slices.DeleteFunc(t.files, func(p string) bool { return p == from })
-			if len(files) > 0 {
+			repeated := slices.ContainsFunc(found, func(l Link) bool { return l.Line == st.line && l.To == t.to && l.TypeOnly == st.typeOnly })
+			if len(files) > 0 && !repeated {
 				found = append(found, Link{From: from, Line: st.line, To: t.to, Folder: t.folder, Files: files, TypeOnly: st.typeOnly})
 			}
 		}
@@ -247,7 +309,7 @@ func (s side) resolveAll(language conventions.Language, own prefix, from string,
 // reaches, distinct. The statement's text is not kept.
 func (s side) resolve(language conventions.Language, own prefix, from string, st statement) ([]target, kind) {
 	imports := language.Imports
-	bases, catchAll, outcome := s.basesOf(imports, own, from, st.spec)
+	bases, catchAll, outcome := s.basesOf(imports, own, from, st)
 	if outcome != 0 {
 		return nil, outcome
 	}
@@ -297,7 +359,8 @@ func (s side) resolve(language conventions.Language, own prefix, from string, st
 
 // basesOf finds the paths an own import may mean, by its form, and whether it is a catch-all; or, when it is no own
 // import with a path, the kind it already is.
-func (s side) basesOf(imports conventions.Imports, own prefix, from, spec string) (bases []string, catchAll bool, outcome kind) {
+func (s side) basesOf(imports conventions.Imports, own prefix, from string, st statement) (bases []string, catchAll bool, outcome kind) {
+	spec := st.spec
 	var relative string
 	switch {
 	case imports.Relative == conventions.DotSlash &&
@@ -318,7 +381,7 @@ func (s side) basesOf(imports conventions.Imports, own prefix, from, spec string
 		}
 		return []string{relative}, false, 0
 	}
-	bases, catchAll = own.own(from, spec)
+	bases, catchAll = own.own(from, spec, st.within)
 	if len(bases) == 0 {
 		return nil, false, outside
 	}

@@ -136,3 +136,20 @@ func dottedName(key string) string {
 	}
 	return strings.Join(parts, ".")
 }
+
+// tomlString is the one string a key of a table holds; "" when the table, the key or a single string is not there.
+func tomlString(content, table, key string) string {
+	text, found := tomlTable(content, table)
+	if !found {
+		return ""
+	}
+	at := keyLine(key).FindStringIndex(text)
+	if at == nil || !strings.HasPrefix(text[at[1]:], `"`) && !strings.HasPrefix(text[at[1]:], "'") {
+		return ""
+	}
+	words, state := valueOf(text[at[1]:])
+	if state != KeyRead || len(words) != 1 {
+		return ""
+	}
+	return words[0]
+}

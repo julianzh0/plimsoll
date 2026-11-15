@@ -34,6 +34,7 @@ type languageCase struct {
 	byFolder   bool   // its imports name folders
 	sourceSets bool   // its packages lie under source roots
 	noRings    string // why no rings are looked for among its files; "" looks for them
+	notSeen    string // the entry's sentence on use without an import statement; "" for none
 }
 
 func languageCases() map[string]languageCase {
@@ -136,6 +137,29 @@ func languageCases() map[string]languageCase {
 				return strings.Join(append(lines, ")"), "\n") + "\n"
 			},
 		},
+		"rust": {
+			// A library root that stays on every side: its crate's name leads from any file to a module by its path.
+			setup:    map[string]string{"Cargo.toml": "[package]\nname = \"app\"\n", "src/lib.rs": ""},
+			product:  func(name string) string { return "src/" + name + ".rs" },
+			placed:   func(folder, name string) string { return "src/" + folder + "/" + name + ".rs" },
+			under:    "src",
+			test:     func(name string) string { return "tests/" + name + ".rs" },
+			support:  func(name string) string { return "src/tests/" + name + ".rs" },
+			testBody: "#[test]\nfn x() {}",
+			outside:  []string{"std::io", "std::fmt", "serde::Serialize"},
+			nowhere:  "super::gone::Gone", // no mod line declares the importing file, so it has no module above it
+			importing: func(_ string, targets []string, specs ...string) string {
+				var lines []string
+				for _, target := range targets {
+					module := strings.TrimSuffix(strings.TrimPrefix(target, "src/"), ".rs")
+					lines = append(lines, "use app::"+strings.ReplaceAll(module, "/", "::")+"::Item;")
+				}
+				for _, spec := range specs {
+					lines = append(lines, "use "+spec+";")
+				}
+				return strings.Join(lines, "\n") + "\n"
+			},
+		},
 	}
 }
 
@@ -193,6 +217,7 @@ func eachLanguage(t *testing.T, body func(t *testing.T, name string, c languageC
 		}
 		c.byFolder, c.noRings = language.Imports.Target == conventions.FolderTarget, language.Imports.NoRings
 		c.sourceSets = language.Imports.Prefix.Format == conventions.SourceRoots
+		c.notSeen = language.Imports.NotSeen
 		t.Run(language.Name, func(t *testing.T) { body(t, language.Name, c) })
 	}
 }
@@ -257,6 +282,10 @@ func TestLinksCountImportsPerAnalysedLanguage(t *testing.T) {
 		sourceSetsNote := "`" + name + "`: a package's folders under a test folder directly in `src/` are reached only from files under such a folder"
 		if got, want := slices.Contains(f.Notes, sourceSetsNote), c.sourceSets; got != want {
 			t.Errorf("the source-set note present = %v, want %v", got, want)
+		}
+		notSeenNote := "`" + name + "`: not seen: " + c.notSeen
+		if got, want := slices.Contains(f.Notes, notSeenNote), c.notSeen != ""; got != want {
+			t.Errorf("the not-seen note present = %v, want %v", got, want)
 		}
 		for _, note := range []string{
 			"`python`: its own packages are looked for at the root and under `src/`; an import of a package elsewhere counts as outside",

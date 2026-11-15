@@ -20,6 +20,15 @@ type Imports struct {
 	FolderAlso []string
 	// PackageLine, for SourceRoots, is the declaration of a file's package; its group "package" holds the dotted name.
 	PackageLine *regexp.Regexp
+	// Grouped is a target that may group paths in nested braces: "a::{b, c::{d, e}}" names a::b, a::c::d and
+	// a::c::e, each one import.
+	Grouped bool
+	// Module is the first line of a module a file holds in braces; its group "name" holds the module's name. A
+	// statement inside is resolved from those modules, the outermost first. Nil for none.
+	Module *regexp.Regexp
+	// NotSeen is the use between files the language allows without an import statement, as a note names it; "" for
+	// none.
+	NotSeen string
 	// TypeOnlyBlock matches a block whose imports are of types only; a statement whose target starts inside one is
 	// type-only. Its Pattern is nil for a language without such blocks.
 	TypeOnlyBlock ImportForm
@@ -86,6 +95,8 @@ const (
 	// source root as a pattern, each part a name or "*": "src/*/java" is a folder java in any folder directly in a
 	// folder src, at any depth.
 	SourceRoots
+	// CargoCrates are the crates of the tracked Cargo.toml files and the modules that mod lines declare.
+	CargoCrates
 )
 
 // Candidates are the tracked paths a file import may mean when the path as written is not a tracked file.

@@ -25,7 +25,7 @@ func pubspecPackages(root []byte, content map[string][]byte) prefix {
 			packages[memberName] = path.Join(member, "lib")
 		}
 	}
-	return prefix{state: PrefixRead, own: func(_, spec string) ([]string, bool) {
+	return prefix{state: PrefixRead, own: func(_, spec string, _ []string) ([]string, bool) {
 		packageName, rest, found := strings.Cut(strings.TrimPrefix(spec, "package:"), "/")
 		base, own := packages[packageName]
 		if !strings.HasPrefix(spec, "package:") || !found || !own || rest == "" || leaves(rest) {

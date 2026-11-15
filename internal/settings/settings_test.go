@@ -50,6 +50,7 @@ func languageCases() map[string]struct{ file, testFile, static, dynamic string }
 		"dart":       {"lib/config.dart", "test/config_test.dart", "Platform.environment['%s']", "Platform.environment[name]"},
 		"java":       {"src/main/java/com/acme/Config.java", "src/test/java/com/acme/ConfigTest.java", `System.getenv("%s")`, "System.getenv(name)"},
 		"kotlin":     {"src/main/kotlin/com/acme/Config.kt", "src/test/kotlin/com/acme/ConfigTest.kt", `System.getenv("%s")`, "System.getenv(name)"},
+		"rust":       {"src/config.rs", "tests/config.rs", `env::var("%s")`, "env::var(name)"},
 	}
 }
 

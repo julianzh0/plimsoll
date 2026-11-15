@@ -210,6 +210,11 @@ func entryNotes(languages []snapshot.LanguageImports) []string {
 		}
 	}
 	for _, l := range languages {
+		if l.NotSeen != "" {
+			notes = append(notes, fmt.Sprintf("`%s`: not seen: %s", l.Language, l.NotSeen))
+		}
+	}
+	for _, l := range languages {
 		if len(l.Implicit) > 0 {
 			notes = append(notes, fmt.Sprintf("`%s`: %s run without an import of them; a new one is not listed as a file without an importer",
 				l.Language, joined(answer.Quoted(l.Implicit), "and")))

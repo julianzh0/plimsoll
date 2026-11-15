@@ -42,7 +42,7 @@ func sourcePackages(rules conventions.Rules, language conventions.Language, cont
 	for name := range folders {
 		slices.Sort(folders[name])
 	}
-	return prefix{state: PrefixRead, own: func(from, spec string) ([]string, bool) {
+	return prefix{state: PrefixRead, own: func(from, spec string, _ []string) ([]string, bool) {
 		names := strings.Split(strings.ReplaceAll(spec, "`", ""), ".")
 		for n := len(names); n > 0; n-- {
 			found := folders[strings.Join(names[:n], "/")]

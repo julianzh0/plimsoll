@@ -1,0 +1,31 @@
+[package]
+name = "notes-app"
+version = "0.1.0"
+edition = "2024"
+
+[workspace]
+members = ["crates/notes-store"]
+
+[dependencies]
+anyhow = "1"
+notes-store = { path = "crates/notes-store" }
+serde = { version = "1", features = [
+    "derive",
+] }
+log.workspace = true
+
+[dependencies.clap]
+version = "4"
+features = ["derive"]
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+tempfile = "3"
+
+[build-dependencies]
+cc = "1"
+
+[workspace.dependencies]
+log = "0.4"

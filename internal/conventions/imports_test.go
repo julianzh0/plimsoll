@@ -123,6 +123,17 @@ func importCases() map[string]map[string][]string {
 			"import `in`.acme.a.B\n":               {"`in`.acme.a.B"},
 			"// import a.b.C\nval important = 1\n": nil,
 		},
+		"rust": {
+			"mod a;\npub mod b;\npub(crate) mod c;\n    mod d;\n":                     {"mod a", "mod b", "mod c", "mod d"},
+			"#[cfg(test)]\nmod tests;\n#[macro_use] mod macros;\n":                    {"mod macros", "mod tests"},
+			"mod inline {\n    mod deep;\n}\n":                                        {"mod deep"},
+			"use crate::a::B;\npub use self::c::D as E;\npub(crate) use super::f;\n":  {"crate::a::B", "self::c::D as E", "super::f"},
+			"use crate::{\n    a::B,\n    c::{self, D},\n};\n":                        {"crate::{\n    a::B,\n    c::{self, D},\n}"},
+			"    use std::fmt::Write;\n":                                              {"std::fmt::Write"},
+			"extern crate alloc;\npub extern crate grep_cli as cli;\n":                {"alloc", "grep_cli"},
+			"// use a::b;\n/// use a::b;\nlet used = 1;\nfn user() {}\nmodule!(x);\n": nil,
+			"use a::b;\r\nmod c;\r\n":                                                 {"a::b", "mod c"},
+		},
 	}
 }
 
@@ -194,6 +205,13 @@ func passesOnCases() map[string]map[string]bool {
 			"export 'a.dart';\nconst x = 1;\n":                                      false,
 			"import 'a.dart';\nexport 'b.dart';\n":                                  false,
 		},
+		"rust": {
+			"#![deny(missing_docs)]\n\nmod a;\npub mod b;\n\npub use a::A;\npub use crate::b::{B, C};\npub extern crate x as y;\n": true,
+			"#[cfg(test)]\nmod tests;\nmod a;\n": true,
+			"mod a;\n\npub fn f() {}\n":          false,
+			"mod a;\nuse a::A;\n":                false,
+			"mod a {\n}\n":                       false,
+		},
 	}
 }
 
@@ -250,8 +268,44 @@ func TestAFormMatchesOnlyTextThatHoldsOneOfItsWords(t *testing.T) {
 				}
 			}
 		}
-		if want := map[string]int{"typescript": 2, "go": 0, "python": 2, "dart": 0, "java": 0, "kotlin": 0}[l.Name]; worded != want {
+		if want := map[string]int{"typescript": 2, "go": 0, "python": 2, "dart": 0, "java": 0, "kotlin": 0, "rust": 0}[l.Name]; worded != want {
 			t.Errorf("%s: %d forms with words, want %d", l.Name, worded, want)
+		}
+	}
+}
+
+func TestLiteralsBlankCommentsStringsAndCharacters(t *testing.T) {
+	cases := map[string]map[string]string{ // per language with a Literals pattern: a text, and what stays of it
+		"rust": {
+			"a // b\nc":                    "a     \nc",
+			"a /* b /* c */ d */ e":        "a                   e",
+			"a /* src/**/x */ b":           "a                b",
+			`s = "a \" } b"; t`:            "s =           ; t",
+			"s = r#\"a \"} b\"#; t":        "s =            ; t",
+			`c = '}'; d = '\''; e = b'"';`: "c =    ; d =     ; e = b   ;",
+			"fn f<'a>(x: &'a str) {}":      "fn f<'a>(x: &'a str) {}",
+			"s = \"line\n}\nend\"; t":      "s =      \n \n    ; t",
+			"/**/ a /***/ b":               "     a       b",
+		},
+	}
+	blank := func(match string) string {
+		return strings.Map(func(r rune) rune {
+			if r == '\n' {
+				return r
+			}
+			return ' '
+		}, match)
+	}
+	for _, l := range Default().Languages {
+		texts, has := cases[l.Name]
+		if (l.Literals != nil) != has {
+			t.Errorf("%s: a Literals pattern %v, cases %v", l.Name, l.Literals != nil, has)
+			continue
+		}
+		for text, want := range texts {
+			if got := l.Literals.ReplaceAllStringFunc(text, blank); got != want {
+				t.Errorf("%s Literals in %q leaves %q, want %q", l.Name, text, got, want)
+			}
 		}
 	}
 }

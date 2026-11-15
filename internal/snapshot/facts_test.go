@@ -74,6 +74,7 @@ func TestBuildReadsRuntimeDependencies(t *testing.T) {
 		{"a pom with a name space, a byte order mark and CRLF", oneFile("pom.xml", "\uFEFF<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n<project xmlns=\"http://maven.apache.org/POM/4.0.0\">\r\n"+pomOwn+"\r\n</project>\r\n"), dependenciesOf("pom.xml", "a:b", "c:d")},
 		{"a file named pom.xml with another root element", oneFile("pom.xml", "<settings/>"), nil},
 		{"a nested pom", oneFile("core/pom.xml", "<project>"+pomOwn+"</project>"), nil},
+		{"rust", snapshottest.Load(t, "testdata/rust"), dependenciesOf("Cargo.toml", "anyhow", "clap", "libc", "log", "notes-store", "serde")},
 		{"java", snapshottest.Load(t, "testdata/java"), dependenciesOf("pom.xml", "com.fasterxml.jackson.core:jackson-databind", "org.postgresql:postgresql")},
 		{"kotlin", snapshottest.Load(t, "testdata/kotlin"), dependenciesOf("build.gradle.kts", ":shared", "io.ktor:ktor-bom", "io.ktor:ktor-client-core", "libs.kotlinx.coroutines.core", "org.slf4j:slf4j-simple")},
 		{"a Groovy build file", oneFile("build.gradle", "dependencies {\n  implementation 'org.springframework.boot:spring-boot-starter-web'\n"+
@@ -275,7 +276,7 @@ func TestWantsNamesWhatTheReaderReads(t *testing.T) {
 		"tsconfig.json": true, "web/tsconfig.json": false, "go.mod": true, "web/go.mod": false, "pyproject.toml": true, "web/pyproject.toml": false, "pytest.ini": false, "pytest.toml": false,
 		"src/main/resources/application.properties": false, "docs/design.pdf": false, "src/main/resources/META-INF/services/a.B": false,
 		"pom.xml": true, "core/pom.xml": false, "build.gradle": true, "build.gradle.kts": true,
-		"Cargo.toml": true, "Cargo.lock": true, "crates/cli/Cargo.toml": false,
+		"Cargo.toml": true, "Cargo.lock": true, "crates/cli/Cargo.toml": true, "vendor/x/Cargo.toml": false, "src/main.rs": true,
 		"pubspec.yaml": true, "app/pubspec.yaml": true, "packages/core/pubspec.yaml": true, "node_modules/x/pubspec.yaml": false,
 		"docs/.env.example": false, "node_modules/x/a.js": false, "assets/logo.bin": true,
 		"docker-compose.yml": true, "deploy/compose.prod.yaml": true, "node_modules/x/compose.yml": false, "compose.txt": false,

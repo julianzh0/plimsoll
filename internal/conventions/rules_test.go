@@ -49,7 +49,7 @@ func TestSuffixIsTheLastExtension(t *testing.T) {
 }
 
 func TestLanguageOfAPath(t *testing.T) {
-	cases := map[string]string{"a.tsx": "typescript", "a.mjs": "typescript", "a.go": "go", "a.py": "python", "a.pyi": "python", "a.dart": "dart", "A.java": "java", "a.kt": "kotlin", "build.gradle.kts": "kotlin", "a.sh": "", "Makefile": ""}
+	cases := map[string]string{"a.tsx": "typescript", "a.mjs": "typescript", "a.go": "go", "a.py": "python", "a.pyi": "python", "a.dart": "dart", "A.java": "java", "a.kt": "kotlin", "build.gradle.kts": "kotlin", "a.rs": "rust", "a.sh": "", "Makefile": ""}
 	rules := Default()
 	for path, want := range cases {
 		language, found := rules.LanguageOf(path)
@@ -133,6 +133,8 @@ func TestEveryLanguageNamesItsDynamicRead(t *testing.T) {
 			[]string{"Platform.environment['X']", `String.fromEnvironment("X")`, "dotenv.env['X']", "const int.fromEnvironment('N')"}},
 		"java":   {[]string{"System.getenv(name)", `System.getenv(prefix + "X")`}, []string{`System.getenv("X")`, `System.getenv( "X")`, "System.getenv()"}},
 		"kotlin": {[]string{"System.getenv(name)", `System.getenv(prefix + "X")`}, []string{`System.getenv("X")`, `System.getenv( "X")`, "System.getenv()"}},
+		"rust": {[]string{"env::var(name)", "std::env::var_os(key)", `env::var(&format!("A_{x}"))`, "env::var(\n    name,\n)"},
+			[]string{`env::var("X")`, `std::env::var_os( "X")`, "env::vars()", `env!("X")`, `option_env!("X")`}},
 	}
 	for _, language := range Default().Languages {
 		if language.DynamicRead == nil {

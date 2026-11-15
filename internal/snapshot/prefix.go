@@ -30,7 +30,8 @@ const byteOrderMark = "\uFEFF"
 // ownImports gives the paths from the root that an import that is not relative may mean, when it is the project's
 // own; no path means outside. catchAll marks a match that would take any name, so finding no file makes it outside,
 // not "not found".
-type ownImports func(from, spec string) (bases []string, catchAll bool)
+// within are the inline modules the statement stands in, the outermost first; only the Rust reader reads them.
+type ownImports func(from, spec string, within []string) (bases []string, catchAll bool)
 
 // prefix is what one side's prefix file declares about the project's own imports.
 type prefix struct {
@@ -42,7 +43,7 @@ type prefix struct {
 // reader; resolving an import needs only the function it returns.
 // NOTE: only the root config is read; an extended or nested config, replace, go.work and workspaces are not followed,
 // so imports through them count as outside. Upgrade: follow extends through tracked files.
-func readPrefix(rules conventions.Rules, language conventions.Language, content map[string][]byte, tracked map[string]bool) prefix {
+func readPrefix(rules conventions.Rules, language conventions.Language, content map[string][]byte, tracked map[string]bool, readings map[string]reading) prefix {
 	imports := language.Imports
 	fromFile := func(parse func([]byte) prefix) prefix {
 		file, present := content[imports.Prefix.File]
@@ -65,6 +66,8 @@ func readPrefix(rules conventions.Rules, language conventions.Language, content 
 		return sourcePackages(rules, language, content, tracked)
 	case conventions.PubspecName:
 		return fromFile(func(file []byte) prefix { return pubspecPackages(file, content) })
+	case conventions.CargoCrates:
+		return cargoCrates(content, tracked, readings)
 	}
 	return prefix{state: PrefixRead} // the language declares no prefix
 }
@@ -82,7 +85,7 @@ func goModule(content []byte) prefix {
 		if module == "" {
 			break
 		}
-		return prefix{state: PrefixRead, own: func(_, spec string) ([]string, bool) {
+		return prefix{state: PrefixRead, own: func(_, spec string, _ []string) ([]string, bool) {
 			rest, under := strings.CutPrefix(spec, module)
 			if !under || rest != "" && !strings.HasPrefix(rest, "/") {
 				return nil, false
@@ -114,7 +117,7 @@ func tsconfigPaths(rules conventions.Rules, content []byte) prefix {
 		state = PrefixExtends
 	}
 	aliases := config.CompilerOptions.Paths
-	return prefix{state: state, own: func(_, spec string) ([]string, bool) {
+	return prefix{state: state, own: func(_, spec string, _ []string) ([]string, bool) {
 		pattern, star, matched := bestAlias(aliases, spec)
 		if !matched {
 			return nil, false
@@ -264,7 +267,7 @@ func ownPackages(imports conventions.Imports, tracked map[string]bool) prefix {
 	isPackage := func(folder string) bool {
 		return slices.ContainsFunc(imports.Candidates.InFolder, func(name string) bool { return tracked[path.Join(folder, name)] })
 	}
-	return prefix{state: PrefixRead, own: func(from, spec string) ([]string, bool) {
+	return prefix{state: PrefixRead, own: func(from, spec string, _ []string) ([]string, bool) {
 		first, _, _ := strings.Cut(spec, ".")
 		asPath := dottedPath(spec)
 		var bases []string

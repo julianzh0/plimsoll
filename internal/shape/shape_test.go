@@ -75,6 +75,8 @@ func TestDetectOnEachLanguageSample(t *testing.T) {
 		{"kotlin", 57, 32, 0, 0.6, []string{"build.gradle.kts", "src/androidTest/kotlin/com/acme/tasks/MainScreenTest.kt", "src/main/kotlin/com/acme/tasks/Main.kt"},
 			map[string]string{"build.gradle.kts": ":shared, io.ktor:ktor-bom, io.ktor:ktor-client-core, libs.kotlinx.coroutines.core, org.slf4j:slf4j-simple"},
 			[]string{"no `.env.example`, so no settings count"}},
+		{"rust", 113, 14, 0, 0.1, []string{"src/store/memory.rs", "src/model.rs", "src/lib.rs"},
+			map[string]string{"Cargo.toml": "anyhow, clap, libc, log, notes-store, serde"}, []string{"no `.env.example`, so no settings count"}},
 		{"mixed", 8, 10, 0, 1.3, []string{"service/main_test.go", "service/main.go", "web/src/app.test.ts"},
 			map[string]string{"go.mod": "", "package.json": ""}, []string{"no `.env.example`, so no settings count"}},
 		{"python-declared", 9, 12, 0, 1.3, []string{"checks/test_flow.py", "src/app/service.py", "tests/test_service.py"},
