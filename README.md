@@ -4,7 +4,7 @@
 
 <h1 align="center">plimsoll</h1>
 
-<p align="center"><strong>The load line for your repository: what a change did to its shape, measured, never guessed.</strong></p>
+<p align="center"><strong>The load line for your repository: what a change did to its size, its tests, its wiring and its history, measured, never guessed.</strong></p>
 
 <p align="center">
   <a href="https://github.com/juzhxng/plimsoll/releases/latest"><img src="https://img.shields.io/github/v/release/juzhxng/plimsoll" alt="Release"></a>
@@ -15,11 +15,29 @@
 </p>
 
 A ship's Plimsoll line shows at a glance whether it is loaded past what is safe. plimsoll does that for a git
-repository: ask it about a change, and it answers with a few marks, each a measurement with its limit and a way to
-verify it. It is built for coding agents and speaks the Model Context Protocol (MCP).
+repository. You, or your coding agent, ask it what a branch or a change did, and it answers with a few findings
+called marks. Each mark says what was measured, the limit it crossed, and how to check it yourself. For example:
+a file grew past 1,000 lines, product code started importing test code, two files keep changing together, or a
+new setting has no code that reads it. It is built for coding agents and speaks the Model Context Protocol (MCP).
 
 It is not a score or a grade, not a dashboard, and not a linter: it writes nothing into the repositories it reads,
 stores nothing, and never says what to do.
+
+## What it checks
+
+Six detectors look at a change from different sides:
+
+- **Size** (`shape`): how much product and test code there is, the largest files, new dependencies and new settings.
+- **Working habits** (`process`): planning or review notes committed into the repository, and more churn in
+  documentation than in code.
+- **Settings** (`settings`): settings that no code reads, names defined twice, and variables only the container
+  setup knows.
+- **Hotspots** (`hotspots`): the files changed most often, weighed by their size.
+- **Hidden coupling** (`co-change`): files that keep changing together in the same commits.
+- **Wiring** (`links`): who imports whom, import rings, folders that depend on each other in a circle, product code
+  that imports test code, and how far a change reaches.
+
+Each detector compares now with a base you choose, such as `main`, so old debt stays quiet and new growth stands out.
 
 ## Highlights
 
@@ -102,7 +120,7 @@ Not analysed: no `.env.example`, so no settings count; no `.env.example`, so no 
 Every result carries the text in `content` and the same answer as `structuredContent`. An answer may shorten, never
 hide: what it leaves out it counts ("3 more: `report` lists them"), and `report` holds every mark.
 
-## What it measures
+## What it measures in detail
 
 Every number is measured at the base and now, from the tracked files only:
 
