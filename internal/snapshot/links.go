@@ -208,29 +208,33 @@ func grouped(target string) []string {
 	if at := closingBrace([]byte(target), open); target[at] == '}' {
 		end = at
 	}
-	prefix, inner := strings.TrimSpace(target[:open]), target[open+1:end]
+	prefix := strings.TrimSpace(target[:open])
 	var leaves []string
-	depth, start := 0, 0
-	for i := 0; i <= len(inner); i++ {
-		if i < len(inner) {
-			switch inner[i] {
-			case '{':
-				depth++
-			case '}':
-				depth--
-			}
-			if inner[i] != ',' || depth != 0 {
-				continue
-			}
-		}
-		if part := strings.TrimSpace(inner[start:i]); part != "" {
+	for _, part := range topLevelParts(target[open+1 : end]) {
+		if part = strings.TrimSpace(part); part != "" {
 			for _, leaf := range grouped(part) {
 				leaves = append(leaves, prefix+leaf)
 			}
 		}
-		start = i + 1
 	}
 	return leaves
+}
+
+// topLevelParts splits a text at the commas outside its braces.
+func topLevelParts(text string) []string {
+	var parts []string
+	depth, start := 0, 0
+	for i, c := range text {
+		switch {
+		case c == '{':
+			depth++
+		case c == '}':
+			depth--
+		case c == ',' && depth == 0:
+			parts, start = append(parts, text[start:i]), i+1
+		}
+	}
+	return append(parts, text[start:])
 }
 
 // links resolves the readings of one side's code files against that side's tracked paths and prefix files.
@@ -296,6 +300,7 @@ func (s side) resolveAll(language conventions.Language, own prefix, from string,
 		}
 		for _, t := range reached {
 			files := slices.DeleteFunc(t.files, func(p string) bool { return p == from })
+			// A grouped statement gives several targets on one line, and two of them may reach one file.
 			repeated := slices.ContainsFunc(found, func(l Link) bool { return l.Line == st.line && l.To == t.to && l.TypeOnly == st.typeOnly })
 			if len(files) > 0 && !repeated {
 				found = append(found, Link{From: from, Line: st.line, To: t.to, Folder: t.folder, Files: files, TypeOnly: st.typeOnly})

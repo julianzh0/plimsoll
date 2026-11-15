@@ -3,6 +3,8 @@ package snapshot
 import (
 	"regexp"
 	"strings"
+
+	"github.com/juzhxng/plimsoll/internal/conventions"
 )
 
 // The TOML that plimsoll reads by text: tables, their keys and arrays of strings, for the manifest and for the layout
@@ -137,19 +139,11 @@ func dottedName(key string) string {
 	return strings.Join(parts, ".")
 }
 
-// tomlString is the one string a key of a table holds; "" when the table, the key or a single string is not there.
-func tomlString(content, table, key string) string {
-	text, found := tomlTable(content, table)
-	if !found {
+// tomlString is the one string a key of a table holds; "" when the table, the key or a single value is not there.
+func tomlString(content []byte, table, key string) string {
+	values, state := readDeclared(content, conventions.Declaration{Table: table, Key: key})
+	if state != KeyRead || len(values) != 1 {
 		return ""
 	}
-	at := keyLine(key).FindStringIndex(text)
-	if at == nil || !strings.HasPrefix(text[at[1]:], `"`) && !strings.HasPrefix(text[at[1]:], "'") {
-		return ""
-	}
-	words, state := valueOf(text[at[1]:])
-	if state != KeyRead || len(words) != 1 {
-		return ""
-	}
-	return words[0]
+	return values[0]
 }

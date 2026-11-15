@@ -16,11 +16,6 @@ import (
 func cargoDependencies(content []byte) (names []string, manifest, readable bool) {
 	text := strings.TrimPrefix(string(content), byteOrderMark)
 	names = []string{}
-	add := func(name string) {
-		if !slices.Contains(names, name) {
-			names = append(names, name)
-		}
-	}
 	inKeys, depth := false, 0
 	for line := range strings.Lines(text) {
 		if depth > 0 {
@@ -32,7 +27,7 @@ func cargoDependencies(content []byte) (names []string, manifest, readable bool)
 			inKeys = table && name == ""
 			manifest = manifest || table || header == "package"
 			if name != "" {
-				add(name)
+				names = appendNew(names, name)
 			}
 			continue
 		}
@@ -48,7 +43,7 @@ func cargoDependencies(content []byte) (names []string, manifest, readable bool)
 		if !ok {
 			return nil, true, false
 		}
-		add(key)
+		names = appendNew(names, key)
 	}
 	if !manifest {
 		return nil, false, true
@@ -118,20 +113,19 @@ func openedBrackets(line string) int {
 // NOTE: for a crate root under another name, "mod x;" is looked for in the folder of that name first: with
 // src/bin/tool/x.rs beside src/bin/x.rs the first is taken, where the compiler takes the second. Upgrade: read the
 // targets of the manifest.
-func cargoCrates(content map[string][]byte, tracked map[string]bool, readings map[string]reading) prefix {
-	m := rustModules{tracked: tracked, crates: map[string][]string{}, parents: map[string][]string{}, declared: map[string]bool{}}
+func cargoCrates(manifest string, content map[string][]byte, tracked map[string]bool, readings map[string]reading) prefix {
+	m := rustModules{tracked: tracked, crates: map[string][]string{}, parents: map[string][]string{}, declared: map[declaration]bool{}}
 	state := PrefixAbsent
 	for file := range tracked {
-		if path.Base(file) != "Cargo.toml" || content[file] == nil {
+		if path.Base(file) != manifest || content[file] == nil {
 			continue
 		}
-		text := string(content[file])
-		name := tomlString(text, "package", "name")
+		name := tomlString(content[file], "package", "name")
 		if name == "" {
 			continue
 		}
 		state = PrefixRead
-		if lib := tomlString(text, "lib", "name"); lib != "" {
+		if lib := tomlString(content[file], "lib", "name"); lib != "" {
 			name = lib
 		} else {
 			name = strings.ReplaceAll(name, "-", "_")
@@ -150,8 +144,8 @@ func cargoCrates(content map[string][]byte, tracked map[string]bool, readings ma
 				continue
 			}
 			m.declared[declaredAt(file, st.within, name)] = true
-			if found := m.child(file, st.within, name); len(found) == 1 && found[0] != file && !slices.Contains(m.parents[found[0]], file) {
-				m.parents[found[0]] = append(m.parents[found[0]], file)
+			if found := m.child(file, st.within, name); len(found) == 1 && found[0] != file {
+				m.parents[found[0]] = appendNew(m.parents[found[0]], file)
 			}
 		}
 	}
@@ -167,10 +161,13 @@ func cargoCrates(content map[string][]byte, tracked map[string]bool, readings ma
 // rustModules is one side's module tree, read from the mod lines of its Rust files.
 type rustModules struct {
 	tracked  map[string]bool
-	crates   map[string][]string // an own crate's name to its library roots, sorted
-	parents  map[string][]string // a module file to the files whose mod line names it alone, sorted
-	declared map[string]bool     // every mod line: its file, its inline modules joined by "/" and its name, joined by "\x00"
+	crates   map[string][]string  // an own crate's name to its library roots, sorted
+	parents  map[string][]string  // a module file to the files whose mod line names it alone, sorted
+	declared map[declaration]bool // every mod line
 }
+
+// declaration is a mod line: its file, the inline modules it stands in joined by "/", and the module it declares.
+type declaration struct{ file, within, name string }
 
 // modName is the module a mod line's target declares.
 func modName(spec string) (string, bool) {
@@ -181,9 +178,9 @@ func modName(spec string) (string, bool) {
 	return words[1], true
 }
 
-// declaredAt is the key of a mod line in rustModules.declared.
-func declaredAt(file string, within []string, name string) string {
-	return file + "\x00" + strings.Join(within, "/") + "\x00" + name
+// declaredAt is the declaration of a module at a place.
+func declaredAt(file string, within []string, name string) declaration {
+	return declaration{file, strings.Join(within, "/"), name}
 }
 
 // resolve gives the tracked files an import names: nil for outside, and for "not found" one path that is not tracked.
@@ -216,11 +213,7 @@ func (m rustModules) resolve(from, spec string, within []string) ([]string, bool
 	}
 	var found []string
 	for _, root := range roots {
-		for _, file := range m.longest([]string{path.Dir(root)}, names[1:], []string{root}) {
-			if !slices.Contains(found, file) {
-				found = append(found, file)
-			}
-		}
+		found = appendNew(found, m.longest([]string{path.Dir(root)}, names[1:], []string{root})...)
 	}
 	return found, false
 }
@@ -253,11 +246,7 @@ func (m rustModules) relative(from string, names, within []string) []string {
 	for range ups - 1 {
 		var above []string
 		for _, owner := range owners {
-			for _, parent := range m.parents[owner] {
-				if !slices.Contains(above, parent) {
-					above = append(above, parent)
-				}
-			}
+			above = appendNew(above, m.parents[owner]...)
 		}
 		slices.Sort(above)
 		owners, folder = above, path.Dir(folder)
@@ -336,4 +325,14 @@ func (m rustModules) roots(file string) []string {
 	}
 	slices.Sort(roots)
 	return roots
+}
+
+// appendNew appends the items the list does not hold yet, each once.
+func appendNew(list []string, items ...string) []string {
+	for _, item := range items {
+		if !slices.Contains(list, item) {
+			list = append(list, item)
+		}
+	}
+	return list
 }
