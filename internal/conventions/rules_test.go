@@ -12,10 +12,14 @@ func TestTestDefinitionMatchesOnlyStatementStarts(t *testing.T) {
 		`await t.test("inner", () => {`, `func TestStore(t *testing.T) {`, `func BenchmarkStore(b *testing.B) {`,
 		`func FuzzParse(f *testing.F) {`, `func ExampleStore() {`, `def test_store(self):`,
 		`    async def test_store():`, `class TestStore:`, `  testWidgets('shows a note', (tester) async {`,
+		`  @Test`, `    @Test fun saves() {`, `@ParameterizedTest`, `@org.junit.jupiter.api.Test`, `@RepeatedTest(3)`,
+		`class TestStore(Base):  # the store`, "class TestStore(\n    Base,\n):", `it.each(rows)("%s", (row) => {`, `it.only("x", () => {`,
 	}
 	misses := []string{
 		`const ok = pattern.test(value)`, `  return re.test(input);`, `func helper() {`,
 		`// test("commented out", () => {`, `latest("x")`, `protest("x")`,
+		`class TestClock {`, `class TestClock(private val now: Long) : Clock {`, `class TestDao : Dao {`,
+		`        it.also(saved::add)`, `it.close()`, `@TestOnly`, `@TestInstance(Lifecycle.PER_CLASS)`, `// @Test`,
 	}
 	rules := Default()
 	for _, line := range matches {
