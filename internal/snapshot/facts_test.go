@@ -63,6 +63,7 @@ func TestBuildReadsRuntimeDependencies(t *testing.T) {
 			pubspecNames("a", "b", "c")},
 		{"pubspec without dependencies", pubspec("name: x\ndev_dependencies:\n  test: ^1.0.0\n"), pubspecNames()},
 		{"pubspec without a name", pubspec("dependencies:\n  a: ^1.0.0\n"), nil},
+		{"pubspec of a workspace without dependencies", pubspec("name: _ws\nworkspace:\n  - app\n"), nil},
 	}
 	for _, tc := range cases {
 		if got := snapshot.Build(tc.source, conventions.Default()).Now.Manifests; !reflect.DeepEqual(got, tc.want) {
@@ -173,7 +174,7 @@ func TestWantsNamesWhatTheReaderReads(t *testing.T) {
 	paths := map[string]bool{
 		"src/a.ts": true, "README.md": false, "package.json": true, "web/package.json": false, ".env.example": true,
 		"tsconfig.json": true, "web/tsconfig.json": false, "go.mod": true, "web/go.mod": false, "pyproject.toml": true, "web/pyproject.toml": false, "pytest.ini": false, "pytest.toml": false,
-		"pubspec.yaml": true, "app/pubspec.yaml": false,
+		"pubspec.yaml": true, "app/pubspec.yaml": true, "packages/core/pubspec.yaml": true, "node_modules/x/pubspec.yaml": false,
 		"docs/.env.example": false, "node_modules/x/a.js": false, "assets/logo.bin": true,
 		"docker-compose.yml": true, "deploy/compose.prod.yaml": true, "node_modules/x/compose.yml": false, "compose.txt": false,
 	}

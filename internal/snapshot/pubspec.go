@@ -1,6 +1,7 @@
 package snapshot
 
 import (
+	"path"
 	"regexp"
 	"strings"
 )
@@ -8,47 +9,90 @@ import (
 // pubspecNameLine is the top-level name of a pubspec.yaml, unquoted or quoted.
 var pubspecNameLine = regexp.MustCompile(`(?m)^name:[ \t]*["']?([A-Za-z_][A-Za-z0-9_]*)["']?[ \t]*(?:#.*)?$`)
 
-// pubspecName reads the package name: an import "package:<name>/x" is the file x under lib/.
-func pubspecName(content []byte) prefix {
-	m := pubspecNameLine.FindSubmatch([]byte(strings.TrimPrefix(string(content), byteOrderMark)))
-	if m == nil {
+// pubspecPackages reads the package name of the root pubspec.yaml and of the workspace members it lists: an import
+// "package:<name>/x" is the file x under the lib/ folder of the package with that name.
+// NOTE: members are read as listed; a glob in the workspace list is not expanded. Upgrade: match the globs against
+// the tracked paths, if a field check finds them in use.
+func pubspecPackages(root []byte, content map[string][]byte) prefix {
+	name := pubspecNameOf(root)
+	if name == "" {
 		return prefix{state: PrefixUnreadable}
 	}
-	own := "package:" + string(m[1]) + "/"
+	packages := map[string]string{name: "lib"}
+	for _, member := range pubspecBlock(root, "workspace") {
+		member = strings.Trim(strings.TrimPrefix(member, "- "), `"' `)
+		if memberName := pubspecNameOf(content[path.Join(member, "pubspec.yaml")]); memberName != "" && !strings.Contains(member, "*") {
+			packages[memberName] = path.Join(member, "lib")
+		}
+	}
 	return prefix{state: PrefixRead, own: func(_, spec string) ([]string, bool) {
-		rest, isOwn := strings.CutPrefix(spec, own)
-		if !isOwn || rest == "" || leaves(rest) {
+		packageName, rest, found := strings.Cut(strings.TrimPrefix(spec, "package:"), "/")
+		base, own := packages[packageName]
+		if !strings.HasPrefix(spec, "package:") || !found || !own || rest == "" || leaves(rest) {
 			return nil, false
 		}
-		return []string{"lib/" + rest}, false
+		return []string{path.Join(base, rest)}, false
 	}}
 }
 
+// pubspecNameOf is a pubspec.yaml's top-level name, or "" when it has none.
+func pubspecNameOf(content []byte) string {
+	if m := pubspecNameLine.FindSubmatch(content); m != nil {
+		return string(m[1])
+	}
+	return ""
+}
+
+// pubspecBlock is the entries one level below a top-level key of a pubspec.yaml, without comments; nil when the key
+// is absent or its value is not a block.
+func pubspecBlock(content []byte, key string) []string {
+	lines, _ := pubspecBlockLines(content, key)
+	return lines
+}
+
 // pubspecDependencies reads the keys of the top-level dependencies block by text: the lines indented one level below
-// "dependencies:", up to the next top-level key. manifest is false when the file names no package; readable is false
-// when the block is written in flow style.
-// NOTE: only the block form is read; a flow-style map ("dependencies: {a: ^1}") is named unreadable. Upgrade: a YAML
-// reader, if a field check finds flow style in use.
+// "dependencies:", up to the next top-level key. manifest is false when the file names no package, or is a workspace
+// root without dependencies of its own; readable is false when the block is written in flow style.
+// NOTE: only the block form is read; a flow-style map ("dependencies: {a: ^1}") is named unreadable, and the
+// dependencies of workspace members are not counted. Upgrade: a YAML reader, and the members' manifests, if a field
+// check finds either in use.
 func pubspecDependencies(content []byte) (names []string, manifest, readable bool) {
-	text := strings.TrimPrefix(string(content), byteOrderMark)
-	if !pubspecNameLine.MatchString(text) {
+	text := []byte(strings.TrimPrefix(string(content), byteOrderMark))
+	if pubspecNameOf(text) == "" {
+		return nil, false, true
+	}
+	lines, flow := pubspecBlockLines(text, "dependencies")
+	switch {
+	case flow:
+		return nil, true, false
+	case lines == nil && pubspecBlock(text, "workspace") != nil:
 		return nil, false, true
 	}
 	names = []string{}
+	for _, line := range lines {
+		if key, _, found := strings.Cut(line, ":"); found {
+			names = append(names, strings.Trim(key, `"' `))
+		}
+	}
+	return names, true, true
+}
+
+// pubspecBlockLines finds a top-level key's block: its entries one level below it, trimmed, without comments and
+// without the deeper lines of an entry. flow is true when the key's value stands on its own line.
+func pubspecBlockLines(content []byte, key string) (lines []string, flow bool) {
 	inBlock, indent := false, ""
-	for line := range strings.Lines(text) {
-		trimmed := strings.TrimSpace(line)
+	for line := range strings.Lines(string(content)) {
+		trimmed, _, _ := strings.Cut(strings.TrimSpace(line), " #")
 		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
 			continue
 		}
 		if !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "\t") {
-			key, value, _ := strings.Cut(trimmed, ":")
-			if inBlock = key == "dependencies"; inBlock {
-				value, _, _ = strings.Cut(value, "#")
+			found, value, _ := strings.Cut(trimmed, ":")
+			if inBlock = found == key; inBlock {
 				if strings.TrimSpace(value) != "" {
-					return nil, true, false
+					return nil, true
 				}
-				indent = ""
+				lines = []string{}
 			}
 			continue
 		}
@@ -59,12 +103,9 @@ func pubspecDependencies(content []byte) (names []string, manifest, readable boo
 		if indent == "" {
 			indent = lead
 		}
-		if lead != indent {
-			continue // a nested line of an entry, such as "sdk: flutter"
-		}
-		if key, _, found := strings.Cut(trimmed, ":"); found {
-			names = append(names, strings.Trim(key, `"'`))
+		if lead == indent {
+			lines = append(lines, trimmed)
 		}
 	}
-	return names, true, true
+	return lines, false
 }

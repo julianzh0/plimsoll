@@ -62,6 +62,7 @@ type Prefix struct {
 	Roots    []string // for OwnPackages: the folders whose packages and modules are the project's own
 	Format   PrefixFormat
 	Required bool // without it the language's own imports cannot be told from outside ones, so no link numbers
+	Members  bool // the prefix file in other folders is read too: the members of a workspace the root file lists
 }
 
 // PrefixFormat is how a prefix file declares the project's own imports.

@@ -31,7 +31,9 @@ func WantsOf(rules conventions.Rules) Wants {
 				return true
 			}
 			if slices.ContainsFunc(rules.Languages, func(l conventions.Language) bool {
-				return l.Imports.Prefix.File == path || slices.ContainsFunc(l.Layout, func(d conventions.Declaration) bool { return d.File == path })
+				prefix := l.Imports.Prefix
+				member := prefix.Members && prefix.File != "" && strings.HasSuffix(path, "/"+prefix.File) && !inFolders(path, rules.SkippedFolders)
+				return prefix.File == path || member || slices.ContainsFunc(l.Layout, func(d conventions.Declaration) bool { return d.File == path })
 			}) {
 				return true
 			}

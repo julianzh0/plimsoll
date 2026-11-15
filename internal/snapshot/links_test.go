@@ -293,6 +293,26 @@ func TestBuildFollowsDartImportsToFiles(t *testing.T) {
 	}
 }
 
+func TestBuildFollowsImportsIntoDartWorkspaceMembers(t *testing.T) {
+	got := linksOf(map[string]string{
+		"pubspec.yaml":                  "name: _ws\nworkspace:\n  - app # the app\n  - 'packages/core'\n  - packages/gone\n",
+		"app/pubspec.yaml":              "name: app\nresolution: workspace\n",
+		"packages/core/pubspec.yaml":    "name: core\nresolution: workspace\n",
+		"app/lib/main.dart":             "import 'package:core/core.dart';\nimport 'package:app/src/x.dart';\nimport 'package:http/http.dart';\n",
+		"app/lib/src/x.dart":            "const x = 1;\n",
+		"packages/core/lib/core.dart":   "const c = 1;\n",
+		"packages/other/pubspec.yaml":   "name: other\n",
+		"packages/other/lib/other.dart": "import 'package:core/core.dart';\n",
+	})
+	want := []snapshot.Link{
+		link("app/lib/main.dart", 1, "packages/core/lib/core.dart"), link("app/lib/main.dart", 2, "app/lib/src/x.dart"),
+		link("packages/other/lib/other.dart", 1, "packages/core/lib/core.dart"),
+	}
+	if !reflect.DeepEqual(got.List, want) || got.Languages[0].Outside != 1 || got.Languages[0].NotFound != 0 {
+		t.Errorf("links = %+v, languages %+v; want the members' packages as own and http outside", got.List, got.Languages)
+	}
+}
+
 func TestBuildFollowsPythonImportsToFiles(t *testing.T) {
 	got := linksOf(pythonTree())
 	want := []snapshot.LanguageImports{{

@@ -61,7 +61,7 @@ func readPrefix(rules conventions.Rules, imports conventions.Imports, content ma
 	case conventions.OwnPackages:
 		return ownPackages(imports, tracked)
 	case conventions.PubspecName:
-		return fromFile(pubspecName)
+		return fromFile(func(file []byte) prefix { return pubspecPackages(file, content) })
 	}
 	return prefix{state: PrefixRead} // the language declares no prefix
 }

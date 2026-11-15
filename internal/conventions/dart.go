@@ -24,7 +24,7 @@ func dartImports() Imports {
 		Statements: []ImportForm{{Pattern: dartDirective}},
 		PassesOn:   dartPassesOn,
 		Relative:   NoScheme,
-		Prefix:     Prefix{File: "pubspec.yaml", Format: PubspecName},
+		Prefix:     Prefix{File: "pubspec.yaml", Format: PubspecName, Members: true},
 		Target:     FileTarget,
 		Implicit:   []string{"main.dart"},
 	}
