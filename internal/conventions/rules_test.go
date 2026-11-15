@@ -13,6 +13,7 @@ func TestTestDefinitionMatchesOnlyStatementStarts(t *testing.T) {
 		`func FuzzParse(f *testing.F) {`, `func ExampleStore() {`, `def test_store(self):`,
 		`    async def test_store():`, `class TestStore:`, `  testWidgets('shows a note', (tester) async {`,
 		`  @Test`, `    @Test fun saves() {`, `@ParameterizedTest`, `@org.junit.jupiter.api.Test`, `@RepeatedTest(3)`,
+		"#[test]", "    #[tokio::test]", `#[tokio::test(flavor = "multi_thread")]`,
 		`class TestStore(Base):  # the store`, "class TestStore(\n    Base,\n):", `it.each(rows)("%s", (row) => {`, `it.only("x", () => {`,
 	}
 	misses := []string{
@@ -20,6 +21,7 @@ func TestTestDefinitionMatchesOnlyStatementStarts(t *testing.T) {
 		`// test("commented out", () => {`, `latest("x")`, `protest("x")`,
 		`class TestClock {`, `class TestClock(private val now: Long) : Clock {`, `class TestDao : Dao {`,
 		`        it.also(saved::add)`, `it.close()`, `@TestOnly`, `@TestInstance(Lifecycle.PER_CLASS)`, `// @Test`,
+		"#[cfg(test)]", `#[test_case("a")]`, "// #[test]", "#[testing]", "#[cfg_attr(test, derive(Debug))]",
 	}
 	rules := Default()
 	for _, line := range matches {
