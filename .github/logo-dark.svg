@@ -1,9 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="-80 -40 160 80" role="img" aria-label="plimsoll">
-  <title>plimsoll</title>
-  <clipPath id="water"><circle r="22"/></clipPath>
-  <path clip-path="url(#water)" fill="#1fa3a3" d="M-60 2 q4 -4 8 0 t8 0 t8 0 t8 0 t8 0 t8 0 t8 0 t8 0 t8 0 t8 0 t8 0 t8 0 t8 0 t8 0 t8 0 t8 0 t8 0 V40 H-60 Z"/>
-  <path d="M-72 0 H-30 M30 0 H72" stroke="#e8553d" stroke-width="8" stroke-linecap="round"/>
-  <circle r="30" fill="none" stroke="#e8eef4" stroke-width="8"/>
-  <path d="M-55 -26 V-11 H-45" fill="none" stroke="#e8eef4" stroke-width="3.6" stroke-linejoin="miter"/>
-  <path d="M45 -11 V-26 H51 A4 4 0 0 1 51 -18 H45 M50 -18 L55.5 -11" fill="none" stroke="#e8eef4" stroke-width="3.6" stroke-linejoin="miter"/>
-</svg>

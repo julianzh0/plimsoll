@@ -1,8 +1,5 @@
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset=".github/logo-dark.svg">
-    <img src=".github/logo.svg" alt="plimsoll" width="240">
-  </picture>
+  <img src=".github/logo.svg" alt="plimsoll" width="240">
 </p>
 
 <h1 align="center">plimsoll</h1>
