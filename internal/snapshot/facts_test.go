@@ -73,6 +73,18 @@ func TestBuildReadsRuntimeDependencies(t *testing.T) {
 		{"a pom with a name space, a byte order mark and CRLF", oneFile("pom.xml", "\uFEFF<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n<project xmlns=\"http://maven.apache.org/POM/4.0.0\">\r\n"+pomOwn+"\r\n</project>\r\n"), dependenciesOf("pom.xml", "a:b", "c:d")},
 		{"a file named pom.xml with another root element", oneFile("pom.xml", "<settings/>"), nil},
 		{"a nested pom", oneFile("core/pom.xml", "<project>"+pomOwn+"</project>"), nil},
+		{"a Groovy build file", oneFile("build.gradle", "dependencies {\n  implementation 'org.springframework.boot:spring-boot-starter-web'\n"+
+			"  runtimeOnly \"org.postgresql:postgresql:$pg\"\n  implementation platform('g:bom:1')\n  implementation project(':core')\n"+
+			"  implementation libs.guava\n  implementation libs.guava\n  testImplementation 'junit:junit:4.13'\n}\n"),
+			dependenciesOf("build.gradle", ":core", "g:bom", "libs.guava", "org.postgresql:postgresql", "org.springframework.boot:spring-boot-starter-web")},
+		{"a Gradle root that declares plugins only", oneFile("build.gradle.kts", "plugins {\n    alias(libs.plugins.android.application) apply false\n}\n"), nil},
+		{"Gradle dependencies of the build script and of subprojects left out", oneFile("build.gradle.kts",
+			"buildscript {\n    dependencies {\n        classpath(\"g:a:1\")\n    }\n}\nsubprojects {\n    dependencies {\n        implementation(\"g:b:1\")\n    }\n}\n"), nil},
+		{"a Gradle block with tabs and CRLF that ends with the file", oneFile("build.gradle.kts", "dependencies {\r\n\timplementation(\"g:a:1\") // why\r\n\tapi(project(path = \":x\"))\r\n"),
+			dependenciesOf("build.gradle.kts", ":x", "g:a")},
+		{"a Gradle block with test and compile-only lines alone", oneFile("build.gradle.kts", "dependencies {\n    testImplementation(kotlin(\"test\"))\n    compileOnly(\"g:a:1\")\n}\n"),
+			dependenciesOf("build.gradle.kts")},
+		{"a nested build file", oneFile("app/build.gradle.kts", "dependencies {\n    implementation(\"g:a:1\")\n}\n"), nil},
 	}
 	for _, tc := range cases {
 		if got := snapshot.Build(tc.source, conventions.Default()).Now.Manifests; !reflect.DeepEqual(got, tc.want) {
@@ -89,6 +101,11 @@ func TestBuildLeavesAnUnreadableManifestOut(t *testing.T) {
 		{"pyproject.toml", "[project]\ndependencies = \"a\"\n"},
 		{"pubspec.yaml", "name: x\ndependencies: {a: ^1.0.0}\n"},
 		{"pom.xml", "<project><dependencies>"},
+		{"build.gradle.kts", "dependencies {\n    implementation(kotlin(\"stdlib\"))\n}\n"},
+		{"build.gradle", "dependencies {\n    implementation group: 'g', name: 'a', version: '1'\n}\n"},
+		{"build.gradle.kts", "dependencies {\n    implementation(files(\"libs/a.jar\"))\n}\n"},
+		{"build.gradle.kts", "dependencies {\n    implementation(\n        libs.a.b\n    )\n}\n"},
+		{"build.gradle", "dependencies {\n    implementation \"nocolon\"\n}\n"},
 		{"pom.xml", "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?><project><dependencies/></project>"},
 	} {
 		s := snapshot.Build(snapshottest.Files(nil, map[string]string{tc.file: tc.content}), conventions.Default())
@@ -208,7 +225,7 @@ func TestWantsNamesWhatTheReaderReads(t *testing.T) {
 		"src/a.ts": true, "README.md": false, "package.json": true, "web/package.json": false, ".env.example": true,
 		"tsconfig.json": true, "web/tsconfig.json": false, "go.mod": true, "web/go.mod": false, "pyproject.toml": true, "web/pyproject.toml": false, "pytest.ini": false, "pytest.toml": false,
 		"src/main/resources/application.properties": false, "docs/design.pdf": false, "src/main/resources/META-INF/services/a.B": false,
-		"pom.xml": true, "core/pom.xml": false,
+		"pom.xml": true, "core/pom.xml": false, "build.gradle": true, "build.gradle.kts": true,
 		"pubspec.yaml": true, "app/pubspec.yaml": true, "packages/core/pubspec.yaml": true, "node_modules/x/pubspec.yaml": false,
 		"docs/.env.example": false, "node_modules/x/a.js": false, "assets/logo.bin": true,
 		"docker-compose.yml": true, "deploy/compose.prod.yaml": true, "node_modules/x/compose.yml": false, "compose.txt": false,

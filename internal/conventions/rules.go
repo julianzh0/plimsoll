@@ -68,6 +68,8 @@ const (
 	PubspecDependencies
 	// PomDependencies reads the dependencies a pom.xml declares for itself, in compile or runtime scope.
 	PomDependencies
+	// GradleDependencies reads the implementation, api and runtimeOnly lines of the top-level dependencies block.
+	GradleDependencies
 )
 
 // Limits are every number a mark compares with. No detector holds one.
@@ -144,6 +146,8 @@ func Default() Rules {
 			{File: "pyproject.toml", Format: PyprojectDependencies},
 			{File: "pubspec.yaml", Format: PubspecDependencies},
 			{File: "pom.xml", Format: PomDependencies},
+			{File: "build.gradle", Format: GradleDependencies},
+			{File: "build.gradle.kts", Format: GradleDependencies},
 		},
 		PlanningPaths: []string{
 			"docs/superpowers/", "docs/stories/", "docs/plans/", "docs/specs/", "projects/", ".review-work/",
