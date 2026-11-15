@@ -327,7 +327,8 @@ func TestBuildGivesEachHistoryPathItsArea(t *testing.T) {
 		"docs/qualification/run.json": snapshot.AreaRecords, "evidence/run.txt": snapshot.AreaRecords,
 		"src/projects/list.ts": snapshot.AreaProduct,
 		"Acme.Tests/A.cs":      snapshot.AreaTests, "src/Acme.Core.Test/Util/A.cs": snapshot.AreaTests,
-		"Acme.Testing/A.cs": snapshot.AreaProduct, "src/Contests/A.cs": snapshot.AreaProduct, "UnitTests/A.cs": snapshot.AreaProduct,
+		"Acme.Testing/A.cs": snapshot.AreaProduct, "Tests/NotesTests/StoreTests.swift": snapshot.AreaTests,
+		"Sources/Notes/Tests.swift": snapshot.AreaProduct, "src/Contests/A.cs": snapshot.AreaProduct, "UnitTests/A.cs": snapshot.AreaProduct,
 		"Acme.tests/A.cs": snapshot.AreaProduct, "src/Acme/Acme.csproj": snapshot.AreaOther, "Acme.sln": snapshot.AreaOther,
 		"Directory.Build.props": snapshot.AreaOther, "src/Acme/Form1.Designer.cs": snapshot.AreaProduct,
 	}

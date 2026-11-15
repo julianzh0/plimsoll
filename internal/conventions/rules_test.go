@@ -16,6 +16,7 @@ func TestTestDefinitionMatchesOnlyStatementStarts(t *testing.T) {
 		"#[test]", "    #[tokio::test]", `#[tokio::test(flavor = "multi_thread")]`,
 		`    [Fact]`, `[Theory]`, `    [Fact(Skip = "slow")]`, `[Test] public void X() {}`, `[TestMethod, TestCategory("x")]`,
 		`[Xunit.Fact]`, `[TestCase(1, 2)]`, `[FactAttribute]`,
+		"    func testCount() {", "func testThrows() throws {",
 		`class TestStore(Base):  # the store`, "class TestStore(\n    Base,\n):", `it.each(rows)("%s", (row) => {`, `it.only("x", () => {`,
 	}
 	misses := []string{
@@ -26,6 +27,7 @@ func TestTestDefinitionMatchesOnlyStatementStarts(t *testing.T) {
 		"#[cfg(test)]", `#[test_case("a")]`, "// #[test]", "#[testing]", "#[cfg_attr(test, derive(Debug))]",
 		`[TestClass]`, `[TestFixture]`, `[TestCategory("x")]`, `[TestInitialize]`, `[TestCaseSource(nameof(Cases))]`,
 		`[DataTestMethod]`, `[Theorem]`, `// [Fact]`, `[InlineData(1)]`, `var a = [Test];`, `[Benchmark]`,
+		"// func testCount() {", "let test = func", "functional(test())",
 	}
 	rules := Default()
 	for _, line := range matches {
@@ -64,7 +66,7 @@ func TestLanguageOfAPath(t *testing.T) {
 }
 
 func TestRuleNamesHowTestCodeIsRecognized(t *testing.T) {
-	want := "`tests/`, `test/`, `__tests__/`, `spec/`, `integration_test/`, `src/test[A-Z]*/`, `src/*Test*/`, `*.Tests/`, `*.Test/`, " +
+	want := "`tests/`, `Tests/`, `test/`, `__tests__/`, `spec/`, `integration_test/`, `src/test[A-Z]*/`, `src/*Test*/`, `*.Tests/`, `*.Test/`, " +
 		"`*.test.*`, `*.spec.*`, `*_test.*`, `*-test.*`, `test_*`"
 	if got := Default().TestRule(); got != want {
 		t.Errorf("TestRule() = %q, want %q", got, want)
