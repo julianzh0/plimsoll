@@ -76,13 +76,9 @@ func ratioEvidence(s snapshot.Snapshot, m answer.Mark) []string {
 		return cmp.Or(cmp.Compare(measured(b), measured(a)), strings.Compare(a.Path, b.Path))
 	})
 	for _, file := range tests {
-		kind := "defines a test"
-		switch file.Role {
-		case snapshot.TestInfrastructure:
-			kind = "test infrastructure"
-		case snapshot.Product:
-			kind = "test code inside a product file"
-		}
+		kind := map[snapshot.Role]string{
+			snapshot.Test: "defines a test", snapshot.TestInfrastructure: "test infrastructure", snapshot.Product: "test code inside a product file",
+		}[file.Role]
 		lines = append(lines, fmt.Sprintf("`%s`: %s, %s", file.Path, answer.Plural(measured(file), "line"), kind))
 	}
 	return lines
