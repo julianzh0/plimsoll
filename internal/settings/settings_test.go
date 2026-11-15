@@ -48,6 +48,8 @@ func languageCases() map[string]struct{ file, testFile, static, dynamic string }
 		"go":         {"internal/config/config.go", "internal/config/config_test.go", `os.Getenv("%s")`, "os.Getenv(name)"},
 		"python":     {"src/app/config.py", "tests/test_config.py", `os.environ["%s"]`, "os.environ[name]"},
 		"dart":       {"lib/config.dart", "test/config_test.dart", "Platform.environment['%s']", "Platform.environment[name]"},
+		"java":       {"src/main/java/com/acme/Config.java", "src/test/java/com/acme/ConfigTest.java", `System.getenv("%s")`, "System.getenv(name)"},
+		"kotlin":     {"src/main/kotlin/com/acme/Config.kt", "src/test/kotlin/com/acme/ConfigTest.kt", `System.getenv("%s")`, "System.getenv(name)"},
 	}
 }
 

@@ -15,6 +15,11 @@ type Imports struct {
 	FolderExcept *regexp.Regexp // for a folder target: file names an import of the folder does not reach
 	NoRings      string         // why import rings are not looked for among its files; "" looks for them
 	Implicit     []string       // file names the language runs without an import of them
+	// FolderAlso, for a folder target, names extensions of other entries' files that share its folders; an import of
+	// the folder reaches them too.
+	FolderAlso []string
+	// PackageLine, for SourceRoots, is the declaration of a file's package; its group "package" holds the dotted name.
+	PackageLine *regexp.Regexp
 	// TypeOnlyBlock matches a block whose imports are of types only; a statement whose target starts inside one is
 	// type-only. Its Pattern is nil for a language without such blocks.
 	TypeOnlyBlock ImportForm
@@ -77,6 +82,10 @@ const (
 	OwnPackages
 	// PubspecName is the name of a pubspec.yaml: "package:<name>/x" is the file x under lib/.
 	PubspecName
+	// SourceRoots are the packages that files under the source roots declare. Roots holds the last folders of a
+	// source root as a pattern, each part a name or "*": "src/*/java" is a folder java in any folder directly in a
+	// folder src, at any depth.
+	SourceRoots
 )
 
 // Candidates are the tracked paths a file import may mean when the path as written is not a tracked file.

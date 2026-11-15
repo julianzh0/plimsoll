@@ -73,6 +73,8 @@ func TestBuildReadsRuntimeDependencies(t *testing.T) {
 		{"a pom with a name space, a byte order mark and CRLF", oneFile("pom.xml", "\uFEFF<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n<project xmlns=\"http://maven.apache.org/POM/4.0.0\">\r\n"+pomOwn+"\r\n</project>\r\n"), dependenciesOf("pom.xml", "a:b", "c:d")},
 		{"a file named pom.xml with another root element", oneFile("pom.xml", "<settings/>"), nil},
 		{"a nested pom", oneFile("core/pom.xml", "<project>"+pomOwn+"</project>"), nil},
+		{"java", snapshottest.Load(t, "testdata/java"), dependenciesOf("pom.xml", "com.fasterxml.jackson.core:jackson-databind", "org.postgresql:postgresql")},
+		{"kotlin", snapshottest.Load(t, "testdata/kotlin"), dependenciesOf("build.gradle.kts", ":shared", "io.ktor:ktor-bom", "io.ktor:ktor-client-core", "libs.kotlinx.coroutines.core", "org.slf4j:slf4j-simple")},
 		{"a Groovy build file", oneFile("build.gradle", "dependencies {\n  implementation 'org.springframework.boot:spring-boot-starter-web'\n"+
 			"  runtimeOnly \"org.postgresql:postgresql:$pg\"\n  implementation platform('g:bom:1')\n  implementation project(':core')\n"+
 			"  implementation libs.guava\n  implementation libs.guava\n  testImplementation 'junit:junit:4.13'\n}\n"),

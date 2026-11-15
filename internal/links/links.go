@@ -205,6 +205,11 @@ func entryNotes(languages []snapshot.LanguageImports) []string {
 		}
 	}
 	for _, l := range languages {
+		if l.SourceSets {
+			notes = append(notes, fmt.Sprintf("`%s`: a package's folders under a test folder directly in `src/` are reached only from files under such a folder", l.Language))
+		}
+	}
+	for _, l := range languages {
 		if len(l.Implicit) > 0 {
 			notes = append(notes, fmt.Sprintf("`%s`: %s run without an import of them; a new one is not listed as a file without an importer",
 				l.Language, joined(answer.Quoted(l.Implicit), "and")))

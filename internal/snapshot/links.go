@@ -34,6 +34,7 @@ type LanguageImports struct {
 	NoRings        string   // the entry's reason; "" when rings are looked for
 	Roots          []string // for a language that names no prefix file: the folders whose packages are its own
 	Implicit       []string // file names the language runs without an import of them
+	SourceSets     bool     // its packages lie under source roots, and a test source set is reached only from one
 }
 
 // Own is the language's imports of the repository's own code: all but those outside.
@@ -189,11 +190,12 @@ func links(rules conventions.Rules, content map[string][]byte, tree Tree, readin
 		if len(files) == 0 {
 			continue
 		}
-		own := readPrefix(rules, imports, content, s.tracked)
+		own := readPrefix(rules, language, content, s.tracked)
 		counts := LanguageImports{
 			Language: language.Name, PrefixFile: imports.Prefix.File, Prefix: own.state,
 			PrefixRequired: imports.Prefix.Required, Folders: imports.Target == conventions.FolderTarget,
 			NoRings: imports.NoRings, Roots: imports.Prefix.Roots, Implicit: imports.Implicit,
+			SourceSets: imports.Prefix.Format == conventions.SourceRoots,
 		}
 		for _, file := range files {
 			r := readings[file.Path]
@@ -250,8 +252,16 @@ func (s side) resolve(language conventions.Language, own prefix, from string, st
 		return nil, outcome
 	}
 	if imports.Target == conventions.FolderTarget {
-		reached, outcome := s.folder(language, bases[0])
-		return []target{reached}, outcome
+		var reached []target
+		for _, base := range bases {
+			if t, outcome := s.folder(language, base); outcome == resolved {
+				reached = append(reached, t)
+			}
+		}
+		if len(reached) == 0 {
+			return nil, notFound
+		}
+		return reached, resolved
 	}
 	module, moduleOutcome := s.file(imports.Candidates, bases, catchAll)
 	if st.names == nil {
@@ -372,7 +382,9 @@ func (s side) folder(language conventions.Language, folder string) (target, kind
 	reached := target{to: folder, folder: true}
 	inFolder := false
 	for _, p := range s.folders[folder] {
-		if !slices.Contains(language.Extensions, conventions.Suffix(p)) || language.Imports.FolderExcept.MatchString(path.Base(p)) {
+		suffix := conventions.Suffix(p)
+		if !slices.Contains(language.Extensions, suffix) && !slices.Contains(language.Imports.FolderAlso, suffix) ||
+			language.Imports.FolderExcept != nil && language.Imports.FolderExcept.MatchString(path.Base(p)) {
 			continue
 		}
 		inFolder = true

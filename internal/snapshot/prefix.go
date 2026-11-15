@@ -42,7 +42,8 @@ type prefix struct {
 // reader; resolving an import needs only the function it returns.
 // NOTE: only the root config is read; an extended or nested config, replace, go.work and workspaces are not followed,
 // so imports through them count as outside. Upgrade: follow extends through tracked files.
-func readPrefix(rules conventions.Rules, imports conventions.Imports, content map[string][]byte, tracked map[string]bool) prefix {
+func readPrefix(rules conventions.Rules, language conventions.Language, content map[string][]byte, tracked map[string]bool) prefix {
+	imports := language.Imports
 	fromFile := func(parse func([]byte) prefix) prefix {
 		file, present := content[imports.Prefix.File]
 		switch {
@@ -60,6 +61,8 @@ func readPrefix(rules conventions.Rules, imports conventions.Imports, content ma
 		return fromFile(func(file []byte) prefix { return tsconfigPaths(rules, file) })
 	case conventions.OwnPackages:
 		return ownPackages(imports, tracked)
+	case conventions.SourceRoots:
+		return sourcePackages(rules, language, content, tracked)
 	case conventions.PubspecName:
 		return fromFile(func(file []byte) prefix { return pubspecPackages(file, content) })
 	}

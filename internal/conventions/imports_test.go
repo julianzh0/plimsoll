@@ -48,13 +48,10 @@ func TestEveryLanguageNamesItsImportForms(t *testing.T) {
 		}
 		switch imports.Target {
 		case FileTarget:
-			if imports.FolderExcept != nil {
-				t.Errorf("%s: a file target takes no FolderExcept", l.Name)
+			if imports.FolderExcept != nil || imports.FolderAlso != nil {
+				t.Errorf("%s: a file target takes neither FolderExcept nor FolderAlso", l.Name)
 			}
 		case FolderTarget:
-			if imports.FolderExcept == nil {
-				t.Errorf("%s: a folder target needs FolderExcept", l.Name)
-			}
 		default:
 			t.Errorf("%s: Target = %v, want a file or a folder target", l.Name, imports.Target)
 		}
@@ -113,6 +110,18 @@ func importCases() map[string]map[string][]string {
 			"// import 'x.dart';\n":                                 nil,
 			"import 'a.dart' if (dart.library.io) 'b.dart';\n":      {"a.dart"},
 			"import 'package:a/a.dart'\n    deferred as a;\n":       {"package:a/a.dart"},
+		},
+		"java": {
+			"package a;\n\nimport com.acme.billing.Invoice;\nimport static com.acme.billing.Invoice.MAX;\nimport com.acme.billing.*;\n": {
+				"com.acme.billing.*", "com.acme.billing.Invoice", "com.acme.billing.Invoice.MAX",
+			},
+			"// import a.b.C;\n/**\n * import a.b.C;\n */\nString s = \"import a.b.C;\";\nimportant.call();\n": nil,
+			"import a.b.C;\r\nimport a.b.D;\r\n": {"a.b.C", "a.b.D"},
+		},
+		"kotlin": {
+			"import com.acme.a.B as C\nimport com.acme.a.load\nimport com.acme.a.*\n": {"com.acme.a.*", "com.acme.a.B", "com.acme.a.load"},
+			"import `in`.acme.a.B\n":               {"`in`.acme.a.B"},
+			"// import a.b.C\nval important = 1\n": nil,
 		},
 	}
 }
@@ -241,7 +250,7 @@ func TestAFormMatchesOnlyTextThatHoldsOneOfItsWords(t *testing.T) {
 				}
 			}
 		}
-		if want := map[string]int{"typescript": 2, "go": 0, "python": 2, "dart": 0}[l.Name]; worded != want {
+		if want := map[string]int{"typescript": 2, "go": 0, "python": 2, "dart": 0, "java": 0, "kotlin": 0}[l.Name]; worded != want {
 			t.Errorf("%s: %d forms with words, want %d", l.Name, worded, want)
 		}
 	}

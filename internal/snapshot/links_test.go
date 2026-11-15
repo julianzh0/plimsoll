@@ -242,6 +242,8 @@ func TestBuildKeepsNoImportText(t *testing.T) {
 		"src/a.ts":   "import x from \"zzmarker-outside\";\nimport y from \"./zzmarker-missing\";\nimport(\"zzmarker\" + n);\nimport z from \"./b.ts\";\n",
 		"src/b.ts":   "export const b = 1;\n",
 		"src/app.py": "from zzmarker_pkg import zzmarker_name\nimport zzmarker_missing\nfrom . import zzmarker_gone\nimportlib.import_module(\"zzmarker.\" + n)\n",
+		// Outside, not found and resolved: the reader builds a folder path from the second and keeps none of them.
+		"src/main/java/com/acme/A.java": "package com.acme;\nimport zzmarker.Outside;\nimport com.acme.zzmarker.Gone;\nimport com.acme.zzmarker;\n",
 	}
 	s := snapshot.Build(snapshottest.Files(tree, tree), conventions.Default())
 	printed := fmt.Sprintf("%+v", s)
@@ -310,6 +312,111 @@ func TestBuildFollowsImportsIntoDartWorkspaceMembers(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got.List, want) || got.Languages[0].Outside != 1 || got.Languages[0].NotFound != 0 {
 		t.Errorf("links = %+v, languages %+v; want the members' packages as own and http outside", got.List, got.Languages)
+	}
+}
+
+// jvmTree holds a package in three folders (two source sets of one module and a test source set of another), a
+// package under a test source set only, and imports that are outside or lead to no tracked package.
+func jvmTree() map[string]string {
+	return map[string]string{
+		"app/src/main/java/com/acme/a/A.java":        "package com.acme.a;\n\nimport com.acme.b.B;\nimport com.acme.fakes.Fake;\nimport com.acme.a.gen.proto.Message;\nimport com.other.Lib;\n",
+		"app/src/main/kotlin/com/acme/b/B.kt":        "package com.acme.b\n",
+		"app/src/demo/kotlin/com/acme/b/Demo.kt":     "package com.acme.b\n",
+		"app/src/test/java/com/acme/fakes/Fake.java": "package com.acme.fakes;\n",
+		"app/src/test/java/com/acme/a/ATest.java":    "package com.acme.a;\n\nimport com.acme.b.*;\nimport com.acme.fakes.Fake;\n",
+		"lib/src/test/kotlin/com/acme/b/BTest.kt":    "package com.acme.b\n\nimport `com`.acme.b.B\n",
+	}
+}
+
+func TestBuildFollowsJavaAndKotlinImportsToPackages(t *testing.T) {
+	folder := func(from string, line int, to string, files ...string) snapshot.Link {
+		return snapshot.Link{From: from, Line: line, To: to, Folder: true, Files: files}
+	}
+	entry := func(name string, resolved, outside, notFound int, implicit ...string) snapshot.LanguageImports {
+		return snapshot.LanguageImports{
+			Language: name, Resolved: resolved, Outside: outside, NotFound: notFound, Prefix: snapshot.PrefixRead, PrefixRequired: true,
+			Folders: true, SourceSets: true, NoRings: "an import names a package, not a file",
+			Roots: []string{"src/*/java", "src/*/kotlin"}, Implicit: implicit,
+		}
+	}
+	java := func(resolved, outside, notFound int) snapshot.LanguageImports {
+		return entry("java", resolved, outside, notFound, "package-info.java", "module-info.java")
+	}
+	notes, notesTest := "src/main/java/com/acme/notes", "src/test/java/com/acme/notes"
+	store := []string{notes + "/store/NoteStore.java", notes + "/store/package-info.java"}
+	tasks, legacy, tasksTest := "src/main/kotlin/com/acme/tasks", "src/main/java/com/acme/tasks/legacy", "src/test/kotlin/com/acme/tasks/data"
+	device := "src/androidTest/kotlin/com/acme/tasks/MainScreenTest.kt"
+	data := []string{tasks + "/data/Loaders.kt", tasks + "/data/TaskRepository.kt"}
+	a, aTest, bTest := "app/src/main/java/com/acme/a/A.java", "app/src/test/java/com/acme/a/ATest.java", "lib/src/test/kotlin/com/acme/b/BTest.kt"
+	demo, mainB := "app/src/demo/kotlin/com/acme/b", "app/src/main/kotlin/com/acme/b"
+	cases := []struct {
+		name      string
+		got       snapshot.Links
+		languages []snapshot.LanguageImports
+		list      []snapshot.Link
+	}{
+		// App.java reaches the store folder under src/main only; AppTest.java also the one under src/test. The
+		// import of the generated NoteProto resolves and gives no link.
+		{"the Maven sample", snapshot.Build(snapshottest.Load(t, "testdata/java"), conventions.Default()).Now.Links,
+			[]snapshot.LanguageImports{java(7, 5, 0)},
+			[]snapshot.Link{
+				folder(notes+"/App.java", 3, notes+"/model", notes+"/model/Note.java"),
+				folder(notes+"/App.java", 6, notes+"/store", store...),
+				folder(notes+"/store/NoteStore.java", 3, notes+"/model", notes+"/model/Note.java"),
+				folder(notes+"/store/NoteStore.java", 4, notes+"/model", notes+"/model/Note.java"),
+				folder(notesTest+"/AppTest.java", 5, notes+"/store", store...),
+				folder(notesTest+"/AppTest.java", 5, notesTest+"/store", notesTest+"/store/FakeClock.java", notesTest+"/store/NoteStoreTest.java"),
+				folder(notesTest+"/store/NoteStoreTest.java", 3, notes+"/model", notes+"/model/Note.java"),
+			}},
+		// Kotlin reaches the Java class and Java the Kotlin one; a top-level function is a member of its package.
+		{"the Gradle sample", snapshot.Build(snapshottest.Load(t, "testdata/kotlin"), conventions.Default()).Now.Links,
+			[]snapshot.LanguageImports{java(1, 0, 0), entry("kotlin", 10, 3, 0)},
+			[]snapshot.Link{
+				folder(device, 3, tasks+"/data", data...),
+				folder(device, 3, tasksTest, tasksTest+"/TaskRepositoryTest.kt", tasksTest+"/TestTaskDao.kt"),
+				folder(legacy+"/Clock.java", 3, tasks+"/model", tasks+"/model/Task.kt"),
+				folder(tasks+"/Main.kt", 3, tasks+"/data", data...),
+				folder(tasks+"/Main.kt", 4, tasks+"/data", data...),
+				folder(tasks+"/Main.kt", 5, legacy, legacy+"/Clock.java"),
+				folder(tasks+"/data/Loaders.kt", 3, tasks+"/model", tasks+"/model/Task.kt"),
+				folder(tasks+"/data/Loaders.kt", 4, tasks+"/model", tasks+"/model/Task.kt"),
+				folder(tasks+"/data/TaskRepository.kt", 3, legacy, legacy+"/Clock.java"),
+				folder(tasks+"/data/TaskRepository.kt", 4, tasks+"/model", tasks+"/model/Task.kt"),
+				folder(tasksTest+"/TaskRepositoryTest.kt", 3, legacy, legacy+"/Clock.java"),
+				folder(tasksTest+"/TestTaskDao.kt", 3, tasks+"/model", tasks+"/model/Task.kt"),
+			}},
+		// A.java: fakes lies under a test source set only (outside), gen.proto is no tracked package (not found),
+		// com.other shares no package (outside). BTest.kt imports its own package and gets no link to itself.
+		{"a package in several folders", linksOf(jvmTree()),
+			[]snapshot.LanguageImports{java(3, 2, 1), entry("kotlin", 1, 0, 0)},
+			[]snapshot.Link{
+				folder(a, 3, demo, demo+"/Demo.kt"), folder(a, 3, mainB, mainB+"/B.kt"),
+				folder(aTest, 3, demo, demo+"/Demo.kt"), folder(aTest, 3, mainB, mainB+"/B.kt"),
+				folder(aTest, 3, "lib/src/test/kotlin/com/acme/b", bTest),
+				folder(aTest, 4, "app/src/test/java/com/acme/fakes", "app/src/test/java/com/acme/fakes/Fake.java"),
+				folder(bTest, 3, demo, demo+"/Demo.kt"), folder(bTest, 3, mainB, mainB+"/B.kt"),
+			}},
+	}
+	for _, tc := range cases {
+		if !reflect.DeepEqual(tc.got.Languages, tc.languages) {
+			t.Errorf("%s: Languages = %+v, want %+v", tc.name, tc.got.Languages, tc.languages)
+		}
+		if !reflect.DeepEqual(tc.got.List, tc.list) || len(tc.got.PassOn) != 0 {
+			t.Errorf("%s: List = %+v, PassOn %q; want %+v and none", tc.name, tc.got.List, tc.got.PassOn, tc.list)
+		}
+	}
+	want := linksOf(jvmTree())
+	if crlf := linksOf(withCRLF(jvmTree())); !reflect.DeepEqual(crlf, want) {
+		t.Errorf("CRLF line ends: Links = %+v, want %+v", crlf, want)
+	}
+	bom := jvmTree()
+	bom[a] = "\uFEFF" + bom[a]
+	if withBOM := linksOf(bom); !reflect.DeepEqual(withBOM, want) {
+		t.Errorf("a byte order mark: Links = %+v, want %+v", withBOM, want)
+	}
+	noRoot := linksOf(map[string]string{"app/A.java": "import com.acme.b.B;\n", "app/com/acme/b/B.java": "package com.acme.b;\n"})
+	if l := noRoot.Languages[0]; l.Prefix != snapshot.PrefixAbsent || l.Outside != 1 || len(noRoot.List) != 0 {
+		t.Errorf("Java files without a source root: %+v, want PrefixAbsent and the import outside", noRoot)
 	}
 }
 

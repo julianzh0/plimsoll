@@ -63,14 +63,16 @@ func TestBuildKeepsCommentedOutNamesApart(t *testing.T) {
 
 func TestBuildCountsDynamicReadsPerLanguage(t *testing.T) {
 	files := map[string]string{
-		"src/a.ts":        "process.env[key]\nprocess.env[key2]\nprocess.env[\"X\"]\n",
-		"cmd/main.go":     "x := os.Getenv(name)\n",
-		"tests/a.test.ts": "process.env[key]\n",
-		"bin/run.sh":      "process.env[key]\n",
-		"src/b.py":        "os.environ[key]\n",
+		"src/a.ts":             "process.env[key]\nprocess.env[key2]\nprocess.env[\"X\"]\n",
+		"cmd/main.go":          "x := os.Getenv(name)\n",
+		"tests/a.test.ts":      "process.env[key]\n",
+		"bin/run.sh":           "process.env[key]\n",
+		"src/b.py":             "os.environ[key]\n",
+		"src/main/java/A.java": "System.getenv(name);\nSystem.getenv(\"X\");\n",
+		"src/main/kotlin/B.kt": "System.getenv(key)\n",
 	}
 	got := snapshot.Build(snapshottest.Files(nil, files), conventions.Default()).Now.Dynamic
-	if want := []snapshot.DynamicRead{{Path: "cmd/main.go", Count: 1}, {Path: "src/a.ts", Count: 2}, {Path: "src/b.py", Count: 1}}; !reflect.DeepEqual(got, want) {
+	if want := []snapshot.DynamicRead{{Path: "cmd/main.go", Count: 1}, {Path: "src/a.ts", Count: 2}, {Path: "src/b.py", Count: 1}, {Path: "src/main/java/A.java", Count: 1}, {Path: "src/main/kotlin/B.kt", Count: 1}}; !reflect.DeepEqual(got, want) {
 		t.Errorf("Build.Dynamic = %+v, want %+v", got, want)
 	}
 }

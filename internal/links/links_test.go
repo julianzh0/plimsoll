@@ -31,8 +31,9 @@ type languageCase struct {
 	placed    func(folder, name string) string // the path of product file name in a folder below under
 	under     string                           // the folder that placed files lie below
 	// Set by eachLanguage from the entry:
-	byFolder bool   // its imports name folders
-	noRings  string // why no rings are looked for among its files; "" looks for them
+	byFolder   bool   // its imports name folders
+	sourceSets bool   // its packages lie under source roots
+	noRings    string // why no rings are looked for among its files; "" looks for them
 }
 
 func languageCases() map[string]languageCase {
@@ -112,6 +113,8 @@ func languageCases() map[string]languageCase {
 				return strings.Join(lines, "\n") + "\n"
 			},
 		},
+		"java":   jvmCase("java", ".java", ";", "@Test void x() {}"),
+		"kotlin": jvmCase("kotlin", ".kt", "", "@Test fun x() {}"),
 		"go": {
 			setup:    map[string]string{"go.mod": "module " + goModule + "\n"},
 			product:  func(name string) string { return "internal/" + name + "/" + name + ".go" },
@@ -136,6 +139,49 @@ func languageCases() map[string]languageCase {
 	}
 }
 
+// jvmCase is the case of a language whose imports name packages under source roots. Java and Kotlin differ in
+// the source folder, the suffix, the end of a statement and the line that defines a test. Every product file is
+// its own package, as in the Go case; test support is a package named test in the main source set, which
+// product code may import.
+func jvmCase(source, suffix, end, testBody string) languageCase {
+	main, tests := "src/main/"+source+"/com/acme/", "src/test/"+source+"/com/acme/"
+	class := func(name string) string { return strings.ToUpper(name[:1]) + name[1:] + suffix }
+	return languageCase{
+		setup:   map[string]string{},
+		product: func(name string) string { return main + name + "/" + class(name) },
+		placed:  func(folder, name string) string { return main + folder + "/" + name + "/" + class(name) },
+		under:   strings.TrimSuffix(main, "/"),
+		test: func(name string) string {
+			return tests + name + "/" + strings.TrimSuffix(class(name), suffix) + "Test" + suffix
+		},
+		support:  func(name string) string { return main + "test/" + name + "/" + class(name) },
+		testBody: testBody,
+		outside:  []string{"java.util.List", "java.io.File", "org.junit.Assert"},
+		nowhere:  "com.acme.a.gone.Gone",
+		importing: func(from string, targets []string, specs ...string) string {
+			lines := []string{"package " + packageOf(from) + end}
+			for _, target := range targets {
+				lines = append(lines, "import "+packageOf(target)+"."+strings.TrimSuffix(path.Base(target), suffix)+end)
+			}
+			for _, spec := range specs {
+				lines = append(lines, "import "+spec+end)
+			}
+			return strings.Join(lines, "\n") + "\n"
+		},
+	}
+}
+
+// packageOf is the dotted package of a file under a source root; a file elsewhere gets its folder's name.
+func packageOf(file string) string {
+	folder := path.Dir(file) + "/"
+	for _, source := range []string{"/java/", "/kotlin/"} {
+		if _, below, found := strings.Cut(folder, source); found {
+			return strings.ReplaceAll(strings.TrimSuffix(below, "/"), "/", ".")
+		}
+	}
+	return path.Base(path.Dir(file))
+}
+
 // eachLanguage runs a test body for every language entry with its case.
 func eachLanguage(t *testing.T, body func(t *testing.T, name string, c languageCase)) {
 	t.Helper()
@@ -146,6 +192,7 @@ func eachLanguage(t *testing.T, body func(t *testing.T, name string, c languageC
 			continue
 		}
 		c.byFolder, c.noRings = language.Imports.Target == conventions.FolderTarget, language.Imports.NoRings
+		c.sourceSets = language.Imports.Prefix.Format == conventions.SourceRoots
 		t.Run(language.Name, func(t *testing.T) { body(t, language.Name, c) })
 	}
 }
@@ -206,6 +253,10 @@ func TestLinksCountImportsPerAnalysedLanguage(t *testing.T) {
 		}
 		if got, want := slices.Contains(f.Notes, wantFolderNote), c.byFolder; got != want {
 			t.Errorf("the folder note present = %v, want %v", got, want)
+		}
+		sourceSetsNote := "`" + name + "`: a package's folders under a test folder directly in `src/` are reached only from files under such a folder"
+		if got, want := slices.Contains(f.Notes, sourceSetsNote), c.sourceSets; got != want {
+			t.Errorf("the source-set note present = %v, want %v", got, want)
 		}
 		for _, note := range []string{
 			"`python`: its own packages are looked for at the root and under `src/`; an import of a package elsewhere counts as outside",
@@ -279,6 +330,8 @@ func TestADeclaredRootIsNamedAndSearched(t *testing.T) {
 func TestALanguageWithoutItsPrefixFile(t *testing.T) {
 	golang, ts := languageCases()["go"], languageCases()["typescript"]
 	loose := map[string]string{"lib/app/a.py": "import app.b\n", "lib/app/b.py": "x = 1\n"}
+	noRoot := map[string]string{"app/A.java": "import com.acme.b.B;\n", "app/com/acme/b/B.java": "package com.acme.b;\n"}
+	scripts := map[string]string{"build.gradle.kts": "import org.gradle.api.JavaVersion\n", "settings.gradle.kts": "rootProject.name = \"x\"\n"}
 	with := func(files map[string]string, path, content string) map[string]string {
 		changed := clone(files)
 		if content == "" {
@@ -308,6 +361,10 @@ func TestALanguageWithoutItsPrefixFile(t *testing.T) {
 			"`python`: no package of its own at the root or under `src/`, so its own imports cannot be told from outside ones; no link numbers for its files", false},
 		{"python with a declared root and no package", with(loose, "pyproject.toml", "[tool.pytest.ini_options]\npythonpath = [\"lib\"]\n"), with(loose, "pyproject.toml", "[tool.pytest.ini_options]\npythonpath = [\"lib\"]\n"),
 			"`python`: no package of its own at the root, under `src/` or under `lib/`, so its own imports cannot be told from outside ones; no link numbers for its files", false},
+		{"java without a source root", noRoot, noRoot,
+			"`java`: no package of its own under `src/*/java/` or under `src/*/kotlin/`, so its own imports cannot be told from outside ones; no link numbers for its files", false},
+		{"kotlin build scripts alone", scripts, scripts,
+			"`kotlin`: no package of its own under `src/*/java/` or under `src/*/kotlin/`, so its own imports cannot be told from outside ones; no link numbers for its files", false},
 		{"a module added since the base", loose, with(loose, "main.py", "x = 1\n"),
 			"`python`: no package of its own at the root or under `src/` at the base, so its own imports cannot be told from outside ones; no link numbers for its files", false},
 	}
