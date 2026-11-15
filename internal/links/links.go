@@ -129,8 +129,11 @@ func prefixBlocks(now, before snapshot.LanguageImports, atBase bool) string {
 		state, when = before.Prefix, " at the base"
 	}
 	missing := fmt.Sprintf("`%s` at the root", now.PrefixFile)
-	if len(now.Roots) > 0 {
+	switch {
+	case len(now.Roots) > 0:
 		missing = "package of its own " + places(now.Roots, "or")
+	case now.PrefixFile == "":
+		missing = "package of its own declared by its files"
 	}
 	switch state {
 	case snapshot.PrefixAbsent:

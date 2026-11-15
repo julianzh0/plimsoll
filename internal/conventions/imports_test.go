@@ -22,11 +22,14 @@ func language(t *testing.T, name string) Language {
 func found(imports Imports, text string) []string {
 	var all []string
 	for _, form := range imports.Statements {
-		spec, kind := form.Pattern.SubexpIndex("spec"), form.Pattern.SubexpIndex("type")
+		spec, kind, everywhere := form.Pattern.SubexpIndex("spec"), form.Pattern.SubexpIndex("type"), form.Pattern.SubexpIndex("everywhere")
 		for _, m := range form.Pattern.FindAllStringSubmatchIndex(text, -1) {
 			item := text[m[2*spec]:m[2*spec+1]]
 			if kind >= 0 && m[2*kind] >= 0 {
 				item += ":type"
+			}
+			if everywhere >= 0 && m[2*everywhere] >= 0 {
+				item += ":everywhere"
 			}
 			all = append(all, item)
 		}
@@ -38,8 +41,8 @@ func found(imports Imports, text string) []string {
 func TestEveryLanguageNamesItsImportForms(t *testing.T) {
 	for _, l := range Default().Languages {
 		imports := l.Imports
-		if len(imports.Statements) == 0 || imports.Prefix.File == "" && len(imports.Prefix.Roots) == 0 {
-			t.Errorf("%s: Imports = %+v, want import forms and a prefix file or roots", l.Name, imports)
+		if len(imports.Statements) == 0 || imports.Prefix.File == "" && len(imports.Prefix.Roots) == 0 && imports.PackageLine == nil {
+			t.Errorf("%s: Imports = %+v, want import forms and a prefix file, roots or a package declaration", l.Name, imports)
 		}
 		for _, form := range imports.Statements {
 			if form.Pattern.SubexpIndex("spec") < 0 {
@@ -133,6 +136,17 @@ func importCases() map[string]map[string][]string {
 			"extern crate alloc;\npub extern crate grep_cli as cli;\n":                {"alloc", "grep_cli"},
 			"// use a::b;\n/// use a::b;\nlet used = 1;\nfn user() {}\nmodule!(x);\n": nil,
 			"use a::b;\r\nmod c;\r\n":                                                 {"a::b", "mod c"},
+		},
+		"csharp": {
+			"using System;\nusing Acme.Billing;\nglobal using Acme.Core;\n": {"Acme.Billing", "Acme.Core:everywhere", "System"},
+			"using static Acme.Billing.Invoice;\nusing Money = Acme.Billing.Money;\nglobal using static Acme.Core.Guard;\n": {
+				"Acme.Billing", "Acme.Billing", "Acme.Core:everywhere",
+			},
+			"using global::Autofac;\nusing Map = System.Collections.Generic.Dictionary<string, int>;\n":                               {"Autofac", "System.Collections.Generic"},
+			"namespace A\n{\n    using B.C;\n}\n":                                                                                     {"B.C"},
+			"        using var scope = factory.CreateScope();\n        using (var x = Open())\n        await using var y = Make();\n": nil,
+			"// using A.B;\nvar s = \"using A.B;\";\nusing static PipelineTests;\nusing P = (int X, int Y);\n":                        nil,
+			"using A.B;\r\nusing C.D;\r\n": {"A.B", "C.D"},
 		},
 	}
 }
@@ -268,7 +282,7 @@ func TestAFormMatchesOnlyTextThatHoldsOneOfItsWords(t *testing.T) {
 				}
 			}
 		}
-		if want := map[string]int{"typescript": 2, "go": 0, "python": 2, "dart": 0, "java": 0, "kotlin": 0, "rust": 0}[l.Name]; worded != want {
+		if want := map[string]int{"typescript": 2, "go": 0, "python": 2, "dart": 0, "java": 0, "kotlin": 0, "rust": 0, "csharp": 0}[l.Name]; worded != want {
 			t.Errorf("%s: %d forms with words, want %d", l.Name, worded, want)
 		}
 	}

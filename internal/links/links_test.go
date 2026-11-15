@@ -137,6 +137,7 @@ func languageCases() map[string]languageCase {
 				return strings.Join(append(lines, ")"), "\n") + "\n"
 			},
 		},
+		"csharp": csharpCase(),
 		"rust": {
 			// A library root that stays on every side: its crate's name leads from any file to a module by its path.
 			setup:    map[string]string{"Cargo.toml": "[package]\nname = \"app\"\n", "src/lib.rs": ""},
@@ -193,6 +194,39 @@ func jvmCase(source, suffix, end, testBody string) languageCase {
 			return strings.Join(lines, "\n") + "\n"
 		},
 	}
+}
+
+// csharpCase is the case of C#. Every product file declares its own namespace, named after its folder below
+// src/, and a project file makes a name that begins with Acme the project's own. Test support is a folder named
+// test inside the product project, which product code may import.
+func csharpCase() languageCase {
+	class := func(name string) string { return strings.ToUpper(name[:1]) + name[1:] }
+	return languageCase{
+		setup:    map[string]string{"src/Acme/Acme.csproj": "<Project Sdk=\"Microsoft.NET.Sdk\" />\n"},
+		product:  func(name string) string { return "src/Acme/" + name + "/" + class(name) + ".cs" },
+		placed:   func(folder, name string) string { return "src/Acme/" + folder + "/" + name + "/" + class(name) + ".cs" },
+		under:    "src/Acme",
+		test:     func(name string) string { return "tests/Acme.Tests/" + name + "/" + class(name) + "Tests.cs" },
+		support:  func(name string) string { return "src/Acme/test/" + name + "/" + class(name) + ".cs" },
+		testBody: "[Fact] public void X() {}",
+		outside:  []string{"System", "System.Linq", "Xunit"},
+		nowhere:  "Acme.gone",
+		importing: func(from string, targets []string, specs ...string) string {
+			var lines []string
+			for _, target := range targets {
+				lines = append(lines, "using "+namespaceOf(target)+";")
+			}
+			for _, spec := range specs {
+				lines = append(lines, "using "+spec+";")
+			}
+			return strings.Join(append(lines, "namespace "+namespaceOf(from)+";"), "\n") + "\n"
+		},
+	}
+}
+
+// namespaceOf is the namespace a C# file of the cases declares: its folder below src/, with dots.
+func namespaceOf(file string) string {
+	return strings.ReplaceAll(strings.TrimPrefix(path.Dir(file), "src/"), "/", ".")
 }
 
 // packageOf is the dotted package of a file under a source root; a file elsewhere gets its folder's name.
@@ -338,6 +372,14 @@ func TestALanguageOverTheLimitIsNotAnalysed(t *testing.T) {
 		len(f.Statistics) == 0 || f.Statistics[0].Subject != "go" {
 		t.Errorf("typescript over beside a sound go tree: not analysed %q, statistics %+v", f.NotAnalysed, f.Statistics)
 	}
+	cs := languageCases()["csharp"]
+	global := cs.fan(8)
+	global["src/Acme/GlobalUsings.cs"] = "global using Acme.ta;\nglobal using System.Linq;\n"
+	wantGlobal := "`csharp`: 1 of 9 own imports could not be followed now (0 ambiguous, 1 not readable, 0 not found), " +
+		"over the limit of 10% (links checked against go list and dependency-cruiser, 2026-11); no link numbers for its files"
+	if f := detect(t, same(global)); len(f.Statistics) != 0 || !slices.Equal(f.NotAnalysed, []string{wantGlobal}) {
+		t.Errorf("a global using of own code: statistics %+v, not analysed %q; want only %q", f.Statistics, f.NotAnalysed, wantGlobal)
+	}
 }
 
 func TestADeclaredRootIsNamedAndSearched(t *testing.T) {
@@ -361,6 +403,7 @@ func TestALanguageWithoutItsPrefixFile(t *testing.T) {
 	loose := map[string]string{"lib/app/a.py": "import app.b\n", "lib/app/b.py": "x = 1\n"}
 	noRoot := map[string]string{"app/A.java": "import com.acme.b.B;\n", "app/com/acme/b/B.java": "package com.acme.b;\n"}
 	scripts := map[string]string{"build.gradle.kts": "import org.gradle.api.JavaVersion\n", "settings.gradle.kts": "rootProject.name = \"x\"\n"}
+	bare := map[string]string{"src/A.cs": "using Acme.B;\n", "src/B.cs": "class B {}\n"}
 	with := func(files map[string]string, path, content string) map[string]string {
 		changed := clone(files)
 		if content == "" {
@@ -392,6 +435,8 @@ func TestALanguageWithoutItsPrefixFile(t *testing.T) {
 			"`python`: no package of its own at the root, under `src/` or under `lib/`, so its own imports cannot be told from outside ones; no link numbers for its files", false},
 		{"java without a source root", noRoot, noRoot,
 			"`java`: no package of its own under `src/*/java/` or under `src/*/kotlin/`, so its own imports cannot be told from outside ones; no link numbers for its files", false},
+		{"csharp without a declared namespace", bare, bare,
+			"`csharp`: no package of its own declared by its files, so its own imports cannot be told from outside ones; no link numbers for its files", false},
 		{"kotlin build scripts alone", scripts, scripts,
 			"`kotlin`: no package of its own under `src/*/java/` or under `src/*/kotlin/`, so its own imports cannot be told from outside ones; no link numbers for its files", false},
 		{"a module added since the base", loose, with(loose, "main.py", "x = 1\n"),

@@ -18,7 +18,8 @@ type Imports struct {
 	// FolderAlso, for a folder target, names extensions of other entries' files that share its folders; an import of
 	// the folder reaches them too.
 	FolderAlso []string
-	// PackageLine, for SourceRoots, is the declaration of a file's package; its group "package" holds the dotted name.
+	// PackageLine, for SourceRoots and DeclaredNamespaces, is the declaration of a file's package; its group
+	// "package" holds the dotted name.
 	PackageLine *regexp.Regexp
 	// Grouped is a target that may group paths in nested braces: "a::{b, c::{d, e}}" names a::b, a::c::d and
 	// a::c::e, each one import.
@@ -37,7 +38,9 @@ type Imports struct {
 // ImportForm is a pattern, tried only on text that holds one of its words. As a statement form, its named group
 // "spec" holds the target as written; its optional named group "type" takes part only in a statement that imports
 // types alone; its optional named group "names" holds the names a statement imports out of its target, each of
-// which may itself be a module under the target, tried before the target.
+// which may itself be a module under the target, tried before the target. Its optional named group "everywhere"
+// takes part only in a statement written once for every file of its project; one that names the repository's own
+// code is counted as not readable and gives no link.
 type ImportForm struct {
 	Pattern *regexp.Regexp
 	Words   []string // the pattern is tried only on content that holds one of these; nil tries every file
@@ -77,6 +80,9 @@ type Prefix struct {
 	Format   PrefixFormat
 	Required bool // without it the language's own imports cannot be told from outside ones, so no link numbers
 	Members  bool // the prefix file in other folders is read too: the members of a workspace the root file lists
+	// Projects, for DeclaredNamespaces, is the file-name pattern of a project file, tracked at any depth: an import
+	// that begins with such a file's name, without its suffix, is the project's own also when no file declares it.
+	Projects string
 }
 
 // PrefixFormat is how a prefix file declares the project's own imports.
@@ -97,6 +103,8 @@ const (
 	SourceRoots
 	// CargoCrates are the crates of the tracked Cargo.toml files and the modules that mod lines declare.
 	CargoCrates
+	// DeclaredNamespaces are the namespaces that the language's tracked files declare, wherever they lie.
+	DeclaredNamespaces
 )
 
 // Candidates are the tracked paths a file import may mean when the path as written is not a tracked file.

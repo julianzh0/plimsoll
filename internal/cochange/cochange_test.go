@@ -204,4 +204,11 @@ func TestNoPairsInsideOnePackageFolder(t *testing.T) {
 			t.Errorf("%s: marks %+v, want %d", tc.name, found, tc.want)
 		}
 	}
+	cs := map[string]string{"src/Acme/Core/A.cs": "namespace Acme.Core;\n", "src/Acme/Core/B.cs": "namespace Acme.Core;\n", "src/Acme/Store/S.cs": "namespace Acme.Store;\n"}
+	if found := marks(sample{files: cs, base: times(6, "src/Acme/Core/A.cs", "src/Acme/Core/B.cs")}); len(found) != 0 {
+		t.Errorf("two C# files of one folder: marks %+v, want none", found)
+	}
+	if found := marks(sample{files: cs, base: times(6, "src/Acme/Core/A.cs", "src/Acme/Store/S.cs")}); len(found) != 1 {
+		t.Errorf("C# files of two folders: marks %+v, want one", found)
+	}
 }

@@ -25,7 +25,7 @@ type LanguageImports struct {
 	Resolved       int    // names exactly one tracked file or folder of the repository
 	Outside        int
 	Ambiguous      int
-	Unreadable     int // built at run time
+	Unreadable     int // built at run time, or written once for every file of a project
 	NotFound       int // own by its form, reaches no tracked file
 	PrefixFile     string
 	Prefix         PrefixState
@@ -104,6 +104,8 @@ type statement struct {
 	line     int
 	typeOnly bool
 	within   []string // the inline modules it stands in, the outermost first
+	// everywhere is a statement written once for every file of its project.
+	everywhere bool
 }
 
 // reading is what one file's content says about its imports, before they are resolved against a side.
@@ -160,13 +162,15 @@ func scan(imports conventions.Imports, text []byte) reading {
 			continue
 		}
 		spec, typeGroup, namesGroup := form.Pattern.SubexpIndex("spec"), form.Pattern.SubexpIndex("type"), form.Pattern.SubexpIndex("names")
+		everywhereGroup := form.Pattern.SubexpIndex("everywhere")
 		for _, m := range form.Pattern.FindAllSubmatchIndex(text, -1) {
 			at, written := m[2*spec], string(text[m[2*spec]:m[2*spec+1]])
 			st := statement{
 				line: 1 + bytes.Count(text[:at], []byte("\n")),
 				typeOnly: typeGroup >= 0 && m[2*typeGroup] >= 0 ||
 					slices.ContainsFunc(typeOnlyBlocks, func(block []int) bool { return block[0] <= at && at < block[1] }),
-				within: modulesAt(modules, at),
+				within:     modulesAt(modules, at),
+				everywhere: everywhereGroup >= 0 && m[2*everywhereGroup] >= 0,
 			}
 			if namesGroup >= 0 && m[2*namesGroup] >= 0 {
 				st.names = importedNames(string(text[m[2*namesGroup]:m[2*namesGroup+1]]))
@@ -289,6 +293,12 @@ func (s side) resolveAll(language conventions.Language, own prefix, from string,
 	var found []Link
 	for _, st := range statements {
 		reached, outcome := s.resolve(language, own, from, st)
+		if st.everywhere && outcome == resolved {
+			// It serves every file of its project, which no link can say: counted as not readable, so the share of
+			// own imports not followed shows it.
+			counts.Unreadable++
+			continue
+		}
 		switch outcome {
 		case resolved:
 			counts.Resolved++

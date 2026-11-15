@@ -98,6 +98,16 @@ func TestBuildClassifiesEachSampleLanguage(t *testing.T) {
 			{"src/test/kotlin/com/acme/tasks/data/TaskRepositoryTest.kt", "kotlin", snapshot.Test, 10},
 			{"src/test/kotlin/com/acme/tasks/data/TestTaskDao.kt", "kotlin", snapshot.TestInfrastructure, 11},
 		},
+		"csharp": {
+			{"Acme.Notes.Tests/NoteStoreTests.cs", "csharp", snapshot.Test, 17},
+			{"Acme.Notes.Tests/Support/FixedClock.cs", "csharp", snapshot.TestInfrastructure, 9},
+			{"Acme.Notes/GlobalUsings.cs", "csharp", snapshot.Product, 1},
+			{"Acme.Notes/Model/Note.cs", "csharp", snapshot.Product, 3},
+			{"Acme.Notes/Polyfills/IsExternalInit.cs", "csharp", snapshot.Product, 4},
+			{"Acme.Notes/Program.cs", "csharp", snapshot.Product, 8},
+			{"Acme.Notes/Store/Clock.cs", "csharp", snapshot.Product, 8},
+			{"Acme.Notes/Store/NoteStore.cs", "csharp", snapshot.Product, 24},
+		},
 		"rust": {
 			{"build.rs", "rust", snapshot.Product, 3},
 			{"crates/notes-store/src/disk.rs", "rust", snapshot.Product, 1},

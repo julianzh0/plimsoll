@@ -25,6 +25,11 @@ func withCRLF(files map[string]string) map[string]string {
 	return converted
 }
 
+// folderLink is a link to a folder and the code files it reaches there.
+func folderLink(from string, line int, to string, files ...string) snapshot.Link {
+	return snapshot.Link{From: from, Line: line, To: to, Folder: true, Files: files}
+}
+
 func link(from string, line int, to string) snapshot.Link {
 	return snapshot.Link{From: from, Line: line, To: to, Files: []string{to}}
 }
@@ -157,13 +162,10 @@ func TestBuildFollowsGoImportsToFolders(t *testing.T) {
 		Language: "go", Resolved: 4, Outside: 4, NotFound: 1, PrefixFile: "go.mod", Prefix: snapshot.PrefixRead,
 		PrefixRequired: true, Folders: true, NoRings: "the Go compiler rejects import cycles",
 	}}
-	folder := func(from string, line int, to string, files ...string) snapshot.Link {
-		return snapshot.Link{From: from, Line: line, To: to, Folder: true, Files: files}
-	}
 	wantList := []snapshot.Link{
-		folder("internal/store/store.go", 3, ".", "main.go"),
-		folder("internal/store/store_test.go", 5, "internal/store", "internal/store/store.go"),
-		folder("main.go", 6, "internal/store", "internal/store/store.go"),
+		folderLink("internal/store/store.go", 3, ".", "main.go"),
+		folderLink("internal/store/store_test.go", 5, "internal/store", "internal/store/store.go"),
+		folderLink("main.go", 6, "internal/store", "internal/store/store.go"),
 	}
 	if !reflect.DeepEqual(got.Languages, wantLanguages) {
 		t.Errorf("Languages = %+v, want %+v", got.Languages, wantLanguages)
@@ -244,7 +246,10 @@ func TestBuildKeepsNoImportText(t *testing.T) {
 		"src/app.py": "from zzmarker_pkg import zzmarker_name\nimport zzmarker_missing\nfrom . import zzmarker_gone\nimportlib.import_module(\"zzmarker.\" + n)\n",
 		// Outside, not found and resolved: the reader builds a folder path from the second and keeps none of them.
 		"src/main/java/com/acme/A.java": "package com.acme;\nimport zzmarker.Outside;\nimport com.acme.zzmarker.Gone;\nimport com.acme.zzmarker;\n",
-		"src/lib.rs":                    "mod zzmarker_gone;\nuse zzmarker::Outside;\nuse crate::zzmarker_item::{A, zzmarker_b};\nmod zzmarker_inline {\n    use super::zzmarker_x;\n}\n",
+		// Not found through the project file's name, outside, and not readable: the reader keeps no name.
+		"src/Acme/Acme.csproj": "<Project Sdk=\"Microsoft.NET.Sdk\" />\n",
+		"src/Acme/A.cs":        "global using Acme.Core;\nusing Acme.zzmarker;\nusing zzmarker.Outside;\n\nnamespace Acme.Core;\n",
+		"src/lib.rs":           "mod zzmarker_gone;\nuse zzmarker::Outside;\nuse crate::zzmarker_item::{A, zzmarker_b};\nmod zzmarker_inline {\n    use super::zzmarker_x;\n}\n",
 	}
 	s := snapshot.Build(snapshottest.Files(tree, tree), conventions.Default())
 	printed := fmt.Sprintf("%+v", s)
@@ -330,9 +335,6 @@ func jvmTree() map[string]string {
 }
 
 func TestBuildFollowsJavaAndKotlinImportsToPackages(t *testing.T) {
-	folder := func(from string, line int, to string, files ...string) snapshot.Link {
-		return snapshot.Link{From: from, Line: line, To: to, Folder: true, Files: files}
-	}
 	entry := func(name string, resolved, outside, notFound int, implicit ...string) snapshot.LanguageImports {
 		return snapshot.LanguageImports{
 			Language: name, Resolved: resolved, Outside: outside, NotFound: notFound, Prefix: snapshot.PrefixRead, PrefixRequired: true,
@@ -361,41 +363,41 @@ func TestBuildFollowsJavaAndKotlinImportsToPackages(t *testing.T) {
 		{"the Maven sample", snapshot.Build(snapshottest.Load(t, "testdata/java"), conventions.Default()).Now.Links,
 			[]snapshot.LanguageImports{java(7, 5, 0)},
 			[]snapshot.Link{
-				folder(notes+"/App.java", 3, notes+"/model", notes+"/model/Note.java"),
-				folder(notes+"/App.java", 6, notes+"/store", store...),
-				folder(notes+"/store/NoteStore.java", 3, notes+"/model", notes+"/model/Note.java"),
-				folder(notes+"/store/NoteStore.java", 4, notes+"/model", notes+"/model/Note.java"),
-				folder(notesTest+"/AppTest.java", 5, notes+"/store", store...),
-				folder(notesTest+"/AppTest.java", 5, notesTest+"/store", notesTest+"/store/FakeClock.java", notesTest+"/store/NoteStoreTest.java"),
-				folder(notesTest+"/store/NoteStoreTest.java", 3, notes+"/model", notes+"/model/Note.java"),
+				folderLink(notes+"/App.java", 3, notes+"/model", notes+"/model/Note.java"),
+				folderLink(notes+"/App.java", 6, notes+"/store", store...),
+				folderLink(notes+"/store/NoteStore.java", 3, notes+"/model", notes+"/model/Note.java"),
+				folderLink(notes+"/store/NoteStore.java", 4, notes+"/model", notes+"/model/Note.java"),
+				folderLink(notesTest+"/AppTest.java", 5, notes+"/store", store...),
+				folderLink(notesTest+"/AppTest.java", 5, notesTest+"/store", notesTest+"/store/FakeClock.java", notesTest+"/store/NoteStoreTest.java"),
+				folderLink(notesTest+"/store/NoteStoreTest.java", 3, notes+"/model", notes+"/model/Note.java"),
 			}},
 		// Kotlin reaches the Java class and Java the Kotlin one; a top-level function is a member of its package.
 		{"the Gradle sample", snapshot.Build(snapshottest.Load(t, "testdata/kotlin"), conventions.Default()).Now.Links,
 			[]snapshot.LanguageImports{java(1, 0, 0), entry("kotlin", 10, 3, 0)},
 			[]snapshot.Link{
-				folder(device, 3, tasks+"/data", data...),
-				folder(device, 3, tasksTest, tasksTest+"/TaskRepositoryTest.kt", tasksTest+"/TestTaskDao.kt"),
-				folder(legacy+"/Clock.java", 3, tasks+"/model", tasks+"/model/Task.kt"),
-				folder(tasks+"/Main.kt", 3, tasks+"/data", data...),
-				folder(tasks+"/Main.kt", 4, tasks+"/data", data...),
-				folder(tasks+"/Main.kt", 5, legacy, legacy+"/Clock.java"),
-				folder(tasks+"/data/Loaders.kt", 3, tasks+"/model", tasks+"/model/Task.kt"),
-				folder(tasks+"/data/Loaders.kt", 4, tasks+"/model", tasks+"/model/Task.kt"),
-				folder(tasks+"/data/TaskRepository.kt", 3, legacy, legacy+"/Clock.java"),
-				folder(tasks+"/data/TaskRepository.kt", 4, tasks+"/model", tasks+"/model/Task.kt"),
-				folder(tasksTest+"/TaskRepositoryTest.kt", 3, legacy, legacy+"/Clock.java"),
-				folder(tasksTest+"/TestTaskDao.kt", 3, tasks+"/model", tasks+"/model/Task.kt"),
+				folderLink(device, 3, tasks+"/data", data...),
+				folderLink(device, 3, tasksTest, tasksTest+"/TaskRepositoryTest.kt", tasksTest+"/TestTaskDao.kt"),
+				folderLink(legacy+"/Clock.java", 3, tasks+"/model", tasks+"/model/Task.kt"),
+				folderLink(tasks+"/Main.kt", 3, tasks+"/data", data...),
+				folderLink(tasks+"/Main.kt", 4, tasks+"/data", data...),
+				folderLink(tasks+"/Main.kt", 5, legacy, legacy+"/Clock.java"),
+				folderLink(tasks+"/data/Loaders.kt", 3, tasks+"/model", tasks+"/model/Task.kt"),
+				folderLink(tasks+"/data/Loaders.kt", 4, tasks+"/model", tasks+"/model/Task.kt"),
+				folderLink(tasks+"/data/TaskRepository.kt", 3, legacy, legacy+"/Clock.java"),
+				folderLink(tasks+"/data/TaskRepository.kt", 4, tasks+"/model", tasks+"/model/Task.kt"),
+				folderLink(tasksTest+"/TaskRepositoryTest.kt", 3, legacy, legacy+"/Clock.java"),
+				folderLink(tasksTest+"/TestTaskDao.kt", 3, tasks+"/model", tasks+"/model/Task.kt"),
 			}},
 		// A.java: fakes lies under a test source set only (outside), gen.proto is no tracked package (not found),
 		// com.other shares no package (outside). BTest.kt imports its own package and gets no link to itself.
 		{"a package in several folders", linksOf(jvmTree()),
 			[]snapshot.LanguageImports{java(3, 2, 1), entry("kotlin", 1, 0, 0)},
 			[]snapshot.Link{
-				folder(a, 3, demo, demo+"/Demo.kt"), folder(a, 3, mainB, mainB+"/B.kt"),
-				folder(aTest, 3, demo, demo+"/Demo.kt"), folder(aTest, 3, mainB, mainB+"/B.kt"),
-				folder(aTest, 3, "lib/src/test/kotlin/com/acme/b", bTest),
-				folder(aTest, 4, "app/src/test/java/com/acme/fakes", "app/src/test/java/com/acme/fakes/Fake.java"),
-				folder(bTest, 3, demo, demo+"/Demo.kt"), folder(bTest, 3, mainB, mainB+"/B.kt"),
+				folderLink(a, 3, demo, demo+"/Demo.kt"), folderLink(a, 3, mainB, mainB+"/B.kt"),
+				folderLink(aTest, 3, demo, demo+"/Demo.kt"), folderLink(aTest, 3, mainB, mainB+"/B.kt"),
+				folderLink(aTest, 3, "lib/src/test/kotlin/com/acme/b", bTest),
+				folderLink(aTest, 4, "app/src/test/java/com/acme/fakes", "app/src/test/java/com/acme/fakes/Fake.java"),
+				folderLink(bTest, 3, demo, demo+"/Demo.kt"), folderLink(bTest, 3, mainB, mainB+"/B.kt"),
 			}},
 	}
 	for _, tc := range cases {
@@ -614,4 +616,100 @@ func TestBuildFollowsRustImportsToFiles(t *testing.T) {
 	// A brace that never closes: the inline module runs to the end of the file.
 	check("a module that does not close", linksOf(map[string]string{"src/lib.rs": "mod a {\n    use super::b;\nmod c;\n"}),
 		entry(1, 0, 0, 1, snapshot.PrefixAbsent), nil, nil)
+}
+
+// csharpTree holds a namespace in two folders, a folder with two namespaces, a nested declaration, an own global
+// using, and usings that are outside or lead to no tracked namespace.
+func csharpTree() map[string]string {
+	return map[string]string{
+		"src/Acme/Acme.csproj": "<Project Sdk=\"Microsoft.NET.Sdk\" />\n",
+		"src/Acme/Billing/Invoice.cs": "using Acme.Core;\nusing Acme.Grpc;\nusing Acme;\nusing System.Text;\nusing static Acme.Core.Guard;\n" +
+			"using Money = Acme.Core.Money;\nusing Path = System.IO.Path;\nusing Inner;\n\nnamespace Acme.Billing;\n",
+		"src/Acme/Core/Guard.cs":           "namespace Acme.Core;\n",
+		"src/Acme/Core/Money.cs":           "namespace Acme.Core\n{\n    namespace Inner\n    {\n    }\n}\n\nnamespace System.Text\n{\n}\n",
+		"src/Acme.Extras/Core/More.cs":     "namespace Acme.Core;\n",
+		"src/Acme/GlobalUsings.cs":         "global using Acme.Core;\nglobal using System.Linq;\n",
+		"tests/Acme.Tests/InvoiceTests.cs": "using System;\nusing Acme.Billing;\nusing Acme.Core;\n\nnamespace Acme.Tests;\n",
+	}
+}
+
+func TestBuildFollowsCSharpUsingsToNamespaces(t *testing.T) {
+	var notSeen string
+	for _, l := range conventions.Default().Languages {
+		if l.Name == "csharp" {
+			notSeen = l.Imports.NotSeen
+		}
+	}
+	csharp := func(resolved, outside, unreadable, notFound int) snapshot.LanguageImports {
+		return snapshot.LanguageImports{
+			Language: "csharp", Resolved: resolved, Outside: outside, Unreadable: unreadable, NotFound: notFound, Prefix: snapshot.PrefixRead,
+			PrefixRequired: true, Folders: true, NoRings: "a using names a namespace, not a file", Implicit: []string{"Program.cs"}, NotSeen: notSeen,
+		}
+	}
+	notes, tests := "Acme.Notes", "Acme.Notes.Tests"
+	model, store := []string{notes + "/Model/Note.cs"}, []string{notes + "/Store/Clock.cs", notes + "/Store/NoteStore.cs"}
+	invoice, invoiceTests := "src/Acme/Billing/Invoice.cs", "tests/Acme.Tests/InvoiceTests.cs"
+	core, extras := "src/Acme/Core", "src/Acme.Extras/Core"
+	coreFiles := []string{core + "/Guard.cs", core + "/Money.cs"}
+	cases := []struct {
+		name      string
+		got       snapshot.Links
+		languages []snapshot.LanguageImports
+		list      []snapshot.Link
+	}{
+		// Properties is declared by a designer file and Mapping by a file with the header: both resolve and give no
+		// link. System and System.Collections.Generic stay outside beside the declared System.Runtime.CompilerServices.
+		{"the sample", snapshot.Build(snapshottest.Load(t, "testdata/csharp"), conventions.Default()).Now.Links,
+			[]snapshot.LanguageImports{csharp(11, 5, 0, 0)},
+			[]snapshot.Link{
+				folderLink(tests+"/NoteStoreTests.cs", 1, notes+"/Model", model...),
+				folderLink(tests+"/NoteStoreTests.cs", 2, notes+"/Store", store...),
+				folderLink(tests+"/NoteStoreTests.cs", 3, tests+"/Support", tests+"/Support/FixedClock.cs"),
+				folderLink(tests+"/Support/FixedClock.cs", 2, notes+"/Store", store...),
+				folderLink(notes+"/Program.cs", 1, notes+"/Model", model...),
+				folderLink(notes+"/Program.cs", 3, notes+"/Store", store...),
+				folderLink(notes+"/Program.cs", 4, notes+"/Store", store...),
+				folderLink(notes+"/Store/NoteStore.cs", 3, notes+"/Model", model...),
+				folderLink(notes+"/Store/NoteStore.cs", 4, notes+"/Model", model...),
+			}},
+		// Invoice.cs: Acme.Grpc is the project's own by its name and declared nowhere (not found); Acme and System
+		// only hold namespaces, System.IO and the nested Inner are declared nowhere (outside); System.Text is
+		// declared beside Acme.Core. The global using of Acme.Core is not readable and gives no link.
+		{"a namespace in two folders", linksOf(csharpTree()),
+			[]snapshot.LanguageImports{csharp(6, 5, 1, 1)},
+			[]snapshot.Link{
+				folderLink(invoice, 1, extras, extras+"/More.cs"), folderLink(invoice, 1, core, coreFiles...),
+				folderLink(invoice, 4, core, coreFiles...),
+				folderLink(invoice, 5, extras, extras+"/More.cs"), folderLink(invoice, 5, core, coreFiles...),
+				folderLink(invoice, 6, extras, extras+"/More.cs"), folderLink(invoice, 6, core, coreFiles...),
+				folderLink(invoiceTests, 2, "src/Acme/Billing", invoice),
+				folderLink(invoiceTests, 3, extras, extras+"/More.cs"), folderLink(invoiceTests, 3, core, coreFiles...),
+			}},
+	}
+	for _, tc := range cases {
+		if !reflect.DeepEqual(tc.got.Languages, tc.languages) {
+			t.Errorf("%s: Languages = %+v, want %+v", tc.name, tc.got.Languages, tc.languages)
+		}
+		if !reflect.DeepEqual(tc.got.List, tc.list) || len(tc.got.PassOn) != 0 {
+			t.Errorf("%s: List = %+v, PassOn %q; want %+v and none", tc.name, tc.got.List, tc.got.PassOn, tc.list)
+		}
+	}
+	want := linksOf(csharpTree())
+	if crlf := linksOf(withCRLF(csharpTree())); !reflect.DeepEqual(crlf, want) {
+		t.Errorf("CRLF line ends: Links = %+v, want %+v", crlf, want)
+	}
+	bom := csharpTree()
+	bom[invoice] = "\uFEFF" + bom[invoice]
+	if withBOM := linksOf(bom); !reflect.DeepEqual(withBOM, want) {
+		t.Errorf("a byte order mark: Links = %+v, want %+v", withBOM, want)
+	}
+	noProject := csharpTree()
+	delete(noProject, "src/Acme/Acme.csproj")
+	if got := linksOf(noProject); !reflect.DeepEqual(got.Languages, []snapshot.LanguageImports{csharp(6, 6, 1, 0)}) || !reflect.DeepEqual(got.List, want.List) {
+		t.Errorf("without a project file: %+v, want the import of Acme.Grpc outside and the same links", got)
+	}
+	bare := linksOf(map[string]string{"src/A.cs": "using Acme.B;\n", "src/B.cs": "class B {}\n"})
+	if l := bare.Languages[0]; l.Prefix != snapshot.PrefixAbsent || l.Outside != 1 || len(bare.List) != 0 {
+		t.Errorf("C# files that declare no namespace: %+v, want PrefixAbsent and the import outside", bare)
+	}
 }
