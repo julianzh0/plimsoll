@@ -39,8 +39,9 @@ func TestBuildReadsRuntimeDependencies(t *testing.T) {
 		source snapshot.Source
 		want   []snapshot.Manifest
 	}{
-		{"typescript", snapshottest.Load(t, "testdata/typescript"), []snapshot.Manifest{{Path: "package.json", Dependencies: []string{"express", "pg"}}}},
-		{"go", snapshottest.Load(t, "testdata/go"), []snapshot.Manifest{{Path: "go.mod", Dependencies: []string{"github.com/a/b"}}}},
+		{"typescript", snapshottest.Load(t, "testdata/typescript"), []snapshot.Manifest{{Path: "package.json", Dependencies: []string{"express", "pg"},
+			Lockfiles: []string{"package-lock.json"}, Unlocked: []string{"express", "pg"}}}},
+		{"go", snapshottest.Load(t, "testdata/go"), []snapshot.Manifest{{Path: "go.mod", Dependencies: []string{"github.com/a/b"}, Lockfiles: []string{"go.sum"}, Unlocked: []string{}}}},
 		{"mixed", snapshottest.Load(t, "testdata/mixed"), []snapshot.Manifest{{Path: "go.mod", Dependencies: []string{}}, {Path: "package.json", Dependencies: []string{}}}},
 		{"unproven", snapshottest.Load(t, "testdata/unproven"), nil},
 		{"python", snapshottest.Load(t, "testdata/python"), pyprojectNames("httpx", "pydantic-settings")},
@@ -91,6 +92,30 @@ func TestBuildReadsRuntimeDependencies(t *testing.T) {
 	for _, tc := range cases {
 		if got := snapshot.Build(tc.source, conventions.Default()).Now.Manifests; !reflect.DeepEqual(got, tc.want) {
 			t.Errorf("Build(%s).Now.Manifests = %#v, want %#v", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestBuildNamesDependenciesNoLockfileHolds(t *testing.T) {
+	cases := []struct {
+		name  string
+		files map[string]string
+		want  []snapshot.Manifest
+	}{
+		{"uv.lock by normalised name", map[string]string{"pyproject.toml": "[project]\ndependencies = [\"Pydantic_Settings>=2\", \"httpx\"]\n",
+			"uv.lock": "[[package]]\nname = \"pydantic-settings\"\n"},
+			[]snapshot.Manifest{{Path: "pyproject.toml", Dependencies: []string{"httpx", "pydantic-settings"}, Lockfiles: []string{"uv.lock"}, Unlocked: []string{"httpx"}}}},
+		{"go.sum by module path", map[string]string{"go.mod": "module m\n\nrequire (\n\tgithub.com/a/b v1.0.0\n\tgithub.com/a/bc v1.0.0\n)\n",
+			"go.sum": "github.com/a/bc v1.0.0 h1:x=\n"},
+			[]snapshot.Manifest{{Path: "go.mod", Dependencies: []string{"github.com/a/b", "github.com/a/bc"}, Lockfiles: []string{"go.sum"}, Unlocked: []string{"github.com/a/b"}}}},
+		{"pubspec.lock", map[string]string{"pubspec.yaml": "name: x\ndependencies:\n  http: ^1.0.0\n  provider: ^6.0.0\n", "pubspec.lock": "packages:\n  http:\n    version: 1.0.0\n"},
+			[]snapshot.Manifest{{Path: "pubspec.yaml", Dependencies: []string{"http", "provider"}, Lockfiles: []string{"pubspec.lock"}, Unlocked: []string{"provider"}}}},
+		{"no lockfile tracked", map[string]string{"package.json": `{"dependencies": {"a": "1"}}`},
+			[]snapshot.Manifest{{Path: "package.json", Dependencies: []string{"a"}}}},
+	}
+	for _, tc := range cases {
+		if got := snapshot.Build(snapshottest.Files(nil, tc.files), conventions.Default()).Now.Manifests; !reflect.DeepEqual(got, tc.want) {
+			t.Errorf("%s: Manifests = %+v, want %+v", tc.name, got, tc.want)
 		}
 	}
 }

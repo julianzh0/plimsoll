@@ -289,8 +289,12 @@ func dependencyMark(manifest, previous snapshot.Manifest, existed bool) []answer
 	if len(added) == 0 {
 		return nil
 	}
+	hint := fmt.Sprintf("compare the runtime dependencies in `%s` at the base and now.", manifest.Path)
+	if unlocked := slices.DeleteFunc(slices.Clone(added), func(name string) bool { return !slices.Contains(manifest.Unlocked, name) }); len(unlocked) > 0 {
+		hint += fmt.Sprintf(" Not in the lockfile %s: %s.", strings.Join(answer.Quoted(manifest.Lockfiles), " or "), strings.Join(answer.Quoted(unlocked), ", "))
+	}
 	return []answer.Mark{additionMark(ruleDependencies, manifest.Path, added, len(manifest.Dependencies), len(previous.Dependencies), existed,
-		"runtime dependencies", fmt.Sprintf("compare the runtime dependencies in `%s` at the base and now.", manifest.Path))}
+		"runtime dependencies", hint)}
 }
 
 func settingsMark(s snapshot.Snapshot) []answer.Mark {

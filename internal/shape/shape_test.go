@@ -232,6 +232,25 @@ func TestAdditionMarks(t *testing.T) {
 	if len(settings) != 1 || !slices.Equal(settings[0].Subject.Names, []string{"BETA", "GAMMA"}) || settings[0].Measured.Value != 3 || *settings[0].Measured.Before != 1 {
 		t.Errorf("settings marks = %+v, want one grown mark naming BETA and GAMMA, 3 now and 1 before", settings)
 	}
+	if hint := dependencies[0].Hint; strings.Contains(hint, "lockfile") {
+		t.Errorf("no lockfile tracked: hint %q, want no lockfile remark", hint)
+	}
+	for _, tc := range []struct {
+		name, lock, want string
+	}{
+		{"a lockfile without the new name", `{"packages": {"node_modules/a": {}}}`, " Not in the lockfile `package-lock.json`: `c`."},
+		{"a lockfile that holds it", `{"packages": {"node_modules/a": {}, "node_modules/c": {}}}`, ""},
+		{"a lockfile that holds a longer name only", `{"packages": {"node_modules/a": {}, "node_modules/cc": {}}}`, " Not in the lockfile `package-lock.json`: `c`."},
+	} {
+		locked := detect(t, snapshottest.Files(
+			map[string]string{"package.json": manifest("a", "b"), "package-lock.json": tc.lock},
+			map[string]string{"package.json": manifest("a", "c"), "package-lock.json": tc.lock},
+		), conventions.Default())
+		marks := marksOf(locked, "dependencies")
+		if len(marks) != 1 || !strings.HasSuffix(marks[0].Hint, "at the base and now."+tc.want) {
+			t.Errorf("%s: dependency marks %+v, want the hint to end with %q", tc.name, marks, tc.want)
+		}
+	}
 	same := map[string]string{"package.json": manifest("a"), ".env.example": "ALPHA=1\n"}
 	if marks := detect(t, snapshottest.Files(same, same), conventions.Default()).Marks; len(marks) != 0 {
 		t.Errorf("nothing added: marks %+v, want none", marks)

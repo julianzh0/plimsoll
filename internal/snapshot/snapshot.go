@@ -140,6 +140,8 @@ type ComposeFile struct {
 type Manifest struct {
 	Path         string
 	Dependencies []string
+	Lockfiles    []string // the manifest's lockfiles that are tracked; nil when none is
+	Unlocked     []string // dependencies whose name no tracked lockfile holds; nil when no lockfile is tracked
 }
 
 // Lines counts lines added and removed.

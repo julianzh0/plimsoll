@@ -1,6 +1,7 @@
 package snapshot
 
 import (
+	"bytes"
 	"encoding/json"
 	"maps"
 	"math"
@@ -24,7 +25,7 @@ func WantsOf(rules conventions.Rules) Wants {
 			if path == SettingsFile {
 				return true
 			}
-			if slices.ContainsFunc(rules.Manifests, func(m conventions.Manifest) bool { return m.File == path }) {
+			if slices.ContainsFunc(rules.Manifests, func(m conventions.Manifest) bool { return m.File == path || slices.Contains(m.Lockfiles, path) }) {
 				return true
 			}
 			if onPaths(rules, path, rules.ComposeFiles) {
@@ -70,6 +71,7 @@ func settings(entries []Entry) *Settings {
 func manifests(rules conventions.Rules, entries []Entry) ([]Manifest, []string) {
 	var found []Manifest
 	var unreadable []string
+	var locks [][]byte
 	for _, entry := range entries {
 		index := slices.IndexFunc(rules.Manifests, func(m conventions.Manifest) bool { return m.File == entry.Path })
 		if index < 0 || entry.Content == nil {
@@ -84,7 +86,23 @@ func manifests(rules conventions.Rules, entries []Entry) ([]Manifest, []string) 
 			continue
 		}
 		slices.Sort(names)
-		found = append(found, Manifest{Path: entry.Path, Dependencies: names})
+		m := Manifest{Path: entry.Path, Dependencies: names}
+		for _, lockfile := range rules.Manifests[index].Lockfiles {
+			if i := slices.IndexFunc(entries, func(e Entry) bool { return e.Path == lockfile && e.Content != nil }); i >= 0 {
+				m.Lockfiles = append(m.Lockfiles, lockfile)
+				locks = append(locks, entries[i].Content)
+			}
+		}
+		if len(m.Lockfiles) > 0 {
+			m.Unlocked = []string{}
+			for _, name := range names {
+				if !slices.ContainsFunc(locks, func(lock []byte) bool { return holdsName(lock, name) }) {
+					m.Unlocked = append(m.Unlocked, name)
+				}
+			}
+		}
+		locks = locks[:0]
+		found = append(found, m)
 	}
 	slices.SortFunc(found, func(a, b Manifest) int { return strings.Compare(a.Path, b.Path) })
 	return found, unreadable
@@ -478,5 +496,27 @@ func eachWord(content []byte, found func(word []byte)) {
 	}
 	if start >= 0 {
 		found(content[start:])
+	}
+}
+
+// holdsName says whether a lockfile's text holds a dependency name as a whole name: not as part of a longer name
+// (letters, digits, "_", "." and "-" around it).
+// NOTE: the name is matched by text, not by the lockfile's format; a name that only appears inside another
+// package's metadata counts as held. Upgrade: read each lockfile format.
+func holdsName(lock []byte, name string) bool {
+	part := func(b byte) bool {
+		return b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z' || b >= '0' && b <= '9' || b == '_' || b == '.' || b == '-'
+	}
+	for start := 0; ; {
+		i := bytes.Index(lock[start:], []byte(name))
+		if i < 0 {
+			return false
+		}
+		i += start
+		end := i + len(name)
+		if (i == 0 || !part(lock[i-1])) && (end == len(lock) || !part(lock[end])) {
+			return true
+		}
+		start = i + 1
 	}
 }

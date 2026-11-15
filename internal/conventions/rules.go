@@ -50,8 +50,9 @@ type Rules struct {
 
 // Manifest is a known dependency manifest and how its runtime dependencies are read.
 type Manifest struct {
-	File   string
-	Format ManifestFormat
+	File      string
+	Format    ManifestFormat
+	Lockfiles []string // the lockfiles at the root that record what the manifest's dependencies resolved to
 }
 
 // ManifestFormat says how a manifest lists its runtime dependencies.
@@ -141,10 +142,10 @@ func Default() Rules {
 		TestDefinition: testDefinition,
 		Generated:      generated,
 		Manifests: []Manifest{
-			{File: "package.json", Format: JSONDependencies},
-			{File: "go.mod", Format: GoModRequire},
-			{File: "pyproject.toml", Format: PyprojectDependencies},
-			{File: "pubspec.yaml", Format: PubspecDependencies},
+			{File: "package.json", Format: JSONDependencies, Lockfiles: []string{"package-lock.json", "pnpm-lock.yaml", "yarn.lock"}},
+			{File: "go.mod", Format: GoModRequire, Lockfiles: []string{"go.sum"}},
+			{File: "pyproject.toml", Format: PyprojectDependencies, Lockfiles: []string{"uv.lock", "poetry.lock"}},
+			{File: "pubspec.yaml", Format: PubspecDependencies, Lockfiles: []string{"pubspec.lock"}},
 			{File: "pom.xml", Format: PomDependencies},
 			{File: "build.gradle", Format: GradleDependencies},
 			{File: "build.gradle.kts", Format: GradleDependencies},
