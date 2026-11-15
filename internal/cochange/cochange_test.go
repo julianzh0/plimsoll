@@ -175,7 +175,7 @@ func TestPairsRunWithoutALanguageEntry(t *testing.T) {
 	}
 }
 
-func TestNoPairsInsideOneGoPackage(t *testing.T) {
+func TestNoPairsInsideOnePackageFolder(t *testing.T) {
 	goFiles := map[string]string{"go.mod": "module example.com/m\n", "internal/s/one.go": "package s\n", "internal/s/two.go": "package s\n", "internal/u/u.go": "package u\n"}
 	if found := marks(sample{files: goFiles, base: times(6, "internal/s/one.go", "internal/s/two.go")}); len(found) != 0 {
 		t.Errorf("two files of one Go package: marks %+v, want none: a package changes together", found)
@@ -185,5 +185,23 @@ func TestNoPairsInsideOneGoPackage(t *testing.T) {
 	}
 	if found := marks(sample{files: files("src/c.ts"), base: times(6, a, "src/c.ts")}); len(found) != 1 {
 		t.Errorf("two TypeScript files of one folder: marks %+v, want one: a file names one file", found)
+	}
+	jvm := map[string]string{
+		"src/main/java/com/acme/p/A.java": "package com.acme.p;\n", "src/main/java/com/acme/p/B.java": "package com.acme.p;\n",
+		"src/main/java/com/acme/p/C.kt": "package com.acme.p\n", "src/test/java/com/acme/p/FakeA.java": "package com.acme.p;\n",
+	}
+	class, fake := "src/main/java/com/acme/p/A.java", "src/test/java/com/acme/p/FakeA.java"
+	for _, tc := range []struct {
+		name  string
+		other string
+		want  int
+	}{
+		{"two Java files of one folder", "src/main/java/com/acme/p/B.java", 0},
+		{"a Java and a Kotlin file of one folder", "src/main/java/com/acme/p/C.kt", 0},
+		{"a class and its fake in another source set", fake, 1},
+	} {
+		if found := marks(sample{files: jvm, base: times(6, class, tc.other)}); len(found) != tc.want {
+			t.Errorf("%s: marks %+v, want %d", tc.name, found, tc.want)
+		}
 	}
 }

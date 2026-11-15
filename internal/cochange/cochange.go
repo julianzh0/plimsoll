@@ -129,7 +129,7 @@ func pairs(s snapshot.Snapshot) []pair {
 				if files[x].Role != snapshot.Product && files[y].Role != snapshot.Product {
 					continue
 				}
-				if byFolder[files[x].Language] && files[x].Language == files[y].Language && path.Dir(x) == path.Dir(y) {
+				if byFolder[files[x].Language] && byFolder[files[y].Language] && path.Dir(x) == path.Dir(y) {
 					continue // files of one package change together by nature
 				}
 				p := counted[[2]string{x, y}]
