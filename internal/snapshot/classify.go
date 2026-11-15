@@ -76,6 +76,24 @@ func generatedName(rules conventions.Rules, filePath string) bool {
 	})
 }
 
+// manifestOf finds the known manifest a tracked path is: a root file by its name, or, for a nested format, a file
+// whose name matches the pattern, wherever it lies outside skipped folders, test code and other code.
+func manifestOf(rules conventions.Rules, filePath string) (conventions.Manifest, bool) {
+	for _, m := range rules.Manifests {
+		if !m.Nested {
+			if m.File == filePath {
+				return m, true
+			}
+			continue
+		}
+		if matched, _ := path.Match(m.File, path.Base(filePath)); matched &&
+			!inFolders(filePath, rules.SkippedFolders) && !testPath(rules, filePath) && !otherPath(rules, filePath) {
+			return m, true
+		}
+	}
+	return conventions.Manifest{}, false
+}
+
 // testSourceSet says whether the name of a folder directly in a folder src makes it a test source set: a shared test
 // folder name, or one of the rules' patterns.
 func testSourceSet(rules conventions.Rules, name string) bool {

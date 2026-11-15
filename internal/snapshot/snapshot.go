@@ -31,7 +31,7 @@ type Tree struct {
 	Paths     []string      // every tracked regular file, sorted
 	Files     []File        // the code files, sorted by path
 	Settings  *Settings     // nil when there is no .env.example at the root
-	Manifests []Manifest    // the known manifests found at the root
+	Manifests []Manifest    // the known manifests found: at the root, and a nested format's wherever it is tracked
 	Broken    []string      // known manifests at the root that could not be read as their format
 	Planning  []string      // tracked files under a planning or review path, sorted
 	Uses      []SettingUse  // one per distinct setting name, sorted by name

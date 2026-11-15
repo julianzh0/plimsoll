@@ -89,6 +89,30 @@ func TestBuildReadsRuntimeDependencies(t *testing.T) {
 		{"a Gradle block with test and compile-only lines alone", oneFile("build.gradle.kts", "dependencies {\n    testImplementation(kotlin(\"test\"))\n    compileOnly(\"g:a:1\")\n}\n"),
 			dependenciesOf("build.gradle.kts")},
 		{"a nested build file", oneFile("app/build.gradle.kts", "dependencies {\n    implementation(\"g:a:1\")\n}\n"), nil},
+		{"a project file's references, with and without a version", oneFile("src/App/App.csproj", sdkProject(csprojOwn)), dependenciesOf("src/App/App.csproj", "A.B", "C")},
+		{"a project file at the root", oneFile("App.csproj", sdkProject(csprojOwn)), dependenciesOf("App.csproj", "A.B", "C")},
+		{"private assets, as an attribute and as an element, left out", oneFile("src/App/App.csproj", sdkProject(`<ItemGroup><PackageReference Include="A" PrivateAssets="All" />`+
+			`<PackageReference Include="B"><PrivateAssets>all</PrivateAssets><IncludeAssets>runtime; build</IncludeAssets></PackageReference>`+
+			`<PackageReference Include="C" PrivateAssets="analyzers" /></ItemGroup>`)), dependenciesOf("src/App/App.csproj", "C")},
+		{"conditions, a repeated name, update and remove", oneFile("src/App/App.csproj", sdkProject(`<ItemGroup Condition="'$(TargetFramework)' == 'net462'">`+
+			`<PackageReference Include="A" Version="1" Condition="'$(OS)' == 'Windows_NT'" /></ItemGroup><ItemGroup><PackageReference Include="A" Version="1" />`+
+			`<PackageReference Update="B" Version="2" /><PackageReference Remove="C" /></ItemGroup>`)), dependenciesOf("src/App/App.csproj", "A")},
+		{"a project file without references", oneFile("src/App/App.csproj", sdkProject("")), dependenciesOf("src/App/App.csproj")},
+		{"a project file with a byte order mark, a declaration, the old name space and CRLF", oneFile("src/App/App.csproj",
+			"\uFEFF<?xml version=\"1.0\" encoding=\"utf-8\"?>\r\n<Project ToolsVersion=\"15.0\" xmlns=\"http://schemas.microsoft.com/developer/msbuild/2003\">\r\n"+csprojOwn+"\r\n</Project>\r\n"),
+			dependenciesOf("src/App/App.csproj", "A.B", "C")},
+		{"an old-style project without package references", oneFile("src/App/App.csproj",
+			`<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003"><ItemGroup><Reference Include="System" /></ItemGroup></Project>`), nil},
+		{"references of a target and under choose left out", oneFile("src/App/App.csproj", sdkProject(`<Target Name="x"><ItemGroup><PackageReference Include="T" /></ItemGroup></Target>`+
+			`<Choose><When Condition="true"><ItemGroup><PackageReference Include="W" /></ItemGroup></When></Choose>`)), dependenciesOf("src/App/App.csproj")},
+		{"project files of test code, other code and a skipped folder", snapshottest.Files(nil, map[string]string{
+			"tests/App.Tests/App.Tests.csproj": sdkProject(csprojOwn), "App.Tests/App.Tests.csproj": sdkProject(csprojOwn),
+			"examples/Demo/Demo.csproj": sdkProject(csprojOwn), "node_modules/x/X.csproj": sdkProject(csprojOwn)}), nil},
+		{"two projects", snapshottest.Files(nil, map[string]string{"src/A/A.csproj": sdkProject(csprojOwn), "src/B/B.csproj": sdkProject("")}),
+			[]snapshot.Manifest{{Path: "src/A/A.csproj", Dependencies: []string{"A.B", "C"}}, {Path: "src/B/B.csproj", Dependencies: []string{}}}},
+		{"central versions and a build props file are no manifest", snapshottest.Files(nil, map[string]string{
+			"Directory.Packages.props": `<Project><ItemGroup><PackageVersion Include="A" Version="1" /></ItemGroup></Project>`,
+			"Directory.Build.props":    `<Project>` + csprojOwn + `</Project>`}), nil},
 		{"a Cargo package: keys, a value over lines, a dotted key, a sub-table, a target table", oneFile("Cargo.toml",
 			"[package]\nname = \"x\"\n\n[dependencies]\nanyhow = \"1\"\nserde = { version = \"1\", features = [\n    \"derive\",\n] }\nlog.workspace = true\n\n"+
 				"[dependencies.clap]\nversion = \"4\"\nfeatures = [\"derive\"]\n\n[target.'cfg(unix)'.dependencies]\nlibc = \"0.2\"\n\n"+
@@ -157,6 +181,10 @@ func TestBuildLeavesAnUnreadableManifestOut(t *testing.T) {
 		{"build.gradle", "dependencies {\n    implementation \"nocolon\"\n}\n"},
 		{"pom.xml", "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?><project><dependencies/></project>"},
 		{"Cargo.toml", "[package]\nname = \"x\"\n\n[dependencies]\nnot a key line\n"},
+		{"src/App/App.csproj", `<Project Sdk="Microsoft.NET.Sdk"><ItemGroup>`},
+		{"src/App/App.csproj", sdkProject(`<ItemGroup><PackageReference Include="$(Driver)" /></ItemGroup>`)},
+		{"src/App/App.csproj", sdkProject(`<ItemGroup><PackageReference Include="A;B" /></ItemGroup>`)},
+		{"src/App/App.csproj", `<?xml version="1.0" encoding="utf-16"?><Project Sdk="Microsoft.NET.Sdk"></Project>`},
 	} {
 		s := snapshot.Build(snapshottest.Files(nil, map[string]string{tc.file: tc.content}), conventions.Default())
 		if len(s.Now.Manifests) != 0 || !reflect.DeepEqual(s.Unreadable, []string{tc.file}) {
@@ -167,6 +195,13 @@ func TestBuildLeavesAnUnreadableManifestOut(t *testing.T) {
 
 func pyproject(content string) snapshot.Source {
 	return snapshottest.Files(nil, map[string]string{"pyproject.toml": content})
+}
+
+const csprojOwn = `<ItemGroup><PackageReference Include="A.B" Version="1.0.0" /><PackageReference Include=" C " /></ItemGroup>`
+
+// sdkProject is a project file of the .NET SDK with the given items.
+func sdkProject(items string) string {
+	return `<Project Sdk="Microsoft.NET.Sdk">` + items + `</Project>`
 }
 
 const pomOwn = "<dependencies>" +
@@ -313,6 +348,8 @@ func TestWantsNamesWhatTheReaderReads(t *testing.T) {
 		"Acme.sln": false, "Acme.slnx": false, "Directory.Build.props": false, "eng/Common.targets": false, "NuGet.Config": false,
 		"nuget.config": false, "Acme.sln.DotSettings": false, "src/Acme/Strings.resx": false,
 		"src/Acme/Form1.Designer.cs": true, "src/Acme/Views.g.cs": true,
+		"src/Acme/Acme.csproj": true, "Acme.csproj": true, "tests/Acme.Tests/Acme.Tests.csproj": false, "Acme.Tests/Acme.Tests.csproj": false,
+		"examples/Demo/Demo.csproj": false, "node_modules/x/X.csproj": false, "Directory.Packages.props": false,
 		"Cargo.toml": true, "Cargo.lock": true, "crates/cli/Cargo.toml": true, "vendor/x/Cargo.toml": false, "src/main.rs": true,
 		"pubspec.yaml": true, "app/pubspec.yaml": true, "packages/core/pubspec.yaml": true, "node_modules/x/pubspec.yaml": false,
 		"docs/.env.example": false, "node_modules/x/a.js": false, "assets/logo.bin": true,

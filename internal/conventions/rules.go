@@ -57,6 +57,9 @@ type Manifest struct {
 	File      string
 	Format    ManifestFormat
 	Lockfiles []string // the lockfiles at the root that record what the manifest's dependencies resolved to
+	// Nested makes File a pattern for the file name: the manifest is read wherever it is tracked outside skipped
+	// folders, test code and other code.
+	Nested bool
 }
 
 // ManifestFormat says how a manifest lists its runtime dependencies.
@@ -75,6 +78,9 @@ const (
 	PomDependencies
 	// GradleDependencies reads the implementation, api and runtimeOnly lines of the top-level dependencies block.
 	GradleDependencies
+	// CsprojDependencies reads the PackageReference items of a .NET project file, without those whose assets are
+	// private.
+	CsprojDependencies
 	// CargoDependencies reads the keys of [dependencies] and of the target tables of a Cargo.toml.
 	CargoDependencies
 )
@@ -165,6 +171,7 @@ func Default() Rules {
 			{File: "build.gradle", Format: GradleDependencies},
 			{File: "build.gradle.kts", Format: GradleDependencies},
 			{File: "Cargo.toml", Format: CargoDependencies, Lockfiles: []string{"Cargo.lock"}},
+			{File: "*.csproj", Format: CsprojDependencies, Nested: true},
 		},
 		PlanningPaths: []string{
 			"docs/superpowers/", "docs/stories/", "docs/plans/", "docs/specs/", "projects/", ".review-work/",

@@ -26,7 +26,7 @@ func WantsOf(rules conventions.Rules) Wants {
 			if path == SettingsFile {
 				return true
 			}
-			if slices.ContainsFunc(rules.Manifests, func(m conventions.Manifest) bool { return m.File == path || slices.Contains(m.Lockfiles, path) }) {
+			if _, known := manifestOf(rules, path); known || slices.ContainsFunc(rules.Manifests, func(m conventions.Manifest) bool { return slices.Contains(m.Lockfiles, path) }) {
 				return true
 			}
 			if onPaths(rules, path, rules.ComposeFiles) {
@@ -65,20 +65,21 @@ func settings(entries []Entry) *Settings {
 	return nil
 }
 
-// manifests reads the runtime dependencies of the known manifests at the root. A manifest that cannot be read
-// as its format is returned as unreadable.
-// NOTE: only a manifest at the repository root is read; a monorepo's nested manifests are not seen.
+// manifests reads the runtime dependencies of the known manifests: at the root, and a nested format's wherever it is
+// tracked. A manifest that cannot be read as its format is returned as unreadable.
+// NOTE: only a nested format's manifests are read below the repository root; a monorepo's other nested manifests are
+// not seen.
 // Upgrade: read every tracked manifest.
 func manifests(rules conventions.Rules, entries []Entry) ([]Manifest, []string) {
 	var found []Manifest
 	var unreadable []string
 	var locks [][]byte
 	for _, entry := range entries {
-		index := slices.IndexFunc(rules.Manifests, func(m conventions.Manifest) bool { return m.File == entry.Path })
-		if index < 0 || entry.Content == nil {
+		known, isManifest := manifestOf(rules, entry.Path)
+		if !isManifest || entry.Content == nil {
 			continue
 		}
-		names, manifest, readable := dependencies(rules.Manifests[index].Format, entry.Content)
+		names, manifest, readable := dependencies(known.Format, entry.Content)
 		switch {
 		case !manifest:
 			continue
@@ -88,7 +89,7 @@ func manifests(rules conventions.Rules, entries []Entry) ([]Manifest, []string) 
 		}
 		slices.Sort(names)
 		m := Manifest{Path: entry.Path, Dependencies: names}
-		for _, lockfile := range rules.Manifests[index].Lockfiles {
+		for _, lockfile := range known.Lockfiles {
 			if i := slices.IndexFunc(entries, func(e Entry) bool { return e.Path == lockfile && e.Content != nil }); i >= 0 {
 				m.Lockfiles = append(m.Lockfiles, lockfile)
 				locks = append(locks, entries[i].Content)
@@ -122,6 +123,8 @@ func dependencies(format conventions.ManifestFormat, content []byte) (names []st
 		return pomDependencies(content)
 	case conventions.GradleDependencies:
 		return gradleDependencies(content)
+	case conventions.CsprojDependencies:
+		return csprojDependencies(content)
 	case conventions.CargoDependencies:
 		return cargoDependencies(content)
 	case conventions.JSONDependencies:
