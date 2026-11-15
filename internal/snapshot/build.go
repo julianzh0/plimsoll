@@ -130,6 +130,9 @@ func codeFile(rules conventions.Rules, entry Entry) (File, bool) {
 	file.Record = onPaths(rules, entry.Path, rules.PlanningPaths) || onPaths(rules, entry.Path, rules.MeasurementPaths)
 	if language, found := rules.LanguageOf(entry.Path); found {
 		file.Language = language.Name
+		if file.Role == Product {
+			file.TestLines = testLines(language, entry.Content)
+		}
 	}
 	return file, true
 }

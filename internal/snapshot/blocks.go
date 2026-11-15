@@ -1,6 +1,11 @@
 package snapshot
 
-import "regexp"
+import (
+	"bytes"
+	"regexp"
+
+	"github.com/juzhxng/plimsoll/internal/conventions"
+)
 
 // masked returns the content with every match of a language's literal pattern as spaces, line ends kept, so offsets
 // and line numbers stay those of the file. A nil pattern returns the content itself.
@@ -63,4 +68,23 @@ func closingBrace(text []byte, open int) int {
 		}
 	}
 	return len(text) - 1
+}
+
+// testLines counts the lines that a file's test code touches, each line once: the spans of the language's test
+// blocks on the text with its literals blanked, a span that starts inside the one before it being part of that one.
+func testLines(language conventions.Language, content []byte) int {
+	text := masked(language.Literals, content)
+	counted, lastCounted, until := 0, 0, -1
+	for _, s := range spansOf(language.TestBlock, text) {
+		if s.start <= until {
+			continue
+		}
+		until = s.end
+		first := max(1+bytes.Count(text[:s.start], []byte("\n")), lastCounted+1)
+		last := 1 + bytes.Count(text[:s.end], []byte("\n"))
+		if last >= first {
+			counted, lastCounted = counted+last-first+1, last
+		}
+	}
+	return counted
 }

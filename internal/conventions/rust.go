@@ -6,7 +6,7 @@ import "regexp"
 // the mod lines declare.
 func rustLanguage() Language {
 	return Language{
-		Name: "rust", Extensions: []string{".rs"}, DynamicRead: rustDynamicRead, Literals: rustLiterals,
+		Name: "rust", Extensions: []string{".rs"}, DynamicRead: rustDynamicRead, Literals: rustLiterals, TestBlock: rustTestBlock,
 		Imports: Imports{
 			Statements: []ImportForm{{Pattern: rustMod}, {Pattern: rustUse}, {Pattern: rustExtern}},
 			Grouped:    true,
@@ -36,6 +36,9 @@ var (
 	// NOTE: block comments nested deeper than one level, and raw strings with more than three "#", end early.
 	// Upgrade: a lexer.
 	rustLiterals = regexp.MustCompile(`//[^\n]*|/\*(?:/+\*(?:[^*]|\*+[^*/])*\*+/|[^*/]|\*+[^*/]|/+[^*/])*\*+/|r"[^"]*"|(?s:r#".*?"#|r##".*?"##|r###".*?"###)|"(?:[^"\\]|\\[\s\S])*"|'(?:\\(?:[^xu\n]|x[0-9a-fA-F]{2}|u\{[0-9a-fA-F_]+\})|[^\\'\n])'`)
+	// rustTestBlock is #[cfg(test)] and what follows it up to the first ";" or "{" without a "}" between: a "}"
+	// first means a field or a variant under the attribute, which is no block.
+	rustTestBlock = regexp.MustCompile(`#\[cfg\(test\)\][^;{}]*[;{]`)
 	// rustMod is a module declared in its own file; the target keeps the word mod, so a declaration is told from a path.
 	rustMod = regexp.MustCompile(`(?m)^[ \t]*` + rustAttributes + rustVisibility + `(?P<spec>mod[ \t]+[A-Za-z_]\w*)[ \t]*;`)
 	// rustUse is a use declaration; its target may group paths in braces.

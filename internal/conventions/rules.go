@@ -101,6 +101,9 @@ type Language struct {
 	// Literals are comments, strings and character literals; they are blanked before imports are read. Nil reads
 	// the text as written.
 	Literals *regexp.Regexp
+	// TestBlock is the start of test code inside a file that is no test code by its path: a match that ends with "{"
+	// runs to the brace that closes it, any other match is the test code. Nil for none.
+	TestBlock *regexp.Regexp
 	// SettingsPrefix is a declaration of a prefix of settings names; its group "prefix" holds it. Nil for none.
 	SettingsPrefix *regexp.Regexp
 	Imports        Imports       // how its imports are written and what they name

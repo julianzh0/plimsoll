@@ -2,6 +2,7 @@ package snapshot
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"maps"
 	"math"
@@ -223,10 +224,14 @@ func rolesOf(lists ...[]File) map[string]Role {
 }
 
 // footprint sums the changes since the base by area: the role of the file now, else at the base; documentation
-// by path; anything else counts only as a changed file.
+// by path; anything else counts only as a changed file. In a product file whose test code grew, as many of the added
+// lines as it grew by are test lines; in one whose test code shrank, as many of the removed lines.
+// NOTE: a changed line of test code counts as a product line added and removed. Upgrade: read the changed line
+// ranges from git and count them against the blocks of both sides.
 func footprint(rules conventions.Rules, changes []Change, since int, now, before Tree) Footprint {
 	result := Footprint{Commits: since, Files: len(changes)}
 	roles := rolesOf(before.Files, now.Files)
+	testNow, testBefore := testLinesOf(now.Files), testLinesOf(before.Files)
 	for _, change := range changes {
 		fileRole, found := roles[change.Path]
 		if !found {
@@ -236,6 +241,16 @@ func footprint(rules conventions.Rules, changes []Change, since int, now, before
 		switch {
 		case found && fileRole == Product:
 			lines = &result.Product
+			basePath := cmp.Or(change.From, change.Path)
+			added, removed := change.Added, change.Removed
+			if grew := testNow[change.Path] - testBefore[basePath]; grew > 0 {
+				moved := min(grew, added)
+				result.Test.Added, added = result.Test.Added+moved, added-moved
+			} else if grew < 0 {
+				moved := min(-grew, removed)
+				result.Test.Removed, removed = result.Test.Removed+moved, removed-moved
+			}
+			change.Added, change.Removed = added, removed
 		case found && fileRole.IsTest():
 			lines = &result.Test
 		case area(rules, change.Path) == AreaDocs:
@@ -251,6 +266,17 @@ func footprint(rules conventions.Rules, changes []Change, since int, now, before
 		result.TestPerProduct = &ratio
 	}
 	return result
+}
+
+// testLinesOf maps each file that holds test code inside its product code to its number of such lines.
+func testLinesOf(files []File) map[string]int {
+	found := map[string]int{}
+	for _, file := range files {
+		if file.TestLines > 0 {
+			found[file.Path] = file.TestLines
+		}
+	}
+	return found
 }
 
 // history flags each commit as since the base and as usable, and gives each path its area.

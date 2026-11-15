@@ -42,12 +42,13 @@ type Tree struct {
 
 // File is one code file.
 type File struct {
-	Path     string
-	Language string // an entry's name, or "" when no entry speaks for the suffix
-	Role     Role
-	Lines    int
-	Limit    conventions.Limit // the line limit that applies: its entry's, else the shared one
-	Record   bool              // lies under a planning, review or measurement path; the history detectors leave it out
+	Path      string
+	Language  string // an entry's name, or "" when no entry speaks for the suffix
+	Role      Role
+	Lines     int
+	TestLines int               // lines of test code inside a product file, by the blocks its language names; part of Lines
+	Limit     conventions.Limit // the line limit that applies: its entry's, else the shared one
+	Record    bool              // lies under a planning, review or measurement path; the history detectors leave it out
 }
 
 // Role is what a code file is.

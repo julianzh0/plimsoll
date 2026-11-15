@@ -223,6 +223,36 @@ func TestBuildSumsTheFootprintByArea(t *testing.T) {
 	if got := snapshot.Build(source, conventions.Default()).Footprint.TestPerProduct; got != nil {
 		t.Errorf("Build(no product change).Footprint.TestPerProduct = %v, want nil", *got)
 	}
+	product := func(n int) string { return strings.Repeat("fn p() {}\n", n) }
+	tests := func(n int) string { return "#[cfg(test)]\nmod tests {\n" + strings.Repeat("    // t\n", n-3) + "}\n" }
+	for _, tc := range []struct {
+		name          string
+		base, now     string // src/a.rs on each side; "" is no file
+		change        snapshot.Change
+		product, test snapshot.Lines
+	}{
+		{"test code that grows", product(10) + tests(5), product(12) + tests(9), snapshot.Change{Added: 6}, snapshot.Lines{Added: 2}, snapshot.Lines{Added: 4}},
+		{"one added line makes a block test code", product(4) + "mod helpers {\n    fn h() {}\n}\n", product(4) + "#[cfg(test)]\nmod helpers {\n    fn h() {}\n}\n",
+			snapshot.Change{Added: 1}, snapshot.Lines{}, snapshot.Lines{Added: 1}},
+		{"test code that shrinks", product(10) + tests(9), product(7) + tests(5), snapshot.Change{Removed: 7}, snapshot.Lines{Removed: 3}, snapshot.Lines{Removed: 4}},
+		{"test code rewritten at its size", product(10) + tests(5), product(10) + strings.ReplaceAll(tests(5), "// t", "// u"),
+			snapshot.Change{Added: 2, Removed: 2}, snapshot.Lines{Added: 2, Removed: 2}, snapshot.Lines{}},
+		{"a new file", "", product(3) + tests(4), snapshot.Change{Added: 7}, snapshot.Lines{Added: 3}, snapshot.Lines{Added: 4}},
+		{"a deleted file", product(3) + tests(4), "", snapshot.Change{Removed: 7}, snapshot.Lines{Removed: 3}, snapshot.Lines{Removed: 4}},
+	} {
+		side := func(content string) map[string]string {
+			if content == "" {
+				return map[string]string{}
+			}
+			return map[string]string{"src/a.rs": content}
+		}
+		inside := snapshottest.Files(side(tc.base), side(tc.now))
+		tc.change.Path = "src/a.rs"
+		inside.Changes = []snapshot.Change{tc.change}
+		if got := snapshot.Build(inside, conventions.Default()).Footprint; got.Product != tc.product || got.Test != tc.test {
+			t.Errorf("%s: footprint product %+v, test %+v; want %+v, %+v", tc.name, got.Product, got.Test, tc.product, tc.test)
+		}
+	}
 }
 
 func TestBuildFlagsUsableCommits(t *testing.T) {

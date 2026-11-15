@@ -1,9 +1,11 @@
 package snapshot_test
 
 import (
+	"maps"
 	"os"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/juzhxng/plimsoll/internal/conventions"
@@ -284,5 +286,45 @@ func TestBuildFlagsCodeFilesUnderRecordPaths(t *testing.T) {
 		if want := slices.Contains(records, file.Path); file.Record != want {
 			t.Errorf("Build: %s Record = %v, want %v", file.Path, file.Record, want)
 		}
+	}
+}
+
+func TestBuildCountsTestCodeInsideProductFiles(t *testing.T) {
+	testLines := func(source snapshot.Source) map[string]int {
+		found := map[string]int{}
+		for _, file := range snapshot.Build(source, conventions.Default()).Now.Files {
+			if file.TestLines > 0 {
+				found[file.Path] = file.TestLines
+			}
+		}
+		return found
+	}
+	if got, want := testLines(snapshottest.Load(t, "testdata/rust")), map[string]int{"src/model.rs": 15, "src/store/memory.rs": 12}; !maps.Equal(got, want) {
+		t.Errorf("the sample: test lines inside product files = %v, want %v", got, want)
+	}
+	for _, tc := range []struct {
+		name, text string
+		want       int
+	}{
+		{"a module with a string that holds a brace", "fn a() {}\n\n#[cfg(test)]\nmod tests {\n    const T: &str = \"\n}\n\";\n    #[test]\n    fn t() { assert!('}' != '{'); }\n}\nfn b() {}\n", 8},
+		{"single statements", "#[cfg(test)]\nuse crate::testutil;\n#[cfg(test)]\nmod testutil;\nfn a() {}\n", 4},
+		{"a field", "struct S {\n    #[cfg(test)]\n    extra: u8,\n    other: u8,\n}\n", 0},
+		{"a function", "fn a() {}\n#[cfg(test)]\n#[test]\nfn t() {\n    assert!(true);\n}\n", 5},
+		{"other conditions", "#[cfg(not(test))]\nfn a() {}\n#[cfg(all(test, unix))]\nfn b() {}\n", 0},
+		{"test code inside test code", "#[cfg(test)]\nmod tests {\n    #[cfg(test)]\n    fn helper() {}\n}\n", 5},
+		{"a block that does not close", "fn a() {}\n#[cfg(test)]\nmod tests {\n    fn t() {}\n", 3},
+		{"two on one line", "#[cfg(test)] use a::b; #[cfg(test)] use c::d;\nfn a() {}\n", 1},
+		{"a comment that names it", "// #[cfg(test)]\n/* #[cfg(test)] mod x { */\nfn a() {}\n", 0},
+		{"a raw string that holds it", "const S: &str = r#\"\n#[cfg(test)]\nmod tests {\n}\n\"#;\n", 0},
+	} {
+		for _, text := range []string{tc.text, strings.ReplaceAll(tc.text, "\n", "\r\n")} {
+			if got := testLines(snapshottest.Files(nil, map[string]string{"src/a.rs": text}))["src/a.rs"]; got != tc.want {
+				t.Errorf("%s: test lines of %q = %d, want %d", tc.name, text, got, tc.want)
+			}
+		}
+	}
+	block := "#[cfg(test)]\nmod tests {\n}\n"
+	if got := testLines(snapshottest.Files(nil, map[string]string{"tests/a.rs": block, "scripts/a.rs": block, "src/a.ts": block})); len(got) != 0 {
+		t.Errorf("test code by its path, other code and another language: test lines %v, want none", got)
 	}
 }
