@@ -114,13 +114,34 @@ Every number is measured at the base and now, from the tracked files only:
 - the footprint of the change since the base
 - churn by area (product, tests, docs, other) over the last 150 non-merge commits
 - tracked planning and review files, and documentation churn against product and test churn since the base
-- the settings audit: settings no product file names, names defined twice in `.env.example`, compose variables that are not settings. In Python a setting whose name is a declared `env_prefix` plus a field of the same file counts as read
+- the settings audit: settings no product file names, names defined twice in `.env.example`, compose variables that are not settings, and reads whose name is computed at run time
 - hotspots: the three code files with the most changes in usable commits times their lines now, as report rows and a remark on their size mark, with no rule of its own
-- changed together: pairs of code files that share usable commits, at least one product code, neither a file that defines tests, and not two files of one Go package
-- test folders and package roots that a project declares in the pytest table of its root `pyproject.toml` (`testpaths`, `pythonpath`): added to the defaults and named with their source
-- import links for Go, TypeScript and Python, read by text patterns: the files that import the changed files and that the change did not touch, the three files that import the most others, import rings, cycles between sibling folders, and each new product file that no file imports. With `files`, also the files that import each named file. In Python an import under `if TYPE_CHECKING:` is type-only, and the project's own packages are looked for at the root and under `src/`.
+- changed together: pairs of code files that share usable commits, at least one product code, neither a file that defines tests, and not two files that the language treats as one unit
+- test folders and package roots that a project declares in its own configuration, added to the defaults and named with their source
+- import links, read by text patterns: the files that import the changed files and that the change did not touch, the three files that import the most others, import rings, cycles between sibling folders, and each new product file that no file imports. With `files`, also the files that import each named file.
 
 What it could not see is always named under "not analysed".
+
+## How each language is read
+
+Every detector works the same way for every language. A language only adds how its files are written, as one data
+file in `internal/conventions/`.
+
+| | TypeScript and JavaScript | Go | Python |
+|---|---|---|---|
+| Files | `.ts`, `.tsx`, `.js`, `.mjs`, `.cjs` | `.go` | `.py`, `.pyi` |
+| Imports | `import … from`, `export … from`, `import "x"`, `import()` and `require()`, relative or through the paths of `tsconfig.json` | the import path of a folder, under the module named in `go.mod` | `import x` and `from x import y`, relative with leading dots, `import_module()`, the project's packages at the root and under `src/` |
+| Type-only imports, left out of rings | `import type`, `export type` | none, and no rings are looked for: the compiler rejects them | imports under `if TYPE_CHECKING:` |
+| Declared test folders and roots | the defaults | the defaults | pytest's `testpaths` and `pythonpath` in `pyproject.toml` |
+| Runtime dependencies | `package.json`, `dependencies` | `go.mod`, `require` without `// indirect` | `pyproject.toml`, `[project] dependencies` |
+| Setting reads, besides the name as a word | a computed `process.env[…]` is counted | a computed `os.Getenv(…)` or `os.LookupEnv(…)` is counted | a computed `os.environ[…]` or `os.getenv(…)` is counted, and a pydantic `env_prefix` plus a field of the same file counts as read |
+| One unit when files change together | the file | the package folder | the file |
+
+The defaults, shared by all: test code lives in folders named `tests`, `test`, `__tests__` or `spec`, in files whose
+name ends in `.test`, `.spec`, `_test` or `-test` or starts with `test_`, and in files that define a test
+(`func Test…`, `def test_…`, `test(…)`, `it(…)`).
+
+Next languages: Dart, then Java and Kotlin, Rust, C#, C and C++, and Swift.
 
 ## Rules
 
