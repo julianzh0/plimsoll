@@ -1,0 +1,73 @@
+package shape
+
+import (
+	"testing"
+
+	"github.com/juzhxng/plimsoll/internal/answer"
+)
+
+const (
+	ratioLimitSource = "plimsoll's rule: test code at most twice the product code"
+	sizeLimitSource  = "the default of Pylint and SonarQube"
+)
+
+func ratio(change answer.Change, now float64, before *float64) answer.Mark {
+	return answer.Mark{ID: answer.ID(name, "test-ratio", "repository"), Change: change,
+		Measured: answer.Measured{Value: now, Before: before, Limit: new(float64(2)), LimitSource: ratioLimitSource}}
+}
+
+func size(change answer.Change, now float64, before *float64, limit float64) answer.Mark {
+	return answer.Mark{ID: answer.ID(name, "file-size", "src/a.ts"), Change: change, Subject: answer.Subject{Kind: "file", Paths: []string{"src/a.ts"}},
+		Measured: answer.Measured{Value: now, Before: before, Limit: new(limit), LimitSource: sizeLimitSource}}
+}
+
+func addition(rule, path string, names []string, now float64, before *float64) answer.Mark {
+	return answer.Mark{ID: answer.ID(name, rule, path), Change: answer.Grown, Subject: answer.Subject{Kind: "file", Paths: []string{path}, Names: names},
+		Measured: answer.Measured{Value: now, Before: before, LimitSource: additionSource}}
+}
+
+func TestWordingOfEachRuleAndChange(t *testing.T) {
+	cases := []struct {
+		mark answer.Mark
+		want string
+	}{
+		{ratio(answer.New, 2.1, new(1.9)), "The test ratio is 2.1, over the limit of 2.0 (plimsoll's rule: test code at most twice the product code); it was 1.9 at the base."},
+		{ratio(answer.New, 2.1, nil), "The test ratio is 2.1, over the limit of 2.0 (plimsoll's rule: test code at most twice the product code); there was no product code at the base."},
+		{ratio(answer.Grown, 3.8, new(3.7)), "The test ratio rose from 3.7 to 3.8; the limit is 2.0 (plimsoll's rule: test code at most twice the product code)."},
+		{ratio(answer.Standing, 3.7, new(3.7)), "The test ratio is 3.7, over the limit of 2.0 (plimsoll's rule: test code at most twice the product code); it was 3.7 at the base."},
+		{ratio(answer.Resolved, 1.9, new(2.3)), "The test ratio is 1.9, no longer over the limit of 2.0 (plimsoll's rule: test code at most twice the product code); it was 2.3 at the base."},
+		{size(answer.New, 1620, new(float64(1480)), 1500), "`src/a.ts` has 1,620 lines, over the limit of 1,500 (the default of Pylint and SonarQube); it had 1,480 at the base."},
+		{size(answer.New, 1600, nil, 1500), "`src/a.ts` has 1,600 lines, over the limit of 1,500 (the default of Pylint and SonarQube); it did not exist at the base."},
+		{size(answer.Grown, 3640, new(float64(3515)), 1500), "`src/a.ts` grew from 3,515 to 3,640 lines; it was already over the limit of 1,500 (the default of Pylint and SonarQube)."},
+		{size(answer.Standing, 1550, new(float64(1600)), 1500), "`src/a.ts` has 1,550 lines, over the limit of 1,500 (the default of Pylint and SonarQube); it had 1,600 at the base."},
+		{size(answer.Resolved, 1410, new(float64(1620)), 1500), "`src/a.ts` has 1,410 lines, no longer over the limit of 1,500 (the default of Pylint and SonarQube); it had 1,620 at the base."},
+		{size(answer.Resolved, 0, new(float64(1620)), 1500), "`src/a.ts` is no longer tracked; it had 1,620 lines at the base, over the limit of 1,500 (the default of Pylint and SonarQube)."},
+		{addition("dependencies", "package.json", []string{"ioredis"}, 6, new(float64(5))), "`package.json` names 1 runtime dependency that was not there at the base: `ioredis` (6 now, 5 at the base)."},
+		{addition("dependencies", "package.json", []string{"a", "b"}, 7, new(float64(5))), "`package.json` names 2 runtime dependencies that were not there at the base: `a`, `b` (7 now, 5 at the base)."},
+		{addition("dependencies", "package.json", []string{"a", "b"}, 2, nil), "`package.json` names 2 runtime dependencies that were not there at the base: `a`, `b` (2 now; the file did not exist at the base)."},
+		{addition("settings", ".env.example", []string{"ALPHA", "BETA"}, 93, new(float64(91))), "`.env.example` names 2 settings that were not there at the base: `ALPHA`, `BETA` (93 now, 91 at the base)."},
+		{addition("settings", ".env.example", []string{"ALPHA"}, 92, new(float64(91))), "`.env.example` names 1 setting that was not there at the base: `ALPHA` (92 now, 91 at the base)."},
+	}
+	for _, tc := range cases {
+		if got := (Detector{}).Wording(tc.mark); got != tc.want {
+			t.Errorf("Wording(%s %s) =\n%s\nwant\n%s", tc.mark.ID, tc.mark.Change, got, tc.want)
+		}
+	}
+}
+
+func TestStandingNamesTheRatioAndCountsFilesPerLimit(t *testing.T) {
+	cases := []struct {
+		items []answer.Mark
+		want  string
+	}{
+		{[]answer.Mark{ratio(answer.Standing, 3.7, new(3.7)), size(answer.Standing, 1600, new(float64(1600)), 1500), size(answer.Standing, 1700, new(float64(1700)), 1500)},
+			"test ratio 3.7 (limit 2.0); 2 files over 1,500 lines"},
+		{[]answer.Mark{size(answer.Standing, 1600, new(float64(1600)), 1500), size(answer.Standing, 900, new(float64(900)), 800)},
+			"1 file over 800 lines; 1 file over 1,500 lines"},
+	}
+	for _, tc := range cases {
+		if got := (Detector{}).Standing(tc.items); got != tc.want {
+			t.Errorf("Standing = %q, want %q", got, tc.want)
+		}
+	}
+}

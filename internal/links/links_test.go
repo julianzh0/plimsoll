@@ -1,0 +1,850 @@
+package links
+
+import (
+	"fmt"
+	"maps"
+	"path"
+	"path/filepath"
+	"slices"
+	"strings"
+	"testing"
+
+	"github.com/juzhxng/plimsoll/internal/answer"
+	"github.com/juzhxng/plimsoll/internal/conventions"
+	"github.com/juzhxng/plimsoll/internal/snapshot"
+	"github.com/juzhxng/plimsoll/internal/snapshot/snapshottest"
+)
+
+const goModule = "example.com/m"
+
+// languageCase is how one language names its files and how one file imports another; a language without a case
+// fails the test (N-10).
+type languageCase struct {
+	setup     map[string]string        // files every tree needs
+	product   func(name string) string // the path of product file name
+	test      func(name string) string // the path of the test file of name
+	support   func(name string) string // the path of test support name
+	testBody  string                   // a line that defines a test
+	outside   []string                 // three imports of outside packages, as written
+	nowhere   string                   // an own import that reaches no tracked file, as written
+	importing func(from string, targets []string, specs ...string) string
+	placed    func(folder, name string) string // the path of product file name in a folder below under
+	under     string                           // the folder that placed files lie below
+}
+
+func languageCases() map[string]languageCase {
+	return map[string]languageCase{
+		"typescript": {
+			setup:    map[string]string{},
+			product:  func(name string) string { return "src/" + name + ".ts" },
+			placed:   func(folder, name string) string { return "src/" + folder + "/" + name + ".ts" },
+			under:    "src",
+			test:     func(name string) string { return "tests/" + name + ".test.ts" },
+			support:  func(name string) string { return "tests/support/" + name + ".ts" },
+			testBody: `test("x", () => {});`,
+			outside:  []string{"node:fs", "node:path", "lodash"},
+			nowhere:  "./gone.ts",
+			importing: func(from string, targets []string, specs ...string) string {
+				var lines []string
+				for _, target := range targets {
+					relative, _ := filepath.Rel(path.Dir(from), target)
+					relative = filepath.ToSlash(relative)
+					if !strings.HasPrefix(relative, ".") {
+						relative = "./" + relative
+					}
+					lines = append(lines, `import "`+relative+`";`)
+				}
+				for _, spec := range specs {
+					lines = append(lines, `import "`+spec+`";`)
+				}
+				return strings.Join(lines, "\n") + "\n"
+			},
+		},
+		"python": {
+			// A package that stays on every side: without one, no import is the project's own.
+			setup:    map[string]string{"src/app/__init__.py": ""},
+			product:  func(name string) string { return "src/" + name + ".py" },
+			placed:   func(folder, name string) string { return "src/" + folder + "/" + name + ".py" },
+			under:    "src",
+			test:     func(name string) string { return "tests/test_" + name + ".py" },
+			support:  func(name string) string { return "tests/support/" + name + ".py" },
+			testBody: "def test_x(): pass",
+			outside:  []string{"os", "json", "httpx"},
+			nowhere:  "a.gone",
+			importing: func(_ string, targets []string, specs ...string) string {
+				var lines []string
+				for _, target := range targets {
+					module := strings.TrimPrefix(strings.TrimSuffix(target, ".py"), "src/")
+					lines = append(lines, "import "+strings.ReplaceAll(module, "/", "."))
+				}
+				for _, spec := range specs {
+					lines = append(lines, "import "+spec)
+				}
+				return strings.Join(lines, "\n") + "\n"
+			},
+		},
+		"go": {
+			setup:    map[string]string{"go.mod": "module " + goModule + "\n"},
+			product:  func(name string) string { return "internal/" + name + "/" + name + ".go" },
+			placed:   func(folder, name string) string { return "internal/" + folder + "/" + name + "/" + name + ".go" },
+			under:    "internal",
+			test:     func(name string) string { return "internal/" + name + "/" + name + "_test.go" },
+			support:  func(name string) string { return "internal/test/" + name + "/" + name + ".go" },
+			testBody: "func TestB(t *testing.T) {}",
+			outside:  []string{"fmt", "os", "strings"},
+			nowhere:  goModule + "/internal/gone",
+			importing: func(from string, targets []string, specs ...string) string {
+				lines := []string{"package " + path.Base(path.Dir(from)), "", "import ("}
+				for _, target := range targets {
+					lines = append(lines, "\t\""+goModule+"/"+path.Dir(target)+"\"")
+				}
+				for _, spec := range specs {
+					lines = append(lines, "\t\""+spec+"\"")
+				}
+				return strings.Join(append(lines, ")"), "\n") + "\n"
+			},
+		},
+	}
+}
+
+// eachLanguage runs a test body for every language entry with its case.
+func eachLanguage(t *testing.T, body func(t *testing.T, name string, c languageCase)) {
+	t.Helper()
+	for _, language := range conventions.Default().Languages {
+		c, known := languageCases()[language.Name]
+		if !known {
+			t.Errorf("language %s has no links case", language.Name)
+			continue
+		}
+		t.Run(language.Name, func(t *testing.T) { body(t, language.Name, c) })
+	}
+}
+
+// tree is a language's setup files plus the given ones.
+func (c languageCase) tree(files map[string]string) map[string]string {
+	all := map[string]string{}
+	maps.Copy(all, c.setup)
+	maps.Copy(all, files)
+	return all
+}
+
+// fan is a tree in which product file a imports resolved product files, and adds the given specs.
+func (c languageCase) fan(resolved int, specs ...string) map[string]string {
+	files := map[string]string{}
+	var targets []string
+	for i := range resolved {
+		target := c.product("t" + string(rune('a'+i)))
+		targets = append(targets, target)
+		files[target] = c.importing(target, nil)
+	}
+	files[c.product("a")] = c.importing(c.product("a"), targets, specs...)
+	return c.tree(files)
+}
+
+// detect builds the snapshot, runs the detector and checks what every mark must carry.
+func detect(t *testing.T, source snapshot.Source) answer.Findings {
+	t.Helper()
+	f := Detector{}.Detect(snapshot.Build(source, conventions.Default()))
+	for _, m := range f.Marks {
+		if m.ID == "" || m.Change == "" || m.Subject.Kind == "" || m.Measured.Unit == "" || m.Measured.LimitSource == "" ||
+			m.Hint == "" || m.Confidence != answer.Candidate {
+			t.Errorf("mark %+v lacks a field it must carry", m)
+		}
+	}
+	return f
+}
+
+func same(files map[string]string) snapshot.Source { return snapshottest.Files(files, files) }
+
+const wantLinksNote = "links: imports read by text patterns; an import is a link only when it names exactly one tracked file " +
+	"of the repository, or one folder where a language imports folders; outside packages are not compared with local names"
+
+const wantFolderNote = "an import of a folder reaches the folder's files; use between files of one folder needs no import and is not seen"
+
+func TestLinksCountImportsPerAnalysedLanguage(t *testing.T) {
+	eachLanguage(t, func(t *testing.T, name string, c languageCase) {
+		f := detect(t, same(c.fan(9, c.outside...)))
+		value, before := 9.0, 9.0
+		want := answer.Statistic{Name: "imports followed", Subject: name, Value: &value, Before: &before, Unit: "imports",
+			Note: "of 9 own: 0 ambiguous, 0 not readable, 0 not found; 3 outside"}
+		if len(f.Statistics) == 0 || !sameStatistic(f.Statistics[0], want) {
+			t.Errorf("statistics = %+v, want first %+v", f.Statistics, want)
+		}
+		if len(f.Notes) == 0 || f.Notes[0] != wantLinksNote || len(f.NotAnalysed) != 0 {
+			t.Errorf("notes %q, not analysed %q; want the links note first and nothing not analysed", f.Notes, f.NotAnalysed)
+		}
+		if got, want := slices.Contains(f.Notes, wantFolderNote), name == "go"; got != want {
+			t.Errorf("the folder note present = %v, want %v", got, want)
+		}
+		for _, note := range []string{
+			"`python`: its own packages are looked for at the root and under `src/`; an import of a package elsewhere counts as outside",
+			"`python`: `__init__.py` and `__main__.py` run without an import of them; a new one is not listed as a file without an importer",
+		} {
+			if got, want := slices.Contains(f.Notes, note), name == "python"; got != want {
+				t.Errorf("note %q present = %v, want %v", note, got, want)
+			}
+		}
+		fresh := detect(t, snapshottest.Files(map[string]string{"README.md": "x\n"}, c.fan(9, c.outside...)))
+		if len(fresh.Statistics) == 0 || fresh.Statistics[0].Before != nil {
+			t.Errorf("a language new since the base: statistics %+v, want no value at the base", fresh.Statistics)
+		}
+	})
+}
+
+func sameStatistic(a, b answer.Statistic) bool {
+	value := func(v *float64) any {
+		if v == nil {
+			return nil
+		}
+		return *v
+	}
+	return a.Name == b.Name && a.Subject == b.Subject && value(a.Value) == value(b.Value) && value(a.Before) == value(b.Before) &&
+		a.Unit == b.Unit && a.Note == b.Note
+}
+
+func TestALanguageOverTheLimitIsNotAnalysed(t *testing.T) {
+	eachLanguage(t, func(t *testing.T, name string, c languageCase) {
+		over := c.fan(8, c.nowhere)
+		sentence := "`" + name + "`: 1 of 9 own imports could not be followed now (0 ambiguous, 0 not readable, 1 not found), " +
+			"over the limit of 10% (links checked against go list and dependency-cruiser, 2026-11); no link numbers for its files"
+		f := detect(t, same(over))
+		if len(f.Statistics) != 0 || len(f.Marks) != 0 || !slices.Equal(f.NotAnalysed, []string{sentence}) {
+			t.Errorf("over the limit: statistics %+v, marks %+v, not analysed %q; want only %q", f.Statistics, f.Marks, f.NotAnalysed, sentence)
+		}
+		atBase := detect(t, snapshottest.Files(over, c.fan(8)))
+		if want := strings.Replace(sentence, "now", "at the base", 1); !slices.Equal(atBase.NotAnalysed, []string{want}) {
+			t.Errorf("over the limit at the base only: not analysed %q, want %q", atBase.NotAnalysed, want)
+		}
+		if at := detect(t, same(c.fan(9, c.nowhere))); len(at.NotAnalysed) != 0 || len(at.Statistics) == 0 {
+			t.Errorf("exactly at the limit: not analysed %q, statistics %+v; want analysed", at.NotAnalysed, at.Statistics)
+		}
+	})
+	ts, golang := languageCases()["typescript"], languageCases()["go"]
+	mixed := golang.fan(9)
+	maps.Copy(mixed, ts.fan(8, ts.nowhere))
+	f := detect(t, same(mixed))
+	if len(f.NotAnalysed) != 1 || !strings.HasPrefix(f.NotAnalysed[0], "`typescript`: ") ||
+		len(f.Statistics) == 0 || f.Statistics[0].Subject != "go" {
+		t.Errorf("typescript over beside a sound go tree: not analysed %q, statistics %+v", f.NotAnalysed, f.Statistics)
+	}
+}
+
+func TestADeclaredRootIsNamedAndSearched(t *testing.T) {
+	declared := detect(t, same(map[string]string{"pyproject.toml": "[tool.pytest.ini_options]\npythonpath = [\"lib\"]\n", "lib/core/__init__.py": "",
+		"src/app/__init__.py": "", "src/app/a.py": "import core\n"}))
+	for _, note := range []string{
+		"`python`: roots declared in `pyproject.toml` (`[tool.pytest.ini_options]` `pythonpath`): `lib/`",
+		"`python`: its own packages are looked for at the root, under `src/` and under `lib/`; an import of a package elsewhere counts as outside",
+	} {
+		if !slices.Contains(declared.Notes, note) {
+			t.Errorf("a declared root: notes %q, want %q", declared.Notes, note)
+		}
+	}
+	if row, _ := statisticNamed(declared, "imports followed"); row.Value == nil || *row.Value != 1 {
+		t.Errorf("a declared root: imports followed = %+v, want 1", row)
+	}
+}
+
+func TestALanguageWithoutItsPrefixFile(t *testing.T) {
+	golang, ts := languageCases()["go"], languageCases()["typescript"]
+	loose := map[string]string{"lib/app/a.py": "import app.b\n", "lib/app/b.py": "x = 1\n"}
+	with := func(files map[string]string, path, content string) map[string]string {
+		changed := clone(files)
+		if content == "" {
+			delete(changed, path)
+		} else {
+			changed[path] = content
+		}
+		return changed
+	}
+	cases := []struct {
+		name      string
+		base, now map[string]string
+		sentence  string
+		numbers   bool
+	}{
+		{"go without go.mod", with(golang.fan(2), "go.mod", ""), with(golang.fan(2), "go.mod", ""),
+			"`go`: no `go.mod` at the root, so its own imports cannot be told from outside ones; no link numbers for its files", false},
+		{"go.mod added since the base", with(golang.fan(2), "go.mod", ""), golang.fan(2),
+			"`go`: no `go.mod` at the root at the base, so its own imports cannot be told from outside ones; no link numbers for its files", false},
+		{"go.mod without a module line", with(golang.fan(2), "go.mod", "go 1.27\n"), with(golang.fan(2), "go.mod", "go 1.27\n"),
+			"`go`: `go.mod` could not be read, so its own imports cannot be told from outside ones; no link numbers for its files", false},
+		{"an extending tsconfig.json", with(ts.fan(2), "tsconfig.json", `{"extends": "./base.json"}`), with(ts.fan(2), "tsconfig.json", `{"extends": "./base.json"}`),
+			"`typescript`: `tsconfig.json` extends another file; aliases declared there count as outside", true},
+		{"an unreadable tsconfig.json", with(ts.fan(2), "tsconfig.json", "{not json"), with(ts.fan(2), "tsconfig.json", "{not json"),
+			"`typescript`: `tsconfig.json` could not be read; its aliases count as outside", true},
+		{"python without a package of its own", loose, loose,
+			"`python`: no package of its own at the root or under `src/`, so its own imports cannot be told from outside ones; no link numbers for its files", false},
+		{"python with a declared root and no package", with(loose, "pyproject.toml", "[tool.pytest.ini_options]\npythonpath = [\"lib\"]\n"), with(loose, "pyproject.toml", "[tool.pytest.ini_options]\npythonpath = [\"lib\"]\n"),
+			"`python`: no package of its own at the root, under `src/` or under `lib/`, so its own imports cannot be told from outside ones; no link numbers for its files", false},
+		{"a module added since the base", loose, with(loose, "main.py", "x = 1\n"),
+			"`python`: no package of its own at the root or under `src/` at the base, so its own imports cannot be told from outside ones; no link numbers for its files", false},
+	}
+	for _, tc := range cases {
+		f := detect(t, snapshottest.Files(tc.base, tc.now))
+		if !slices.Equal(f.NotAnalysed, []string{tc.sentence}) || (len(f.Statistics) > 0) != tc.numbers {
+			t.Errorf("%s: not analysed %q, statistics %+v; want %q and numbers %v", tc.name, f.NotAnalysed, f.Statistics, tc.sentence, tc.numbers)
+		}
+	}
+	python := languageCases()["python"]
+	outside := with(python.fan(2), "pyproject.toml", "[tool.pytest.ini_options]\npythonpath = [\"../x\"]\n")
+	if f := detect(t, same(outside)); !slices.Equal(f.NotAnalysed, []string{"`python`: `pyproject.toml` `pythonpath`: 1 value is absolute, leaves the repository or holds a pattern; it is not used"}) || len(f.Statistics) == 0 {
+		t.Errorf("a root outside the repository: not analysed %q, statistics %d", f.NotAnalysed, len(f.Statistics))
+	}
+}
+
+func TestLinksRunWithoutALanguageEntry(t *testing.T) {
+	f := detect(t, same(map[string]string{"bin/a.sh": "echo a\n", "bin/b.sh": "echo b\n"}))
+	if !slices.Equal(f.NotAnalysed, []string{"no file of a language whose imports are read"}) ||
+		len(f.Statistics) != 0 || len(f.Notes) != 0 || len(f.Marks) != 0 {
+		t.Errorf("shell scripts only: %+v, want one not-analysed entry and nothing else", f)
+	}
+}
+
+// imports is a tree in which product file a imports the given targets, each of which exists.
+func (c languageCase) imports(a string, targets ...string) map[string]string {
+	files := map[string]string{}
+	for _, target := range targets {
+		files[target] = c.importing(target, nil)
+		if strings.Contains(target, "test.") || strings.HasSuffix(target, "_test.go") {
+			files[target] = c.testBody + "\n"
+		}
+	}
+	if a != "" {
+		files[a] = c.importing(a, targets)
+	}
+	return c.tree(files)
+}
+
+func marksOf(f answer.Findings, rule string) []answer.Mark {
+	var found []answer.Mark
+	for _, m := range f.Marks {
+		if answer.RuleOf(m.ID) == rule {
+			found = append(found, m)
+		}
+	}
+	return found
+}
+
+func TestTestImportMarksInEachLanguage(t *testing.T) {
+	eachLanguage(t, func(t *testing.T, _ string, c languageCase) {
+		a, b, db, clock := c.product("a"), c.product("b"), c.support("db"), c.support("clock")
+		one := 1.0
+		cases := []struct {
+			name      string
+			base, now map[string]string
+			change    answer.Change
+			value     float64
+			before    *float64
+		}{
+			{"starts to import", c.imports(a, b), c.imports(a, b, db), answer.New, 1, new(0.0)},
+			{"a new file", c.imports("", b), c.imports(a, db), answer.New, 1, nil},
+			{"imports more", c.imports(a, db), c.imports(a, db, clock), answer.Grown, 2, &one},
+			{"unchanged", c.imports(a, db), c.imports(a, db), answer.Standing, 1, &one},
+			{"stops", c.imports(a, db), c.imports(a, b), answer.Resolved, 0, &one},
+		}
+		z := strings.Replace(a, "a", "z", 1)
+		renamed := snapshottest.Files(c.imports(a, db), c.imports(z, db))
+		renamed.Changes = []snapshot.Change{{Path: z, From: a}}
+		if marks := marksOf(detect(t, renamed), "test-import"); len(marks) != 1 || marks[0].ID != "links.test-import:"+z ||
+			marks[0].Change != answer.Standing || marks[0].Measured.Before == nil || *marks[0].Measured.Before != 1 {
+			t.Errorf("a renamed file that imports test code: marks %+v, want it standing under its new name", marks)
+		}
+		gone := snapshottest.Files(c.imports(a, db), c.imports("", db))
+		goneMarks := marksOf(detect(t, gone), "test-import")
+		if len(goneMarks) != 1 || goneMarks[0].ID != "links.test-import:"+a || goneMarks[0].Change != answer.Resolved {
+			t.Errorf("a product file gone since the base: marks %+v, want it resolved under its base path", goneMarks)
+		}
+		s := snapshot.Build(gone, conventions.Default())
+		if got := (Detector{}).Explain(s, goneMarks[0]); len(got) == 0 || !strings.HasPrefix(got[0], "at the base `"+a+"` line ") {
+			t.Errorf("Explain of a gone file = %q, want its base import first", got)
+		}
+		for _, tc := range cases {
+			marks := marksOf(detect(t, snapshottest.Files(tc.base, tc.now)), "test-import")
+			if len(marks) != 1 {
+				t.Errorf("%s: test-import marks = %+v, want one", tc.name, marks)
+				continue
+			}
+			m := marks[0]
+			beforeOK := tc.before == nil && m.Measured.Before == nil || tc.before != nil && m.Measured.Before != nil && *m.Measured.Before == *tc.before
+			if m.ID != "links.test-import:"+a || m.Change != tc.change || m.Measured.Value != tc.value || !beforeOK ||
+				!slices.Equal(m.Subject.Paths, []string{a}) || m.Subject.Kind != "file" || m.Measured.Limit != nil ||
+				m.Measured.Unit != "imports of test code" || m.Measured.LimitSource != "product code imports no test code" ||
+				m.Hint != "found by text patterns on import lines; `explain` names each import by file and line." {
+				t.Errorf("%s: mark %+v %+v", tc.name, m, m.Measured)
+			}
+		}
+		scripts := c.imports("", db)
+		script := "scripts/x" + path.Ext(a)
+		if path.Ext(a) == ".go" {
+			script = "scripts/x/x.go"
+		}
+		scripts[script] = c.importing(script, []string{db})
+		if marks := marksOf(detect(t, same(scripts)), "test-import"); len(marks) != 0 {
+			t.Errorf("other code importing test code: marks %+v, want none", marks)
+		}
+	})
+	ts := languageCases()["typescript"]
+	typeOnly := ts.imports("", ts.support("db"))
+	typeOnly[ts.product("a")] = `import type { T } from "../tests/support/db.ts";` + "\n"
+	if marks := marksOf(detect(t, snapshottest.Files(ts.tree(nil), typeOnly)), "test-import"); len(marks) != 1 || marks[0].Measured.Value != 1 {
+		t.Errorf("a type-only import of test code: marks %+v, want one with value 1", marks)
+	}
+	testFile := ts.imports(ts.product("a"), ts.test("b"))
+	if marks := marksOf(detect(t, snapshottest.Files(ts.tree(nil), testFile)), "test-import"); len(marks) != 1 {
+		t.Errorf("product code importing a file that defines tests: marks %+v, want one", marks)
+	}
+}
+
+// ring builds a typescript tree from edges "a>b", one import per line, every named file tracked.
+func ring(edges ...string) map[string]string {
+	ts := languageCases()["typescript"]
+	targets := map[string][]string{}
+	for _, edge := range edges {
+		from, to, _ := strings.Cut(edge, ">")
+		targets[ts.product(from)] = append(targets[ts.product(from)], ts.product(to))
+		if _, known := targets[ts.product(to)]; !known {
+			targets[ts.product(to)] = nil
+		}
+	}
+	files := map[string]string{}
+	for from, to := range targets {
+		files[from] = ts.importing(from, to)
+	}
+	return files
+}
+
+func statisticNamed(f answer.Findings, statName string) (answer.Statistic, bool) {
+	for _, s := range f.Statistics {
+		if s.Name == statName {
+			return s, true
+		}
+	}
+	return answer.Statistic{}, false
+}
+
+func TestCycleMarks(t *testing.T) {
+	three, two := 3.0, 2.0
+	cases := []struct {
+		name      string
+		base, now map[string]string
+		id        string
+		change    answer.Change
+		value     float64
+		before    *float64
+	}{
+		{"a new ring", ring("a>b", "b>c"), ring("a>b", "b>c", "c>a"), "src/a.ts", answer.New, 3, nil},
+		{"a ring that grew", ring("b>c", "c>d", "d>b"), ring("b>c", "c>d", "d>b", "b>a", "a>c"), "src/a.ts", answer.Grown, 4, &three},
+		{"an unchanged ring", ring("a>b", "b>c", "c>a"), ring("a>b", "b>c", "c>a"), "src/a.ts", answer.Standing, 3, &three},
+		{"a broken ring", ring("a>b", "b>c", "c>a"), ring("a>b", "b>c"), "src/a.ts", answer.Resolved, 0, &three},
+		{"two rings joined", ring("a>b", "b>a", "c>d", "d>c"), ring("a>b", "b>a", "c>d", "d>c", "b>c", "d>a"), "src/a.ts", answer.Grown, 4, &two},
+	}
+	for _, tc := range cases {
+		marks := marksOf(detect(t, snapshottest.Files(tc.base, tc.now)), ruleCycle)
+		if len(marks) != 1 {
+			t.Errorf("%s: cycle marks = %+v, want one", tc.name, marks)
+			continue
+		}
+		m := marks[0]
+		beforeOK := tc.before == nil && m.Measured.Before == nil || tc.before != nil && m.Measured.Before != nil && *m.Measured.Before == *tc.before
+		if m.ID != "links.cycle:"+tc.id || m.Change != tc.change || m.Measured.Value != tc.value || !beforeOK ||
+			m.Subject.Kind != "files" || m.Measured.Unit != "files" || m.Measured.Limit != nil ||
+			m.Measured.LimitSource != "files do not import each other in a ring" || m.Hint != hint {
+			t.Errorf("%s: mark %+v %+v", tc.name, m, m.Measured)
+		}
+	}
+	newRing := marksOf(detect(t, snapshottest.Files(ring("a>b", "b>c"), ring("a>b", "b>c", "c>a"))), ruleCycle)[0]
+	if !slices.Equal(newRing.Subject.Paths, []string{"src/a.ts", "src/b.ts", "src/c.ts"}) {
+		t.Errorf("a new ring's subject = %q, want its three files sorted", newRing.Subject.Paths)
+	}
+
+	renamed := snapshottest.Files(ring("a>b", "b>a"), ring("z>b", "b>z"))
+	renamed.Changes = []snapshot.Change{{Path: "src/b.ts", Added: 1, Removed: 1}, {Path: "src/z.ts", From: "src/a.ts"}}
+	if marks := marksOf(detect(t, renamed), ruleCycle); len(marks) != 1 || marks[0].ID != "links.cycle:src/b.ts" ||
+		marks[0].Change != answer.Standing || marks[0].Measured.Value != 2 {
+		t.Errorf("a ring with a renamed member: marks %+v, want it standing as links.cycle:src/b.ts", marks)
+	}
+
+	ts := languageCases()["typescript"]
+	typeRing := map[string]string{
+		ts.product("a"): `import type { B } from "./b.ts";` + "\n",
+		ts.product("b"): `import { a } from "./a.ts";` + "\n",
+	}
+	f := detect(t, same(typeRing))
+	rings, _ := statisticNamed(f, "import rings")
+	typeOnly, _ := statisticNamed(f, "files in a ring only through type-only imports")
+	if len(marksOf(f, ruleCycle)) != 0 || rings.Value == nil || *rings.Value != 0 || typeOnly.Value == nil || *typeOnly.Value != 2 {
+		t.Errorf("a ring through a type-only import: marks %+v, rings %+v, type-only %+v", f.Marks, rings, typeOnly)
+	}
+	if self := detect(t, same(map[string]string{"src/self.ts": `import "./self.ts";` + "\n"})); len(marksOf(self, ruleCycle)) != 0 {
+		t.Errorf("a file that imports itself: marks %+v, want none", self.Marks)
+	}
+
+	f = detect(t, snapshottest.Files(ring("a>b", "b>c"), ring("a>b", "b>c", "c>a")))
+	rings, _ = statisticNamed(f, "import rings")
+	typeOnly, _ = statisticNamed(f, "files in a ring only through type-only imports")
+	if rings.Value == nil || *rings.Value != 1 || rings.Before == nil || *rings.Before != 0 || rings.Unit != "rings" || rings.Note != "3 files" ||
+		typeOnly.Value == nil || *typeOnly.Value != 0 || typeOnly.Before == nil || *typeOnly.Before != 0 || typeOnly.Unit != "files" {
+		t.Errorf("rows for a new ring: %+v and %+v", rings, typeOnly)
+	}
+	if !slices.Contains(f.Notes, "rings: among imports that are not type-only") {
+		t.Errorf("notes = %q, want the rings note", f.Notes)
+	}
+}
+
+func TestRingsAreNotLookedForWhereTheEntrySaysSo(t *testing.T) {
+	golang := languageCases()["go"]
+	a, b := golang.product("a"), golang.product("b")
+	f := detect(t, same(golang.tree(map[string]string{a: golang.importing(a, []string{b}), b: golang.importing(b, []string{a})})))
+	_, rings := statisticNamed(f, "import rings")
+	if len(marksOf(f, ruleCycle)) != 0 || rings || len(f.NotAnalysed) != 0 ||
+		!slices.Contains(f.Notes, "`go`: import rings are not looked for: the Go compiler rejects import cycles") ||
+		slices.Contains(f.Notes, "rings: among imports that are not type-only") {
+		t.Errorf("go: marks %+v, rows %+v, notes %q, not analysed %q", f.Marks, f.Statistics, f.Notes, f.NotAnalysed)
+	}
+}
+
+func clone(files map[string]string) map[string]string {
+	copied := map[string]string{}
+	maps.Copy(copied, files)
+	return copied
+}
+
+// testFile is a test file of the language that imports the targets.
+func (c languageCase) testFile(at string, targets ...string) string {
+	return c.importing(at, targets) + c.testBody + "\n"
+}
+
+// reachBase is the base tree of the reach tests: b, c, the test of b and a second test file import a; u imports
+// old; p imports ten further files, so one import that leads nowhere stays under the guard's limit.
+func (c languageCase) reachBase() map[string]string {
+	a, old := c.product("a"), c.product("old")
+	files := map[string]string{
+		a: c.importing(a, nil), old: c.importing(old, nil),
+		c.product("b"): c.importing(c.product("b"), []string{a}), c.product("c"): c.importing(c.product("c"), []string{a}),
+		c.test("b"): c.testFile(c.test("b"), a), c.test("t2"): c.testFile(c.test("t2"), a),
+		c.product("u"): c.importing(c.product("u"), []string{old}),
+	}
+	var padding []string
+	for i := range 10 {
+		target := c.product("p" + string(rune('a'+i)))
+		files[target] = c.importing(target, nil)
+		padding = append(padding, target)
+	}
+	files[c.product("p")] = c.importing(c.product("p"), padding)
+	return c.tree(files)
+}
+
+func TestReachCountsImportersTheChangeDidNotTouch(t *testing.T) {
+	eachLanguage(t, func(t *testing.T, name string, c languageCase) {
+		a := c.product("a")
+		base := c.reachBase()
+		now := clone(base)
+		now[a] += "// changed\n"
+		now[c.product("c")] += "// changed\n"
+		now[c.product("d")] = c.importing(c.product("d"), []string{a})
+		delete(now, c.product("old"))
+		withNew := clone(now)
+		withNew[c.product("e")] = c.importing(c.product("e"), []string{c.product("d")})
+		withNewBase := clone(base)
+		withNewBase[c.product("e")] = withNew[c.product("e")]
+		for _, s := range detect(t, snapshottest.Files(withNewBase, withNew)).Statistics {
+			if s.Name == "widest reach" && strings.HasPrefix(c.product("d"), strings.TrimSuffix(s.Subject, "/")) && s.Before != nil {
+				t.Errorf("a file new since the base has a widest-reach row with a value at the base: %+v", s)
+			}
+		}
+		f := detect(t, snapshottest.Files(base, now))
+		reach, _ := statisticNamed(f, "reach of the change")
+		if !sameStatistic(reach, answer.Statistic{Name: "reach of the change",
+			Note: "3 files; 3 changed code files; 1 product, 2 test; 2 more importers are part of the change"}) {
+			t.Errorf("reach = %+v", reach)
+		}
+		var widest []answer.Statistic
+		for _, s := range f.Statistics {
+			if s.Name == "widest reach" {
+				widest = append(widest, s)
+			}
+		}
+		wantSubject := a
+		if name == "go" {
+			wantSubject = path.Dir(a) + "/"
+		}
+		if len(widest) != 1 || !sameStatistic(widest[0], answer.Statistic{Name: "widest reach", Subject: wantSubject, Note: "3 files; 1 product, 2 test"}) {
+			t.Errorf("widest reach = %+v, want one row for %s", widest, a)
+		}
+		if !slices.Contains(f.Notes, "reach: files that import the changed files directly and that the change did not touch; "+
+			"importers behind a file that only passes imports on are not followed") {
+			t.Errorf("notes = %q, want the reach note", f.Notes)
+		}
+		unchanged, _ := statisticNamed(detect(t, same(base)), "reach of the change")
+		if !sameStatistic(unchanged, answer.Statistic{Name: "reach of the change", Note: "0 files; 0 changed code files"}) {
+			t.Errorf("an unchanged tree: reach = %+v", unchanged)
+		}
+		if name == "go" {
+			testOnly := clone(base)
+			testOnly[c.test("b")] += "// changed\n"
+			if r, _ := statisticNamed(detect(t, snapshottest.Files(base, testOnly)), "reach of the change"); r.Value != nil || r.Note != "0 files; 1 changed code file" {
+				t.Errorf("a changed Go test file alone: reach = %+v, want 0 and one changed code file", r)
+			}
+		}
+		if name == "typescript" {
+			withIndex, nowIndex := clone(base), clone(now)
+			withIndex["src/index.ts"] = "export * from \"./a.ts\";\n"
+			nowIndex["src/index.ts"] = withIndex["src/index.ts"]
+			r, _ := statisticNamed(detect(t, snapshottest.Files(withIndex, nowIndex)), "reach of the change")
+			if r.Value != nil || !strings.HasPrefix(r.Note, "4 files; ") || !strings.HasSuffix(r.Note, "; 1 only passes imports on") {
+				t.Errorf("an untouched index file among the importers: reach = %+v", r)
+			}
+		}
+		changedMany := clone(base)
+		for _, target := range []string{"pa", "pb", "pc", "pd"} {
+			changedMany[c.product(target)] += "// changed\n"
+		}
+		var rows []string
+		for _, s := range detect(t, snapshottest.Files(base, changedMany)).Statistics {
+			if s.Name == "widest reach" {
+				rows = append(rows, s.Subject)
+			}
+		}
+		subject := func(file string) string {
+			if name == "go" {
+				return path.Dir(file) + "/"
+			}
+			return file
+		}
+		if want := []string{subject(c.product("pa")), subject(c.product("pb")), subject(c.product("pc"))}; !slices.Equal(rows, want) {
+			t.Errorf("four changed files with one importer each: widest reach = %q, want %q", rows, want)
+		}
+	})
+}
+
+func TestMostImportsRanksByDistinctOwnTargets(t *testing.T) {
+	eachLanguage(t, func(t *testing.T, name string, c languageCase) {
+		a, b, cc, d := c.product("a"), c.product("b"), c.product("c"), c.product("d")
+		files := c.tree(map[string]string{
+			a: c.importing(a, []string{b, cc, d}), b: c.importing(b, []string{cc, d}), cc: c.importing(cc, []string{d}), d: c.importing(d, nil),
+		})
+		if name == "typescript" {
+			files[a] += `import type { B } from "./b.ts";` + "\n"
+		}
+		f := detect(t, snapshottest.Files(c.tree(map[string]string{b: files[b], cc: files[cc], d: files[d]}), files))
+		var rows []answer.Statistic
+		for _, s := range f.Statistics {
+			if s.Name == "most imports" {
+				rows = append(rows, s)
+			}
+		}
+		three, two, one := 3.0, 2.0, 1.0
+		want := []answer.Statistic{
+			{Name: "most imports", Subject: a, Value: &three, Unit: "own targets"},
+			{Name: "most imports", Subject: b, Value: &two, Before: &two, Unit: "own targets"},
+			{Name: "most imports", Subject: cc, Value: &one, Before: &one, Unit: "own targets"},
+		}
+		if len(rows) != 3 {
+			t.Fatalf("most imports = %+v, want three rows", rows)
+		}
+		for i := range want {
+			if !sameStatistic(rows[i], want[i]) {
+				t.Errorf("most imports row %d = %+v, want %+v", i, rows[i], want[i])
+			}
+		}
+	})
+}
+
+func TestNewProductFilesWithoutAnImporterAreListed(t *testing.T) {
+	eachLanguage(t, func(t *testing.T, name string, c languageCase) {
+		b := c.product("b")
+		base := c.tree(map[string]string{b: c.importing(b, nil)})
+		n1, n2, n3 := c.product("n1"), c.product("n2"), c.product("n3")
+		now := c.tree(map[string]string{
+			b: c.importing(b, []string{n2}), n1: c.importing(n1, nil), n2: c.importing(n2, nil), n3: c.importing(n3, nil),
+			c.test("n3"): c.testFile(c.test("n3"), n3),
+		})
+		f := detect(t, snapshottest.Files(base, now))
+		read := 0 // the code files the test writes
+		for file := range now {
+			if _, isCode := conventions.Default().LanguageOf(file); isCode {
+				read++
+			}
+		}
+		var rows []answer.Statistic
+		for _, s := range f.Statistics {
+			if s.Name == "new product file without an importer" {
+				rows = append(rows, s)
+			}
+		}
+		if len(rows) != 1 || rows[0].Subject != n1 || rows[0].Value != nil || rows[0].Note != fmt.Sprintf("no import of it in the %d code files read", read) {
+			t.Errorf("new files without an importer = %+v, want %s alone", rows, n1)
+		}
+		if len(f.Marks) != 0 {
+			t.Errorf("marks = %+v, want none", f.Marks)
+		}
+		renamedBase := c.tree(map[string]string{c.product("old"): c.importing(c.product("old"), nil)})
+		renamedNow := c.tree(map[string]string{c.product("moved"): c.importing(c.product("old"), nil)})
+		renamed := snapshottest.Files(renamedBase, renamedNow)
+		renamed.Changes = []snapshot.Change{{Path: c.product("moved"), From: c.product("old")}}
+		for _, s := range detect(t, renamed).Statistics {
+			if s.Name == "new product file without an importer" {
+				t.Errorf("a renamed file is listed: %+v", s)
+			}
+		}
+		if name == "python" {
+			base := c.tree(map[string]string{b: c.importing(b, nil)})
+			now := c.tree(map[string]string{b: c.importing(b, nil), "src/pkg/__init__.py": "", "src/pkg/m.py": "x = 1\n"})
+			var subjects []string
+			for _, s := range detect(t, snapshottest.Files(base, now)).Statistics {
+				if s.Name == "new product file without an importer" {
+					subjects = append(subjects, s.Subject)
+				}
+			}
+			if !slices.Equal(subjects, []string{"src/pkg/m.py"}) {
+				t.Errorf("a new package file and a new module: rows for %q, want the module alone", subjects)
+			}
+		}
+		if name == "go" {
+			sibling := c.product("b")
+			extra := path.Dir(sibling) + "/extra.go"
+			imported := c.tree(map[string]string{c.product("a"): c.importing(c.product("a"), []string{sibling}), sibling: c.importing(sibling, nil)})
+			grown := clone(imported)
+			grown[extra] = "package b\n"
+			for _, s := range detect(t, snapshottest.Files(imported, grown)).Statistics {
+				if s.Name == "new product file without an importer" {
+					t.Errorf("a new Go file in an imported folder is listed: %+v", s)
+				}
+			}
+		}
+	})
+}
+
+// withNamed builds the snapshot of a source with the named files set, as Report sets them.
+func withNamed(source snapshot.Source, named ...string) snapshot.Snapshot {
+	s := snapshot.Build(source, conventions.Default())
+	s.Named = named
+	return s
+}
+
+func TestNamedFilesGetTheirImporters(t *testing.T) {
+	eachLanguage(t, func(t *testing.T, _ string, c languageCase) {
+		a, b := c.product("a"), c.product("b")
+		tree := c.tree(map[string]string{
+			a: c.importing(a, nil), b: c.importing(b, []string{a}), c.test("b"): c.testFile(c.test("b"), a), "README.md": "x\n",
+		})
+		f := Detector{}.Detect(withNamed(same(tree), "README.md", a, "src/nope"))
+		two, one := 2.0, 1.0
+		if reach, _ := statisticNamed(f, "reach of the named files"); !sameStatistic(reach, answer.Statistic{
+			Name: "reach of the named files", Value: &two, Before: &two, Unit: "files", Note: "3 named, 1 not found; 1 product, 1 test",
+		}) {
+			t.Errorf("reach of the named files = %+v", reach)
+		}
+		var rows []answer.Statistic
+		for _, s := range f.Statistics {
+			if s.Name == "named file" {
+				rows = append(rows, s)
+			}
+		}
+		want := []answer.Statistic{
+			{Name: "named file", Subject: "README.md", Note: "tracked, but not a code file"},
+			{Name: "named file", Subject: a, Value: &two, Before: &two, Unit: "files", Note: "1 product, 1 test"},
+			{Name: "named file", Subject: "src/nope", Note: "not found among the tracked files"},
+		}
+		if len(rows) != len(want) {
+			t.Fatalf("named rows = %+v, want %d", rows, len(want))
+		}
+		for i := range want {
+			if !sameStatistic(rows[i], want[i]) {
+				t.Errorf("named row %d = %+v, want %+v", i, rows[i], want[i])
+			}
+		}
+		both := Detector{}.Detect(withNamed(same(tree), a, b))
+		if reach, _ := statisticNamed(both, "reach of the named files"); reach.Value == nil || *reach.Value != one {
+			t.Errorf("a and b named: reach = %+v, want the test of b only", reach)
+		}
+		if _, has := statisticNamed(Detector{}.Detect(withNamed(same(tree))), "reach of the named files"); has {
+			t.Errorf("no file named: a reach row of named files")
+		}
+		over := c.fan(8, c.nowhere)
+		overFindings := Detector{}.Detect(withNamed(same(over), c.product("a")))
+		row, _ := statisticNamed(overFindings, "named file")
+		if row.Value != nil || row.Note != "its language is not analysed" {
+			t.Errorf("a named file of a language over the limit = %+v", row)
+		}
+		if summary, _ := statisticNamed(overFindings, "reach of the named files"); summary.Value != nil || summary.Before != nil {
+			t.Errorf("no named file could be counted: summary = %+v, want no number", summary)
+		}
+	})
+}
+
+func TestNoLinksLineHoldsImportText(t *testing.T) {
+	ts := languageCases()["typescript"]
+	build := func(padding int) map[string]string {
+		files := ts.imports("", ts.support("db"))
+		var targets []string
+		for i := range padding {
+			target := ts.product("p" + string(rune('a'+i)))
+			files[target] = "export const p = 1;\n"
+			targets = append(targets, target)
+		}
+		files[ts.product("a")] = ts.importing(ts.product("a"), append(targets, ts.support("db"), ts.product("b")), "zzmarker-outside", "./zzmarker-missing") +
+			"const lazy = import(\"zzmarker\" + n);\n"
+		files[ts.product("b")] = ts.importing(ts.product("b"), []string{ts.product("a")})
+		return files
+	}
+	python := map[string]string{
+		"src/a.py": "import tests.support.db\nimport b\nfrom zzmarker_pkg import zzmarker_name\nfrom . import zzmarker_gone\n",
+		"src/b.py": "import a\n", "tests/support/db.py": "x = 1\n",
+	}
+	for i := range 9 { // enough followed imports to keep the one not found under the limit
+		name := "p" + string(rune('a'+i))
+		python["src/"+name+".py"] = "x = 1\n"
+		python["src/a.py"] += "import " + name + "\n"
+	}
+	for _, tc := range []struct {
+		name  string
+		files map[string]string
+		named string
+		marks bool
+	}{
+		{"typescript under the limit", build(20), "src/a.ts", true},
+		{"typescript over the limit", build(1), "src/a.ts", false},
+		{"python", python, "src/a.py", true},
+		{"folder cycle", map[string]string{"src/a/x.ts": "import \"../b/y.ts\";\nimport \"zzmarker-outside\";\n", "src/b/y.ts": "export const y = 1;\n",
+			"src/b/z.ts": "import \"../a/w.ts\";\n", "src/a/w.ts": "export const w = 1;\n"}, "src/a/x.ts", true},
+	} {
+		s := withNamed(snapshottest.Files(nil, tc.files), tc.named)
+		f := Detector{}.Detect(s)
+		printed := []string{(Detector{}).Standing(f.Marks)}
+		for _, m := range f.Marks {
+			printed = append(append(printed, (Detector{}).Wording(m), m.Hint), (Detector{}).Explain(s, m)...)
+		}
+		for _, row := range f.Statistics {
+			printed = append(printed, row.Name, row.Subject, row.Note)
+		}
+		printed = append(append(printed, f.Notes...), f.NotAnalysed...)
+		if tc.marks && len(f.Marks) == 0 {
+			t.Errorf("%s: no mark, want the test-import and cycle marks to check", tc.name)
+		}
+		for _, line := range printed {
+			if strings.Contains(line, "zzmarker") {
+				t.Errorf("%s: a line holds import text: %q", tc.name, line)
+			}
+		}
+	}
+}
+
+func TestWidestReachIsOneRowPerGoPackage(t *testing.T) {
+	golang := languageCases()["go"]
+	s1, s2, u := "internal/s/one.go", "internal/s/two.go", golang.product("u")
+	base := golang.tree(map[string]string{s1: "package s\n", s2: "package s\n", u: golang.importing(u, []string{s1})})
+	now := clone(base)
+	now[s1] += "// changed\n"
+	now[s2] += "// changed\n"
+	var rows []answer.Statistic
+	for _, s := range detect(t, snapshottest.Files(base, now)).Statistics {
+		if s.Name == "widest reach" {
+			rows = append(rows, s)
+		}
+	}
+	if len(rows) != 1 || !sameStatistic(rows[0], answer.Statistic{Name: "widest reach", Subject: "internal/s/", Note: "1 file; 1 product, 0 test"}) {
+		t.Errorf("two changed files of one Go package: widest reach = %+v, want one row for the package", rows)
+	}
+}

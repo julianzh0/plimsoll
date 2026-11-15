@@ -1,0 +1,23 @@
+name: Vulnerabilities
+
+# Once a week, govulncheck against the newest Go patch release of the pinned minor version, so a fixed
+# vulnerability in Go or its standard library shows up. Versions are bumped by hand; there is no update bot.
+on:
+  schedule:
+    - cron: '17 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  govulncheck:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: govulncheck on the newest patch release
+        run: |
+          minor=$(sed -n 's/^go \([0-9]*\.[0-9]*\).*/\1/p' go.mod)
+          docker run --rm -v "$PWD:/src" -w /src -e GOTOOLCHAIN=local -e GOFLAGS=-mod=readonly "golang:${minor}" \
+            sh -euc 'go version && go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...'

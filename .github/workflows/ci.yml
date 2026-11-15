@@ -1,0 +1,47 @@
+name: CI
+
+# Every push to main and every pull request runs make qa on GitHub-hosted arm64 and amd64 runners.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  # A pull request's superseded run is cancelled; a run on main has a group of its own and is never cancelled.
+  group: ${{ github.event_name == 'pull_request' && format('ci-pr-{0}', github.ref) || format('ci-run-{0}', github.run_id) }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04-arm, ubuntu-24.04]
+    timeout-minutes: 20
+    container:
+      # trixie, not bookworm: plimsoll needs git 2.45 or later (bookworm ships 2.39).
+      image: golang:1.27.4-trixie@sha256:b54b2639de8c1bfe538ec5ffc45f29b1932235ac5f6d63c059853646677112d9
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - run: git --version
+      - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - run: make install-golangci-lint BINDIR=/usr/local/bin
+      - run: make qa
+      # Coverage from the qa run above, as information in the run's summary; it never fails the job.
+      - name: Coverage
+        continue-on-error: true
+        run: |
+          {
+            echo "### Coverage (${{ matrix.runner }})"
+            echo '```'
+            make -s cover-report
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

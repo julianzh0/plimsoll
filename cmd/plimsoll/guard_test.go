@@ -1,0 +1,199 @@
+package main
+
+import (
+	"go/parser"
+	"go/token"
+	"io/fs"
+	"os"
+	"path"
+	"slices"
+	"strings"
+	"testing"
+)
+
+const module = "github.com/juzhxng/plimsoll"
+
+// mcpSDK is the one module plimsoll depends on, imported only by internal/mcpserver.
+const mcpSDK = "github.com/modelcontextprotocol/go-sdk"
+
+// sourceFile is one Go file of the module and the paths it imports.
+type sourceFile struct {
+	Path    string
+	Imports []string
+}
+
+// Guards the module's promises: no dependency but the MCP SDK, no network, one place that runs programs, imports point inward.
+func TestGuardRulesNameEachViolation(t *testing.T) {
+	const cleanMod = "module " + module + "\n\ngo 1.27.4\n"
+	cases := []struct {
+		name  string
+		file  sourceFile
+		goMod string
+		want  string // "" means no violation
+	}{
+		{"a third-party import", sourceFile{"internal/answer/a.go", []string{"github.com/x/y"}}, cleanMod, "outside the standard library"},
+		{"a network package", sourceFile{"internal/answer/a.go", []string{"net/http"}}, cleanMod, "a network package"},
+		{"a network package in a test", sourceFile{"internal/answer/a_test.go", []string{"net"}}, cleanMod, "a network package"},
+		{"a program started outside gitrepo", sourceFile{"internal/answer/a.go", []string{"os/exec"}}, cleanMod, "runs programs outside internal/gitrepo"},
+		{"a detector reading the rules", sourceFile{"internal/shape/a.go", []string{module + "/internal/conventions"}}, cleanMod, "against the import direction"},
+		{"the links detector reading the rules", sourceFile{"internal/links/a.go", []string{module + "/internal/conventions"}}, cleanMod, "against the import direction"},
+		{"the answer importing a detector", sourceFile{"internal/answer/a.go", []string{module + "/internal/shape"}}, cleanMod, "against the import direction"},
+		{"the reader importing the answer", sourceFile{"internal/gitrepo/a.go", []string{module + "/internal/answer"}}, cleanMod, "against the import direction"},
+		{"a package missing from the table", sourceFile{"internal/extra/a.go", []string{module + "/internal/snapshot"}}, cleanMod, "against the import direction"},
+		{"a requirement in go.mod", sourceFile{"cmd/plimsoll/main.go", nil}, cleanMod + "\nrequire github.com/x/y v1.0.0\n", "go.mod requires a dependency"},
+		{"a requirement in a require block", sourceFile{"cmd/plimsoll/main.go", nil}, cleanMod + "\nrequire (\n\tgithub.com/x/y v1.0.0\n)\n", "go.mod requires a dependency"},
+		{"the MCP SDK and what it needs", sourceFile{"cmd/plimsoll/main.go", nil}, cleanMod + "\nrequire " + mcpSDK + " v1.8.0\n\nrequire (\n\tgithub.com/x/y v1.0.0 // indirect\n)\n", ""},
+		{"the MCP SDK in the MCP package", sourceFile{"internal/mcpserver/server.go", []string{mcpSDK + "/mcp"}}, cleanMod, ""},
+		{"the MCP SDK outside the MCP package", sourceFile{"internal/answer/a.go", []string{mcpSDK + "/mcp"}}, cleanMod, "outside internal/mcpserver"},
+		{"test support running git", sourceFile{"internal/gitrepo/gitrepotest/repo.go", []string{"os/exec"}}, cleanMod, ""},
+		{"the reader running git", sourceFile{"internal/gitrepo/git.go", []string{"os/exec", module + "/internal/snapshot"}}, cleanMod, ""},
+		{"a test running the binary", sourceFile{"cmd/plimsoll/main_e2e_test.go", []string{"os/exec"}}, cleanMod, ""},
+		{"a detector's test reading the rules", sourceFile{"internal/shape/shape_test.go", []string{module + "/internal/conventions"}}, cleanMod, ""},
+		{"a detector's own imports", sourceFile{"internal/shape/shape.go", []string{module + "/internal/answer", module + "/internal/snapshot", "strings"}}, cleanMod, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := violations(module, tc.goMod, []sourceFile{tc.file})
+			if tc.want == "" {
+				if len(got) != 0 {
+					t.Fatalf("violations(%v) = %q, want none", tc.file, got)
+				}
+				return
+			}
+			if len(got) != 1 || !strings.Contains(got[0], tc.want) {
+				t.Fatalf("violations(%v) = %q, want one naming %q", tc.file, got, tc.want)
+			}
+			if !strings.HasPrefix(tc.want, "go.mod") && !strings.Contains(got[0], tc.file.Path) {
+				t.Fatalf("violations(%v) = %q, want it to name %s", tc.file, got, tc.file.Path)
+			}
+		})
+	}
+}
+
+func TestModuleKeepsItsGuards(t *testing.T) {
+	goMod, err := os.ReadFile("../../go.mod")
+	if err != nil {
+		t.Fatalf("reading go.mod: %v", err)
+	}
+	if got := violations(module, string(goMod), moduleSources(t, "../..")); len(got) != 0 {
+		t.Fatalf("the module breaks its guards:\n%s", strings.Join(got, "\n"))
+	}
+}
+
+// allowedImports says, per package folder, which packages of this module its non-test files may import.
+func allowedImports() map[string][]string {
+	return map[string][]string{
+		"cmd/plimsoll":                   nil, // composition: anything
+		"internal/mcpserver":             {"internal/answer"},
+		"internal/answer":                {"internal/snapshot"},
+		"internal/shape":                 {"internal/answer", "internal/snapshot"},
+		"internal/process":               {"internal/answer", "internal/snapshot"},
+		"internal/settings":              {"internal/answer", "internal/snapshot"},
+		"internal/hotspots":              {"internal/answer", "internal/snapshot"},
+		"internal/cochange":              {"internal/answer", "internal/snapshot"},
+		"internal/links":                 {"internal/answer", "internal/snapshot"},
+		"internal/snapshot":              {"internal/conventions"},
+		"internal/snapshot/snapshottest": {"internal/snapshot"},
+		"internal/conventions":           {},
+		"internal/gitrepo":               {"internal/snapshot"},
+		"internal/gitrepo/gitrepotest":   {},
+	}
+}
+
+func violations(module, goMod string, files []sourceFile) []string {
+	var found []string
+	inBlock := false
+	for line := range strings.Lines(goMod) {
+		entry := strings.TrimSpace(line)
+		switch {
+		case entry == "require (":
+			inBlock = true
+			continue
+		case inBlock && entry == ")":
+			inBlock = false
+			continue
+		case strings.HasPrefix(entry, "require "):
+			entry = strings.TrimSpace(strings.TrimPrefix(entry, "require "))
+		case !inBlock:
+			continue
+		}
+		// Only the MCP SDK is required directly; what it needs in turn is marked indirect.
+		if entry != "" && !strings.HasPrefix(entry, mcpSDK+" ") && !strings.HasSuffix(entry, "// indirect") {
+			found = append(found, "go.mod requires a dependency: "+entry)
+		}
+	}
+	table := allowedImports()
+	for _, file := range files {
+		folder := path.Dir(file.Path)
+		isTest := strings.HasSuffix(file.Path, "_test.go")
+		for _, imported := range file.Imports {
+			switch {
+			case imported == "net" || strings.HasPrefix(imported, "net/"):
+				found = append(found, file.Path+" imports "+imported+", a network package")
+			case imported == "os/exec" && !isTest && folder != "internal/gitrepo" && !strings.HasPrefix(folder, "internal/gitrepo/"):
+				found = append(found, file.Path+" imports os/exec: it runs programs outside internal/gitrepo")
+			case strings.HasPrefix(imported, module+"/"):
+				if !isTest && !mayImport(table, folder, strings.TrimPrefix(imported, module+"/")) {
+					found = append(found, file.Path+" imports "+imported+", against the import direction")
+				}
+			case imported == mcpSDK || strings.HasPrefix(imported, mcpSDK+"/"):
+				if !isTest && folder != "internal/mcpserver" {
+					found = append(found, file.Path+" imports "+imported+", the MCP SDK outside internal/mcpserver")
+				}
+			case strings.Contains(strings.SplitN(imported, "/", 2)[0], "."):
+				found = append(found, file.Path+" imports "+imported+", outside the standard library")
+			}
+		}
+	}
+	return found
+}
+
+func mayImport(table map[string][]string, folder, target string) bool {
+	allowed, known := table[folder]
+	if !known {
+		return false
+	}
+	if allowed == nil {
+		return true
+	}
+	return slices.Contains(allowed, target)
+}
+
+func moduleSources(t *testing.T, root string) []sourceFile {
+	t.Helper()
+	var files []sourceFile
+	fileSystem := os.DirFS(root)
+	err := fs.WalkDir(fileSystem, ".", func(name string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			switch entry.Name() {
+			case ".git", "projects", "bin", "testdata", ".superpowers":
+				return fs.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(name, ".go") {
+			return nil
+		}
+		content, err := fs.ReadFile(fileSystem, name)
+		if err != nil {
+			return err
+		}
+		parsed, err := parser.ParseFile(token.NewFileSet(), name, content, parser.ImportsOnly)
+		if err != nil {
+			return err
+		}
+		file := sourceFile{Path: name}
+		for _, spec := range parsed.Imports {
+			file.Imports = append(file.Imports, strings.Trim(spec.Path.Value, `"`))
+		}
+		files = append(files, file)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("reading the module's sources: %v", err)
+	}
+	return files
+}

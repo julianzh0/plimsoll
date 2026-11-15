@@ -1,0 +1,347 @@
+package answer
+
+import (
+	"encoding/json"
+	"fmt"
+	"regexp"
+	"slices"
+	"strconv"
+	"strings"
+	"testing"
+
+	"github.com/juzhxng/plimsoll/internal/snapshot"
+)
+
+func sample() snapshot.Snapshot {
+	ratio := 2.5
+	return snapshot.Snapshot{
+		AskedBase: "main", Base: "1a2b3c4d5e" + strings.Repeat("0", 30), Head: "9f8e7d6c5b" + strings.Repeat("0", 30),
+		Modified: true,
+		Footprint: snapshot.Footprint{
+			Commits: 5, Files: 5, Product: snapshot.Lines{Added: 120, Removed: 80}, Test: snapshot.Lines{Added: 300, Removed: 10},
+			Docs: snapshot.Lines{Added: 40}, TestPerProduct: &ratio,
+		},
+		History:    snapshot.History{Read: 12, Usable: 11},
+		Unverified: []snapshot.Extension{{Suffix: ".sh", Files: 2, Lines: 7}},
+		Untracked:  3,
+	}
+}
+
+func fileMark(path string, change Change) Mark {
+	return Mark{
+		ID: ID("shape", "file-size", path), Change: change, Confidence: Exact, Subject: Subject{Kind: "file", Paths: []string{path}},
+		Hint: "count the file's lines at the base and now.",
+	}
+}
+
+func findings() Findings {
+	return Findings{
+		Marks: []Mark{
+			fileMark("src/a.ts", New),
+			{ID: "shape.test-ratio:repository", Change: Grown, Confidence: Exact, Subject: Subject{Kind: "repository"}, Hint: "the hint."},
+			fileMark("src/b.ts", Standing),
+		},
+		NotAnalysed: []string{"no `.env.example`, so no settings count"},
+	}
+}
+
+func wording() Wording {
+	return Wording{"shape": {
+		Mark:     func(m Mark) string { return "sentence of " + m.ID },
+		Standing: func(items []Mark) string { return fmt.Sprintf("%d standing", len(items)) },
+	}}
+}
+
+func TestStatusWithMarksReadsWordForWord(t *testing.T) {
+	want := "plimsoll 0.1.0 status: base `main` 1a2b3c4d5e, head 9f8e7d6c5b (working tree modified)\n" +
+		"1 new, 1 grown, 0 resolved\n" +
+		"Footprint of the change since the base: 5 commits, 5 files; product +120 -80, test +300 -10, documentation +40 -0; 2.5 test lines added per product line added.\n" +
+		"\n" +
+		"1. [new, exact] sentence of shape.file-size:src/a.ts\n" +
+		"   verify: count the file's lines at the base and now. id: shape.file-size:src/a.ts\n" +
+		"2. [grown, exact] sentence of shape.test-ratio:repository\n" +
+		"   verify: the hint. id: shape.test-ratio:repository\n" +
+		"\n" +
+		"Standing (already at the base, not grown): 1 standing.\n" +
+		"History: 12 commits read, 11 usable.\n" +
+		"Detectors run: shape.\n" +
+		"Not analysed: no `.env.example`, so no settings count; not verified for `.sh` (7 lines in 2 files); 3 untracked files.\n"
+	got := Render(Assemble(Status, "0.1.0", sample(), []Result{{"shape", findings()}}), wording())
+	if got != want {
+		t.Fatalf("Render(status) =\n%s\nwant\n%s", got, want)
+	}
+}
+
+func TestAnswerWithoutMarksReadsWordForWord(t *testing.T) {
+	commit := "1a2b3c4d5e" + strings.Repeat("0", 30)
+	s := snapshot.Snapshot{AskedBase: "main", Base: commit, Head: commit, History: snapshot.History{Read: 12, Usable: 11}}
+	want := "plimsoll 0.1.0 status: base `main` 1a2b3c4d5e, head 1a2b3c4d5e\n" +
+		"0 new, 0 grown, 0 resolved\n" +
+		"Footprint of the change since the base: 0 commits, 0 files; product +0 -0, test +0 -0, documentation +0 -0; no product line added.\n" +
+		"\n" +
+		"No new or grown marks since `main` (0 commits, 0 files compared).\n" +
+		"Standing (already at the base, not grown): none.\n" +
+		"History: 12 commits read, 11 usable.\n" +
+		"Detectors run: shape.\n" +
+		"Not analysed: none.\n"
+	if got := Render(Assemble(Status, "0.1.0", s, []Result{{"shape", Findings{}}}), wording()); got != want {
+		t.Fatalf("Render(no marks) =\n%s\nwant\n%s", got, want)
+	}
+}
+
+func reportFindings() Findings {
+	value := func(v float64) *float64 { return &v }
+	f := findings()
+	f.Marks = append(f.Marks, fileMark("src/c.ts", Resolved))
+	f.Statistics = []Statistic{
+		{Name: "product lines", Value: value(19465), Before: value(19345), Unit: "lines"},
+		{Name: "test ratio", Value: value(3.8), Before: value(3.7), Unit: "ratio"},
+		{Name: "largest code file", Subject: "src/a.ts", Value: value(1620), Before: value(1480), Unit: "lines"},
+		{Name: "largest code file", Subject: "src/new.ts", Value: value(900), Unit: "lines"},
+		{Name: "runtime dependencies", Subject: "package.json", Value: value(6), Before: value(5), Note: "express, ioredis, pg"},
+	}
+	f.Notes = []string{"test code recognized by: `tests/`"}
+	return f
+}
+
+func TestReportListsEverythingInAFixedLayout(t *testing.T) {
+	report := Render(Assemble(Report, "0.1.0", sample(), []Result{{"shape", reportFindings()}}), wording())
+	wantTail := "\n" +
+		"Resolved:\n" +
+		"- sentence of shape.file-size:src/c.ts\n" +
+		"  verify: count the file's lines at the base and now. id: shape.file-size:src/c.ts\n" +
+		"\n" +
+		"shape\n" +
+		"  product lines: 19,465 lines (+120)\n" +
+		"  test ratio: 3.8 (+0.1)\n" +
+		"  largest code file `src/a.ts`: 1,620 lines (+140)\n" +
+		"  largest code file `src/new.ts`: 900 lines (not at the base)\n" +
+		"  runtime dependencies `package.json`: 6 (+1); express, ioredis, pg\n" +
+		"  test code recognized by: `tests/`\n" +
+		"\n" +
+		"Standing (already at the base, not grown):\n" +
+		"- sentence of shape.file-size:src/b.ts id: shape.file-size:src/b.ts\n" +
+		"History: 12 commits read, 11 usable.\n" +
+		"Detectors run: shape.\n" +
+		"Not analysed:\n" +
+		"- shape: no `.env.example`, so no settings count\n" +
+		"- repository: not verified for `.sh` (7 lines in 2 files)\n" +
+		"- repository: 3 untracked files\n"
+	if !strings.HasSuffix(report, wantTail) {
+		t.Fatalf("Render(report) =\n%s\nwant it to end with\n%s", report, wantTail)
+	}
+	lines := strings.Split(report, "\n")
+	status := strings.Split(Render(Assemble(Status, "0.1.0", sample(), []Result{{"shape", findings()}}), wording()), "\n")
+	if !strings.Contains(lines[0], "report:") || lines[2] != status[2] {
+		t.Errorf("Render(report) header = %q, footprint %q; want report and the footprint of status %q", lines[0], lines[2], status[2])
+	}
+}
+
+func TestReportGroupsALongRunOfStandingItems(t *testing.T) {
+	var f Findings
+	for _, path := range []string{"docs/a/x1.md", "docs/a/x2.md", "docs/b/y.md", "s1.ts", "src/s2.ts", "src/s3.ts", "src/s4.ts", "docs/b/deep/z.md", "src/s5.ts"} {
+		f.Marks = append(f.Marks, fileMark(path, Standing))
+	}
+	f.Marks = append(f.Marks, Mark{ID: "shape.test-ratio:repository", Change: Standing, Confidence: Exact, Subject: Subject{Kind: "repository"}, Hint: "h."})
+	for i := range 7 {
+		name := fmt.Sprintf("S%d", i)
+		f.Marks = append(f.Marks, Mark{ID: ID("shape", "named", name), Change: Standing, Confidence: Candidate, Subject: Subject{Kind: "setting", Names: []string{name}}, Hint: "h."})
+	}
+	report := Render(Assemble(Report, "0.1.0", sample(), []Result{{"shape", f}}), wording())
+	start := strings.Index(report, "Standing (already at the base, not grown):\n")
+	end := strings.Index(report, "History:")
+	want := "Standing (already at the base, not grown):\n" +
+		"- sentence of shape.file-size:docs/a/x1.md id: shape.file-size:docs/a/x1.md\n" +
+		"- sentence of shape.file-size:docs/a/x2.md id: shape.file-size:docs/a/x2.md\n" +
+		"- sentence of shape.file-size:docs/b/y.md id: shape.file-size:docs/b/y.md\n" +
+		"- sentence of shape.file-size:s1.ts id: shape.file-size:s1.ts\n" +
+		"- sentence of shape.file-size:src/s2.ts id: shape.file-size:src/s2.ts\n" +
+		"- 4 more `shape.file-size` items, in `src/` 3, `docs/b/` 1\n" +
+		"- sentence of shape.test-ratio:repository id: shape.test-ratio:repository\n" +
+		"- sentence of shape.named:S0 id: shape.named:S0\n" +
+		"- sentence of shape.named:S1 id: shape.named:S1\n" +
+		"- sentence of shape.named:S2 id: shape.named:S2\n" +
+		"- sentence of shape.named:S3 id: shape.named:S3\n" +
+		"- sentence of shape.named:S4 id: shape.named:S4\n" +
+		"- 2 more `shape.named` items\n"
+	if start < 0 || end < start || report[start:end] != want {
+		t.Fatalf("Render(report) standing =\n%s\nwant\n%s", report[max(start, 0):max(end, 0)], want)
+	}
+	if a := Assemble(Report, "0.1.0", sample(), []Result{{"shape", f}}); len(a.Standing) != 17 {
+		t.Errorf("Assemble kept %d standing marks, want all 17", len(a.Standing))
+	}
+}
+
+func TestStatusShowsFiveMarksAndStaysInsideFortyLines(t *testing.T) {
+	var f Findings
+	for i := range 12 {
+		f.Marks = append(f.Marks, fileMark(fmt.Sprintf("src/new%02d.ts", i), New))
+	}
+	for i := range 10 {
+		f.Marks = append(f.Marks, fileMark(fmt.Sprintf("src/gone%02d.ts", i), Resolved), fileMark(fmt.Sprintf("src/old%02d.ts", i), Standing))
+	}
+	for i := range 30 {
+		f.NotAnalysed = append(f.NotAnalysed, fmt.Sprintf("entry %d", i))
+	}
+	a := Assemble(Status, "0.1.0", sample(), []Result{{"shape", f}})
+	if len(a.Marks) != 5 || a.More != 7 || a.Counts != (Counts{New: 12, Resolved: 10}) {
+		t.Fatalf("Assemble(status) = %d marks, %d more, counts %+v; want 5, 7, {12 0 10}", len(a.Marks), a.More, a.Counts)
+	}
+	text := Render(a, wording())
+	if lines := strings.Count(text, "\n"); lines > 40 {
+		t.Errorf("Render(status) has %d lines, want at most 40", lines)
+	}
+	for _, want := range []string{"7 more: `report` lists them.", "and 7 more in `report`", "and 27 more in `report`"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("Render(status) lacks %q:\n%s", want, text)
+		}
+	}
+}
+
+func TestStandingLeavesOutASubjectShownAsAMark(t *testing.T) {
+	subject := Subject{Kind: "repository"}
+	f := Findings{Marks: []Mark{
+		{ID: "shape.test-ratio:repository", Change: Grown, Subject: subject},
+		{ID: "shape.other:repository", Change: Standing, Subject: subject},
+	}}
+	if a := Assemble(Status, "0.1.0", sample(), []Result{{"shape", f}}); len(a.Standing) != 0 {
+		t.Errorf("Assemble.Standing = %v, want the item left out", a.Standing)
+	}
+}
+
+func TestTextIsTheSameWhenRenderedFromItsOwnJSON(t *testing.T) {
+	answers := []Answer{
+		Assemble(Status, "0.1.0", sample(), []Result{{"shape", findings()}}),
+		Assemble(Report, "0.1.0", sample(), []Result{{"shape", reportFindings()}}),
+		Assemble(Status, "0.1.0", snapshot.Snapshot{}, []Result{{"shape", Findings{}}}),
+	}
+	for _, a := range answers {
+		data, err := json.Marshal(a)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var again Answer
+		if err := json.Unmarshal(data, &again); err != nil {
+			t.Fatal(err)
+		}
+		if Render(again, wording()) != Render(a, wording()) {
+			t.Errorf("Render from JSON differs for the %s answer", a.Question)
+		}
+		if strings.Contains(string(data), "null") {
+			t.Errorf("the %s answer's JSON holds null: %s", a.Question, data)
+		}
+	}
+}
+
+func TestMergeBaseAndSingularsAreSaid(t *testing.T) {
+	s := sample()
+	s.MergeBase = true
+	s.Footprint = snapshot.Footprint{Commits: 1, Files: 1}
+	text := Render(Assemble(Status, "0.1.0", s, []Result{{"shape", Findings{}}}), wording())
+	for _, want := range []string{"base `main` (merge base with the head) 1a2b3c4d5e", "1 commit, 1 file;", "(1 commit, 1 file compared)"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("Render lacks %q:\n%s", want, text)
+		}
+	}
+	one := 1.0
+	zero := 0.0
+	report := Assemble(Report, "0.1.0", s, []Result{{"shape", Findings{Statistics: []Statistic{{Name: "product lines", Value: &one, Before: &zero, Unit: "lines"}}}}})
+	if text := Render(report, wording()); !strings.Contains(text, "  product lines: 1 line (+1)\n") {
+		t.Errorf("Render(one line) lacks the singular:\n%s", text)
+	}
+}
+
+func TestARemarkIsAppendedToTheHintOfTheItemItNames(t *testing.T) {
+	withHint := func(path string, change Change) Mark {
+		m := fileMark(path, change)
+		m.Hint = "count the lines."
+		return m
+	}
+	shape := Result{"shape", Findings{Marks: []Mark{withHint("src/a.ts", New), withHint("src/b.ts", Standing), withHint("src/c.ts", Resolved)}}}
+	hotspots := Result{"hotspots", Findings{Remarks: []Remark{
+		{Mark: "shape.file-size:src/a.ts", Text: "Also among the three hotspots: 8 changes x 1,620 lines."},
+		{Mark: "shape.file-size:src/b.ts", Text: "B."}, {Mark: "shape.file-size:src/c.ts", Text: "C."},
+		{Mark: "shape.file-size:src/nope.ts", Text: "D."},
+	}}}
+	for _, results := range [][]Result{{shape, hotspots}, {hotspots, shape}} {
+		a := Assemble(Report, "0.1.0", sample(), results)
+		if a.Marks[0].Hint != "count the lines. Also among the three hotspots: 8 changes x 1,620 lines." ||
+			!strings.HasSuffix(a.Standing[0].Hint, " B.") || !strings.HasSuffix(a.Resolved[0].Hint, " C.") {
+			t.Errorf("hints = %q, %q, %q", a.Marks[0].Hint, a.Standing[0].Hint, a.Resolved[0].Hint)
+		}
+		data, _ := json.Marshal(a)
+		if strings.Contains(string(data), "D.") || strings.Contains(string(data), "remarks") {
+			t.Errorf("the answer holds a remark that names no item, or the remarks themselves: %s", data)
+		}
+	}
+}
+
+// TestAnAnswerShortensButNeverHides renders a large answer of two detectors in every change kind and checks that each
+// mark the text leaves out is counted: the numbers always add up.
+func TestAnAnswerShortensButNeverHides(t *testing.T) {
+	w := Wording{}
+	var results []Result
+	total := map[Change]int{}
+	for _, detector := range []string{"shape", "links"} {
+		w[detector] = Phrases{
+			Mark:     func(m Mark) string { return "sentence of " + m.ID },
+			Standing: func(items []Mark) string { return fmt.Sprintf("%d standing of %s", len(items), detector) },
+		}
+		var f Findings
+		for _, rule := range []string{"one", "two"} {
+			for i, change := range []Change{New, Grown, Resolved, Standing} {
+				for n := range 4 + 3*i {
+					p := fmt.Sprintf("dir%d/sub%d/%s/f%d.ts", n%3, n%2, change, n)
+					f.Marks = append(f.Marks, Mark{ID: ID(detector, rule, p), Change: change, Confidence: Exact, Subject: Subject{Kind: "file", Paths: []string{p}}, Hint: "h."})
+					total[change]++
+				}
+			}
+		}
+		for n := range 9 {
+			f.NotAnalysed = append(f.NotAnalysed, fmt.Sprintf("gap %d of %s", n, detector))
+		}
+		results = append(results, Result{detector, f})
+	}
+	moreLine := regexp.MustCompile("(?m)^- (\\d+) more `[^`]+` items")
+	counted := func(text string, re *regexp.Regexp) int {
+		n := 0
+		for _, m := range re.FindAllStringSubmatch(text, -1) {
+			v, _ := strconv.Atoi(m[1])
+			n += v
+		}
+		return n
+	}
+
+	reportAnswer := Assemble(Report, "0.1.0", sample(), results)
+	if got := len(reportAnswer.Marks) + len(reportAnswer.Resolved) + len(reportAnswer.Standing); got != total[New]+total[Grown]+total[Resolved]+total[Standing] {
+		t.Errorf("report holds %d marks, want every one", got)
+	}
+	report := Render(reportAnswer, w)
+	standingListed := strings.Count(report[strings.Index(report, "Standing (already"):], "- sentence of ")
+	if got := standingListed + counted(report, moreLine); got != total[Standing] {
+		t.Errorf("report text: %d standing listed + counted, want %d", got, total[Standing])
+	}
+	for _, m := range append(slices.Clone(reportAnswer.Marks), reportAnswer.Resolved...) {
+		if !strings.Contains(report, "id: "+m.ID+"\n") {
+			t.Errorf("report text leaves out %s", m.ID)
+		}
+	}
+
+	statusAnswer := Assemble(Status, "0.1.0", sample(), results)
+	status := Render(statusAnswer, w)
+	if got := len(statusAnswer.Marks) + statusAnswer.More; got != total[New]+total[Grown] || !strings.Contains(status, fmt.Sprintf("%d more: `report` lists them.", statusAnswer.More)) {
+		t.Errorf("status: %d marks + %d more, want %d new and grown counted", len(statusAnswer.Marks), statusAnswer.More, total[New]+total[Grown])
+	}
+	resolvedLine := status[strings.Index(status, "Resolved: "):]
+	resolvedLine = resolvedLine[:strings.Index(resolvedLine, "\n")]
+	if got := strings.Count(resolvedLine, "; ") + 1 + counted(resolvedLine, regexp.MustCompile(` and (\d+) more in`)); got != total[Resolved] {
+		t.Errorf("status resolved line %q counts %d, want %d", resolvedLine, got, total[Resolved])
+	}
+	if got := counted(status, regexp.MustCompile(`(\d+) standing of`)); got != total[Standing] {
+		t.Errorf("status standing line counts %d, want %d", got, total[Standing])
+	}
+	gaps := status[strings.Index(status, "Not analysed: "):]
+	if got := strings.Count(gaps, "gap ") + counted(gaps, regexp.MustCompile(` and (\d+) more in`)); got != len(statusAnswer.NotAnalysed) {
+		t.Errorf("status not-analysed line counts %d, want %d", got, len(statusAnswer.NotAnalysed))
+	}
+}

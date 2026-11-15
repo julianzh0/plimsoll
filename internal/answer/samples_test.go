@@ -1,0 +1,187 @@
+package answer_test
+
+import (
+	"fmt"
+	"strings"
+	"testing"
+
+	"github.com/juzhxng/plimsoll/internal/answer"
+	"github.com/juzhxng/plimsoll/internal/cochange"
+	"github.com/juzhxng/plimsoll/internal/hotspots"
+	"github.com/juzhxng/plimsoll/internal/links"
+	"github.com/juzhxng/plimsoll/internal/process"
+	"github.com/juzhxng/plimsoll/internal/settings"
+	"github.com/juzhxng/plimsoll/internal/shape"
+	"github.com/juzhxng/plimsoll/internal/snapshot"
+	"github.com/juzhxng/plimsoll/internal/snapshot/snapshottest"
+)
+
+// everyDetector are the program's detectors, for the samples that must show every sentence.
+func everyDetector() []answer.Detector {
+	return []answer.Detector{shape.Detector{}, process.Detector{}, settings.Detector{}, hotspots.Detector{}, cochange.Detector{}, links.Detector{}}
+}
+
+// withHistory gives a source commits, newest first; the first since of them are since the base.
+func withHistory(source snapshot.Source, since int, commits ...[]string) snapshot.Source {
+	for i, paths := range commits {
+		id := fmt.Sprintf("%010d", len(commits)-i)
+		source.Commits = append(source.Commits, snapshottest.Commit(id, paths...))
+		if i < since {
+			source.Since = append(source.Since, id)
+		}
+	}
+	return source
+}
+
+func repeat(n int, paths ...string) [][]string {
+	var commits [][]string
+	for range n {
+		commits = append(commits, paths)
+	}
+	return commits
+}
+
+// detectorSamples make each sentence of the four detectors after shape appear at least once.
+func detectorSamples() []snapshot.Source {
+	pair := []string{"src/store.ts", "tests/fakes/store.ts"}
+	// linkTree is a typescript tree: product a imports the test support named, and the ring files import each
+	// other in order, the last importing the first.
+	linkTree := func(support []string, ring ...string) map[string]string {
+		files := map[string]string{"tests/support/db.ts": "export const db = 1;\n", "tests/support/clock.ts": "export const clock = 1;\n"}
+		imports := map[string][]string{"src/a.ts": nil}
+		for _, s := range support {
+			imports["src/a.ts"] = append(imports["src/a.ts"], "../tests/support/"+s+".ts")
+		}
+		for i, member := range ring {
+			next := ring[(i+1)%len(ring)]
+			imports["src/"+member+".ts"] = append(imports["src/"+member+".ts"], "./"+next+".ts")
+		}
+		for file, targets := range imports {
+			content := "export const v = 1;\n"
+			for _, target := range targets {
+				content = "import \"" + target + "\";\n" + content
+			}
+			files[file] = content
+		}
+		return files
+	}
+	return []snapshot.Source{
+		// links: a test import and a ring, each new, grown, standing and resolved
+		snapshottest.Files(linkTree(nil, "a"), linkTree([]string{"db"}, "a", "b")),
+		snapshottest.Files(linkTree([]string{"db"}, "a", "b"), linkTree([]string{"db", "clock"}, "a", "b", "c")),
+		snapshottest.Files(linkTree([]string{"db"}, "a", "b"), linkTree([]string{"db"}, "a", "b")),
+		snapshottest.Files(linkTree([]string{"db"}, "a", "b"), linkTree(nil, "a")),
+		// links: a language over the limit, and one whose rings are not looked for
+		snapshottest.Files(nil, map[string]string{"src/a.ts": "import \"./gone.ts\";\n"}),
+		snapshottest.Files(nil, map[string]string{
+			"go.mod": "module example.com/m\n", "internal/a/a.go": "package a\n\nimport \"example.com/m/internal/b\"\n",
+			"internal/b/b.go": "package b\n",
+		}),
+		// a planning file new, one standing and one resolved; documentation churn above code churn
+		withHistory(snapshottest.Files(
+			map[string]string{"src/a.ts": "x\n", "projects/a.md": "x\n", "projects/b.md": "x\n"},
+			map[string]string{"src/a.ts": "y\n", "projects/a.md": "x\n", "docs/stories/US-1.md": "x\n"},
+		), 1, []string{"src/a.ts", "README.md", "docs/a.md"}),
+		// settings: no reader, with a test file and resolved; a name defined twice, grown and resolved; a not-decided
+		// name; compose-only standing and resolved; an unreadable compose line
+		snapshottest.Files(map[string]string{
+			".env.example": "DONE_LATER=1\nTWICE=1\nTWICE=2\nONCE_TWICE=1\nONCE_TWICE=2\n",
+			"compose.yml":  "services:\n  app:\n    environment:\n      - KEPT_ONLY\n      - GONE_ONLY=${GONE}\n",
+		}, map[string]string{
+			".env.example": "DONE_LATER=1\nTWICE=1\nTWICE=2\nTWICE=3\nTESTED_ONLY=1\nPOOL_SIZE=1\n",
+			"src/a.ts":     "export const later = DONE_LATER;\nconst size = SIZE;\n",
+			"tests/a.ts":   "test(\"x\", () => TESTED_ONLY);\n",
+			"compose.yml":  "services:\n  app:\n    environment:\n      - KEPT_ONLY\n      <<: *shared\n",
+		}),
+		// a dynamic read
+		snapshottest.Files(nil, map[string]string{".env.example": "ANY=1\n", "src/a.ts": "const v = process.env[name];\n"}),
+		// folder cycles: new, grown, standing and resolved
+		snapshottest.Files(folderTree("a/x>b/y", "b/z", "a/w"), folderTree("a/x>b/y", "b/z>a/w")),
+		snapshottest.Files(folderTree("a/x>b/y", "b/z>a/w", "c/u"), folderTree("a/x>b/y", "b/z>a/w", "b/y>c/u", "c/u>a/w")),
+		snapshottest.Files(folderTree("a/x>b/y", "b/z>a/w"), folderTree("a/x>b/y", "b/z>a/w")),
+		snapshottest.Files(folderTree("a/x>b/y", "b/z>a/w"), folderTree("a/x>b/y", "b/z", "a/w")),
+		// a declared layout: in use, not used, shadowed
+		snapshottest.Files(nil, map[string]string{
+			"pyproject.toml":    "[tool.pytest.ini_options]\ntestpaths = [\"tests\", \"checks\"]\npythonpath = [\"lib\"]\n",
+			"checks/helpers.py": "x = 1\n", "tests/test_a.py": "def test_a(): pass\n", "lib/core/__init__.py": "",
+			"src/app/__init__.py": "", "src/app/a.py": "import core\n",
+		}),
+		snapshottest.Files(nil, map[string]string{
+			"pyproject.toml":      "[tool.pytest.ini_options]\ntestpaths = [\".\", \"src\", \"pkg\", \"/abs\"]\npythonpath = [3]\n",
+			"src/app/__init__.py": "", "src/app/a.py": "x = 1\n", "pkg/core.py": "x = 1\n", "pkg/tests/test_core.py": "def test_c(): pass\n",
+		}),
+		snapshottest.Files(nil, map[string]string{
+			"pyproject.toml": "[tool.pytest.ini_options]\ntestpaths = [\"checks\"]\n", "pytest.ini": "[pytest]\n",
+			"checks/helpers.py": "x = 1\n", "src/a.py": "x = 1\n",
+		}),
+		// python: no package of its own; and packages under its roots with an implicit file
+		snapshottest.Files(nil, map[string]string{"lib/app/a.py": "import app.b\n", "lib/app/b.py": "x = 1\n"}),
+		snapshottest.Files(nil, map[string]string{"src/a.py": "import b\n", "src/b.py": "x = 1\n"}),
+		// a new pair, a grown pair; the hotspot rows
+		withHistory(snapshottest.Files(map[string]string{
+			"src/store.ts": "x\n", "tests/fakes/store.ts": "x\n", "src/b.ts": "x\n", "src/c.ts": "x\n",
+		}, map[string]string{
+			"src/store.ts": "y\n", "tests/fakes/store.ts": "x\n", "src/b.ts": "x\n", "src/c.ts": "x\n",
+		}), 1, append(append([][]string{append(pair, "src/b.ts", "src/c.ts")}, repeat(4, pair...)...), repeat(5, "src/b.ts", "src/c.ts")...)...),
+	}
+}
+
+func TestTheSamplesShowEveryRuleAndChange(t *testing.T) {
+	q, answers := sampleAnswers(t)
+	seen := map[string]bool{}
+	var texts strings.Builder
+	for _, a := range answers {
+		texts.WriteString(q.Text(a))
+		for _, list := range [][]answer.Mark{a.Marks, a.Resolved, a.Standing} {
+			for _, m := range list {
+				seen[strings.SplitN(m.ID, ":", 2)[0]+" "+string(m.Change)] = true
+			}
+		}
+	}
+	for _, want := range []string{
+		"process.planning-file new", "process.planning-file standing", "process.planning-file resolved", "process.doc-churn new",
+		"settings.no-reader new", "settings.no-reader resolved", "settings.defined-twice grown", "settings.defined-twice resolved",
+		"settings.compose-only standing", "settings.compose-only resolved", "co-change.pair new", "co-change.pair grown",
+		"links.test-import new", "links.test-import grown", "links.test-import resolved", "links.test-import standing",
+		"links.cycle new", "links.cycle grown", "links.cycle resolved", "links.cycle standing",
+		"links.folder-cycle new", "links.folder-cycle grown", "links.folder-cycle resolved", "links.folder-cycle standing",
+	} {
+		if !seen[want] {
+			t.Errorf("no sample shows %s; seen %v", want, seen)
+		}
+	}
+	for _, phrase := range []string{
+		"not decided: ", "with a name computed at run time", "hotspot `", "could not be read",
+		"imports followed `", "could not be followed", "import rings are not looked for",
+		"shows as a candidate", "at run time: `", "no package of its own", "its own packages are looked for",
+		"run without an import of them",
+		"test folders declared in `pyproject.toml`", "roots declared in `pyproject.toml`", "names the repository root",
+		"is or holds a package root", "holds test folders of its own", "leaves the repository or holds a pattern",
+		"`pythonpath` could not be read", "is not read: test folders", "depend on each other in a cycle", "folder cycles: between the folders",
+	} {
+		if !strings.Contains(texts.String(), phrase) {
+			t.Errorf("no sample text holds %q", phrase)
+		}
+	}
+}
+
+// folderTree is a typescript tree of files in folders under src/: "a/x>b/y" is src/a/x.ts importing src/b/y.ts, a bare
+// "a/x" a file without an import.
+func folderTree(edges ...string) map[string]string {
+	files := map[string]string{}
+	for _, edge := range edges {
+		from, to, imports := strings.Cut(edge, ">")
+		fromPath := "src/" + from + ".ts"
+		if _, known := files[fromPath]; !known {
+			files[fromPath] = "export const v = 1;\n"
+		}
+		if imports {
+			toPath := "src/" + to + ".ts"
+			if _, known := files[toPath]; !known {
+				files[toPath] = "export const v = 1;\n"
+			}
+			files[fromPath] = "import \"../" + to + ".ts\";\n" + files[fromPath]
+		}
+	}
+	return files
+}

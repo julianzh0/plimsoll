@@ -1,0 +1,7 @@
+[project]
+name = "sample"
+dependencies = []
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "checks"]
+pythonpath = ["lib"]

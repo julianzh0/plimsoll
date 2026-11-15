@@ -1,0 +1,71 @@
+version: "2"
+
+run:
+  build-tags:
+    - integration
+    - e2e
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - exhaustive
+    - forbidigo
+    - gochecknoglobals
+    - gochecknoinits
+    - gochecksumtype
+    - gosec
+    - govet
+    - nolintlint
+    - sloglint
+    - staticcheck
+    - unused
+  settings:
+    errcheck:
+      check-type-assertions: true
+    exhaustive:
+      default-signifies-exhaustive: false
+    forbidigo:
+      analyze-types: true
+      forbid:
+        - pattern: ^http\.ListenAndServe(TLS)?$
+        - pattern: ^http\.Serve(TLS)?$
+        - pattern: ^http\.Server$
+        - pattern: ^testing\.(T|B|F)\.Skip(f|Now)?$
+        - pattern: ^time\.Sleep$
+        - pattern: ^fmt\.Print(f|ln)?$
+        - pattern: ^print(ln)?$
+        - pattern: ^log\.(Print|Fatal|Panic)(f|ln)?$
+        - pattern: ^os\.(Stdout|Stderr)$
+        - pattern: ^os\.(Getenv|LookupEnv|Environ|ExpandEnv)$
+          msg: outside-cmd
+        - pattern: ^signal\.(Notify|NotifyContext|Ignore|Reset|Stop)$
+          msg: outside-cmd
+        - pattern: ^net\.Listen(TCP|Unix|Packet)?$
+          msg: outside-cmd
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+    sloglint:
+      attr-only: true
+      no-global: all
+      static-msg: true
+  exclusions:
+    rules:
+      - linters:
+          - forbidigo
+        path: (^cmd/|_test\.go$)
+        text: outside-cmd
+      - linters:
+          - gosec
+        path: _test\.go$
+        text: G204
+      - linters:
+          - gosec
+        path: ^internal/gitrepo/
+        text: G204 # starting git with computed arguments is this package's purpose
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
