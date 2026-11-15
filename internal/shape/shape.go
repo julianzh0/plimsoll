@@ -45,6 +45,11 @@ func (Detector) Detect(s snapshot.Snapshot) answer.Findings {
 		Notes:       append([]string{"test code recognized by: " + s.TestRule}, answer.TestFolderNotes(s.Layout)...),
 		NotAnalysed: answer.TestFoldersNotUsed(s.Layout),
 	}
+	f.Notes = append(f.Notes, testCodeInsideNotes(s.Now.Files)...)
+	if n := changedHoldingTestCode(s); n > 0 {
+		f.NotAnalysed = append(f.NotAnalysed, "the footprint counts, in "+answer.Agree(n, "changed product file that holds", "changed product files that hold")+
+			" test code, only the growth of that test code as test lines and every other changed line as a product line")
+	}
 	f.Statistics = append(f.Statistics,
 		stat("product lines", "", now.product, before.product, true, "lines"),
 		stat("test lines", "", now.test(), before.test(), true, "lines"),
@@ -139,7 +144,8 @@ func lines(files []snapshot.File) totals {
 	for _, file := range files {
 		switch file.Role {
 		case snapshot.Product:
-			t.product += float64(file.Lines)
+			t.product += float64(file.Lines - file.TestLines)
+			t.tests += float64(file.TestLines)
 		case snapshot.Test:
 			t.tests += float64(file.Lines)
 		case snapshot.TestInfrastructure:
@@ -149,6 +155,49 @@ func lines(files []snapshot.File) totals {
 		}
 	}
 	return t
+}
+
+// testCodeInsideNotes says, per language in the order its files come, how much test code its product files hold.
+func testCodeInsideNotes(files []snapshot.File) []string {
+	var languages []string
+	holding, testLines := map[string]int{}, map[string]int{}
+	for _, file := range files {
+		if file.Role != snapshot.Product || file.TestLines == 0 {
+			continue
+		}
+		if holding[file.Language] == 0 {
+			languages = append(languages, file.Language)
+		}
+		holding[file.Language]++
+		testLines[file.Language] += file.TestLines
+	}
+	var notes []string
+	for _, language := range languages {
+		notes = append(notes, fmt.Sprintf("`%s`: test code inside %s counts as test lines, not as product lines: %s",
+			language, answer.Plural(holding[language], "product file"), answer.Plural(testLines[language], "line")))
+	}
+	return notes
+}
+
+// changedHoldingTestCode counts the changed product files that hold test code now or at the base.
+func changedHoldingTestCode(s snapshot.Snapshot) int {
+	holding := func(files []snapshot.File) map[string]bool {
+		found := map[string]bool{}
+		for _, f := range files {
+			if f.Role == snapshot.Product && f.TestLines > 0 {
+				found[f.Path] = true
+			}
+		}
+		return found
+	}
+	now, before := holding(s.Now.Files), holding(s.Before.Files)
+	n := 0
+	for _, change := range s.Changes {
+		if now[change.Path] || before[s.BasePath(change.Path)] {
+			n++
+		}
+	}
+	return n
 }
 
 func stat(statName, subject string, now, before float64, existed bool, unit string) answer.Statistic {

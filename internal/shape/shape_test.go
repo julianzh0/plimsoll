@@ -75,7 +75,7 @@ func TestDetectOnEachLanguageSample(t *testing.T) {
 		{"kotlin", 57, 32, 0, 0.6, []string{"build.gradle.kts", "src/androidTest/kotlin/com/acme/tasks/MainScreenTest.kt", "src/main/kotlin/com/acme/tasks/Main.kt"},
 			map[string]string{"build.gradle.kts": ":shared, io.ktor:ktor-bom, io.ktor:ktor-client-core, libs.kotlinx.coroutines.core, org.slf4j:slf4j-simple"},
 			[]string{"no `.env.example`, so no settings count"}},
-		{"rust", 113, 14, 0, 0.1, []string{"src/store/memory.rs", "src/model.rs", "src/lib.rs"},
+		{"rust", 86, 41, 0, 0.5, []string{"src/store/memory.rs", "src/model.rs", "src/lib.rs"},
 			map[string]string{"Cargo.toml": "anyhow, clap, libc, log, notes-store, serde"}, []string{"no `.env.example`, so no settings count"}},
 		{"mixed", 8, 10, 0, 1.3, []string{"service/main_test.go", "service/main.go", "web/src/app.test.ts"},
 			map[string]string{"go.mod": "", "package.json": ""}, []string{"no `.env.example`, so no settings count"}},
@@ -358,5 +358,49 @@ func TestChurnCoversTheLast150Commits(t *testing.T) {
 	sum := func(from, to int) float64 { return float64((from + to) * (to - from + 1) / 2) }
 	if *churn.Value != sum(1, 150) || *churn.Before != sum(6, 155) || !slices.Contains(many.Notes, "churn over the last 150 non-merge commits") {
 		t.Errorf("160 commits, 5 since the base: churn %v before %v, notes %q; want %v, %v", *churn.Value, *churn.Before, many.Notes, sum(1, 150), sum(6, 155))
+	}
+}
+
+// rustLines is a Rust file of product lines followed by a test module of so many lines.
+func rustLines(product, test int) string {
+	text := strings.Repeat("fn p() {}\n", product)
+	if test > 0 {
+		text += "#[cfg(test)]\nmod tests {\n" + strings.Repeat("    // t\n", test-3) + "}\n"
+	}
+	return text
+}
+
+func TestTestCodeInsideProductFilesCountsAsTestLines(t *testing.T) {
+	base := map[string]string{"src/a.rs": rustLines(10, 5), "src/b.rs": rustLines(4, 0)}
+	now := map[string]string{"src/a.rs": rustLines(12, 9), "src/b.rs": rustLines(4, 0)}
+	source := snapshottest.Files(base, now)
+	source.Changes = []snapshot.Change{{Path: "src/a.rs", Added: 6}}
+	findings := detect(t, source, conventions.Default())
+	for name, want := range map[string][2]float64{"product lines": {16, 14}, "test lines": {9, 5}, "test ratio": {0.6, 0.4}} {
+		if s, _ := statistic(findings, name, ""); s.Value == nil || s.Before == nil || *s.Value != want[0] || *s.Before != want[1] {
+			t.Errorf("%s = %+v, want %v now and %v at the base", name, s, want[0], want[1])
+		}
+	}
+	if got := value(t, findings, "largest code file", "src/a.rs"); got != 21 {
+		t.Errorf("largest code file src/a.rs = %v lines, want the whole file's 21", got)
+	}
+	note := "`rust`: test code inside 1 product file counts as test lines, not as product lines: 9 lines"
+	footprint := "the footprint counts, in 1 changed product file that holds test code, only the growth of that test code " +
+		"as test lines and every other changed line as a product line"
+	if !slices.Contains(findings.Notes, note) || !slices.Contains(findings.NotAnalysed, footprint) {
+		t.Errorf("notes %q, not analysed %q; want %q and %q", findings.Notes, findings.NotAnalysed, note, footprint)
+	}
+	if same := detect(t, snapshottest.Files(now, now), conventions.Default()); !slices.Contains(same.Notes, note) || slices.Contains(same.NotAnalysed, footprint) {
+		t.Errorf("an unchanged tree: notes %q, not analysed %q; want the note and no footprint sentence", same.Notes, same.NotAnalysed)
+	}
+	big := detect(t, snapshottest.Files(nil, map[string]string{"src/big.rs": rustLines(401, 600)}), conventions.Default())
+	if marks := marksOf(big, "file-size"); len(marks) != 1 || marks[0].Measured.Value != 1001 {
+		t.Errorf("a file of 1,001 lines, 600 of them test code: size marks %+v, want one with the whole 1,001", marks)
+	}
+	plain := detect(t, ratioSource(10, 10), conventions.Default())
+	for _, line := range append(slices.Clone(plain.Notes), plain.NotAnalysed...) {
+		if strings.Contains(line, "test code inside") || strings.Contains(line, "footprint") {
+			t.Errorf("a tree without such code: %q", line)
+		}
 	}
 }
