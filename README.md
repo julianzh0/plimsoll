@@ -159,7 +159,7 @@ The defaults, shared by all: test code lives in folders named `tests`, `test`, `
 name ends in `.test`, `.spec`, `_test` or `-test` or starts with `test_`, and in files that define a test
 (`func Test…`, `def test_…`, `test(…)`, `testWidgets(…)`, `it(…)`).
 
-Next languages: Java and Kotlin, then Rust, C#, C and C++, and Swift.
+Next languages: Java and Kotlin, then Scala, Groovy, Rust, C#, C and C++, and Swift.
 
 ## Rules
 
