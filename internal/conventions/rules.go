@@ -66,6 +66,8 @@ const (
 	PyprojectDependencies
 	// PubspecDependencies reads the keys of the top-level dependencies block of a pubspec.yaml.
 	PubspecDependencies
+	// PomDependencies reads the dependencies a pom.xml declares for itself, in compile or runtime scope.
+	PomDependencies
 )
 
 // Limits are every number a mark compares with. No detector holds one.
@@ -141,6 +143,7 @@ func Default() Rules {
 			{File: "go.mod", Format: GoModRequire},
 			{File: "pyproject.toml", Format: PyprojectDependencies},
 			{File: "pubspec.yaml", Format: PubspecDependencies},
+			{File: "pom.xml", Format: PomDependencies},
 		},
 		PlanningPaths: []string{
 			"docs/superpowers/", "docs/stories/", "docs/plans/", "docs/specs/", "projects/", ".review-work/",

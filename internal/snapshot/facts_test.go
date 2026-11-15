@@ -64,6 +64,15 @@ func TestBuildReadsRuntimeDependencies(t *testing.T) {
 		{"pubspec without dependencies", pubspec("name: x\ndev_dependencies:\n  test: ^1.0.0\n"), pubspecNames()},
 		{"pubspec without a name", pubspec("dependencies:\n  a: ^1.0.0\n"), nil},
 		{"pubspec of a workspace without dependencies", pubspec("name: _ws\nworkspace:\n  - app\n"), nil},
+		{"a pom's own dependencies in compile and runtime scope", oneFile("pom.xml", "<project>"+pomOwn+"</project>"), dependenciesOf("pom.xml", "a:b", "c:d")},
+		{"a pom's managed and plugin dependencies left out", oneFile("pom.xml", "<project>"+pomManaged+pomOwn+
+			"<build><plugins><plugin><dependencies><dependency><groupId>p</groupId><artifactId>q</artifactId></dependency></dependencies></plugin></plugins></build></project>"),
+			dependenciesOf("pom.xml", "a:b", "c:d")},
+		{"a pom that lists modules and declares no dependency", oneFile("pom.xml", "<project><modules><module>core</module></modules>"+pomManaged+"</project>"), nil},
+		{"a pom without dependencies and without modules", oneFile("pom.xml", "<project><artifactId>x</artifactId></project>"), dependenciesOf("pom.xml")},
+		{"a pom with a name space, a byte order mark and CRLF", oneFile("pom.xml", "\uFEFF<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n<project xmlns=\"http://maven.apache.org/POM/4.0.0\">\r\n"+pomOwn+"\r\n</project>\r\n"), dependenciesOf("pom.xml", "a:b", "c:d")},
+		{"a file named pom.xml with another root element", oneFile("pom.xml", "<settings/>"), nil},
+		{"a nested pom", oneFile("core/pom.xml", "<project>"+pomOwn+"</project>"), nil},
 	}
 	for _, tc := range cases {
 		if got := snapshot.Build(tc.source, conventions.Default()).Now.Manifests; !reflect.DeepEqual(got, tc.want) {
@@ -79,6 +88,8 @@ func TestBuildLeavesAnUnreadableManifestOut(t *testing.T) {
 		{"pyproject.toml", "[project]\ndependencies = [\n  \"a\",\n"},
 		{"pyproject.toml", "[project]\ndependencies = \"a\"\n"},
 		{"pubspec.yaml", "name: x\ndependencies: {a: ^1.0.0}\n"},
+		{"pom.xml", "<project><dependencies>"},
+		{"pom.xml", "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?><project><dependencies/></project>"},
 	} {
 		s := snapshot.Build(snapshottest.Files(nil, map[string]string{tc.file: tc.content}), conventions.Default())
 		if len(s.Now.Manifests) != 0 || !reflect.DeepEqual(s.Unreadable, []string{tc.file}) {
@@ -89,6 +100,24 @@ func TestBuildLeavesAnUnreadableManifestOut(t *testing.T) {
 
 func pyproject(content string) snapshot.Source {
 	return snapshottest.Files(nil, map[string]string{"pyproject.toml": content})
+}
+
+const pomOwn = "<dependencies>" +
+	"<dependency><groupId>a</groupId><artifactId>b</artifactId></dependency>" +
+	"<dependency><groupId> c </groupId><artifactId>d</artifactId><scope>runtime</scope></dependency>" +
+	"<dependency><groupId>e</groupId><artifactId>f</artifactId><scope>test</scope></dependency>" +
+	"<dependency><groupId>g</groupId><artifactId>h</artifactId><scope>provided</scope></dependency></dependencies>"
+
+const pomManaged = "<dependencyManagement><dependencies><dependency><groupId>x</groupId><artifactId>y</artifactId></dependency></dependencies></dependencyManagement>"
+
+// oneFile is a repository of one file.
+func oneFile(path, content string) snapshot.Source {
+	return snapshottest.Files(nil, map[string]string{path: content})
+}
+
+// dependenciesOf is one manifest; no name gives an empty list.
+func dependenciesOf(file string, names ...string) []snapshot.Manifest {
+	return []snapshot.Manifest{{Path: file, Dependencies: append([]string{}, names...)}}
 }
 
 func pubspec(content string) snapshot.Source {
@@ -179,6 +208,7 @@ func TestWantsNamesWhatTheReaderReads(t *testing.T) {
 		"src/a.ts": true, "README.md": false, "package.json": true, "web/package.json": false, ".env.example": true,
 		"tsconfig.json": true, "web/tsconfig.json": false, "go.mod": true, "web/go.mod": false, "pyproject.toml": true, "web/pyproject.toml": false, "pytest.ini": false, "pytest.toml": false,
 		"src/main/resources/application.properties": false, "docs/design.pdf": false, "src/main/resources/META-INF/services/a.B": false,
+		"pom.xml": true, "core/pom.xml": false,
 		"pubspec.yaml": true, "app/pubspec.yaml": true, "packages/core/pubspec.yaml": true, "node_modules/x/pubspec.yaml": false,
 		"docs/.env.example": false, "node_modules/x/a.js": false, "assets/logo.bin": true,
 		"docker-compose.yml": true, "deploy/compose.prod.yaml": true, "node_modules/x/compose.yml": false, "compose.txt": false,

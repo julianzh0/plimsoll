@@ -99,6 +99,8 @@ func dependencies(format conventions.ManifestFormat, content []byte) (names []st
 		return pyprojectDependencies(content)
 	case conventions.PubspecDependencies:
 		return pubspecDependencies(content)
+	case conventions.PomDependencies:
+		return pomDependencies(content)
 	case conventions.JSONDependencies:
 		var parsed struct {
 			Dependencies map[string]json.RawMessage `json:"dependencies"`
