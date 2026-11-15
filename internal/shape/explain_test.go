@@ -65,6 +65,12 @@ func TestExplainGivesTheEvidenceOfEachRule(t *testing.T) {
 			"`tests/a.test.ts`: 15 lines, defines a test", "`tests/support/b.ts`: 10 lines, test infrastructure",
 			"`tests/support/c.ts`: 1 line, test infrastructure",
 		}},
+		{"test ratio with test code inside a product file", snapshottest.Files(nil, map[string]string{"src/a.rs": rustLines(2, 10), "src/b.rs": rustLines(1, 0)}), "test-ratio", []string{
+			"test lines now: 10 in 1 file; at the base: 0 in 0 files", "product lines now: 3 in 2 files; at the base: 0 in 0 files",
+			"other code, outside the ratio: 0 lines in 0 files", "test code recognized by: " + conventions.Default().TestRule(),
+			"limit: 2.0 (plimsoll's rule: test code at most twice the product code)",
+			"`src/a.rs`: 10 lines, test code inside a product file",
+		}},
 		{"dependencies", additions, "dependencies", []string{"`package.json` at the base: a, b", "`package.json` now: a, b, c", "added: c"}},
 		{"settings", additions, "settings", []string{"names at the base: 1", "names now: 3", "added: BETA, GAMMA"}},
 	}

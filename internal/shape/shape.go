@@ -162,7 +162,7 @@ func testCodeInsideNotes(files []snapshot.File) []string {
 	var languages []string
 	holding, testLines := map[string]int{}, map[string]int{}
 	for _, file := range files {
-		if file.Role != snapshot.Product || file.TestLines == 0 {
+		if file.TestLines == 0 { // only a product file holds test lines
 			continue
 		}
 		if holding[file.Language] == 0 {
@@ -184,7 +184,7 @@ func changedHoldingTestCode(s snapshot.Snapshot) int {
 	holding := func(files []snapshot.File) map[string]bool {
 		found := map[string]bool{}
 		for _, f := range files {
-			if f.Role == snapshot.Product && f.TestLines > 0 {
+			if f.TestLines > 0 {
 				found[f.Path] = true
 			}
 		}

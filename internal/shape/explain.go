@@ -57,41 +57,56 @@ func sizeEvidence(s snapshot.Snapshot, m answer.Mark) []string {
 }
 
 func ratioEvidence(s snapshot.Snapshot, m answer.Mark) []string {
-	isTest := func(f snapshot.File) bool { return f.Role.IsTest() }
-	isProduct := func(f snapshot.File) bool { return f.Role == snapshot.Product }
-	isOther := func(f snapshot.File) bool { return f.Role == snapshot.Other }
 	lines := []string{
-		fmt.Sprintf("test lines now: %s; at the base: %s", tally(s.Now.Files, isTest), tally(s.Before.Files, isTest)),
-		fmt.Sprintf("product lines now: %s; at the base: %s", tally(s.Now.Files, isProduct), tally(s.Before.Files, isProduct)),
-		"other code, outside the ratio: " + tallyLines(s.Now.Files, isOther),
+		fmt.Sprintf("test lines now: %s; at the base: %s", tally(s.Now.Files, testLinesOf), tally(s.Before.Files, testLinesOf)),
+		fmt.Sprintf("product lines now: %s; at the base: %s", tally(s.Now.Files, productLinesOf), tally(s.Before.Files, productLinesOf)),
+		"other code, outside the ratio: " + tallyLines(s.Now.Files, otherLinesOf),
 		"test code recognized by: " + s.TestRule,
 	}
 	lines = append(lines, answer.TestFolderNotes(s.Layout)...)
 	lines = append(lines, fmt.Sprintf("limit: %s (%s)", answer.Decimal(*m.Measured.Limit), m.Measured.LimitSource))
 	var tests []snapshot.File
 	for _, file := range s.Now.Files {
-		if isTest(file) {
+		if _, holds := testLinesOf(file); holds {
 			tests = append(tests, file)
 		}
 	}
+	measured := func(f snapshot.File) int { n, _ := testLinesOf(f); return n }
 	slices.SortFunc(tests, func(a, b snapshot.File) int {
-		return cmp.Or(cmp.Compare(b.Lines, a.Lines), strings.Compare(a.Path, b.Path))
+		return cmp.Or(cmp.Compare(measured(b), measured(a)), strings.Compare(a.Path, b.Path))
 	})
 	for _, file := range tests {
 		kind := "defines a test"
-		if file.Role == snapshot.TestInfrastructure {
+		switch file.Role {
+		case snapshot.TestInfrastructure:
 			kind = "test infrastructure"
+		case snapshot.Product:
+			kind = "test code inside a product file"
 		}
-		lines = append(lines, fmt.Sprintf("`%s`: %s, %s", file.Path, answer.Plural(file.Lines, "line"), kind))
+		lines = append(lines, fmt.Sprintf("`%s`: %s, %s", file.Path, answer.Plural(measured(file), "line"), kind))
 	}
 	return lines
 }
 
-// sum is the lines and the number of the files that match.
-func sum(files []snapshot.File, match func(snapshot.File) bool) (lines, count int) {
+// The lines a file adds to one sum of the ratio, as lines() counts them, and whether it adds to that sum at all.
+func testLinesOf(f snapshot.File) (int, bool) {
+	if f.Role.IsTest() {
+		return f.Lines, true
+	}
+	return f.TestLines, f.Role == snapshot.Product && f.TestLines > 0
+}
+
+func productLinesOf(f snapshot.File) (int, bool) {
+	return f.Lines - f.TestLines, f.Role == snapshot.Product
+}
+
+func otherLinesOf(f snapshot.File) (int, bool) { return f.Lines, f.Role == snapshot.Other }
+
+// sum is the lines and the number of the files that a measure takes.
+func sum(files []snapshot.File, measure func(snapshot.File) (int, bool)) (lines, count int) {
 	for _, file := range files {
-		if match(file) {
-			lines += file.Lines
+		if n, takes := measure(file); takes {
+			lines += n
 			count++
 		}
 	}
@@ -99,14 +114,14 @@ func sum(files []snapshot.File, match func(snapshot.File) bool) (lines, count in
 }
 
 // tally is "<lines> in <files>" for the files that match.
-func tally(files []snapshot.File, match func(snapshot.File) bool) string {
-	lines, count := sum(files, match)
+func tally(files []snapshot.File, measure func(snapshot.File) (int, bool)) string {
+	lines, count := sum(files, measure)
 	return answer.Count(float64(lines)) + " in " + answer.Plural(count, "file")
 }
 
 // tallyLines is "<n> line(s) in <files>" for the files that match.
-func tallyLines(files []snapshot.File, match func(snapshot.File) bool) string {
-	lines, count := sum(files, match)
+func tallyLines(files []snapshot.File, measure func(snapshot.File) (int, bool)) string {
+	lines, count := sum(files, measure)
 	return answer.Plural(lines, "line") + " in " + answer.Plural(count, "file")
 }
 

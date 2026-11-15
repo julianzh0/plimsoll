@@ -73,6 +73,9 @@ func closingBrace(text []byte, open int) int {
 // testLines counts the lines that a file's test code touches, each line once: the spans of the language's test
 // blocks on the text with its literals blanked, a span that starts inside the one before it being part of that one.
 func testLines(language conventions.Language, content []byte) int {
+	if language.TestBlock == nil {
+		return 0
+	}
 	text := masked(language.Literals, content)
 	counted, lastCounted, until := 0, 0, -1
 	for _, s := range spansOf(language.TestBlock, text) {
