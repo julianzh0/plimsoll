@@ -243,6 +243,9 @@ func footprint(rules conventions.Rules, changes []Change, since int, now, before
 			lines = &result.Product
 			basePath := cmp.Or(change.From, change.Path)
 			added, removed := change.Added, change.Removed
+			if testNow[change.Path] > 0 || testBefore[basePath] > 0 {
+				result.HoldsTestCode++
+			}
 			if grew := testNow[change.Path] - testBefore[basePath]; grew > 0 {
 				moved := min(grew, added)
 				result.Test.Added, added = result.Test.Added+moved, added-moved

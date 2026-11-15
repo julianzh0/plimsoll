@@ -62,6 +62,29 @@ func stringArray(text string) (items []string, closed bool) {
 	return items, false
 }
 
+// openedBrackets counts the brackets and braces a line opens minus those it closes, outside strings and before a
+// comment, so a value that goes on over lines is followed to its end.
+func openedBrackets(line string) int {
+	depth := 0
+	for i := 0; i < len(line); i++ {
+		switch c := line[i]; c {
+		case '#':
+			return depth
+		case '[', '{':
+			depth++
+		case ']', '}':
+			depth--
+		case '"', '\'':
+			for i++; i < len(line) && line[i] != c; i++ {
+				if c == '"' && line[i] == '\\' {
+					i++
+				}
+			}
+		}
+	}
+	return depth
+}
+
 // tomlHeader reads a line that opens a TOML table: the table's dotted name, and whether the line is a header at all. A
 // header may be indented and carry a comment; an array-of-tables header is a header that names no table ("").
 func tomlHeader(line string) (name string, isHeader bool) {

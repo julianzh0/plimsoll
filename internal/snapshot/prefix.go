@@ -39,7 +39,8 @@ type prefix struct {
 	own   ownImports // nil when no prefix was read: every import that is not relative is outside
 }
 
-// readPrefix reads a language's prefix at the root of one side: its file, or its own packages. Each format has one
+// readPrefix reads a language's prefix at the root of one side: its file, its own packages, or, from the readings of the
+// language's files, the modules they declare. Each format has one
 // reader; resolving an import needs only the function it returns.
 // NOTE: only the root config is read; an extended or nested config, replace, go.work and workspaces are not followed,
 // so imports through them count as outside. Upgrade: follow extends through tracked files.

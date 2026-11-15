@@ -58,8 +58,8 @@ func sizeEvidence(s snapshot.Snapshot, m answer.Mark) []string {
 
 func ratioEvidence(s snapshot.Snapshot, m answer.Mark) []string {
 	lines := []string{
-		fmt.Sprintf("test lines now: %s; at the base: %s", tally(s.Now.Files, testLinesOf), tally(s.Before.Files, testLinesOf)),
-		fmt.Sprintf("product lines now: %s; at the base: %s", tally(s.Now.Files, productLinesOf), tally(s.Before.Files, productLinesOf)),
+		fmt.Sprintf("test lines now: %s; at the base: %s", tally(s.Now.Files, testSideOf), tally(s.Before.Files, testSideOf)),
+		fmt.Sprintf("product lines now: %s; at the base: %s", tally(s.Now.Files, productSideOf), tally(s.Before.Files, productSideOf)),
 		"other code, outside the ratio: " + tallyLines(s.Now.Files, otherLinesOf),
 		"test code recognized by: " + s.TestRule,
 	}
@@ -67,11 +67,11 @@ func ratioEvidence(s snapshot.Snapshot, m answer.Mark) []string {
 	lines = append(lines, fmt.Sprintf("limit: %s (%s)", answer.Decimal(*m.Measured.Limit), m.Measured.LimitSource))
 	var tests []snapshot.File
 	for _, file := range s.Now.Files {
-		if _, holds := testLinesOf(file); holds {
+		if _, holds := testSideOf(file); holds {
 			tests = append(tests, file)
 		}
 	}
-	measured := func(f snapshot.File) int { n, _ := testLinesOf(f); return n }
+	measured := func(f snapshot.File) int { n, _ := testSideOf(f); return n }
 	slices.SortFunc(tests, func(a, b snapshot.File) int {
 		return cmp.Or(cmp.Compare(measured(b), measured(a)), strings.Compare(a.Path, b.Path))
 	})
@@ -84,16 +84,15 @@ func ratioEvidence(s snapshot.Snapshot, m answer.Mark) []string {
 	return lines
 }
 
-// The lines a file adds to one sum of the ratio, as lines() counts them, and whether it adds to that sum at all.
-func testLinesOf(f snapshot.File) (int, bool) {
-	if f.Role.IsTest() {
-		return f.Lines, true
-	}
-	return f.TestLines, f.Role == snapshot.Product && f.TestLines > 0
+// testSideOf and productSideOf are the lines a file adds to one side of the ratio, and whether it adds to it at all.
+func testSideOf(f snapshot.File) (int, bool) {
+	_, test := ratioLines(f)
+	return test, test > 0 || f.Role.IsTest()
 }
 
-func productLinesOf(f snapshot.File) (int, bool) {
-	return f.Lines - f.TestLines, f.Role == snapshot.Product
+func productSideOf(f snapshot.File) (int, bool) {
+	product, _ := ratioLines(f)
+	return product, f.Role == snapshot.Product
 }
 
 func otherLinesOf(f snapshot.File) (int, bool) { return f.Lines, f.Role == snapshot.Other }

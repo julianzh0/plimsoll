@@ -46,7 +46,7 @@ func (Detector) Detect(s snapshot.Snapshot) answer.Findings {
 		NotAnalysed: answer.TestFoldersNotUsed(s.Layout),
 	}
 	f.Notes = append(f.Notes, testCodeInsideNotes(s.Now.Files)...)
-	if n := changedHoldingTestCode(s); n > 0 {
+	if n := s.Footprint.HoldsTestCode; n > 0 {
 		f.NotAnalysed = append(f.NotAnalysed, "the footprint counts, in "+answer.Agree(n, "changed product file that holds", "changed product files that hold")+
 			" test code, only the growth of that test code as test lines and every other changed line as a product line")
 	}
@@ -139,13 +139,26 @@ func (t totals) ratio() float64 {
 	return math.Round(10*t.test()/t.product) / 10
 }
 
+// ratioLines are the lines a file adds to the product side and to the test side of the ratio: test code inside a
+// product file counts as test lines.
+func ratioLines(f snapshot.File) (product, test int) {
+	switch {
+	case f.Role == snapshot.Product:
+		return f.Lines - f.TestLines, f.TestLines
+	case f.Role.IsTest():
+		return 0, f.Lines
+	}
+	return 0, 0
+}
+
 func lines(files []snapshot.File) totals {
 	var t totals
 	for _, file := range files {
 		switch file.Role {
 		case snapshot.Product:
-			t.product += float64(file.Lines - file.TestLines)
-			t.tests += float64(file.TestLines)
+			product, test := ratioLines(file)
+			t.product += float64(product)
+			t.tests += float64(test)
 		case snapshot.Test:
 			t.tests += float64(file.Lines)
 		case snapshot.TestInfrastructure:
@@ -177,27 +190,6 @@ func testCodeInsideNotes(files []snapshot.File) []string {
 			language, answer.Plural(holding[language], "product file"), answer.Plural(testLines[language], "line")))
 	}
 	return notes
-}
-
-// changedHoldingTestCode counts the changed product files that hold test code now or at the base.
-func changedHoldingTestCode(s snapshot.Snapshot) int {
-	holding := func(files []snapshot.File) map[string]bool {
-		found := map[string]bool{}
-		for _, f := range files {
-			if f.TestLines > 0 {
-				found[f.Path] = true
-			}
-		}
-		return found
-	}
-	now, before := holding(s.Now.Files), holding(s.Before.Files)
-	n := 0
-	for _, change := range s.Changes {
-		if now[change.Path] || before[s.BasePath(change.Path)] {
-			n++
-		}
-	}
-	return n
 }
 
 func stat(statName, subject string, now, before float64, existed bool, unit string) answer.Statistic {

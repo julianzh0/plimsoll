@@ -255,7 +255,11 @@ func links(rules conventions.Rules, content map[string][]byte, tree Tree, readin
 		if len(files) == 0 {
 			continue
 		}
-		own := readPrefix(rules, language, content, s.tracked, readings)
+		languageReadings := map[string]reading{}
+		for _, file := range files {
+			languageReadings[file.Path] = readings[file.Path]
+		}
+		own := readPrefix(rules, language, content, s.tracked, languageReadings)
 		counts := LanguageImports{
 			Language: language.Name, PrefixFile: imports.Prefix.File, Prefix: own.state,
 			PrefixRequired: imports.Prefix.Required, Folders: imports.Target == conventions.FolderTarget,

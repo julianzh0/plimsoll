@@ -76,32 +76,9 @@ func cargoKey(line string) (string, bool) {
 	return key, true
 }
 
-// openedBrackets counts the brackets and braces a line opens minus those it closes, outside strings and before a
-// comment, so a value that goes on over lines is followed to its end.
-func openedBrackets(line string) int {
-	depth := 0
-	for i := 0; i < len(line); i++ {
-		switch c := line[i]; c {
-		case '#':
-			return depth
-		case '[', '{':
-			depth++
-		case ']', '}':
-			depth--
-		case '"', '\'':
-			for i++; i < len(line) && line[i] != c; i++ {
-				if c == '"' && line[i] == '\\' {
-					i++
-				}
-			}
-		}
-	}
-	return depth
-}
-
 // cargoCrates reads what Rust's own imports name. Every tracked Cargo.toml with a package name names a crate: the
 // name of its [lib] table, else the package name with "-" as "_"; the crate is own when src/lib.rs beside it is
-// tracked, its library root. The mod lines of the side's Rust files make the module tree. mod lines and crate, self
+// tracked, its library root. The mod lines of the language's files make the module tree. mod lines and crate, self
 // and super paths are followed without any manifest; a path that starts with an own crate's name needs one.
 // NOTE: a file that no mod line declares is read as a crate root: one declared by a macro's output or under a path
 // attribute, whose mod line is looked for under the module's name. Upgrade: read the attribute's file name.
@@ -135,9 +112,6 @@ func cargoCrates(manifest string, content map[string][]byte, tracked map[string]
 		}
 	}
 	for file, r := range readings {
-		if !strings.HasSuffix(file, ".rs") {
-			continue
-		}
 		for _, st := range r.statements {
 			name, isMod := modName(st.spec)
 			if !isMod {
