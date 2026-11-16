@@ -300,12 +300,15 @@ func computedCases() map[string]map[string]int {
 	}
 }
 
-func TestLiteralsBlankCommentsStringsAndCharacters(t *testing.T) {
+func TestLiteralsBlankCommentsAndKeepStrings(t *testing.T) {
 	cases := map[string]map[string]string{ // per language with a Literals pattern: a text, and what stays of it
 		"c":   commentCases(),
 		"cpp": commentCases(),
 	}
 	blank := func(match string) string {
+		if match[0] == '"' || match[0] == '\'' {
+			return match
+		}
 		return strings.Map(func(r rune) rune {
 			if r == '\n' {
 				return r
@@ -354,5 +357,6 @@ func commentCases() map[string]string {
 		"#include <a.h> /* b */ // c":                "#include <a.h>             ",
 		"x = 1; /* a // b */ y = 2; // z":            "x = 1;              y = 2;     ",
 		"/**/ a /***/ b":                             "     a       b",
+		"s = \"/*\"; c = '\"'; x /* y */":            "s = \"/*\"; c = '\"'; x        ",
 	}
 }

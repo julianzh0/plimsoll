@@ -11,10 +11,10 @@ func cLanguage() Language {
 var (
 	// cDynamicRead is a settings read whose name is not a quoted literal.
 	cDynamicRead = regexp.MustCompile(`getenv\([ \t]*[^" \t)]`)
-	// cComments are a line comment and a block comment.
-	// NOTE: a "/*" inside a string or a character literal starts a comment for this reader, and an include line
-	// inside a raw string is read. Upgrade: blank strings too, with the include directive's own quotes kept.
-	cComments = regexp.MustCompile(`//[^\n]*|/\*(?:[^*]|\*+[^*/])*\*+/`)
+	// cComments are a string, a character literal, a line comment and a block comment; the strings are matched so a
+	// comment marker inside one starts no comment.
+	// NOTE: an include line inside a raw string is read. Upgrade: match raw strings too.
+	cComments = regexp.MustCompile(`"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|//[^\n]*|/\*(?:[^*]|\*+[^*/])*\*+/`)
 	// cIncludeQuoted is an include in quotes: looked for beside the including file first, then in the include folders.
 	// NOTE: an include under #if is read whatever its condition, so the includes of every platform and option count.
 	// Upgrade: evaluate the conditions for the flags a build file names.

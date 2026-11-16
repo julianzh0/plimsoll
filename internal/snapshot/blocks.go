@@ -5,13 +5,17 @@ import (
 	"strings"
 )
 
-// masked returns the content with every match of a language's literal pattern as spaces, line ends kept, so offsets
-// and line numbers stay those of the file. A nil pattern returns the content itself.
+// masked returns the content with every comment its language's literal pattern matches as spaces, line ends kept, so
+// offsets and line numbers stay those of the file; a match that starts with a quote is a string or a character
+// literal and stays. A nil pattern returns the content itself.
 func masked(literals *regexp.Regexp, content []byte) []byte {
 	if literals == nil {
 		return content
 	}
 	return literals.ReplaceAllFunc(content, func(match []byte) []byte {
+		if match[0] == '"' || match[0] == '\'' {
+			return match
+		}
 		blank := make([]byte, len(match))
 		for i, c := range match {
 			blank[i] = ' '

@@ -860,6 +860,13 @@ func TestBuildFollowsIncludesToFiles(t *testing.T) {
 	bare := includeTree()
 	delete(bare, "CMakeLists.txt")
 	delete(bare, "tools/CMakeLists.txt")
+	// A comment marker inside a string starts no comment, so the include after it is read.
+	inString := linksOf(t, map[string]string{
+		"src/a.c": "const char *s = \"/*\";\n#include \"b.h\"\nint x; /* end */\n", "src/b.h": "#pragma once\n",
+	})
+	if !reflect.DeepEqual(inString.List, []snapshot.Link{link("src/a.c", 2, "src/b.h")}) {
+		t.Errorf("an include after a string holding /*: List = %+v, want src/a.c to src/b.h", inString.List)
+	}
 	// A path written with Windows separators names the same file.
 	windows := linksOf(t, map[string]string{"src/a.c": "#include \"sub\\x.h\"\n", "src/sub/x.h": "#pragma once\n"})
 	if !reflect.DeepEqual(windows.List, []snapshot.Link{link("src/a.c", 1, "src/sub/x.h")}) {

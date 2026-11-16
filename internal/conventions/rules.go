@@ -137,7 +137,8 @@ type Language struct {
 	Name        string
 	Extensions  []string       // the suffixes the entry speaks for
 	DynamicRead *regexp.Regexp // a settings read whose name is computed at run time
-	// Literals are comments, strings and character literals; they are blanked before imports are read. Nil reads
+	// Literals are comments, strings and character literals; comments are blanked before imports are read, and
+	// strings and character literals are kept as written, so a comment marker inside one starts no comment. Nil reads
 	// the text as written.
 	Literals *regexp.Regexp
 	Imports  Imports       // how its imports are written and what they name
