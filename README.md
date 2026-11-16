@@ -373,7 +373,7 @@ and leaves no file out of the count: test code declared here counts as test code
 bare name is a folder at the root. A test folder that is the root or a package root, and a file name that is only
 `*`, are not applied.
 
-A key plimsoll does not know, a table it does not read, a value that is no number above 0 (a whole number for a limit
+A key plimsoll does not know, a table it does not read, a value that is no number above 0 (a whole number up to 2^53 for a limit
 that counts), a list that is no list of text, a line outside a table or a key set twice is named under "not
 analysed", and what it names keeps its default (a key set twice its first value). A declared value that matches no
 tracked file, or that is no plain path or file-name pattern, is named there too and not used. A question without a

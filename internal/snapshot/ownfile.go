@@ -108,6 +108,9 @@ func readOwnFile(rules conventions.Rules, content map[string][]byte) ownFile {
 	return o
 }
 
+// largestExactCount is the largest whole number a float64 holds exactly (2^53); a larger one would be rounded.
+const largestExactCount = 1 << 53
+
 // readLimit reads one key of the limits table: a number above 0, whole for a limit that counts.
 func (o *ownFile) readLimit(rules conventions.Rules, key, value string, problem func(string, ...any)) {
 	if !slices.ContainsFunc(rules.LimitKeys, func(k conventions.LimitKey) bool { return k.Key == key }) {
@@ -120,9 +123,10 @@ func (o *ownFile) readLimit(rules conventions.Rules, key, value string, problem 
 	}
 	text := strings.TrimSpace(value)
 	if rules.Limits.ByKey(key).Step >= 1 {
-		// A limit that counts is a TOML integer, within the range of an int: 2.5 and 1e19 are not.
+		// A limit that counts is a TOML integer that a float holds exactly, so every conversion back to an int is
+		// exact: 2.5 and 1e19 are not.
 		count, err := strconv.ParseInt(text, 10, 64)
-		if err != nil || count <= 0 {
+		if err != nil || count <= 0 || count > largestExactCount {
 			problem("`%s` is not a whole number above 0", key)
 			return
 		}
