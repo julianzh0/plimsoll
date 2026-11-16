@@ -116,6 +116,7 @@ func importCases() map[string]map[string][]string {
 			"import 'package:a/a.dart'\n    deferred as a;\n":       {"package:a/a.dart"},
 		},
 		"java": {
+			"import module java.base;\n": nil,
 			"package a;\n\nimport com.acme.billing.Invoice;\nimport static com.acme.billing.Invoice.MAX;\nimport com.acme.billing.*;\n": {
 				"com.acme.billing.*", "com.acme.billing.Invoice", "com.acme.billing.Invoice.MAX",
 			},

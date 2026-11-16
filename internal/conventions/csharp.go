@@ -20,7 +20,8 @@ const csharpQuery = `
 ((using_directive "global"? @everywhere name: (identifier) (qualified_name qualifier: (_) @spec)) @import
   (#strip-prefix! @spec "global::"))
 ((invocation_expression
-   function: (member_access_expression expression: (identifier) @o name: (identifier) @m)
+   function: (member_access_expression
+     expression: [(identifier) @o (member_access_expression name: (identifier) @o)] name: (identifier) @m)
    arguments: (argument_list . (argument (_) @dynamic)))
   (#eq? @o "Environment") (#eq? @m "GetEnvironmentVariable") (#not-match? @dynamic "^[\"@]"))
 ((element_access_expression

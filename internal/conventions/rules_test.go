@@ -142,7 +142,7 @@ func TestEveryLanguageNamesItsDynamicRead(t *testing.T) {
 		"kotlin": {[]string{"System.getenv(name)", `System.getenv(prefix + "X")`, "java.lang.System.getenv(name)"}, []string{`System.getenv("X")`, `System.getenv( "X")`, "System.getenv()"}},
 		"rust": {[]string{"env::var(name)", "std::env::var_os(key)", `env::var(&format!("A_{x}"))`, "env::var(\n    name,\n)"},
 			[]string{`env::var("X")`, `std::env::var_os( "X")`, "env::vars()", `env!("X")`, `option_env!("X")`}},
-		"csharp": {[]string{"Environment.GetEnvironmentVariable(name)", `Environment.GetEnvironmentVariable(prefix + "X")`, "configuration[key]", "_config[k]", `builder.Configuration[$"Db:{name}"]`},
+		"csharp": {[]string{"Environment.GetEnvironmentVariable(name)", "System.Environment.GetEnvironmentVariable(name)", `Environment.GetEnvironmentVariable(prefix + "X")`, "configuration[key]", "_config[k]", `builder.Configuration[$"Db:{name}"]`},
 			[]string{`Environment.GetEnvironmentVariable("X")`, `Environment.GetEnvironmentVariable( "X")`, "Environment.GetEnvironmentVariables()", `configuration["X"]`, "config[0]", "reconfiguration[key]"}},
 		"swift": {[]string{"ProcessInfo.processInfo.environment[key]", `ProcessInfo.processInfo.environment[prefix + "X"]`},
 			[]string{`ProcessInfo.processInfo.environment["X"]`, `ProcessInfo.processInfo.environment[ "X"]`, "ProcessInfo.processInfo.environment.keys"}},

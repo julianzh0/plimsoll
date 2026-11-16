@@ -34,10 +34,7 @@ type Imports struct {
 	NotSeen string
 }
 
-// ImportForm is a pattern. As a statement form, its named group "spec" holds the target as written. Its optional
-// named group "everywhere"
-// takes part only in a statement written once for every file of its project; one that names the repository's own
-// code is counted as not readable and gives no link.
+// ImportForm is a pattern; as a statement form, its named group "spec" holds the target as written.
 type ImportForm struct {
 	Pattern *regexp.Regexp
 }
