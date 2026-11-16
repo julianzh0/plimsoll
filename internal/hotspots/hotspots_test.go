@@ -98,14 +98,14 @@ func TestHotspotsRankChangesTimesLines(t *testing.T) {
 	if got := rows(detect(t, own)); len(got) != 4 {
 		t.Errorf("five changed files and hotspot_files = 4 = %d rows, want 4", len(got))
 	}
-	// A count beyond any int: converted as it is, it turns negative on amd64 and the slice bound panics.
+	// The largest int: held as a float it rounds past every int, and converted as it is it turns negative on amd64.
 	for i := range own.Now {
 		if own.Now[i].Path == ".plimsoll.toml" {
-			own.Now[i].Content = []byte("[limits]\nhotspot_files = 1e19\n")
+			own.Now[i].Content = []byte("[limits]\nhotspot_files = 9223372036854775807\n")
 		}
 	}
 	if got := rows(detect(t, own)); len(got) != 5 {
-		t.Errorf("five changed files and hotspot_files = 1e19 = %d rows, want all 5", len(got))
+		t.Errorf("five changed files and the largest hotspot_files = %d rows, want all 5", len(got))
 	}
 }
 

@@ -118,16 +118,23 @@ func (o *ownFile) readLimit(rules conventions.Rules, key, value string, problem 
 		problem("`%s` is set twice", key)
 		return
 	}
-	number, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
-	whole := rules.Limits.ByKey(key).Step >= 1
-	switch {
-	case err != nil || math.IsNaN(number) || math.IsInf(number, 0) || number <= 0:
-		problem("`%s` is not a number above 0", key)
-	case whole && number != math.Trunc(number):
-		problem("`%s` is not a whole number above 0", key)
-	default:
-		o.limits[key] = number
+	text := strings.TrimSpace(value)
+	if rules.Limits.ByKey(key).Step >= 1 {
+		// A limit that counts is a TOML integer, within the range of an int: 2.5 and 1e19 are not.
+		count, err := strconv.ParseInt(text, 10, 64)
+		if err != nil || count <= 0 {
+			problem("`%s` is not a whole number above 0", key)
+			return
+		}
+		o.limits[key] = float64(count)
+		return
 	}
+	number, err := strconv.ParseFloat(text, 64)
+	if err != nil || math.IsNaN(number) || math.IsInf(number, 0) || number <= 0 {
+		problem("`%s` is not a number above 0", key)
+		return
+	}
+	o.limits[key] = number
 }
 
 // readList reads a list of strings, each brought to its key's form.
