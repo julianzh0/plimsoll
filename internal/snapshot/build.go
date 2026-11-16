@@ -22,7 +22,8 @@ func Build(source Source, rules conventions.Rules, readings *Readings) Snapshot 
 	layout := declaredLayout(rules, nowContent, beforeContent)
 	rules = withLayout(rules, layout)
 	rules = withSharedSuffixes(rules, source.Now)
-	limits, declaredLimits, limitProblems := declaredLimits(rules, nowContent, beforeContent)
+	ownNow, ownBefore := readOwnFile(rules, nowContent), readOwnFile(rules, beforeContent)
+	limits, declaredLimits := declaredLimits(rules, ownNow, ownBefore)
 	rules.Limits = limits
 	now := tree(rules, source.Now, nil)
 	nowReadings := readings.side(rules, nowContent, now.Files)
@@ -57,30 +58,32 @@ func Build(source Source, rules conventions.Rules, readings *Readings) Snapshot 
 	unreadable = append(unreadable, unreadableNow...)
 	slices.Sort(unreadable)
 	return Snapshot{
-		AskedBase:      source.AskedBase,
-		Base:           source.Base,
-		Head:           source.Head,
-		MergeBase:      source.MergeBase,
-		Modified:       source.Modified,
-		Limits:         rules.Limits,
-		LimitsFile:     rules.OwnFile,
-		DeclaredLimits: declaredLimits,
-		LimitProblems:  limitProblems,
-		Before:         before,
-		Now:            now,
-		Changes:        source.Changes,
-		Footprint:      footprint(rules, source.Changes, len(source.Since), now, before),
-		History:        history(rules, source.Commits, source.Since),
-		Layout:         layout,
-		TestRule:       rules.TestRule(),
-		PlanningRule:   rules.PlanningRule(),
-		Unverified:     unverified(now.Files),
-		Untracked:      source.Untracked,
-		Submodules:     source.Submodules,
-		Unreadable:     slices.Compact(unreadable),
-		Missing:        source.Missing,
-		Unparsed:       unparsed(nowReadings, beforeReadings),
-		SyntaxErrors:   syntaxErrors(changed, nowReadings, beforeReadings),
+		AskedBase:           source.AskedBase,
+		Base:                source.Base,
+		Head:                source.Head,
+		MergeBase:           source.MergeBase,
+		Modified:            source.Modified,
+		Limits:              rules.Limits,
+		OwnFile:             rules.OwnFile,
+		DeclaredLimits:      declaredLimits,
+		Declarations:        declaredValues(rules, ownNow, ownBefore),
+		OwnFileProblems:     ownNow.problems,
+		OwnFileUnreadAtBase: ownBefore.unreadable,
+		Before:              before,
+		Now:                 now,
+		Changes:             source.Changes,
+		Footprint:           footprint(rules, source.Changes, len(source.Since), now, before),
+		History:             history(rules, source.Commits, source.Since),
+		Layout:              layout,
+		TestRule:            rules.TestRule(),
+		PlanningRule:        rules.PlanningRule(),
+		Unverified:          unverified(now.Files),
+		Untracked:           source.Untracked,
+		Submodules:          source.Submodules,
+		Unreadable:          slices.Compact(unreadable),
+		Missing:             source.Missing,
+		Unparsed:            unparsed(nowReadings, beforeReadings),
+		SyntaxErrors:        syntaxErrors(changed, nowReadings, beforeReadings),
 	}
 }
 

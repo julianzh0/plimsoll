@@ -16,8 +16,8 @@ func (Detector) Explain(s snapshot.Snapshot, m answer.Mark) []string {
 	case ruleLimitChange:
 		unit := m.Measured.Unit
 		return []string{
-			fmt.Sprintf("`%s` at the base: %s", s.LimitsFile, setOrNot(*m.Measured.Before, *m.Measured.Limit, unit)),
-			fmt.Sprintf("`%s` now: %s", s.LimitsFile, setOrNot(m.Measured.Value, *m.Measured.Limit, unit)),
+			fmt.Sprintf("`%s` at the base: %s", s.OwnFile, setOrNot(*m.Measured.Before, *m.Measured.Limit, unit)),
+			fmt.Sprintf("`%s` now: %s", s.OwnFile, setOrNot(m.Measured.Value, *m.Measured.Limit, unit)),
 			fmt.Sprintf("plimsoll's default: %s", withUnit(*m.Measured.Limit, unit)),
 		}
 	}

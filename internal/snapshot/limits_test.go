@@ -49,7 +49,7 @@ func TestBuildReadsTheLimitsARepositorySets(t *testing.T) {
 			conventions.Limits{FileLines: set(1500, 1), TestRatio: defaults.TestRatio, SharedCommits: defaults.SharedCommits, ImportsNotFollowed: defaults.ImportsNotFollowed},
 			[]snapshot.DeclaredLimit{{LimitKey: key("file_lines"), Default: 1000, Now: value(1500)}},
 			[]string{"`max_complexity` is no limit plimsoll knows", "`shared_commits` is not a number above 0", "`test_ratio` is not a number above 0"}},
-		{"a file without the table", "", "file_lines = 1500\n", defaults, nil, []string{"`file_lines` lies outside `[limits]`", "it holds no `[limits]` table"}},
+		{"a file without the table", "", "file_lines = 1500\n", defaults, nil, []string{"`file_lines` lies outside a table", "it holds no table plimsoll reads"}},
 		{"values that are no limit: not a number, a fraction of a count, a key twice, a line that is no key", "",
 			"[[limits]]\n[limits]\nfile_lines = nan\nshared_commits = 2.5\ntest_ratio = inf\ntest_ratio = 2.5\ntest_ratio = 3\nfile_lines: 900\n",
 			conventions.Limits{FileLines: defaults.FileLines, TestRatio: set(2.5, 0.1), SharedCommits: defaults.SharedCommits, ImportsNotFollowed: defaults.ImportsNotFollowed},
@@ -69,8 +69,8 @@ func TestBuildReadsTheLimitsARepositorySets(t *testing.T) {
 	}
 	for _, tc := range cases {
 		s := snapshot.Build(snapshottest.Files(side(tc.base), side(tc.now)), conventions.Default(), snapshottest.Readings(t))
-		if s.Limits != tc.limits || !reflect.DeepEqual(s.DeclaredLimits, tc.declared) || !slices.Equal(s.LimitProblems, tc.problems) {
-			t.Errorf("%s: Limits %+v, declared %+v, problems %q; want %+v, %+v, %q", tc.name, s.Limits, s.DeclaredLimits, s.LimitProblems, tc.limits, tc.declared, tc.problems)
+		if s.Limits != tc.limits || !reflect.DeepEqual(s.DeclaredLimits, tc.declared) || !slices.Equal(s.OwnFileProblems, tc.problems) {
+			t.Errorf("%s: Limits %+v, declared %+v, problems %q; want %+v, %+v, %q", tc.name, s.Limits, s.DeclaredLimits, s.OwnFileProblems, tc.limits, tc.declared, tc.problems)
 		}
 	}
 	unreadable := snapshottest.Files(nil, map[string]string{".plimsoll.toml": "[limits]\nfile_lines = 1500\n", "src/a.ts": "a\n"})
@@ -79,8 +79,8 @@ func TestBuildReadsTheLimitsARepositorySets(t *testing.T) {
 			unreadable.Now[i].Content, unreadable.Now[i].Binary = nil, true
 		}
 	}
-	if s := snapshot.Build(unreadable, conventions.Default(), snapshottest.Readings(t)); s.Limits != defaults || !slices.Equal(s.LimitProblems, []string{"it could not be read"}) {
-		t.Errorf("an unreadable limits file: Limits %+v, problems %q; want the defaults and it named", s.Limits, s.LimitProblems)
+	if s := snapshot.Build(unreadable, conventions.Default(), snapshottest.Readings(t)); s.Limits != defaults || !slices.Equal(s.OwnFileProblems, []string{"it could not be read"}) {
+		t.Errorf("an unreadable limits file: Limits %+v, problems %q; want the defaults and it named", s.Limits, s.OwnFileProblems)
 	}
 	big := snapshot.Build(snapshottest.Files(nil, map[string]string{".plimsoll.toml": "[limits]\nfile_lines = 1500\n", "src/a.ts": "a\n"}), conventions.Default(), snapshottest.Readings(t))
 	if got := big.Now.Files[0].Limit; got != set(1500, 1) {

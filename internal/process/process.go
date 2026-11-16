@@ -42,8 +42,8 @@ func (Detector) Detect(s snapshot.Snapshot) answer.Findings {
 	if note := limitsNote(s); note != "" {
 		f.Notes = append(f.Notes, note)
 	}
-	for _, problem := range s.LimitProblems {
-		f.NotAnalysed = append(f.NotAnalysed, fmt.Sprintf("`%s`: %s; a limit it does not set keeps plimsoll's default", s.LimitsFile, problem))
+	for _, problem := range s.OwnFileProblems {
+		f.NotAnalysed = append(f.NotAnalysed, fmt.Sprintf("`%s`: %s; a limit it does not set keeps plimsoll's default", s.OwnFile, problem))
 	}
 	churn := snapshot.ChurnOf(s.History.SinceBase())
 	if churn.Commits == 0 {
@@ -129,10 +129,10 @@ func limitMarks(s snapshot.Snapshot) []answer.Mark {
 		marks = append(marks, answer.Mark{
 			ID:         answer.ID(name, ruleLimitChange, d.Key),
 			Change:     answer.New,
-			Subject:    answer.Subject{Kind: "file", Paths: []string{s.LimitsFile}, Names: []string{d.Name}},
+			Subject:    answer.Subject{Kind: "file", Paths: []string{s.OwnFile}, Names: []string{d.Name}},
 			Confidence: answer.Exact,
 			Measured:   answer.Measured{Value: now, Before: &before, Limit: &defaultValue, LimitSource: "plimsoll's default", Unit: d.Unit},
-			Hint:       fmt.Sprintf("compare the [limits] table of `%s` at the base and now.", s.LimitsFile),
+			Hint:       fmt.Sprintf("compare the [limits] table of `%s` at the base and now.", s.OwnFile),
 		})
 	}
 	return marks
@@ -149,7 +149,7 @@ func limitsNote(s snapshot.Snapshot) string {
 	if len(set) == 0 {
 		return ""
 	}
-	return fmt.Sprintf("limits set by `%s`: %s", s.LimitsFile, strings.Join(set, ", "))
+	return fmt.Sprintf("limits set by `%s`: %s", s.OwnFile, strings.Join(set, ", "))
 }
 
 func valueOr(value *float64, otherwise float64) float64 {
