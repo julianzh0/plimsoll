@@ -1,6 +1,7 @@
 package snapshot
 
 import (
+	"slices"
 	"strings"
 	"unicode"
 
@@ -11,12 +12,21 @@ import (
 // with the queries, listed at conventions.Language.Query.
 func decode(result parse.Result, content []byte) reading {
 	var r reading
+	var targets, computed []parse.Capture
+	passes := map[parse.Span]bool{}
 	for _, match := range result.Matches {
 		var specs []parse.Capture
+		typeOnly := false
 		for _, c := range match {
 			switch c.Name {
 			case "spec":
 				specs = append(specs, c)
+			case "type":
+				typeOnly = true
+			case "computed":
+				computed = append(computed, c)
+			case "pass":
+				passes[parse.Span{Start: c.Start, End: c.End}] = true
 			case "dynamic":
 				r.dynamic++
 			}
@@ -24,6 +34,7 @@ func decode(result parse.Result, content []byte) reading {
 		if len(specs) == 0 {
 			continue
 		}
+		targets = append(targets, specs[0])
 		first, last := specs[0], specs[len(specs)-1]
 		written := string(content[first.Start:last.End])
 		if len(specs) > 1 {
@@ -34,8 +45,14 @@ func decode(result parse.Result, content []byte) reading {
 				return c
 			}, written)
 		}
-		r.statements = append(r.statements, statement{spec: unquoted(written), line: first.Line})
+		r.statements = append(r.statements, statement{spec: unquoted(written), line: first.Line, typeOnly: typeOnly})
 	}
+	for _, c := range computed {
+		if !slices.ContainsFunc(targets, func(t parse.Capture) bool { return c.Start <= t.Start && t.End <= c.End }) {
+			r.computed++
+		}
+	}
+	r.passesOn = len(passes) > 0 && !slices.ContainsFunc(result.Top, func(top parse.Span) bool { return !passes[top] })
 	return r
 }
 

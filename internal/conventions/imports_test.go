@@ -84,6 +84,7 @@ func importCases() map[string]map[string][]string {
 			"export {\n  a, // it's kept\n} from './n'\n":                      {"./n"},
 			"import a from './a'\n// import b from './b'\n":                    {"./a"},
 			"import from from \"./from\"\n":                                    {"./from"},
+			"const s = \"import x from './old'\"\n":                            nil,
 		},
 		"go": {
 			"package a\n\nimport \"fmt\"\nimport x \"os\"\n": {"fmt", "os"},
@@ -241,6 +242,20 @@ func TestNoEntryReadsAFactBothWays(t *testing.T) {
 	}
 }
 
+func TestJavaScriptFilesAreReadByTheTSXGrammar(t *testing.T) {
+	l := language(t, "typescript")
+	cases := []struct{ file, text string }{
+		{"a.js", "export const A = () => <div/>;\nimport b from './b'\n"},
+		{"a.cjs", "const c = require('./b')\n"},
+		{"a.mjs", "const c = require('./b')\n"},
+	}
+	for _, c := range cases {
+		if got := targets(t, l, c.file, c.text); !slices.Equal(got, []string{"./b"}) {
+			t.Errorf("imports of %s %q = %q, want [./b]", c.file, c.text, got)
+		}
+	}
+}
+
 func TestImportFormsFindEachStatement(t *testing.T) {
 	cases := importCases()
 	for _, l := range Default().Languages {
@@ -287,12 +302,6 @@ func TestComputedAndWholeFilePatterns(t *testing.T) {
 // passesOnCases are, per language with a PassesOn pattern, whole file contents and whether they only pass imports on.
 func passesOnCases() map[string]map[string]bool {
 	return map[string]map[string]bool{
-		"typescript": {
-			"export * from './a'\nexport { b } from \"./b\";\n":            true,
-			"// barrel\n/* all\n of it */\nexport type { T } from './t'\n": true,
-			"export * from './a'\nexport const x = 1\n":                    false,
-			"import { a } from './a'\nexport { a }\n":                      false,
-		},
 		"python": {
 			"\"\"\"Doc.\"\"\"\n\nfrom .a import A\nfrom .b import (\n    B,\n)\n\n__all__ = [\"A\", \"B\"]\n": true,
 			"# only this\nfrom __future__ import annotations\nfrom .a import A\n":                             true,
@@ -320,10 +329,6 @@ func passesOnCases() map[string]map[string]bool {
 // they hold.
 func computedCases() map[string]map[string]int {
 	return map[string]map[string]int{
-		"typescript": {
-			"await import(name)": 1, "import(`./x/${a}.ts`)": 1, "require(\"./a\" + b)": 1,
-			"import(\"./a.ts\")": 0, "require('x', y)": 0, "obj.require(x)": 0,
-		},
 		"c":   includeComputedCases(),
 		"cpp": includeComputedCases(),
 		"python": {
@@ -371,7 +376,7 @@ func TestAFormMatchesOnlyTextThatHoldsOneOfItsWords(t *testing.T) {
 				}
 			}
 		}
-		if want := map[string]int{"typescript": 2, "go": 0, "python": 2, "dart": 0, "java": 0, "kotlin": 0, "rust": 0, "csharp": 0, "swift": 0, "c": 0, "cpp": 0}[l.Name]; worded != want {
+		if want := map[string]int{"typescript": 0, "go": 0, "python": 2, "dart": 0, "java": 0, "kotlin": 0, "rust": 0, "csharp": 0, "swift": 0, "c": 0, "cpp": 0}[l.Name]; worded != want {
 			t.Errorf("%s: %d forms with words, want %d", l.Name, worded, want)
 		}
 	}

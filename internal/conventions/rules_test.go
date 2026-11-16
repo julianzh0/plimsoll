@@ -149,7 +149,7 @@ func TestEveryLanguageNamesItsDynamicRead(t *testing.T) {
 		"cpp": {[]string{"std::getenv(name.c_str())", "getenv(key)", "::getenv(k)"}, []string{`std::getenv("X")`, `getenv( "X")`, "environ[i]"}},
 	}
 	// wraps make a row valid code for an entry that reads by its grammar.
-	wraps := map[string]string{"go": "package a\nfunc f() { _ = %s }\n"}
+	wraps := map[string]string{"go": "package a\nfunc f() { _ = %s }\n", "typescript": "const v = %s;\n"}
 	for _, language := range Default().Languages {
 		if language.Grammar != "" {
 			for i, lines := range [][]string{cases[language.Name].matches, cases[language.Name].misses} {

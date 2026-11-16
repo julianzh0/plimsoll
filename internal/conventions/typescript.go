@@ -1,52 +1,36 @@
 package conventions
 
-import "regexp"
-
 // The TypeScript and JavaScript entry: what the shared rules cannot know for these files.
 
-// typescriptLanguage is the entry of TypeScript, and of JavaScript, whose files it also speaks for.
+// typescriptLanguage is the entry of TypeScript, and of JavaScript, whose files it also speaks for. .ts files are read
+// by the TypeScript grammar; .tsx and the JavaScript suffixes by the TSX grammar, which also reads JSX.
 func typescriptLanguage() Language {
 	return Language{
 		Name: "typescript", Extensions: []string{".ts", ".tsx", ".js", ".mjs", ".cjs"},
-		DynamicRead: typescriptDynamicRead, Imports: typescriptImports(),
+		Imports: typescriptImports(), Grammar: "tsx", GrammarBySuffix: map[string]string{".ts": "typescript"},
+		Query: typescriptQuery,
 	}
 }
 
-// A settings read whose name is computed at run time: not a quoted name after the opening.
-var typescriptDynamicRead = regexp.MustCompile(`process\.env\[[ \t]*[^"' \t\]]`)
-
-// The parts of the TypeScript forms. Go's regexp has no backreference and no lookahead, so a quote is a character
-// class, and the clause between import and from holds only what an import clause can: names, braces, commas, `*`
-// and comments. A match therefore never runs into the next statement.
-const (
-	tsComment = `//[^\n]*|/\*(?:[^*]|\*+[^*/])*\*+/`
-	tsClause  = `(?:[\w\s{},*$]|` + tsComment + `)*?`
-	tsNames   = `\{(?:[\w\s,$]|` + tsComment + `)*\}`
-	tsTarget  = `["'](?P<spec>[^"'\n]+)["']`
-	// tsReexport is what follows `export` (and `type`) in a statement that passes imports on, up to the target.
-	tsReexport = `[ \t\r\n]*(?:\*(?:[ \t\r\n]*as[ \t\r\n]+[\w$]+)?|` + tsNames + `)[ \t\r\n]*from[ \t\r\n]*`
-)
-
-var (
-	tsImportFrom = regexp.MustCompile(`(?m)^[ \t]*import\b(?P<type>[ \t]+type\b)?` + tsClause + `\bfrom[ \t\r\n]*` + tsTarget)
-	tsExportFrom = regexp.MustCompile(`(?m)^[ \t]*export\b(?P<type>[ \t]+type\b)?` + tsReexport + tsTarget)
-	tsSideEffect = regexp.MustCompile(`(?m)^[ \t]*import[ \t]*` + tsTarget)
-	tsCall       = regexp.MustCompile(`(?m)(?:^|[^.\w$])(?:import|require)\([ \t\r\n]*` + tsTarget + `[ \t\r\n]*[,)]`)
-	tsComputed   = regexp.MustCompile(`(?m)(?:^|[^.\w$])(?:import|require)\([ \t\r\n]*(?:[^"'\s)]|["'][^"'\n]*["'][ \t\r\n]*[^\s,)])`)
-	tsPassesOn   = regexp.MustCompile(`\A(?:[ \t\r\n]*(?:export\b(?:[ \t]+type\b)?` + tsReexport + `["'][^"'\n]+["'][ \t]*;?|` + tsComment + `))*[ \t\r\n]*\z`)
-)
-
-// tsCallWords are the words a call import needs; a file without them is not searched for one.
-func tsCallWords() []string { return []string{"import(", "require("} }
+// typescriptQuery reads import and export statements with a target, `import x = require()`, calls of `import()` and
+// `require()` with a string first, every such call as one built at run time unless a target lies inside it, the
+// statements a file that only passes imports on may hold, and a settings read through a computed name.
+const typescriptQuery = `
+(import_statement "type"? @type source: (string (string_fragment) @spec)) @import
+(export_statement "type"? @type source: (string (string_fragment) @spec)) @import
+(import_require_clause source: (string (string_fragment) @spec)) @import
+((call_expression function: [(import) (identifier) @f] arguments: (arguments . (string (string_fragment) @spec))) @import
+  (#eq? @f "require"))
+((call_expression function: [(import) (identifier) @f] arguments: (arguments . (_) @computed)) (#eq? @f "require"))
+(program (export_statement source: (string)) @pass)
+(program (comment) @pass)
+((subscript_expression object: (member_expression object: (identifier) @o property: (property_identifier) @p) index: (_) @dynamic)
+  (#eq? @o "process") (#eq? @p "env") (#not-match? @dynamic "^[\"']"))
+`
 
 func typescriptImports() Imports {
 	extensions := []string{".ts", ".tsx", ".d.ts", ".js", ".jsx"}
 	return Imports{
-		Statements: []ImportForm{
-			{Pattern: tsImportFrom}, {Pattern: tsExportFrom}, {Pattern: tsSideEffect}, {Pattern: tsCall, Words: tsCallWords()},
-		},
-		Computed: ImportForm{Pattern: tsComputed, Words: tsCallWords()},
-		PassesOn: tsPassesOn,
 		Relative: DotSlash,
 		Prefix:   Prefix{File: "tsconfig.json", Format: TSConfigPaths},
 		Target:   FileTarget,

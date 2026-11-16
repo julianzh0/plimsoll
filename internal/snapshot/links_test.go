@@ -49,7 +49,7 @@ func TestBuildSortsTypeScriptImportsIntoKinds(t *testing.T) {
 	}
 	got := linksOf(t, files)
 	wantLanguages := []snapshot.LanguageImports{{
-		Language: "typescript", Resolved: 6, Outside: 2, Ambiguous: 1, Unreadable: 1, NotFound: 2,
+		Language: "typescript", Resolved: 6, Outside: 2, Ambiguous: 1, Unreadable: 1, NotFound: 1,
 		PrefixFile: "tsconfig.json", Prefix: snapshot.PrefixAbsent,
 	}}
 	typeOnly := link("src/a.ts", 10, "src/t.ts")
@@ -125,12 +125,16 @@ func TestBuildResolvesAliasesFromTheRootConfig(t *testing.T) {
 
 func TestBuildListsFilesThatOnlyPassImportsOn(t *testing.T) {
 	got := linksOf(t, map[string]string{
-		"src/index.ts": "export * from \"./a.ts\";\nexport { b } from \"./b.ts\";\n",
-		"src/mixed.ts": "export * from \"./a.ts\";\nexport const own = 1;\n",
-		"src/empty.ts": "", "src/a.ts": "export const a = 1;\n", "src/b.ts": "export const b = 1;\n",
+		"src/index.ts":  "export * from \"./a.ts\";\nexport { b } from \"./b.ts\";\n",
+		"src/barrel.ts": "// barrel\n/* all\n of it */\nexport type { T } from './t'\n",
+		"src/mixed.ts":  "export * from \"./a.ts\";\nexport const own = 1;\n",
+		"src/reuse.ts":  "import { a } from './a'\nexport { a }\n",
+		"src/plain.ts":  "export * from './a'\nexport const x = 1\n",
+		"src/empty.ts":  "", "src/a.ts": "export const a = 1;\n", "src/b.ts": "export const b = 1;\n",
+		"src/t.ts": "export type T = number;\n",
 	})
-	if !reflect.DeepEqual(got.PassOn, []string{"src/index.ts"}) {
-		t.Errorf("PassOn = %q, want src/index.ts alone", got.PassOn)
+	if !reflect.DeepEqual(got.PassOn, []string{"src/barrel.ts", "src/index.ts"}) {
+		t.Errorf("PassOn = %q, want src/barrel.ts and src/index.ts", got.PassOn)
 	}
 	from := 0
 	for _, l := range got.List {
@@ -140,6 +144,28 @@ func TestBuildListsFilesThatOnlyPassImportsOn(t *testing.T) {
 	}
 	if from != 2 {
 		t.Errorf("links from src/index.ts = %d, want 2", from)
+	}
+}
+
+func TestBuildCountsTypeScriptImportsBuiltAtRunTime(t *testing.T) {
+	cases := map[string]int{
+		"await import(name)": 1, "import(`./x/${a}.ts`)": 1, "require(\"./a\" + b)": 1,
+		"import(\"./a.ts\")": 0, "require('x', y)": 0, "obj.require(x)": 0,
+	}
+	for text, want := range cases {
+		got := linksOf(t, map[string]string{"src/m.ts": text + "\n", "src/a.ts": "export const a = 1;\n"})
+		if len(got.Languages) != 1 || got.Languages[0].Unreadable != want {
+			t.Errorf("imports built at run time in %q = %+v, want %d", text, got.Languages, want)
+		}
+	}
+}
+
+func TestBuildLinksTheSameContentUnderTwoSuffixes(t *testing.T) {
+	got := linksOf(t, map[string]string{"a.ts": "import \"./b\";\n", "a.js": "import \"./b\";\n", "b.ts": "export const b = 1;\n"})
+	for _, from := range []string{"a.js", "a.ts"} {
+		if !slices.ContainsFunc(got.List, func(l snapshot.Link) bool { return l.From == from && l.To == "b.ts" }) {
+			t.Errorf("links = %+v, want %s -> b.ts", got.List, from)
+		}
 	}
 }
 
