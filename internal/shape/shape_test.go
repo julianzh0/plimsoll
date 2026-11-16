@@ -176,6 +176,17 @@ func TestRatioMarks(t *testing.T) {
 		marks[0].Measured.Value != 3.0 || *marks[0].Measured.Before != 3.0 {
 		t.Errorf("a folder declared now only: marks %+v, want one standing ratio of 3.0 on both sides", marks)
 	}
+	ownBase := map[string]string{"src/a.ts": snapshottest.Lines(10), "checks/h.ts": snapshottest.Lines(30)}
+	ownNow := map[string]string{"src/a.ts": snapshottest.Lines(10), "checks/h.ts": snapshottest.Lines(30), ".plimsoll.toml": "[layout]\ntest_folders = [\"checks\"]\n"}
+	ownFound := detect(t, snapshottest.Files(ownBase, ownNow), conventions.Default())
+	if marks := marksOf(ownFound, "test-ratio"); len(marks) != 1 || marks[0].Change != answer.Standing || marks[0].Measured.Value != 3.0 || *marks[0].Measured.Before != 3.0 ||
+		!slices.Contains(ownFound.Notes, "test folders declared in `.plimsoll.toml` (`[layout]` `test_folders`): `checks/`") {
+		t.Errorf("a folder the own file declares now only: marks %+v, notes %q; want one standing ratio of 3.0 and the folder named", marks, ownFound.Notes)
+	}
+	ownHeld := snapshottest.Files(nil, map[string]string{".plimsoll.toml": "[layout]\ntest_folders = [\"src\"]\n", "src/a.ts": "x\n"})
+	if f := detect(t, ownHeld, conventions.Default()); !slices.Contains(f.NotAnalysed, "`.plimsoll.toml` `test_folders` names `src/`, which is or holds a package root; only the shared rules apply inside it") {
+		t.Errorf("a held folder of the own file: NotAnalysed = %q, want the held sentence", f.NotAnalysed)
+	}
 	held := snapshottest.Files(nil, map[string]string{"pyproject.toml": "[tool.pytest.ini_options]\ntestpaths = [\"src\"]\n", "src/a.ts": "x\n"})
 	if f := detect(t, held, conventions.Default()); len(f.NotAnalysed) == 0 ||
 		f.NotAnalysed[0] != "`pyproject.toml` `testpaths` names `src/`, which is or holds a package root; only the shared rules apply inside it" {

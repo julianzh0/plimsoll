@@ -42,8 +42,8 @@ func (Detector) Name() string { return name }
 func (Detector) Detect(s snapshot.Snapshot) answer.Findings {
 	now, before := lines(s.Now.Files), lines(s.Before.Files)
 	f := answer.Findings{
-		Notes:       append([]string{"test code recognized by: " + s.TestRule}, answer.TestFolderNotes(s.Layout)...),
-		NotAnalysed: answer.TestFoldersNotUsed(s.Layout),
+		Notes:       slices.Concat([]string{"test code recognized by: " + s.TestRule}, answer.TestFolderNotes(s.Layout), answer.OwnNotes(ownTestKeys(s))),
+		NotAnalysed: append(answer.TestFoldersNotUsed(s.Layout), answer.OwnNotUsed(ownTestKeys(s))...),
 	}
 	f.Notes = append(f.Notes, testCodeInsideNotes(s.Now.Files)...)
 	if n := s.Footprint.HoldsTestCode; n > 0 {
@@ -406,4 +406,9 @@ func areaChurn(commits []snapshot.Commit) map[snapshot.Area]float64 {
 		sums[area] = float64(churn.Total(area))
 	}
 	return sums
+}
+
+// ownTestKeys are the test keys a repository's own file declares.
+func ownTestKeys(s snapshot.Snapshot) []snapshot.Declared {
+	return slices.Concat(s.Layout.OwnTestFolders, s.Layout.OwnTestFiles)
 }

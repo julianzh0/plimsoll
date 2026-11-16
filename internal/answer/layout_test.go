@@ -42,9 +42,27 @@ func TestLayoutSaysWhatIsDeclaredAndWhatIsNotUsed(t *testing.T) {
 		d.Unusable = n
 		return d
 	}
+	ownRecord := func(key, name string, asWritten bool, inUse ...string) snapshot.Declared {
+		d := snapshot.Declared{File: ".plimsoll.toml", Table: "layout", Key: key, Name: name, AsWritten: asWritten, Now: snapshot.KeyRead}
+		for _, p := range inUse {
+			d.InUse = append(d.InUse, snapshot.DeclaredFolder{Path: p})
+		}
+		return d
+	}
+	ownFolders := func(inUse ...string) snapshot.Declared {
+		return ownRecord("test_folders", "test folders", false, inUse...)
+	}
+	ownFiles := func(inUse ...string) snapshot.Declared { return ownRecord("test_files", "test files", true, inUse...) }
+	ownWith := func(d snapshot.Declared, change func(*snapshot.Declared)) snapshot.Layout {
+		change(&d)
+		if d.AsWritten {
+			return snapshot.Layout{OwnTestFiles: []snapshot.Declared{d}}
+		}
+		return snapshot.Layout{OwnTestFolders: []snapshot.Declared{d}}
+	}
 	moved := testpaths("tests")
 	moved.InUse = append(moved.InUse, snapshot.DeclaredFolder{Path: "old", BaseOnly: true})
-	type lines struct{ testNotes, testGaps, rootNotes, rootGaps []string }
+	type lines struct{ testNotes, testGaps, rootNotes, rootGaps, ownNotes, ownGaps []string }
 	cases := []struct {
 		name   string
 		layout snapshot.Layout
@@ -85,6 +103,30 @@ func TestLayoutSaysWhatIsDeclaredAndWhatIsNotUsed(t *testing.T) {
 			"`pytest.toml` is not read: test folders and roots declared there are not seen, and `testpaths` in `pyproject.toml` is not used, because pytest reads `pytest.toml` instead",
 			"`pytest.ini` is not read: test folders and roots declared there are not seen",
 		}}},
+		{"own: folders in use", snapshot.Layout{OwnTestFolders: []snapshot.Declared{ownFolders("checks", "tools/harness")}},
+			lines{ownNotes: []string{"test folders declared in `.plimsoll.toml` (`[layout]` `test_folders`): `checks/`, `tools/harness/`"}}},
+		{"own: names in use", snapshot.Layout{OwnTestFiles: []snapshot.Declared{ownFiles("*_spec.rb", "*IT.java")}},
+			lines{ownNotes: []string{"test files declared in `.plimsoll.toml` (`[layout]` `test_files`): `*_spec.rb`, `*IT.java`"}}},
+		{"own: held root", ownWith(ownFolders(), func(d *snapshot.Declared) {
+			d.Held = []snapshot.HeldFolder{{Path: ".", Why: snapshot.HeldRepositoryRoot}}
+		}),
+			lines{ownGaps: []string{"`.plimsoll.toml` `test_folders` names the repository root; only the shared rules apply"}}},
+		{"own: held package root", ownWith(ownFolders(), func(d *snapshot.Declared) {
+			d.Held = []snapshot.HeldFolder{{Path: "src", Why: snapshot.HeldPackageRoot}}
+		}),
+			lines{ownGaps: []string{"`.plimsoll.toml` `test_folders` names `src/`, which is or holds a package root; only the shared rules apply inside it"}}},
+		{"own: held every name", ownWith(ownFiles(), func(d *snapshot.Declared) { d.Held = []snapshot.HeldFolder{{Path: "*", Why: snapshot.HeldEveryName}} }),
+			lines{ownGaps: []string{"`.plimsoll.toml` `test_files` names every file; only the shared rules apply"}}},
+		{"own: one unmatched folder", ownWith(ownFolders(), func(d *snapshot.Declared) { d.Unmatched = []string{"chekcs"} }),
+			lines{ownGaps: []string{"`.plimsoll.toml` `test_folders`: `chekcs/` matches no tracked file; it is not used"}}},
+		{"own: two unmatched names", ownWith(ownFiles(), func(d *snapshot.Declared) { d.Unmatched = []string{"*_a.rb", "*_b.rb"} }),
+			lines{ownGaps: []string{"`.plimsoll.toml` `test_files`: `*_a.rb`, `*_b.rb` match no tracked file; they are not used"}}},
+		{"own: two unusable folders", ownWith(ownFolders(), func(d *snapshot.Declared) { d.Unusable = 2 }),
+			lines{ownGaps: []string{"`.plimsoll.toml` `test_folders`: 2 values are no plain paths from the root; they are not used"}}},
+		{"own: one unusable folder", ownWith(ownFolders(), func(d *snapshot.Declared) { d.Unusable = 1 }),
+			lines{ownGaps: []string{"`.plimsoll.toml` `test_folders`: 1 value is no plain path from the root; it is not used"}}},
+		{"own: one unusable name", ownWith(ownFiles(), func(d *snapshot.Declared) { d.Unusable = 1 }),
+			lines{ownGaps: []string{"`.plimsoll.toml` `test_files`: 1 value is no plain file-name pattern; it is not used"}}},
 		{"a shadowing file alone", snapshot.Layout{Shadowing: []string{"pytest.ini"}},
 			lines{testGaps: []string{"`pytest.ini` is not read: test folders and roots declared there are not seen"}}},
 		{"a shadowed root key", func() snapshot.Layout {
@@ -95,9 +137,11 @@ func TestLayoutSaysWhatIsDeclaredAndWhatIsNotUsed(t *testing.T) {
 			rootGaps: []string{"`python`: `pythonpath` in `pyproject.toml` is not used, because pytest reads `pytest.ini` instead"}}},
 	}
 	for _, tc := range cases {
-		got := lines{TestFolderNotes(tc.layout), TestFoldersNotUsed(tc.layout), RootNotes(tc.layout), RootsNotUsed(tc.layout)}
+		own := slices.Concat(tc.layout.OwnTestFolders, tc.layout.OwnTestFiles)
+		got := lines{TestFolderNotes(tc.layout), TestFoldersNotUsed(tc.layout), RootNotes(tc.layout), RootsNotUsed(tc.layout), OwnNotes(own), OwnNotUsed(own)}
 		if !slices.Equal(got.testNotes, tc.want.testNotes) || !slices.Equal(got.testGaps, tc.want.testGaps) ||
-			!slices.Equal(got.rootNotes, tc.want.rootNotes) || !slices.Equal(got.rootGaps, tc.want.rootGaps) {
+			!slices.Equal(got.rootNotes, tc.want.rootNotes) || !slices.Equal(got.rootGaps, tc.want.rootGaps) ||
+			!slices.Equal(got.ownNotes, tc.want.ownNotes) || !slices.Equal(got.ownGaps, tc.want.ownGaps) {
 			t.Errorf("%s: lines =\n%q\nwant\n%q", tc.name, got, tc.want)
 		}
 	}
