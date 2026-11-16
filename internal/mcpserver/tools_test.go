@@ -24,7 +24,7 @@ import (
 )
 
 // check validates a decoded JSON value against the keywords the output schema uses: type, required, properties,
-// items, enum and a local $ref.
+// items, enum and a local $ref. A member the schema does not name is a problem too: the schema lists every member.
 func check(root, schema map[string]any, value any, where string) []string {
 	if ref, found := schema["$ref"].(string); found {
 		name := strings.TrimPrefix(ref, "#/$defs/")
@@ -50,9 +50,12 @@ func check(root, schema map[string]any, value any, where string) []string {
 		}
 		properties, _ := schema["properties"].(map[string]any)
 		for name, member := range object {
-			if sub, known := properties[name].(map[string]any); known {
-				problems = append(problems, check(root, sub, member, where+"."+name)...)
+			sub, known := properties[name].(map[string]any)
+			if !known {
+				problems = append(problems, fmt.Sprintf("%s: %s is not in the schema", where, name))
+				continue
 			}
+			problems = append(problems, check(root, sub, member, where+"."+name)...)
 		}
 	case "array":
 		list, ok := value.([]any)
@@ -110,6 +113,13 @@ func everyDetector() snapshot.Source {
 	return source
 }
 
+// declaredBase is a source whose base the repository declares, so the answer names the file it is declared in.
+func declaredBase() snapshot.Source {
+	source := snapshottest.Files(map[string]string{"src/a.ts": "a\n"}, map[string]string{"src/a.ts": "a\n"})
+	source.BaseDeclared = true
+	return source
+}
+
 func TestEveryAnswerMatchesTheOutputSchema(t *testing.T) {
 	var schema map[string]any
 	if err := json.Unmarshal([]byte(outputSchema), &schema); err != nil {
@@ -123,6 +133,7 @@ func TestEveryAnswerMatchesTheOutputSchema(t *testing.T) {
 		),
 		"no product code": snapshottest.Files(nil, map[string]string{"README.md": "x\n"}),
 		"every detector":  everyDetector(),
+		"a declared base": declaredBase(),
 	}
 	for name, source := range sources {
 		q := answer.Questions{
@@ -149,6 +160,9 @@ func TestEveryAnswerMatchesTheOutputSchema(t *testing.T) {
 		}
 		if name == "every detector" && (!kinds["files"] || !kinds["setting"] || !kinds["file"] || !kinds["folders"]) {
 			t.Errorf("every detector: mark kinds %v, want file, files and setting", kinds)
+		}
+		if name == "a declared base" && status.Base.DeclaredIn == "" {
+			t.Errorf("a declared base: Base = %+v, want the file it is declared in", status.Base)
 		}
 		for _, a := range answers {
 			encoded, err := json.Marshal(a)
@@ -200,8 +214,8 @@ func TestReportTakesAnOptionalListOfFiles(t *testing.T) {
 		files["description"] != "Paths of tracked files, relative to the repository's top folder. The report then also gives the files that import each of them." {
 		t.Errorf("report's files property = %v", files)
 	}
-	if required := fmt.Sprint(schemas["report"]["required"]); required != "[repository base]" {
-		t.Errorf("report's required = %s, want repository and base", required)
+	if required := fmt.Sprint(schemas["report"]["required"]); required != "[repository]" {
+		t.Errorf("report's required = %s, want repository", required)
 	}
 	for _, name := range []string{"status", "explain"} {
 		properties, _ := schemas[name]["properties"].(map[string]any)
@@ -243,5 +257,54 @@ func TestReportTakesAnOptionalListOfFiles(t *testing.T) {
 	}
 	if r := call("status", `{"repository":"/repository","base":"main","files":[]}`); !r.IsError || text(r) != "Unknown argument `files`." {
 		t.Errorf("status with files = %+v, want an unknown argument", r.Content)
+	}
+}
+
+func TestBaseIsOptionalInEveryTool(t *testing.T) {
+	var asked []string
+	s := Server{Questions: answer.Questions{
+		Take: func(_ context.Context, _, base string) (snapshot.Snapshot, error) {
+			asked = append(asked, base)
+			source := snapshottest.Files(map[string]string{"src/a.ts": "a\n"}, map[string]string{"src/a.ts": "a\n"})
+			return snapshot.Build(source, conventions.Default(), snapshottest.Readings(t)), nil
+		},
+		Detectors: []answer.Detector{shape.Detector{}}, Version: "0.1.0",
+	}}
+	const described = "Without it, the default base the repository declares in .plimsoll.toml is used."
+	for _, q := range questions() {
+		raw, _ := toolOf(q).InputSchema.(json.RawMessage)
+		var schema map[string]any
+		if err := json.Unmarshal(raw, &schema); err != nil {
+			t.Fatal(err)
+		}
+		if required := fmt.Sprint(schema["required"]); strings.Contains(required, "base") {
+			t.Errorf("%s's required = %s, want no base", q.name, required)
+		}
+		base, _ := schema["properties"].(map[string]any)["base"].(map[string]any)
+		if description, _ := base["description"].(string); !strings.HasSuffix(description, described) {
+			t.Errorf("%s's base description = %q, want it to end %q", q.name, description, described)
+		}
+		mark := ""
+		if q.name == "explain" {
+			mark = `,"mark":"shape.file-size:src/a.ts"`
+		}
+		for _, arguments := range []string{`{"repository":"/repository"` + mark + `}`, `{"repository":"/repository","base":""` + mark + `}`} {
+			asked = nil
+			request := &mcp.CallToolRequest{Params: &mcp.CallToolParamsRaw{Name: q.name, Arguments: json.RawMessage(arguments)}}
+			if _, err := s.handler(q, make(chan struct{}, concurrentAnswers))(context.Background(), request); err != nil {
+				t.Fatal(err)
+			}
+			if !slices.Equal(asked, []string{""}) {
+				t.Errorf("%s(%s) asked for the bases %q, want one empty base", q.name, arguments, asked)
+			}
+		}
+		request := &mcp.CallToolRequest{Params: &mcp.CallToolParamsRaw{Name: q.name, Arguments: json.RawMessage(`{"repository":"/repository","base":7` + mark + `}`)}}
+		result, err := s.handler(q, make(chan struct{}, concurrentAnswers))(context.Background(), request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if content, _ := result.Content[0].(*mcp.TextContent); !result.IsError || content == nil || content.Text != "The argument `base` must be text." {
+			t.Errorf("%s with a number as base = %+v, want the text refusal", q.name, result.Content)
+		}
 	}
 }

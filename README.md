@@ -144,11 +144,12 @@ Not analysed: no `.env.example`, so no settings count; no `.env.example`, so no 
 
 | Tool | Returns |
 |---|---|
-| `status(repository, base)` | at most five new or grown marks, the standing line, the footprint and what was not analysed |
-| `report(repository, base, files?)` | everything measured, in a fixed layout. Standing items of one kind past five are counted by folder in the text, and `structuredContent` holds them all. With `files`, also the files that import each named file |
-| `explain(repository, base, mark)` | the evidence of one mark, computed again and capped |
+| `status(repository, base?)` | at most five new or grown marks, the standing line, the footprint and what was not analysed |
+| `report(repository, base?, files?)` | everything measured, in a fixed layout. Standing items of one kind past five are counted by folder in the text, and `structuredContent` holds them all. With `files`, also the files that import each named file |
+| `explain(repository, base?, mark)` | the evidence of one mark, computed again and capped |
 
-Every result carries the text in `content` and the same answer as `structuredContent`. An answer may shorten, never
+Without `base`, a question compares with the default base the repository declares in `.plimsoll.toml`, and the
+answer's first line says so. Every result carries the text in `content` and the same answer as `structuredContent`. An answer may shorten, never
 hide: what it leaves out it counts ("3 more: `report` lists them"), and `report` holds every mark.
 
 ## What it measures in detail
@@ -325,7 +326,7 @@ still run, interpreted and about 80 times slower.
 | `process.planning-file:<path>` | a file under a planning or review path is tracked now and was not at the base | repositories hold no planning records |
 | `process.doc-churn:repository` | over the commits since the base, documentation churn is above product plus test churn | documentation above code |
 | `process.limit-change:<key>` | `.plimsoll.toml` sets a limit to another value now than at the base, so a change that raised a limit to clear a mark says so | any change |
-| `process.declaration-change:<key>` | `.plimsoll.toml` declares other values under a key of `[layout]` now than at the base | any change |
+| `process.declaration-change:<key>` | `.plimsoll.toml` declares other values under a key of `[layout]` or `[defaults]` now than at the base | any change |
 | `settings.no-reader:<NAME>` | a setting that no product file holds as a word or reads through a declared prefix (candidate) | plimsoll's rule: a setting has a reader |
 | `settings.defined-twice:<NAME>` | a name on two or more lines of `.env.example` that are not commented out (candidate) | plimsoll's rule: one name, one setting |
 | `settings.compose-only:<NAME>` | a compose `environment` key that takes its value from the host (no value, or `$`) and that `.env.example` does not name (candidate) | the three lists agree |
@@ -351,6 +352,9 @@ shared_commits = 8                          # commits two files share before the
 [layout]
 test_folders = ["checks", "tools/harness"]  # folders whose code is test code
 test_files = ["*_spec.rb", "*IT.java"]      # names of test files
+
+[defaults]
+base = "main"                               # the base of a question that names none
 ```
 
 | Key | What it declares |
@@ -358,6 +362,7 @@ test_files = ["*_spec.rb", "*IT.java"]      # names of test files
 | `file_lines`, `test_ratio`, `shared_commits` | The limits of the file-size, test-ratio and co-change rules |
 | `test_folders` | Folders, as paths from the root, whose code files count as test code, beside the defaults |
 | `test_files` | File names of code files that count as test code wherever they lie: `*` is any run of characters, `?` one |
+| `base` | The branch, remote branch or tag a question without a base compares with. A branch of the name comes before a remote branch, and a remote branch before a tag |
 
 A declaration adds to the defaults and takes none away, and now's file applies to both sides of a question. Every
 mark names its limit's source, for example "1,500 lines, set by `.plimsoll.toml`", every report names what the file
@@ -369,19 +374,20 @@ bare name is a folder at the root. A test folder that is the root or a package r
 A key plimsoll does not know, a table it does not read, a value that is no number above 0 (a whole number for a limit
 that counts), a list that is no list of text, a line outside a table or a key set twice is named under "not
 analysed", and what it names keeps its default (a key set twice its first value). A declared value that matches no
-tracked file, or that is no plain path or file-name pattern, is named there too and not used.
+tracked file, or that is no plain path or file-name pattern, is named there too and not used. A question without a
+base whose repository declares no usable default base is refused with one sentence that says why.
 
 ## Guarantees
 
 - **trust**: plimsoll never changes a repository it reads. It runs only read-only git commands, takes no lock, starts no file monitor, runs no filter and fetches nothing from a remote. Tests: `internal/gitrepo/history_integration_test.go::TestIntegrationReadLeavesTheRepositoryUnchanged`, `internal/gitrepo/history_integration_test.go::TestIntegrationReadFetchesNothingFromARemote`, `cmd/plimsoll/tools_integration_test.go::TestIntegrationAnswersAreRepeatableAndLeaveNoTrace`
-- **trust**: no answer shows the content of a file or the value of a setting: only names, paths, line numbers and counts, and, from the repository's own `.plimsoll.toml`, its limits and the declared values that are plain paths or file-name patterns. Content plimsoll does not need is never read. Tests: `internal/snapshot/facts_test.go::TestBuildReadsSettingNamesNeverValues`, `internal/snapshot/links_test.go::TestBuildKeepsNoImportText`, `internal/links/links_test.go::TestNoLinksLineHoldsImportText`, `internal/snapshot/settings_test.go::TestBuildReadsComposeEnvironmentKeys`, `internal/shape/explain_test.go::TestExplainHoldsNoFileContentOrSettingValue`, `internal/gitrepo/reader_integration_test.go::TestIntegrationReadLeavesUnwantedAndBinaryContentUnread`, `internal/answer/layout_test.go::TestLayoutLinesHoldNoValueFromOutsideTheRepository`, `internal/answer/samples_test.go::TestNoAnswerPrintsADeclaredValueOutsideItsForm`
+- **trust**: no answer shows the content of a file or the value of a setting: only names, paths, line numbers and counts, and, from the repository's own `.plimsoll.toml`, its limits and the declared values that are plain paths, file-name patterns or branch names. Content plimsoll does not need is never read. Tests: `internal/snapshot/facts_test.go::TestBuildReadsSettingNamesNeverValues`, `internal/snapshot/links_test.go::TestBuildKeepsNoImportText`, `internal/links/links_test.go::TestNoLinksLineHoldsImportText`, `internal/snapshot/settings_test.go::TestBuildReadsComposeEnvironmentKeys`, `internal/shape/explain_test.go::TestExplainHoldsNoFileContentOrSettingValue`, `internal/gitrepo/reader_integration_test.go::TestIntegrationReadLeavesUnwantedAndBinaryContentUnread`, `internal/answer/layout_test.go::TestLayoutLinesHoldNoValueFromOutsideTheRepository`, `internal/answer/samples_test.go::TestNoAnswerPrintsADeclaredValueOutsideItsForm`
 - **idempotency**: the same question about the same repository state gives the same answer, in the same process or a new one, whatever the user's git configuration. The history and the file readings kept between questions answer as a fresh read does, also for questions answered at the same time. Tests: `cmd/plimsoll/tools_integration_test.go::TestIntegrationAnswersAreRepeatableAndLeaveNoTrace`, `internal/snapshot/readings_test.go::TestKeptReadingsEqualFreshOnes`, `internal/gitrepo/history_integration_test.go::TestIntegrationKeptHistoryEqualsAFreshRead`, `internal/gitrepo/history_integration_test.go::TestIntegrationReadsAtTheSameTimeShareOneReader`, `internal/gitrepo/history_test.go::TestQuestionsAtTheSameTimeShareOneHistoryRead`, `internal/gitrepo/history_integration_test.go::TestIntegrationReadIsTheSameEverywhere`
 - **ordering**: new and grown marks come in one order (a mark another detector backs with a remark first, then new before grown, exact before candidate, the farthest past its limit first, then by identifier, at most two of one detector before the others). `status` shows at most five, and the report's sections follow the detector list. Tests: `internal/answer/mark_test.go::TestOrderPutsNewExactAndFarthestFirstWithTwoPerDetector`, `internal/answer/assemble_test.go::TestStatusShowsFiveMarksAndStaysInsideFortyLines`, `cmd/plimsoll/detectors_test.go::TestDetectorsAreListedInReportOrder`
 - **cleanup**: a SIGTERM or the end of its input ends the server with exit status 0. Tests: `cmd/plimsoll/main_e2e_test.go::TestE2EProgramAnswersAndEndsOnASignal`, `cmd/plimsoll/main_e2e_test.go::TestE2EEndOfInputEndsTheProcess`
 - **trust**: the grammars plimsoll runs are given no file, network, clock or environment, and the only functions they can call answer with a failure. Tests: `internal/parse/modules_test.go::TestModulesImportOnlyTheFailingHost`
 - **ownership**: a parser belongs to whoever created it. Closing it frees its grammars and their memory, and any other parser keeps working. Tests: `internal/parse/parse_test.go::TestClosingOneParserLeavesAnotherWorking`
 - **error mapping**: a file the parser cannot read, or a changed file in which it meets a syntax error, is named under "not analysed" and never fails the question. Tests: `internal/parse/parse_test.go::TestAFileOverTheCapIsAnErrorAndTheNextCallWorks`, `internal/snapshot/build_test.go::TestBuildListsAFileTheParserCannotRead`, `internal/snapshot/links_test.go::TestBuildReadsImportsAroundASyntaxError`
-- **error mapping**: git's own refusal (exit status 1 or 128) keeps its kind, such as an unknown base or no repository. Any other git failure is "git failed". Every refusal is one plain sentence without structured content. A malformed request, an unknown method or an unknown tool is a JSON-RPC error with its standard code. Tests: `internal/gitrepo/refusal_test.go::TestRefusalKeepsItsKindOnlyForGitsOwnAnswer`, `cmd/plimsoll/tools_integration_test.go::TestIntegrationRefusals`, `cmd/plimsoll/protocol_test.go::TestProtocolErrors`
+- **error mapping**: git's own refusal (exit status 1 or 128) keeps its kind, such as an unknown base or no repository. Any other git failure is "git failed". A question without a base whose repository declares no usable default base is refused, and its sentence names `.plimsoll.toml`. Every refusal is one plain sentence without structured content. A malformed request, an unknown method or an unknown tool is a JSON-RPC error with its standard code. Tests: `internal/gitrepo/refusal_test.go::TestRefusalKeepsItsKindOnlyForGitsOwnAnswer`, `cmd/plimsoll/tools_integration_test.go::TestIntegrationRefusals`, `internal/mcpserver/tools_test.go::TestBaseIsOptionalInEveryTool`, `cmd/plimsoll/protocol_test.go::TestProtocolErrors`
 
 ## Protocol
 

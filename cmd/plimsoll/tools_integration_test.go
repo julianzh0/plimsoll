@@ -28,6 +28,19 @@ func grownRepository(t *testing.T) (*gitrepotest.Repo, string) {
 	return repo, base
 }
 
+// declaredRepository is a repository on branch feature, cut from main, whose .plimsoll.toml declares the given
+// default base; src/a.ts grew on the feature branch from 1,480 to 1,620 lines.
+func declaredRepository(t *testing.T, base string) *gitrepotest.Repo {
+	t.Helper()
+	repo := gitrepotest.New(t)
+	repo.Commit(gitrepotest.Commit{Message: "main", Files: map[string]string{
+		"src/a.ts": snapshottest.Lines(1480), ".plimsoll.toml": "[defaults]\nbase = \"" + base + "\"\n",
+	}})
+	repo.Git("switch", "-q", "-c", "feature")
+	repo.Commit(gitrepotest.Commit{Message: "grow", Files: map[string]string{"src/a.ts": snapshottest.Lines(1620)}})
+	return repo
+}
+
 // call is a modern tools/call request.
 func call(id int, tool string, arguments map[string]any) string {
 	encoded, _ := json.Marshal(arguments)
@@ -74,6 +87,13 @@ func TestIntegrationToolsAnswerForAChangedRepository(t *testing.T) {
 		t.Errorf("explain evidence = %v, want lines now first", evidence)
 	}
 
+	declared, _ := exchange(t, call(4, "status", map[string]any{"repository": declaredRepository(t, "main").Dir}))
+	declaredFirst, _, _ := strings.Cut(text(t, result(t, declared[0])), "\n")
+	if !regexp.MustCompile("^plimsoll "+regexp.QuoteMeta(version)+" status: base `main` \\(declared in `\\.plimsoll\\.toml`\\) [0-9a-f]{10}, head [0-9a-f]{10}$").MatchString(declaredFirst) ||
+		!strings.Contains(declared[0], `"declaredIn":".plimsoll.toml"`) || !strings.Contains(declared[0], `"id":"shape.file-size:src/a.ts"`) {
+		t.Errorf("status without a base = %s, want the declared base main in the header and the size mark", declared[0])
+	}
+
 	legacyCall := strings.Replace(call(1, "status", arguments), ","+modern, "", 1)
 	legacy, _ := exchange(t, `{"jsonrpc":"2.0","id":0,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{}}}`, legacyCall)
 	legacyResult := result(t, legacy[1])
@@ -101,7 +121,12 @@ func TestIntegrationRefusals(t *testing.T) {
 		{"no repository", "status", map[string]any{"repository": t.TempDir(), "base": "HEAD"}, "`repository` does not name a folder inside a git working tree."},
 		{"an unknown mark", "explain", map[string]any{"repository": repo.Dir, "base": base, "mark": "shape.file-size:nope.ts"},
 			"Unknown mark `shape.file-size:nope.ts`: nothing with this identifier exists against this base now. `report` lists the current identifiers."},
-		{"a missing base", "status", map[string]any{"repository": repo.Dir}, "The argument `base` is missing."},
+		{"a missing base", "status", map[string]any{"repository": repo.Dir},
+			"The question names no base, and no tracked `.plimsoll.toml` declares a default base."},
+		{"a declared base git does not know", "status", map[string]any{"repository": declaredRepository(t, "nope").Dir},
+			"Unknown base `nope`, the default base `.plimsoll.toml` declares: git finds no branch, remote branch or tag of this name in this repository."},
+		{"a declared base without its form", "report", map[string]any{"repository": declaredRepository(t, "zzmarker~1").Dir},
+			"The question names no base, and the default base of `.plimsoll.toml` cannot be used: `base` is not the name of a branch, a remote branch or a tag."},
 		{"an unknown argument", "status", map[string]any{"repository": repo.Dir, "base": base, "bse": "x"}, "Unknown argument `bse`."},
 		{"a number for the repository", "status", map[string]any{"repository": 7, "base": base}, "The argument `repository` must be text."},
 		{"a relative path", "status", map[string]any{"repository": "relative/path", "base": base}, "`repository` must be an absolute path."},
@@ -158,6 +183,12 @@ func TestIntegrationAnswersAreRepeatableAndLeaveNoTrace(t *testing.T) {
 	}
 	if stderr != "" {
 		t.Errorf("standard error = %q, want nothing", stderr)
+	}
+	declared := declaredRepository(t, "main")
+	withoutBase := map[string]any{"repository": declared.Dir}
+	twice, _ := exchange(t, call(1, "status", withoutBase), call(2, "status", withoutBase))
+	if !sameAnswer(twice[0], twice[1]) {
+		t.Errorf("the same status without a base twice differs:\n%s\n%s", twice[0], twice[1])
 	}
 	unchanged, _ := exchange(t, call(1, "status", map[string]any{"repository": repo.Dir, "base": "HEAD"}))
 	if words := regexp.MustCompile(`(?i)\b(clean|healthy)\b`).FindString(text(t, result(t, unchanged[0]))); words != "" {

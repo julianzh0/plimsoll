@@ -155,6 +155,13 @@ func detectorSamples() []snapshot.Source {
 			".plimsoll.toml": "[layout]\ntest_folders = [\"checks\", \"nowhere\"]\ntest_files = [\"*.check.ts\", \"a b\"]\n",
 			"src/a.ts":       "x\n", "checks/h.ts": "x\n", "src/a.check.ts": "x\n",
 		}),
+		// a question without a base: the repository declares it, and changed it since the base
+		func() snapshot.Source {
+			source := snapshottest.Files(map[string]string{"src/a.ts": "x\n", ".plimsoll.toml": "[defaults]\nbase = \"main\"\n"},
+				map[string]string{"src/a.ts": "x\n", ".plimsoll.toml": "[defaults]\nbase = \"develop\"\n"})
+			source.AskedBase, source.BaseDeclared = "develop", true
+			return source
+		}(),
 		// rust: a crate whose modules use each other, and a product file whose test code a change grows
 		snapshottest.Files(map[string]string{
 			"src/lib.rs": "mod a;\npub struct Root;\n",
@@ -207,6 +214,7 @@ func TestTheSamplesShowEveryRuleAndChange(t *testing.T) {
 		"not seen: an include reached only through an include folder", "`*.cc`, `*.cpp` and `*.cxx` run without an import of them", "limits set by `.plimsoll.toml`", "is no limit plimsoll knows",
 		"test folders declared in `.plimsoll.toml`", "test files declared in `.plimsoll.toml`", "matches no tracked file",
 		"is no plain file-name pattern", "This change altered the test folders declared", "what it does not set keeps plimsoll's default",
+		"(declared in `.plimsoll.toml`)", "This change altered the default base declared in `.plimsoll.toml`",
 	} {
 		if !strings.Contains(texts.String(), phrase) {
 			t.Errorf("no sample text holds %q", phrase)
@@ -217,7 +225,7 @@ func TestTheSamplesShowEveryRuleAndChange(t *testing.T) {
 func TestNoAnswerPrintsADeclaredValueOutsideItsForm(t *testing.T) {
 	long := "zzmarker" + strings.Repeat("a", 200)
 	now := "[layout]\ntest_folders = [\"checks\", \"zzmarker dir\", \"/zzmarker/abs\", \"../zzmarker\", \"zzmarker`tick\", \"$(zzmarker)\", \"zzmarker\\n\", \"" + long + "\"]\n" +
-		"test_files = [\"zzmarker/x.ts\", \"zzmarker *.ts\", \"[zzmarker].ts\"]\n"
+		"test_files = [\"zzmarker/x.ts\", \"zzmarker *.ts\", \"[zzmarker].ts\"]\n[defaults]\nbase = \"zzmarker@{u}\"\n"
 	tree := func(own string) map[string]string {
 		return map[string]string{"src/a.ts": "x\n", "checks/h.ts": "x\n", ".plimsoll.toml": own}
 	}
@@ -252,7 +260,8 @@ func TestNoAnswerPrintsADeclaredValueOutsideItsForm(t *testing.T) {
 		}
 	}
 	text := q.Text(report)
-	for _, want := range []string{"`checks/`", "7 values are no plain paths from the root", "3 values are no plain file-name patterns"} {
+	for _, want := range []string{"`checks/`", "7 values are no plain paths from the root", "3 values are no plain file-name patterns",
+		"`base` is not the name of a branch, a remote branch or a tag"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the report lacks %q:\n%s", want, text)
 		}
