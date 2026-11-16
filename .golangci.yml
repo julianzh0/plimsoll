@@ -69,3 +69,7 @@ formatters:
   enable:
     - gofmt
     - goimports
+  exclusions:
+    paths:
+      # build output and the grammar sources make grammars unpacks there (Git ignores bin/)
+      - ^bin/

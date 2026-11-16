@@ -2,6 +2,8 @@ NAME := plimsoll
 GO_VERSION := $(shell sed -n 's/^go //p' go.mod)
 GOLANGCI_LINT_VERSION := 2.15.0
 GOVULNCHECK := golang.org/x/vuln/cmd/govulncheck@v1.9.0
+# The zig that builds the grammar modules; internal/parse/grammars/pins.txt records its archives and every module.
+ZIG_VERSION := 0.17.1
 # Space-separated project-relative paths of agent files that may be committed.
 AGENT_FILES_ALLOWED ?= CLAUDE.md
 COUNT ?= 20
@@ -20,7 +22,7 @@ export GOTOOLCHAIN := local
 export GOFLAGS := -mod=readonly
 
 .NOTPARALLEL:
-.PHONY: fix qa unit integration e2e cover cover-clean cover-report flake lint build run hooks check-tools fmt-check vet tidy-check fix-check vuln agent-files install-golangci-lint
+.PHONY: fix qa unit integration e2e cover cover-clean cover-report flake lint build run hooks check-tools fmt-check vet tidy-check fix-check vuln agent-files install-golangci-lint grammars grammars-check zig-check
 
 qa: check-tools fmt-check vet lint tidy-check fix-check agent-files cover vuln
 
@@ -61,6 +63,18 @@ flake:
 
 lint: check-tools
 	golangci-lint run
+
+# grammars builds the grammar modules from the sources pins.txt names and records their hashes; grammars-check
+# rebuilds them and fails when one differs from the pins or from the committed file. Neither is part of qa: they need
+# zig and the network.
+grammars: zig-check
+	sh internal/parse/grammars/build.sh record
+
+grammars-check: zig-check
+	sh internal/parse/grammars/build.sh check
+
+zig-check:
+	@[ "$$(zig version 2>/dev/null)" = "$(ZIG_VERSION)" ] || { echo "the grammar modules need zig $(ZIG_VERSION)"; exit 1; }
 
 build:
 	go build -trimpath -buildvcs=false -o bin/$(NAME) ./cmd/$(NAME)
