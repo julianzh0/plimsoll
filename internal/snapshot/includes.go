@@ -6,7 +6,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/juzhxng/plimsoll/internal/conventions"
+	"github.com/julianzh0/plimsoll/internal/conventions"
 )
 
 var (

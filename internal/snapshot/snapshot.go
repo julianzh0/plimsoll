@@ -3,8 +3,8 @@
 package snapshot
 
 import (
-	"github.com/juzhxng/plimsoll/internal/conventions"
-	"github.com/juzhxng/plimsoll/internal/parse"
+	"github.com/julianzh0/plimsoll/internal/conventions"
+	"github.com/julianzh0/plimsoll/internal/parse"
 )
 
 // ParserCapMiB is the memory the parser may use to read one file; a file that needs more is listed in Unparsed.

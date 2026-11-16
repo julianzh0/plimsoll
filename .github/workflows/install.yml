@@ -20,7 +20,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Install with the README's command
-        run: curl -fsSL https://raw.githubusercontent.com/juzhxng/plimsoll/main/install.sh | sh
+        run: curl -fsSL https://raw.githubusercontent.com/julianzh0/plimsoll/main/install.sh | sh
       - name: A repository to ask about
         run: |
           git init -q sample && cd sample

@@ -6,7 +6,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/juzhxng/plimsoll/internal/conventions"
+	"github.com/julianzh0/plimsoll/internal/conventions"
 )
 
 // Layout is what the project's own standard files declare beside the shared rules. One question uses it for both

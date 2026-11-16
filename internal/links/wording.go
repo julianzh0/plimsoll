@@ -5,7 +5,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/juzhxng/plimsoll/internal/answer"
+	"github.com/julianzh0/plimsoll/internal/answer"
 )
 
 // Wording is the sentence for one mark, from its fields alone.

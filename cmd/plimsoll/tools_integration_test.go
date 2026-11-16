@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/juzhxng/plimsoll/internal/gitrepo/gitrepotest"
-	"github.com/juzhxng/plimsoll/internal/snapshot/snapshottest"
+	"github.com/julianzh0/plimsoll/internal/gitrepo/gitrepotest"
+	"github.com/julianzh0/plimsoll/internal/snapshot/snapshottest"
 )
 
 // grownRepository is a repository whose src/a.ts grew from 1,480 to 1,620 lines and which gained a dependency.

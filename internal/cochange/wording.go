@@ -3,7 +3,7 @@ package cochange
 import (
 	"fmt"
 
-	"github.com/juzhxng/plimsoll/internal/answer"
+	"github.com/julianzh0/plimsoll/internal/answer"
 )
 
 // Wording is the sentence for a pair mark.

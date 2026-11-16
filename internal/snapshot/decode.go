@@ -6,8 +6,8 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/juzhxng/plimsoll/internal/conventions"
-	"github.com/juzhxng/plimsoll/internal/parse"
+	"github.com/julianzh0/plimsoll/internal/conventions"
+	"github.com/julianzh0/plimsoll/internal/parse"
 )
 
 // decode turns the captures of an entry's query into the reading of one file. The capture names are the contract

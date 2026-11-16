@@ -55,7 +55,7 @@ cover-clean:
 
 # Coverage is information, never a gate: the percentage per package, then the total.
 cover-report:
-	@go tool covdata percent -i=$(COVERDIR) | sed 's/^[[:space:]]*github.com\/juzhxng\/plimsoll\///' | sort
+	@go tool covdata percent -i=$(COVERDIR) | sed 's/^[[:space:]]*github.com\/julianzh0\/plimsoll\///' | sort
 	@go tool covdata textfmt -i=$(COVERDIR) -o=$(COVERDIR)/profile.txt
 	@go tool cover -func=$(COVERDIR)/profile.txt | tail -1
 

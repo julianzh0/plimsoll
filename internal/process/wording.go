@@ -3,7 +3,7 @@ package process
 import (
 	"fmt"
 
-	"github.com/juzhxng/plimsoll/internal/answer"
+	"github.com/julianzh0/plimsoll/internal/answer"
 )
 
 // Wording is the sentence for one of the detector's marks, from the mark's fields alone.

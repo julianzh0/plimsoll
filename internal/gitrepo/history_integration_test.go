@@ -14,9 +14,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/juzhxng/plimsoll/internal/conventions"
-	"github.com/juzhxng/plimsoll/internal/gitrepo/gitrepotest"
-	"github.com/juzhxng/plimsoll/internal/snapshot"
+	"github.com/julianzh0/plimsoll/internal/conventions"
+	"github.com/julianzh0/plimsoll/internal/gitrepo/gitrepotest"
+	"github.com/julianzh0/plimsoll/internal/snapshot"
 )
 
 func TestIntegrationReadLeavesTheRepositoryUnchanged(t *testing.T) {

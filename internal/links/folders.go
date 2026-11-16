@@ -6,7 +6,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/juzhxng/plimsoll/internal/snapshot"
+	"github.com/julianzh0/plimsoll/internal/snapshot"
 )
 
 // siblingImport is one import that counts between two folders directly under one parent.

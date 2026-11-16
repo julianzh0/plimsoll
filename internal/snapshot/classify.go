@@ -6,7 +6,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/juzhxng/plimsoll/internal/conventions"
+	"github.com/julianzh0/plimsoll/internal/conventions"
 )
 
 // excluded says whether a path can never be a code file: its suffix is not code or a folder of it is skipped.

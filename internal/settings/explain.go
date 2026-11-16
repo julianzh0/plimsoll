@@ -5,8 +5,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/juzhxng/plimsoll/internal/answer"
-	"github.com/juzhxng/plimsoll/internal/snapshot"
+	"github.com/julianzh0/plimsoll/internal/answer"
+	"github.com/julianzh0/plimsoll/internal/snapshot"
 )
 
 // Explain gives the evidence of one mark, computed again: names, paths and counts, never a value.

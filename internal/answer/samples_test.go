@@ -5,15 +5,15 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/juzhxng/plimsoll/internal/answer"
-	"github.com/juzhxng/plimsoll/internal/cochange"
-	"github.com/juzhxng/plimsoll/internal/hotspots"
-	"github.com/juzhxng/plimsoll/internal/links"
-	"github.com/juzhxng/plimsoll/internal/process"
-	"github.com/juzhxng/plimsoll/internal/settings"
-	"github.com/juzhxng/plimsoll/internal/shape"
-	"github.com/juzhxng/plimsoll/internal/snapshot"
-	"github.com/juzhxng/plimsoll/internal/snapshot/snapshottest"
+	"github.com/julianzh0/plimsoll/internal/answer"
+	"github.com/julianzh0/plimsoll/internal/cochange"
+	"github.com/julianzh0/plimsoll/internal/hotspots"
+	"github.com/julianzh0/plimsoll/internal/links"
+	"github.com/julianzh0/plimsoll/internal/process"
+	"github.com/julianzh0/plimsoll/internal/settings"
+	"github.com/julianzh0/plimsoll/internal/shape"
+	"github.com/julianzh0/plimsoll/internal/snapshot"
+	"github.com/julianzh0/plimsoll/internal/snapshot/snapshottest"
 )
 
 // everyDetector are the program's detectors, for the samples that must show every sentence.

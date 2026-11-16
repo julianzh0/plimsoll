@@ -6,7 +6,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/juzhxng/plimsoll/internal/parse"
+	"github.com/julianzh0/plimsoll/internal/parse"
 )
 
 var shared = sync.OnceValues(parse.New)

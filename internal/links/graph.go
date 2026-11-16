@@ -5,7 +5,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/juzhxng/plimsoll/internal/snapshot"
+	"github.com/julianzh0/plimsoll/internal/snapshot"
 )
 
 // graph is one side's links from code files of the analysed languages, with every code file's role.

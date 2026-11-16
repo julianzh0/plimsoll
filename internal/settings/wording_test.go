@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/juzhxng/plimsoll/internal/answer"
-	"github.com/juzhxng/plimsoll/internal/snapshot/snapshottest"
+	"github.com/julianzh0/plimsoll/internal/answer"
+	"github.com/julianzh0/plimsoll/internal/snapshot/snapshottest"
 )
 
 func setting(rule, name string, change answer.Change, value float64, before, total *float64) answer.Mark {

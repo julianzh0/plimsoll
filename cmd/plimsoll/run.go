@@ -6,12 +6,12 @@ import (
 	"io"
 	"log/slog"
 
-	"github.com/juzhxng/plimsoll/internal/answer"
-	"github.com/juzhxng/plimsoll/internal/conventions"
-	"github.com/juzhxng/plimsoll/internal/gitrepo"
-	"github.com/juzhxng/plimsoll/internal/mcpserver"
-	"github.com/juzhxng/plimsoll/internal/parse"
-	"github.com/juzhxng/plimsoll/internal/snapshot"
+	"github.com/julianzh0/plimsoll/internal/answer"
+	"github.com/julianzh0/plimsoll/internal/conventions"
+	"github.com/julianzh0/plimsoll/internal/gitrepo"
+	"github.com/julianzh0/plimsoll/internal/mcpserver"
+	"github.com/julianzh0/plimsoll/internal/parse"
+	"github.com/julianzh0/plimsoll/internal/snapshot"
 )
 
 // questions composes the rules, the reader, the kept readings of the parser and the detectors.

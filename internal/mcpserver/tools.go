@@ -11,7 +11,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/juzhxng/plimsoll/internal/answer"
+	"github.com/julianzh0/plimsoll/internal/answer"
 )
 
 // The descriptions say what each tool returns, never when to ask or what to do with the answer.

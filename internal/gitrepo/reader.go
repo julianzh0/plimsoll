@@ -9,7 +9,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/juzhxng/plimsoll/internal/snapshot"
+	"github.com/julianzh0/plimsoll/internal/snapshot"
 )
 
 // Reader reads a repository through git plumbing without changing it. It starts no goroutine. It keeps the parsed

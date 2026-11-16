@@ -5,7 +5,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/juzhxng/plimsoll/internal/conventions"
+	"github.com/julianzh0/plimsoll/internal/conventions"
 )
 
 // declaredNamespaces finds the namespaces that the language's tracked files declare: a namespace is all folders

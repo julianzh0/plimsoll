@@ -1,11 +1,11 @@
 #!/bin/sh
 # Installs the plimsoll binary for this machine from a GitHub release and checks its SHA-256 checksum.
-#   curl -fsSL https://raw.githubusercontent.com/juzhxng/plimsoll/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/julianzh0/plimsoll/main/install.sh | sh
 # PLIMSOLL_VERSION picks a release (for example v0.1.0; default: the latest).
 # PLIMSOLL_INSTALL_DIR picks the folder (default: ~/.local/bin).
 set -eu
 
-repo=https://github.com/juzhxng/plimsoll
+repo=https://github.com/julianzh0/plimsoll
 version=${PLIMSOLL_VERSION:-latest}
 dir=${PLIMSOLL_INSTALL_DIR:-$HOME/.local/bin}
 

@@ -3,7 +3,7 @@ package shape
 import (
 	"testing"
 
-	"github.com/juzhxng/plimsoll/internal/answer"
+	"github.com/julianzh0/plimsoll/internal/answer"
 )
 
 const (

@@ -7,7 +7,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/juzhxng/plimsoll/internal/conventions"
+	"github.com/julianzh0/plimsoll/internal/conventions"
 )
 
 // sourcePackages finds the packages that the files under the language's source roots declare: a package is all

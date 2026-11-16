@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/juzhxng/plimsoll/internal/answer"
-	"github.com/juzhxng/plimsoll/internal/snapshot"
+	"github.com/julianzh0/plimsoll/internal/answer"
+	"github.com/julianzh0/plimsoll/internal/snapshot"
 )
 
 const name = "hotspots"

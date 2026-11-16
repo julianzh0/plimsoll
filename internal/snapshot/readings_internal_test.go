@@ -3,8 +3,8 @@ package snapshot
 import (
 	"testing"
 
-	"github.com/juzhxng/plimsoll/internal/conventions"
-	"github.com/juzhxng/plimsoll/internal/parse"
+	"github.com/julianzh0/plimsoll/internal/conventions"
+	"github.com/julianzh0/plimsoll/internal/parse"
 )
 
 func TestAReadingTheParserCouldNotStartIsNotKept(t *testing.T) {

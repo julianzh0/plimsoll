@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/juzhxng/plimsoll/internal/conventions"
+	"github.com/julianzh0/plimsoll/internal/conventions"
 )
 
 // DeclaredLimit is one limit a repository's limits file sets on either side: its key, plimsoll's default, and the

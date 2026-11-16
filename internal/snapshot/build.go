@@ -4,7 +4,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/juzhxng/plimsoll/internal/conventions"
+	"github.com/julianzh0/plimsoll/internal/conventions"
 )
 
 // Build classifies both sides of a source by the rules. It reads nothing and cannot fail. What each code file's content

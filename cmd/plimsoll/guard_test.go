@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-const module = "github.com/juzhxng/plimsoll"
+const module = "github.com/julianzh0/plimsoll"
 
 // mcpSDK is the one module plimsoll depends on, imported only by internal/mcpserver.
 const mcpSDK = "github.com/modelcontextprotocol/go-sdk"

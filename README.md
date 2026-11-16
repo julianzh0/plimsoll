@@ -7,9 +7,9 @@
 <p align="center"><strong>The load line for your repository: what a change did to its size, its tests, its wiring and its history, measured, never guessed.</strong></p>
 
 <p align="center">
-  <a href="https://github.com/juzhxng/plimsoll/releases/latest"><img src="https://img.shields.io/github/v/release/juzhxng/plimsoll" alt="Release"></a>
-  <a href="https://github.com/juzhxng/plimsoll/actions/workflows/ci.yml"><img src="https://github.com/juzhxng/plimsoll/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="go.mod"><img src="https://img.shields.io/github/go-mod/go-version/juzhxng/plimsoll" alt="Go"></a>
+  <a href="https://github.com/julianzh0/plimsoll/releases/latest"><img src="https://img.shields.io/github/v/release/julianzh0/plimsoll" alt="Release"></a>
+  <a href="https://github.com/julianzh0/plimsoll/actions/workflows/ci.yml"><img src="https://github.com/julianzh0/plimsoll/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="go.mod"><img src="https://img.shields.io/github/go-mod/go-version/julianzh0/plimsoll" alt="Go"></a>
   <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-server-blue" alt="MCP server"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
 </p>
@@ -70,10 +70,10 @@ Each detector compares now with a base you choose, such as `main`, so old debt s
 macOS and Linux, amd64 and arm64:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/juzhxng/plimsoll/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/julianzh0/plimsoll/main/install.sh | sh
 ```
 
-The script downloads the binary of the latest [release](https://github.com/juzhxng/plimsoll/releases), checks its
+The script downloads the binary of the latest [release](https://github.com/julianzh0/plimsoll/releases), checks its
 SHA-256 checksum and puts it in `~/.local/bin` (`PLIMSOLL_INSTALL_DIR` changes the folder, `PLIMSOLL_VERSION` picks
 a release). You can also download a binary and `checksums.txt` from the release page yourself, or build from source
 with Go (see [Development](#development)).

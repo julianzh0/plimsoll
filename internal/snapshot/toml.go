@@ -4,7 +4,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/juzhxng/plimsoll/internal/conventions"
+	"github.com/julianzh0/plimsoll/internal/conventions"
 )
 
 // The TOML that plimsoll reads by text: tables, their keys and arrays of strings, for the manifest and for the layout

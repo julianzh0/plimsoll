@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/juzhxng/plimsoll/internal/answer"
-	"github.com/juzhxng/plimsoll/internal/snapshot"
+	"github.com/julianzh0/plimsoll/internal/answer"
+	"github.com/julianzh0/plimsoll/internal/snapshot"
 )
 
 // Wording is the sentence for one of the detector's marks, from the mark's fields alone.

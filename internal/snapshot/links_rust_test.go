@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/juzhxng/plimsoll/internal/conventions"
-	"github.com/juzhxng/plimsoll/internal/snapshot"
-	"github.com/juzhxng/plimsoll/internal/snapshot/snapshottest"
+	"github.com/julianzh0/plimsoll/internal/conventions"
+	"github.com/julianzh0/plimsoll/internal/snapshot"
+	"github.com/julianzh0/plimsoll/internal/snapshot/snapshottest"
 )
 
 func TestBuildListsRustFilesThatOnlyPassImportsOn(t *testing.T) {

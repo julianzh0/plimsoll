@@ -3,8 +3,8 @@ package cochange
 import (
 	"fmt"
 
-	"github.com/juzhxng/plimsoll/internal/answer"
-	"github.com/juzhxng/plimsoll/internal/snapshot"
+	"github.com/julianzh0/plimsoll/internal/answer"
+	"github.com/julianzh0/plimsoll/internal/snapshot"
 )
 
 // Explain counts the pair's commits again and lists its shared commits, newest first.

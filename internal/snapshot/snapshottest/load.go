@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/juzhxng/plimsoll/internal/snapshot"
+	"github.com/julianzh0/plimsoll/internal/snapshot"
 )
 
 // Load reads dir/now and, when it exists, dir/base; without a base folder the base equals now.

@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/juzhxng/plimsoll/internal/parse"
+	"github.com/julianzh0/plimsoll/internal/parse"
 
-	"github.com/juzhxng/plimsoll/internal/parse/parsetest"
+	"github.com/julianzh0/plimsoll/internal/parse/parsetest"
 )
 
 func TestTestDefinitionMatchesOnlyStatementStarts(t *testing.T) {

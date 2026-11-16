@@ -11,7 +11,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/juzhxng/plimsoll/internal/conventions"
+	"github.com/julianzh0/plimsoll/internal/conventions"
 )
 
 // SettingsFile is the one settings template that is read, at the repository root.

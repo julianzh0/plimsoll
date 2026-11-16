@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/juzhxng/plimsoll/internal/snapshot"
+	"github.com/julianzh0/plimsoll/internal/snapshot"
 )
 
 // The layout a project declares is a repository fact two detectors print: shape the test folders, links the roots.

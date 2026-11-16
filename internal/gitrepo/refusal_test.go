@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/juzhxng/plimsoll/internal/snapshot"
+	"github.com/julianzh0/plimsoll/internal/snapshot"
 )
 
 func TestRefusalKeepsItsKindOnlyForGitsOwnAnswer(t *testing.T) {

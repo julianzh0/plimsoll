@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/juzhxng/plimsoll/internal/answer"
-	"github.com/juzhxng/plimsoll/internal/snapshot"
+	"github.com/julianzh0/plimsoll/internal/answer"
+	"github.com/julianzh0/plimsoll/internal/snapshot"
 )
 
 // Explain gives the evidence of one mark, computed again: paths and counts, never a file's content.

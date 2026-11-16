@@ -5,8 +5,8 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/juzhxng/plimsoll/internal/conventions"
-	"github.com/juzhxng/plimsoll/internal/parse"
+	"github.com/julianzh0/plimsoll/internal/conventions"
+	"github.com/julianzh0/plimsoll/internal/parse"
 )
 
 // KeptReadings is how many file readings are kept between questions: more than 25 times the code files of the largest

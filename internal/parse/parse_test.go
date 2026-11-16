@@ -7,8 +7,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/juzhxng/plimsoll/internal/parse"
-	"github.com/juzhxng/plimsoll/internal/parse/parsetest"
+	"github.com/julianzh0/plimsoll/internal/parse"
+	"github.com/julianzh0/plimsoll/internal/parse/parsetest"
 )
 
 // newParser is a parser of the test's own, for a test whose subject is one parser's state: its memory, its closing.

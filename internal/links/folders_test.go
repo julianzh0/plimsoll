@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/juzhxng/plimsoll/internal/answer"
-	"github.com/juzhxng/plimsoll/internal/snapshot"
-	"github.com/juzhxng/plimsoll/internal/snapshot/snapshottest"
+	"github.com/julianzh0/plimsoll/internal/answer"
+	"github.com/julianzh0/plimsoll/internal/snapshot"
+	"github.com/julianzh0/plimsoll/internal/snapshot/snapshottest"
 )
 
 // folders is a tree of placed files: "a/x>b/y" is a/x importing b/y, a bare "a/x" a file without an import.

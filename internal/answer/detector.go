@@ -1,6 +1,6 @@
 package answer
 
-import "github.com/juzhxng/plimsoll/internal/snapshot"
+import "github.com/julianzh0/plimsoll/internal/snapshot"
 
 // Detector is one family of rules: what it measures, and how it words its marks.
 type Detector interface {

@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/juzhxng/plimsoll/internal/snapshot"
+	"github.com/julianzh0/plimsoll/internal/snapshot"
 )
 
 // Modes of a tracked entry: regular files are measured, a submodule is named, anything else is left out.

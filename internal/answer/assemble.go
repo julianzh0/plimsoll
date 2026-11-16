@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/juzhxng/plimsoll/internal/snapshot"
+	"github.com/julianzh0/plimsoll/internal/snapshot"
 )
 
 // statusMarks is how many marks status shows (requirements, N-04).

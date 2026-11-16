@@ -7,7 +7,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/juzhxng/plimsoll/internal/conventions"
+	"github.com/julianzh0/plimsoll/internal/conventions"
 )
 
 // Links are one side's imports, as far as they could be followed. They hold paths and counts, never the text of an

@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/juzhxng/plimsoll/internal/gitrepo/gitrepotest"
+	"github.com/julianzh0/plimsoll/internal/gitrepo/gitrepotest"
 )
 
 const (
@@ -37,7 +37,7 @@ func TestMain(m *testing.M) {
 	// make e2e collects coverage. go test sets GOCOVERDIR to a folder of its own, so the folder comes under another
 	// name, and the program, which inherits this environment, writes its coverage there.
 	if coverage := os.Getenv("PLIMSOLL_COVERDIR"); coverage != "" {
-		build = append(build, "-cover", "-coverpkg=github.com/juzhxng/plimsoll/...")
+		build = append(build, "-cover", "-coverpkg=github.com/julianzh0/plimsoll/...")
 		_ = os.Setenv("GOCOVERDIR", coverage)
 	}
 	if output, err := exec.Command("go", append(build, ".")...).CombinedOutput(); err != nil {

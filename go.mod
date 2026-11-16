@@ -1,4 +1,4 @@
-module github.com/juzhxng/plimsoll
+module github.com/julianzh0/plimsoll
 
 go 1.27.4
 
