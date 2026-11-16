@@ -3,6 +3,7 @@ package process
 import (
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/julianzh0/plimsoll/internal/answer"
 	"github.com/julianzh0/plimsoll/internal/snapshot"
@@ -13,6 +14,8 @@ func (Detector) Explain(s snapshot.Snapshot, m answer.Mark) []string {
 	switch answer.RuleOf(m.ID) {
 	case ruleDocChurn:
 		return churnEvidence(s)
+	case ruleDeclarationChange:
+		return declarationEvidence(s, m)
 	case ruleLimitChange:
 		unit := m.Measured.Unit
 		return []string{
@@ -55,4 +58,30 @@ func setOrNot(value, defaultValue float64, unit string) string {
 		return withUnit(value, unit) + ", the default"
 	}
 	return withUnit(value, unit)
+}
+
+// declarationEvidence gives both sides' values of a changed declaration and what was added and removed.
+func declarationEvidence(s snapshot.Snapshot, m answer.Mark) []string {
+	at := slices.IndexFunc(s.Declarations, func(d snapshot.DeclaredValues) bool { return answer.ID(name, ruleDeclarationChange, d.Key) == m.ID })
+	if at < 0 {
+		return nil
+	}
+	d := s.Declarations[at]
+	side := func(values []string) string {
+		if len(values) == 0 {
+			return "not set"
+		}
+		return strings.Join(answer.Quoted(values), ", ")
+	}
+	lines := []string{
+		fmt.Sprintf("`%s` `[%s]` `%s` at the base: %s", s.OwnFile, d.Table, d.Key, side(d.Before)),
+		fmt.Sprintf("`%s` `[%s]` `%s` now: %s", s.OwnFile, d.Table, d.Key, side(d.Now)),
+	}
+	if added := difference(d.Now, d.Before); len(added) > 0 {
+		lines = append(lines, "added: "+strings.Join(answer.Quoted(added), ", "))
+	}
+	if removed := difference(d.Before, d.Now); len(removed) > 0 {
+		lines = append(lines, "removed: "+strings.Join(answer.Quoted(removed), ", "))
+	}
+	return lines
 }

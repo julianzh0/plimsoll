@@ -4,6 +4,7 @@ package process
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/julianzh0/plimsoll/internal/answer"
@@ -17,6 +18,8 @@ const (
 	rulePlanning    = "planning-file"
 	ruleDocChurn    = "doc-churn"
 	ruleLimitChange = "limit-change"
+	// ruleDeclarationChange is a text key of the repository's own file declared differently now than at the base.
+	ruleDeclarationChange = "declaration-change"
 )
 
 const (
@@ -37,14 +40,15 @@ func (Detector) Detect(s snapshot.Snapshot) answer.Findings {
 	f := answer.Findings{
 		Statistics: []answer.Statistic{{Name: "tracked planning and review files", Value: &now, Before: &before, Unit: "files"}},
 		Notes:      []string{"planning and review paths: " + s.PlanningRule},
-		Marks:      append(planningMarks(s), limitMarks(s)...),
+		Marks:      slices.Concat(planningMarks(s), limitMarks(s), declarationMarks(s)),
 	}
 	if note := limitsNote(s); note != "" {
 		f.Notes = append(f.Notes, note)
 	}
 	for _, problem := range s.OwnFileProblems {
-		f.NotAnalysed = append(f.NotAnalysed, fmt.Sprintf("`%s`: %s; a limit it does not set keeps plimsoll's default", s.OwnFile, problem))
+		f.NotAnalysed = append(f.NotAnalysed, fmt.Sprintf("`%s`: %s; what it does not set keeps plimsoll's default", s.OwnFile, problem))
 	}
+	f.NotAnalysed = append(f.NotAnalysed, notCompared(s)...)
 	churn := snapshot.ChurnOf(s.History.SinceBase())
 	if churn.Commits == 0 {
 		return f
@@ -136,6 +140,54 @@ func limitMarks(s snapshot.Snapshot) []answer.Mark {
 		})
 	}
 	return marks
+}
+
+// declarationMarks are the text keys of the repository's own file whose values differ, as sets, now and at the base.
+// A key not read on either side is not compared.
+func declarationMarks(s snapshot.Snapshot) []answer.Mark {
+	var marks []answer.Mark
+	for _, d := range s.Declarations {
+		added, removed := difference(d.Now, d.Before), difference(d.Before, d.Now)
+		if !d.Compared || len(added)+len(removed) == 0 {
+			continue
+		}
+		slices.Sort(added)
+		before := float64(len(d.Before))
+		marks = append(marks, answer.Mark{
+			ID:         answer.ID(name, ruleDeclarationChange, d.Key),
+			Change:     answer.New,
+			Subject:    answer.Subject{Kind: "file", Paths: []string{s.OwnFile}, Names: added},
+			Confidence: answer.Exact,
+			Measured:   answer.Measured{Value: float64(len(d.Now)), Before: &before, LimitSource: "any change", Unit: d.Name},
+			Hint:       fmt.Sprintf("compare `[%s]` `%s` of `%s` at the base and now.", d.Table, d.Key, s.OwnFile),
+		})
+	}
+	return marks
+}
+
+// notCompared are the "not analysed" entries for a declaration the base side could not give.
+func notCompared(s snapshot.Snapshot) []string {
+	var entries []string
+	if s.OwnFileUnreadAtBase && len(s.Declarations) > 0 {
+		entries = append(entries, fmt.Sprintf("`%s` could not be read at the base, so a change to its declarations is not marked", s.OwnFile))
+	}
+	for _, d := range s.Declarations {
+		if d.UnreadAtBase {
+			entries = append(entries, fmt.Sprintf("`%s`: `%s` could not be read at the base, so a change to it is not marked", s.OwnFile, d.Key))
+		}
+	}
+	return entries
+}
+
+// difference are the values of one list that the other does not hold, in the first list's order.
+func difference(values, other []string) []string {
+	var found []string
+	for _, v := range values {
+		if !slices.Contains(other, v) {
+			found = append(found, v)
+		}
+	}
+	return found
 }
 
 // limitsNote names the limits the repository's limits file sets now, or is "" when it sets none.

@@ -2,6 +2,7 @@ package process
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/julianzh0/plimsoll/internal/answer"
 )
@@ -26,6 +27,17 @@ func (Detector) Wording(m answer.Mark) string {
 		}
 		return fmt.Sprintf("This change %s the %s from %s to %s in `%s` (plimsoll's default: %s).", direction, m.Subject.Names[0],
 			bare(*m.Measured.Before, unit), withUnit(m.Measured.Value, unit), m.Subject.Paths[0], bare(*m.Measured.Limit, unit))
+	case ruleDeclarationChange:
+		now, before := int(m.Measured.Value), int(*m.Measured.Before)
+		var parts []string
+		if len(m.Subject.Names) > 0 {
+			parts = append(parts, "added "+strings.Join(answer.Quoted(m.Subject.Names), ", "))
+		}
+		if removed := before + len(m.Subject.Names) - now; removed > 0 {
+			parts = append(parts, fmt.Sprintf("removed %d", removed))
+		}
+		return fmt.Sprintf("This change altered the %s declared in `%s`: %s; %d declared now, %d at the base.", m.Measured.Unit, m.Subject.Paths[0],
+			strings.Join(parts, ", "), now, before)
 	case ruleDocChurn:
 		return fmt.Sprintf("Documentation churn since the base is %s, above product plus test churn of %s.",
 			answer.Plural(int(m.Measured.Value), "line"), answer.Plural(int(*m.Measured.Limit), "line"))

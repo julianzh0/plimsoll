@@ -1,6 +1,7 @@
 package process
 
 import (
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -156,32 +157,43 @@ func TestProcessWordingStandingAndEvidence(t *testing.T) {
 	}
 }
 
-func TestALimitChangedSinceTheBaseIsMarked(t *testing.T) {
-	files := func(limits string) map[string]string {
-		f := map[string]string{"src/a.ts": "a\n"}
-		if limits != "" {
-			f[".plimsoll.toml"] = "[limits]\n" + limits
+func TestAChangeToTheRepositorysOwnFileIsMarked(t *testing.T) {
+	files := func(own string) map[string]string {
+		f := map[string]string{"src/a.ts": "a\n", "checks/h.ts": "a\n"}
+		if own != "" {
+			f[".plimsoll.toml"] = own
 		}
 		return f
 	}
+	layout := func(lines string) string { return "[layout]\n" + lines }
 	cases := []struct {
-		name, base, now string
-		sentences       []string
+		name, rule, base, now string
+		sentences             []string
 	}{
-		{"raised from the default", "", "file_lines = 1500\n",
+		{"raised from the default", ruleLimitChange, "", "[limits]\nfile_lines = 1500\n",
 			[]string{"This change raised the file-size limit from 1,000 to 1,500 lines in `.plimsoll.toml` (plimsoll's default: 1,000)."}},
-		{"lowered, and one removed", "test_ratio = 3\nshared_commits = 8\n", "shared_commits = 3\n", []string{
+		{"lowered, and one removed", ruleLimitChange, "[limits]\ntest_ratio = 3\nshared_commits = 8\n", "[limits]\nshared_commits = 3\n", []string{
 			"This change lowered the test-ratio limit from 3.0 to 2.0 in `.plimsoll.toml` (plimsoll's default: 2.0).",
 			"This change lowered the co-change limit from 8 to 3 shared commits in `.plimsoll.toml` (plimsoll's default: 5).",
 		}},
-		{"unchanged", "file_lines = 1500\n", "file_lines = 1500\n", nil},
-		{"no file", "", "", nil},
+		{"a limit unchanged", ruleLimitChange, "[limits]\nfile_lines = 1500\n", "[limits]\nfile_lines = 1500\n", nil},
+		{"no file", ruleLimitChange, "", "", nil},
+		{"folders added and removed", ruleDeclarationChange, layout("test_folders = [\"old\", \"checks\"]\n"), layout("test_folders = [\"checks\", \"e2e\"]\n"),
+			[]string{"This change altered the test folders declared in `.plimsoll.toml`: added `e2e`, removed 1; 2 declared now, 2 at the base."}},
+		{"names declared in a new file", ruleDeclarationChange, "", layout("test_files = [\"*_spec.rb\", \"*IT.java\"]\n"),
+			[]string{"This change altered the test files declared in `.plimsoll.toml`: added `*IT.java`, `*_spec.rb`; 2 declared now, 0 at the base."}},
+		{"a key removed", ruleDeclarationChange, layout("test_folders = [\"checks\"]\n"), "[limits]\nfile_lines = 1500\n",
+			[]string{"This change altered the test folders declared in `.plimsoll.toml`: removed 1; 0 declared now, 1 at the base."}},
+		{"reordered", ruleDeclarationChange, layout("test_folders = [\"a\", \"b\"]\n"), layout("test_folders = [\"b\", \"a\"]\n"), nil},
+		{"written another way", ruleDeclarationChange, layout("test_folders = [\"checks/\"]\n"), layout("test_folders = [\"./checks\"]\n"), nil},
+		{"a value without its form added", ruleDeclarationChange, layout("test_folders = [\"checks\"]\n"), layout("test_folders = [\"checks\", \"a b\"]\n"), nil},
+		{"not read at the base", ruleDeclarationChange, layout("test_folders = 3\n"), layout("test_folders = [\"checks\"]\n"), nil},
 	}
 	for _, tc := range cases {
 		s, f := detect(t, snapshottest.Files(files(tc.base), files(tc.now)))
 		var got []string
 		for _, m := range f.Marks {
-			if answer.RuleOf(m.ID) == ruleLimitChange {
+			if answer.RuleOf(m.ID) == tc.rule {
 				if m.Change != answer.New || m.Confidence != answer.Exact || len(Detector{}.Explain(s, m)) == 0 {
 					t.Errorf("%s: mark %+v, want a new exact mark with evidence", tc.name, m)
 				}
@@ -189,12 +201,54 @@ func TestALimitChangedSinceTheBaseIsMarked(t *testing.T) {
 			}
 		}
 		if !slices.Equal(got, tc.sentences) {
-			t.Errorf("%s: limit-change sentences %q, want %q", tc.name, got, tc.sentences)
+			t.Errorf("%s: %s sentences %q, want %q", tc.name, tc.rule, got, tc.sentences)
 		}
 	}
-	_, f := detect(t, snapshottest.Files(nil, files("file_lines = 1500\ntest_ratio = 2.5\nmax_depth = 3\n")))
+
+	s, f := detect(t, snapshottest.Files(files(layout("test_folders = [\"old\", \"checks\"]\n")), files(layout("test_folders = [\"checks\", \"e2e\"]\n"))))
+	var m answer.Mark
+	for _, mark := range f.Marks {
+		if answer.RuleOf(mark.ID) == ruleDeclarationChange {
+			m = mark
+		}
+	}
+	two := 2.0
+	want := answer.Mark{
+		ID: "process.declaration-change:test_folders", Change: answer.New, Confidence: answer.Exact,
+		Subject:  answer.Subject{Kind: "file", Paths: []string{".plimsoll.toml"}, Names: []string{"e2e"}},
+		Measured: answer.Measured{Value: 2, Before: &two, LimitSource: "any change", Unit: "test folders"},
+		Hint:     "compare `[layout]` `test_folders` of `.plimsoll.toml` at the base and now.",
+	}
+	if !reflect.DeepEqual(m, want) {
+		t.Errorf("the mark of changed test folders = %+v, want %+v", m, want)
+	}
+	evidence := []string{
+		"`.plimsoll.toml` `[layout]` `test_folders` at the base: `old`, `checks`", "`.plimsoll.toml` `[layout]` `test_folders` now: `checks`, `e2e`",
+		"added: `e2e`", "removed: `old`",
+	}
+	if got := (Detector{}).Explain(s, m); !slices.Equal(got, evidence) {
+		t.Errorf("the evidence = %q, want %q", got, evidence)
+	}
+
+	_, f = detect(t, snapshottest.Files(files(layout("test_folders = 3\n")), files(layout("test_folders = [\"checks\"]\n"))))
+	if entry := "`.plimsoll.toml`: `test_folders` could not be read at the base, so a change to it is not marked"; !slices.Contains(f.NotAnalysed, entry) {
+		t.Errorf("a key not read at the base: not analysed %q, want %q", f.NotAnalysed, entry)
+	}
+	binary := snapshottest.Files(files(layout("test_folders = [\"old\"]\n")), files(layout("test_folders = [\"checks\"]\n")))
+	for i := range binary.Before {
+		if binary.Before[i].Path == ".plimsoll.toml" {
+			binary.Before[i].Content, binary.Before[i].Binary = nil, true
+		}
+	}
+	_, f = detect(t, binary)
+	if entry := "`.plimsoll.toml` could not be read at the base, so a change to its declarations is not marked"; !slices.Contains(f.NotAnalysed, entry) ||
+		slices.ContainsFunc(f.Marks, func(m answer.Mark) bool { return answer.RuleOf(m.ID) == ruleDeclarationChange }) {
+		t.Errorf("the file not read at the base: marks %+v, not analysed %q; want no declaration mark and %q", f.Marks, f.NotAnalysed, entry)
+	}
+
+	_, f = detect(t, snapshottest.Files(nil, files("[limits]\nfile_lines = 1500\ntest_ratio = 2.5\nmax_depth = 3\n")))
 	note := "limits set by `.plimsoll.toml`: the file-size limit 1,500 lines (plimsoll's default: 1,000), the test-ratio limit 2.5 (plimsoll's default: 2.0)"
-	problem := "`.plimsoll.toml`: `max_depth` is no limit plimsoll knows; a limit it does not set keeps plimsoll's default"
+	problem := "`.plimsoll.toml`: `max_depth` is no limit plimsoll knows; what it does not set keeps plimsoll's default"
 	if !slices.Contains(f.Notes, note) || !slices.Contains(f.NotAnalysed, problem) {
 		t.Errorf("notes %q, not analysed %q; want %q and %q", f.Notes, f.NotAnalysed, note, problem)
 	}
