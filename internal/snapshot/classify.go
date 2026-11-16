@@ -46,6 +46,9 @@ func testPath(rules conventions.Rules, filePath string) bool {
 		return true
 	}
 	name := path.Base(filePath)
+	if slices.ContainsFunc(rules.TestNames, func(pattern string) bool { matched, _ := path.Match(pattern, name); return matched }) {
+		return true
+	}
 	stem := strings.TrimSuffix(name, conventions.Suffix(filePath))
 	for _, ending := range rules.TestEndings {
 		if strings.HasSuffix(stem, ending) {

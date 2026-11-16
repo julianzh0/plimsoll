@@ -19,10 +19,10 @@ func Build(source Source, rules conventions.Rules, readings *Readings) Snapshot 
 	}
 	beforeEntries := unchangedFromNow(source.Before, source.Now, changed)
 	nowContent, beforeContent := contentOf(source.Now), contentOf(beforeEntries)
-	layout := declaredLayout(rules, nowContent, beforeContent)
+	ownNow, ownBefore := readOwnFile(rules, nowContent), readOwnFile(rules, beforeContent)
+	layout := ownLayout(declaredLayout(rules, nowContent, beforeContent), rules, ownNow, trackedPaths(nowContent, beforeContent))
 	rules = withLayout(rules, layout)
 	rules = withSharedSuffixes(rules, source.Now)
-	ownNow, ownBefore := readOwnFile(rules, nowContent), readOwnFile(rules, beforeContent)
 	limits, declaredLimits := declaredLimits(rules, ownNow, ownBefore)
 	rules.Limits = limits
 	now := tree(rules, source.Now, nil)

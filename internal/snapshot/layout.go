@@ -15,6 +15,10 @@ type Layout struct {
 	TestFolders []Declared // one per test-folder key found on either side, in the entries' order
 	Roots       []Declared // one per root key found on either side, in the entries' order
 	Shadowing   []string   // root files tracked now that are not read and that a tool reads before a declaring file
+	// OwnTestFolders and OwnTestFiles are the test keys of the repository's own file, one record each when it holds
+	// a value now.
+	OwnTestFolders []Declared
+	OwnTestFiles   []Declared
 }
 
 // Declared is one declared key and what became of its values.
@@ -22,11 +26,14 @@ type Declared struct {
 	Language         string
 	File, Table, Key string
 	Tool             string
+	Name             string           // what an answer calls the key of the own file; "" for a tool's key
+	AsWritten        bool             // the values are file-name patterns, named as written, not folders
 	Now, AtBase      KeyState         // the zero value: the side does not hold the key
 	InUse            []DeclaredFolder // those of now first, in file order, each once
 	Held             []HeldFolder     // repository folders that are declared and not used
 	Unusable         int              // values that are absolute, leave the repository or hold a pattern
 	ShadowedBy       string           // the file the tool reads instead, tracked now; then no value is looked at
+	Unmatched        []string         // values that match no tracked path of either side, in file order
 }
 
 // KeyState is what one side's file says about a declared key.
@@ -63,18 +70,26 @@ const (
 	HeldPackageRoot
 	// HeldTestFolders holds test folders of its own, so it is more than a test folder.
 	HeldTestFolders
+	// HeldEveryName is a file-name pattern made only of "*": it names every file.
+	HeldEveryName
 )
 
-// declaredLayout reads what both sides declare and decides which folders are in use. now and before map each
-// tracked path to its content, nil when it was not read.
-func declaredLayout(rules conventions.Rules, now, before map[string][]byte) Layout {
-	var layout Layout
+// trackedPaths are the paths tracked on either side, each once.
+func trackedPaths(now, before map[string][]byte) []string {
 	tracked := slices.Collect(maps.Keys(now))
 	for p := range before {
 		if _, inNow := now[p]; !inNow {
 			tracked = append(tracked, p)
 		}
 	}
+	return tracked
+}
+
+// declaredLayout reads what both sides declare and decides which folders are in use. now and before map each
+// tracked path to its content, nil when it was not read.
+func declaredLayout(rules conventions.Rules, now, before map[string][]byte) Layout {
+	var layout Layout
+	tracked := trackedPaths(now, before)
 	for _, language := range rules.Languages {
 		for _, d := range language.Layout {
 			for _, shadow := range d.Shadowed {
@@ -139,6 +154,23 @@ func (d *Declared) decide(rules conventions.Rules, tracked, nowValues, baseValue
 // NOTE: a package whose tests are colocated only as test-named files, with no test folder, is taken whole as test
 // code. Upgrade: hold a value that product code outside it imports.
 func heldBecause(rules conventions.Rules, tracked []string, folder string) HeldReason {
+	if why := heldAsRoot(rules, folder); why != 0 {
+		return why
+	}
+	if !strings.Contains(folder, "/") && slices.Contains(rules.TestFolders, folder) {
+		return 0
+	}
+	for _, p := range tracked {
+		if rest, in := under(p, folder); in && inFolders(rest, rules.TestFolders) {
+			return HeldTestFolders
+		}
+	}
+	return 0
+}
+
+// heldAsRoot is why a declared test folder is held as a root: the repository root, or a folder that is or holds a
+// package root of a language entry. A shared test-folder name is never held.
+func heldAsRoot(rules conventions.Rules, folder string) HeldReason {
 	if !strings.Contains(folder, "/") && slices.Contains(rules.TestFolders, folder) {
 		return 0
 	}
@@ -152,12 +184,51 @@ func heldBecause(rules conventions.Rules, tracked []string, folder string) HeldR
 			}
 		}
 	}
-	for _, p := range tracked {
-		if rest, in := under(p, folder); in && inFolders(rest, rules.TestFolders) {
-			return HeldTestFolders
+	return 0
+}
+
+// ownLayout adds the test keys of the repository's own file: one record per key that holds a value now. A value is
+// held when it names the root or every file, unmatched when no tracked path of either side lies under it or bears a
+// matching name, held when a test folder is or holds a package root, and in use otherwise.
+func ownLayout(layout Layout, rules conventions.Rules, now ownFile, tracked []string) Layout {
+	for _, k := range rules.OwnKeys {
+		values, read := now.values[k.Key]
+		if !read || len(values)+now.unusable[k.Key] == 0 {
+			continue
+		}
+		d := Declared{File: rules.OwnFile, Table: k.Table, Key: k.Key, Name: k.Name, AsWritten: k.Holds.Pattern(), Now: KeyRead, Unusable: now.unusable[k.Key]}
+		for _, value := range values {
+			switch {
+			case value == "." && !k.Holds.Pattern():
+				d.Held = append(d.Held, HeldFolder{Path: value, Why: HeldRepositoryRoot})
+			case k.Holds.Pattern() && strings.Trim(value, "*") == "":
+				d.Held = append(d.Held, HeldFolder{Path: value, Why: HeldEveryName})
+			case !slices.ContainsFunc(tracked, func(p string) bool { return matches(k.Holds, value, p) }):
+				d.Unmatched = append(d.Unmatched, value)
+			case !k.Holds.Pattern() && heldAsRoot(rules, value) != 0:
+				d.Held = append(d.Held, HeldFolder{Path: value, Why: heldAsRoot(rules, value)})
+			default:
+				d.InUse = append(d.InUse, DeclaredFolder{Path: value})
+			}
+		}
+		switch k.Holds {
+		case conventions.TestFolderPaths:
+			layout.OwnTestFolders = append(layout.OwnTestFolders, d)
+		case conventions.TestFileNames:
+			layout.OwnTestFiles = append(layout.OwnTestFiles, d)
 		}
 	}
-	return 0
+	return layout
+}
+
+// matches says whether a tracked path lies under a declared folder or bears a declared file name.
+func matches(holds conventions.OwnValue, value, filePath string) bool {
+	if holds.Pattern() {
+		matched, _ := path.Match(value, path.Base(filePath))
+		return matched
+	}
+	_, in := under(filePath, value)
+	return in
 }
 
 // readDeclared reads one declared key from a file's content: its values, and what the file says about it.
@@ -182,10 +253,18 @@ func readDeclared(content []byte, d conventions.Declaration) ([]string, KeyState
 // is not altered.
 func withLayout(rules conventions.Rules, layout Layout) conventions.Rules {
 	rules.TestPaths = slices.Clone(rules.TestPaths)
-	for _, d := range layout.TestFolders {
+	for _, d := range slices.Concat(layout.TestFolders, layout.OwnTestFolders) {
 		for _, folder := range d.InUse {
 			if !slices.Contains(rules.TestPaths, folder.Path) {
 				rules.TestPaths = append(rules.TestPaths, folder.Path)
+			}
+		}
+	}
+	rules.TestNames = slices.Clone(rules.TestNames)
+	for _, d := range layout.OwnTestFiles {
+		for _, name := range d.InUse {
+			if !slices.Contains(rules.TestNames, name.Path) {
+				rules.TestNames = append(rules.TestNames, name.Path)
 			}
 		}
 	}

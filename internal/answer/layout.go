@@ -114,6 +114,8 @@ func heldSentence(d snapshot.Declared, held snapshot.HeldFolder) string {
 		return fmt.Sprintf("`%s` `%s` names the repository root; only the shared rules apply", d.File, d.Key)
 	case snapshot.HeldPackageRoot:
 		return fmt.Sprintf("`%s` `%s` names %s, which is or holds a package root; only the shared rules apply inside it", d.File, d.Key, Folder(held.Path))
+	case snapshot.HeldEveryName:
+		return fmt.Sprintf("`%s` `%s` names every file; only the shared rules apply", d.File, d.Key)
 	case snapshot.HeldTestFolders:
 	}
 	return fmt.Sprintf("`%s` `%s` names %s, which holds test folders of its own: it is where tests are collected, so only the shared rules apply inside it", d.File, d.Key, Folder(held.Path))
