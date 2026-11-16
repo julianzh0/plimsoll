@@ -12,7 +12,8 @@ func TestPairWordingStandingAndEvidence(t *testing.T) {
 	value, before, total, limit := 6.0, 5.0, 7.0, 5.0
 	m := answer.Mark{ID: "co-change.pair:" + a + "+" + b, Subject: answer.Subject{Kind: "files", Paths: []string{a, b}},
 		Measured: answer.Measured{Value: value, Before: &before, Total: &total, Limit: &limit}}
-	want := "`src/a.ts` and `tests/fakes/b.ts` changed together in 6 of the 7 commits that touched either; 5 at the base."
+	m.Measured.LimitSource = "plimsoll's rule"
+	want := "`src/a.ts` and `tests/fakes/b.ts` changed together in 6 of the 7 commits that touched either (86%); 5 at the base; limit 5 shared commits (plimsoll's rule)."
 	if got := (Detector{}).Wording(m); got != want || strings.Contains(got, "coupling") {
 		t.Errorf("Wording = %q, want %q", got, want)
 	}

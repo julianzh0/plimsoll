@@ -105,6 +105,9 @@ type Limits struct {
 	FileLines     Limit // per code file
 	TestRatio     Limit // over the repository
 	SharedCommits Limit // per pair of files
+	// PairShareRise is how much a pair's share of the commits that touched either file must rise for the pair to
+	// have grown: a pair that keeps changing together at the same rate has not grown by one more shared commit.
+	PairShareRise Limit
 	HotspotFiles  Limit // the files a report lists as hotspots
 	// ImportsNotFollowed is the share of a language's own imports that may stay not followed before its link
 	// numbers are not given. It gates the link numbers and is no mark, so it has no step.
@@ -342,7 +345,9 @@ func Default() Rules {
 			FileLines: Limit{Value: 1000, Step: 1, Source: "the default of Pylint and SonarQube"},
 			TestRatio: Limit{Value: 2.0, Step: 0.1, Source: "plimsoll's rule: test code at most twice the product code"},
 			// The requirements set the floor for a pair of files that changed together (R-16).
-			SharedCommits: Limit{Value: 5, Step: 1, Source: "at least 5 shared commits"},
+			SharedCommits: Limit{Value: 5, Step: 1, Source: "plimsoll's rule"},
+			// Read blind on 1,180 changes, growth by one shared commit was most pair marks and rarely worth a look.
+			PairShareRise: Limit{Value: 0.1, Source: "plimsoll's rule: one more shared commit is not growth"},
 			// The requirements name the three files changed most often times their size (R-15).
 			HotspotFiles: Limit{Value: 3, Step: 1, Source: "the three files changed most often times their size"},
 			// The share of own imports not followed was 1.4% on the BFF and 0% on plimsoll, where the links equalled those

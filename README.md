@@ -126,19 +126,20 @@ Then ask your agent, for example: *"Use plimsoll to check what this branch did t
 
 ```text
 plimsoll 0.3.0 status: base `HEAD~30` 422ce612e0, head 42a374430f
-3 new, 1 grown, 0 resolved
-Footprint of the change since the base: 30 commits, 75 files; product +1,649 -327, test +1,278 -90, documentation +18 -11; 0.8 test lines added per product line added.
+3 new, 0 grown, 0 resolved
+Footprint of the change since the base: 30 commits, 72 files; product +1,645 -323, test +1,263 -75, documentation +16 -9; 0.8 test lines added per product line added.
 
-1. [new, exact] `internal/conventions/rules.go` and `internal/snapshot/snapshot.go` changed together in 6 of the 25 commits that touched either; 4 at the base.
+1. [new, exact] `internal/conventions/rules.go` and `internal/snapshot/snapshot.go` changed together in 6 of the 25 commits that touched either (24%); 4 at the base; limit 5 shared commits (plimsoll's rule).
    verify: `explain` lists the shared commits by name. id: co-change.pair:internal/conventions/rules.go+internal/snapshot/snapshot.go
-2. [new, exact] `internal/conventions/imports.go` and `internal/snapshot/links.go` changed together in 5 of the 12 commits that touched either; 1 at the base.
+2. [new, exact] `internal/conventions/imports.go` and `internal/snapshot/links.go` changed together in 5 of the 12 commits that touched either (42%); 1 at the base; limit 5 shared commits (plimsoll's rule).
    verify: `explain` lists the shared commits by name. id: co-change.pair:internal/conventions/imports.go+internal/snapshot/links.go
-...
+3. [new, exact] `internal/conventions/rules.go` and `internal/snapshot/facts.go` changed together in 5 of the 32 commits that touched either (16%); 2 at the base; limit 5 shared commits (plimsoll's rule).
+   verify: `explain` lists the shared commits by name. id: co-change.pair:internal/conventions/rules.go+internal/snapshot/facts.go
 
-Standing (already at the base, not grown): none.
+Standing (already at the base, not grown): 1 pair of files that changed together in at least 5 commits.
 History: 105 commits read, 100 usable.
 Detectors run: shape, process, settings, hotspots, co-change, links.
-Not analysed: no `.env.example`, so no settings count; no `.env.example`, so no settings were compared.
+Not analysed: no `.env.example`, so no settings count; no `.env.example`, so no settings were compared; 2 changed files hold a syntax error, so an import after the error may be missed: `internal/links/links_test.go`, `internal/links/wording_test.go`.
 ```
 
 ## Tools
@@ -331,7 +332,7 @@ still run, interpreted and about 80 times slower.
 | `settings.no-reader:<NAME>` | a setting that no product file holds as a word or reads through a declared prefix (candidate) | plimsoll's rule: a setting has a reader |
 | `settings.defined-twice:<NAME>` | a name on two or more lines of `.env.example` that are not commented out (candidate) | plimsoll's rule: one name, one setting |
 | `settings.compose-only:<NAME>` | a compose `environment` key that takes its value from the host (no value, or `$`) and that `.env.example` does not name (candidate) | the three lists agree |
-| `co-change.pair:<a>+<b>` | two code files changed together in at least 5 usable commits | at least 5 shared commits |
+| `co-change.pair:<a>+<b>` | two code files changed together in at least 5 usable commits and did not at the base (new), or their share of the commits that touched either rose by at least 0.1 (grown). The mark shows that share and comes after every other mark | 5 shared commits, plimsoll's rule |
 | `links.test-import:<path>` | a product file has an import of test code now and had none at the base (new), or has more (grown) (candidate) | product code imports no test code |
 | `links.cycle:<path>` | two or more files import each other in a ring, by imports that are not type-only, and did not at the base (new), or the ring has more files (grown). The path is the ring's smallest (candidate) | files do not import each other in a ring |
 | `links.folder-cycle:<folder>` | two or more folders directly under one folder depend on each other in a cycle, through imports between product files below them, and none of them did at the base (new), or the cycle has more folders (grown). The folder is the cycle's smallest (candidate) | the Acyclic Dependencies Principle (Robert C. Martin) |
@@ -386,7 +387,7 @@ base whose repository declares no usable default base is refused with one senten
 - **trust**: plimsoll never changes a repository it reads. It runs only read-only git commands, takes no lock, starts no file monitor, runs no filter and fetches nothing from a remote. Tests: `internal/gitrepo/history_integration_test.go::TestIntegrationReadLeavesTheRepositoryUnchanged`, `internal/gitrepo/history_integration_test.go::TestIntegrationReadFetchesNothingFromARemote`, `cmd/plimsoll/tools_integration_test.go::TestIntegrationAnswersAreRepeatableAndLeaveNoTrace`
 - **trust**: no answer shows the content of a file or the value of a setting: only names, paths, line numbers and counts, and, from the repository's own `.plimsoll.toml`, its limits, the declared values that are plain paths, file-name patterns or branch names, and key and table names that are plain names. Content plimsoll does not need is never read. Tests: `internal/snapshot/facts_test.go::TestBuildReadsSettingNamesNeverValues`, `internal/snapshot/links_test.go::TestBuildKeepsNoImportText`, `internal/links/links_test.go::TestNoLinksLineHoldsImportText`, `internal/snapshot/settings_test.go::TestBuildReadsComposeEnvironmentKeys`, `internal/shape/explain_test.go::TestExplainHoldsNoFileContentOrSettingValue`, `internal/gitrepo/reader_integration_test.go::TestIntegrationReadLeavesUnwantedAndBinaryContentUnread`, `internal/answer/layout_test.go::TestLayoutLinesHoldNoValueFromOutsideTheRepository`, `internal/answer/samples_test.go::TestNoAnswerPrintsADeclaredValueOutsideItsForm`
 - **idempotency**: the same question about the same repository state gives the same answer, in the same process or a new one, whatever the user's git configuration. The history and the file readings kept between questions answer as a fresh read does, also for questions answered at the same time. Tests: `cmd/plimsoll/tools_integration_test.go::TestIntegrationAnswersAreRepeatableAndLeaveNoTrace`, `internal/snapshot/readings_test.go::TestKeptReadingsEqualFreshOnes`, `internal/gitrepo/history_integration_test.go::TestIntegrationKeptHistoryEqualsAFreshRead`, `internal/gitrepo/history_integration_test.go::TestIntegrationReadsAtTheSameTimeShareOneReader`, `internal/gitrepo/history_test.go::TestQuestionsAtTheSameTimeShareOneHistoryRead`, `internal/gitrepo/history_integration_test.go::TestIntegrationReadIsTheSameEverywhere`
-- **ordering**: new and grown marks come in one order (a mark another detector backs with a remark first, then new before grown, exact before candidate, the farthest past its limit first, then by identifier, at most two of one detector before the others). `status` shows at most five, and the report's sections follow the detector list. Tests: `internal/answer/mark_test.go::TestOrderPutsNewExactAndFarthestFirstWithTwoPerDetector`, `internal/answer/assemble_test.go::TestStatusShowsFiveMarksAndStaysInsideFortyLines`, `cmd/plimsoll/detectors_test.go::TestDetectorsAreListedInReportOrder`
+- **ordering**: new and grown marks come in one order (a mark another detector backs with a remark first, then new before grown, exact before candidate, the farthest past its limit first, then by identifier, at most two of one detector before the others). Marks about the history around a change, the pairs of files that changed together, come after all others, and `status` names the ones it does not show. `status` shows at most five, and the report's sections follow the detector list. Tests: `internal/answer/mark_test.go::TestOrderPutsNewExactAndFarthestFirstWithTwoPerDetector`, `internal/answer/assemble_test.go::TestStatusShowsFiveMarksAndStaysInsideFortyLines`, `internal/answer/assemble_test.go::TestStatusShowsContextMarksLastAndNamesTheHiddenOnes`, `cmd/plimsoll/detectors_test.go::TestDetectorsAreListedInReportOrder`
 - **cleanup**: a SIGTERM or the end of its input ends the server with exit status 0. Tests: `cmd/plimsoll/main_e2e_test.go::TestE2EProgramAnswersAndEndsOnASignal`, `cmd/plimsoll/main_e2e_test.go::TestE2EEndOfInputEndsTheProcess`
 - **trust**: plimsoll sends no telemetry and opens no network connection. It talks MCP over standard input and output, runs only `git` and imports no network package. The MCP SDK it uses carries HTTP code for its other transports, which plimsoll never calls. Tests: `cmd/plimsoll/guard_test.go::TestModuleKeepsItsGuards`, `cmd/plimsoll/guard_test.go::TestGuardRulesNameEachViolation`, `internal/gitrepo/history_integration_test.go::TestIntegrationReadFetchesNothingFromARemote`
 - **trust**: the grammars plimsoll runs are given no file, network, clock or environment, and the only functions they can call answer with a failure. Tests: `internal/parse/modules_test.go::TestModulesImportOnlyTheFailingHost`

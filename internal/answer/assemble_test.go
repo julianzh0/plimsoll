@@ -365,3 +365,36 @@ func TestAnAnswerShortensButNeverHides(t *testing.T) {
 		t.Errorf("status not-analysed line counts %d, want %d", got, len(statusAnswer.NotAnalysed))
 	}
 }
+
+func TestStatusShowsContextMarksLastAndNamesTheHiddenOnes(t *testing.T) {
+	var facts, pairs Findings
+	for i := range 3 {
+		facts.Marks = append(facts.Marks, fileMark(fmt.Sprintf("src/new%02d.ts", i), New))
+	}
+	for i := range 4 {
+		m := fileMark(fmt.Sprintf("src/pair%02d.ts", i), New)
+		m.ID, m.Context = fmt.Sprintf("co-change.pair:src/a.ts+src/pair%02d.ts", i), true
+		pairs.Marks = append(pairs.Marks, m)
+	}
+	a := Assemble(Status, "0.1.0", sample(), []Result{{"co-change", pairs}, {"shape", facts}})
+	if len(a.Marks) != 5 || a.More != 2 || a.Marks[0].Context || a.Marks[2].Context || !a.Marks[3].Context {
+		t.Fatalf("Assemble(status) marks %v, %d more; want the 3 facts first, then 2 of the 4 pairs, 2 more", ids(a.Marks), a.More)
+	}
+	w := wording()
+	w["co-change"] = Phrases{Mark: func(m Mark) string { return "pair " + m.ID }, Standing: func(items []Mark) string { return fmt.Sprintf("%d pairs", len(items)) }}
+	if text := Render(a, w); !strings.Contains(text, "2 more, among them 2 pairs: `report` lists them.") {
+		t.Errorf("Render(status) = %s, want the hidden pairs named", text)
+	}
+	plain := Assemble(Status, "0.1.0", sample(), []Result{{"shape", Findings{Marks: slices.Concat(facts.Marks, facts.Marks)}}})
+	if text := Render(plain, wording()); !strings.Contains(text, "1 more: `report` lists them.") {
+		t.Errorf("Render(status) without context marks = %s, want the plain line", text)
+	}
+}
+
+func ids(marks []Mark) []string {
+	var found []string
+	for _, m := range marks {
+		found = append(found, m.ID)
+	}
+	return found
+}

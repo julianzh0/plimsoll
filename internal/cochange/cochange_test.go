@@ -67,12 +67,12 @@ func check(t *testing.T, m answer.Mark, x, y string, change answer.Change, value
 	want := answer.Mark{
 		ID: "co-change.pair:" + x + "+" + y, Change: change, Subject: answer.Subject{Kind: "files", Paths: []string{x, y}},
 		Measured: answer.Measured{
-			Value: value, Before: &before, Limit: &limit, LimitSource: "at least 5 shared commits", Total: &total, Unit: "shared commits",
+			Value: value, Before: &before, Limit: &limit, LimitSource: "plimsoll's rule", Total: &total, Unit: "shared commits",
 		},
 		Confidence: answer.Exact, Hint: "`explain` lists the shared commits by name.",
 	}
 	if m.ID != want.ID || m.Change != want.Change || !slices.Equal(m.Subject.Paths, want.Subject.Paths) || m.Subject.Kind != "files" ||
-		m.Confidence != want.Confidence || m.Hint != want.Hint || m.Measured.Value != value || m.Measured.Unit != want.Measured.Unit ||
+		!m.Context || m.Confidence != want.Confidence || m.Hint != want.Hint || m.Measured.Value != value || m.Measured.Unit != want.Measured.Unit ||
 		m.Measured.LimitSource != want.Measured.LimitSource || m.Measured.Before == nil || *m.Measured.Before != before ||
 		m.Measured.Limit == nil || *m.Measured.Limit != limit || m.Measured.Total == nil || *m.Measured.Total != total {
 		t.Errorf("mark = %+v %+v, want %+v %+v", m, m.Measured, want, want.Measured)
@@ -90,11 +90,14 @@ func TestPairMarks(t *testing.T) {
 		change               answer.Change
 		value, before, total float64
 	}{
-		"new":      {sample{files: files(), base: times(4, a, b), since: times(1, a, b)}, answer.New, 5, 4, 5},
-		"grown":    {sample{files: files(), base: times(5, a, b), since: times(1, a, b)}, answer.Grown, 6, 5, 6},
-		"standing": {sample{files: files(), base: times(5, a, b)}, answer.Standing, 5, 5, 5},
-		"a alone":  {sample{files: files(), base: append(times(5, a, b), times(2, a)...)}, answer.Standing, 5, 5, 7},
-		"20 paths": {sample{files: files(), base: append(times(4, a, b), wide(20, a, b))}, answer.Standing, 5, 5, 5},
+		"new": {sample{files: files(), base: times(4, a, b), since: times(1, a, b)}, answer.New, 5, 4, 5},
+		// grown means the pair's share of the commits that touched either rose by at least a tenth: 5 of 10 to 8 of 13
+		"grown":         {sample{files: files(), base: append(times(5, a, b), times(5, a)...), since: times(3, a, b)}, answer.Grown, 8, 5, 13},
+		"one more":      {sample{files: files(), base: times(5, a, b), since: times(1, a, b)}, answer.Standing, 6, 5, 6},
+		"share falling": {sample{files: files(), base: times(5, a, b), since: append(times(1, a, b), times(3, a)...)}, answer.Standing, 6, 5, 9},
+		"standing":      {sample{files: files(), base: times(5, a, b)}, answer.Standing, 5, 5, 5},
+		"a alone":       {sample{files: files(), base: append(times(5, a, b), times(2, a)...)}, answer.Standing, 5, 5, 7},
+		"20 paths":      {sample{files: files(), base: append(times(4, a, b), wide(20, a, b))}, answer.Standing, 5, 5, 5},
 	}
 	for name, c := range cases {
 		found := marks(t, c.s)

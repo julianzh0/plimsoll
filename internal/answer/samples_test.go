@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -150,6 +151,9 @@ func detectorSamples() []snapshot.Source {
 			"CMakeLists.txt": "project(app)\ninclude_directories(lib)\n", "lib/kit.h": "#pragma once\n",
 			"src/main.cc": "#include \"kit.h\"\n", "src/tool.c": "#include <kit.h>\n",
 		}),
+		// a grown pair: its share of the commits that touched either rose from 5 of 10 to 8 of 13
+		withHistory(snapshottest.Files(map[string]string{"src/x.ts": "x\n", "src/y.ts": "y\n"}, map[string]string{"src/x.ts": "x2\n", "src/y.ts": "y2\n"}),
+			3, slices.Concat(repeat(3, "src/x.ts", "src/y.ts"), repeat(5, "src/x.ts", "src/y.ts"), repeat(5, "src/x.ts"))...),
 		// the repository's own file: test folders and test file names, one value matching nothing, one without its form
 		snapshottest.Files(map[string]string{"src/a.ts": "x\n", "checks/h.ts": "x\n", "src/a.check.ts": "x\n"}, map[string]string{
 			".plimsoll.toml": "[layout]\ntest_folders = [\"checks\", \"nowhere\"]\ntest_files = [\"*.check.ts\", \"a b\"]\n",

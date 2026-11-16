@@ -96,8 +96,11 @@ func TestDefaultLimitsNameTheirSource(t *testing.T) {
 	if want := (Limit{0.10, 0, "links checked against go list and dependency-cruiser, 2026-11"}); rules.Limits.ImportsNotFollowed != want {
 		t.Errorf("Limits.ImportsNotFollowed = %+v, want %+v", rules.Limits.ImportsNotFollowed, want)
 	}
-	if want := (Limit{5, 1, "at least 5 shared commits"}); rules.Limits.SharedCommits != want {
+	if want := (Limit{5, 1, "plimsoll's rule"}); rules.Limits.SharedCommits != want {
 		t.Errorf("Limits.SharedCommits = %+v, want %+v", rules.Limits.SharedCommits, want)
+	}
+	if want := (Limit{0.1, 0, "plimsoll's rule: one more shared commit is not growth"}); rules.Limits.PairShareRise != want {
+		t.Errorf("Limits.PairShareRise = %+v, want %+v", rules.Limits.PairShareRise, want)
 	}
 	for _, key := range rules.LimitKeys {
 		if limits := rules.Limits; limits.ByKey(key.Key) == nil || key.Name == "" {

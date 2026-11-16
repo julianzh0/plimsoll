@@ -26,10 +26,22 @@ func (Detector) Name() string { return name }
 
 // pair is two eligible files, sorted, and the usable commits that list them.
 type pair struct {
-	a, b   string
-	shared int // usable commits that list both
-	atBase int // of those, the ones that are not since the base
-	either int // usable commits that list either
+	a, b       string
+	shared     int // usable commits that list both
+	atBase     int // of those, the ones that are not since the base
+	either     int // usable commits that list either
+	eitherBase int // of those, the ones that are not since the base
+}
+
+// share is the part of the commits that touched either file that touched both, now and at the base.
+func (p pair) share() (now, base float64) {
+	if p.either > 0 {
+		now = float64(p.shared) / float64(p.either)
+	}
+	if p.eitherBase > 0 {
+		base = float64(p.atBase) / float64(p.eitherBase)
+	}
+	return now, base
 }
 
 func (p pair) id() string      { return answer.ID(name, rulePair, p.a+"+"+p.b) }
@@ -52,7 +64,8 @@ func (Detector) Detect(s snapshot.Snapshot) answer.Findings {
 		if holdsBase {
 			countBase++
 		}
-		change, found := answer.Compare(answer.Reading{Holds: holdsBase, Value: float64(p.atBase)}, answer.Reading{Holds: holdsNow, Value: float64(p.shared)}, limit.Step)
+		shareNow, shareBase := p.share()
+		change, found := answer.Compare(answer.Reading{Holds: holdsBase, Value: shareBase}, answer.Reading{Holds: holdsNow, Value: shareNow}, s.Limits.PairShareRise.Value)
 		if !found {
 			continue
 		}
@@ -65,7 +78,8 @@ func (Detector) Detect(s snapshot.Snapshot) answer.Findings {
 			Measured: answer.Measured{
 				Value: value, Before: &before, Limit: &limitValue, LimitSource: limit.Source, Total: &total, Unit: "shared commits",
 			},
-			Hint: "`explain` lists the shared commits by name.",
+			Hint:    "`explain` lists the shared commits by name.",
+			Context: true,
 		})
 	}
 	countNow := float64(len(atLimit))
@@ -148,6 +162,7 @@ func pairs(s snapshot.Snapshot) []pair {
 	found := make([]pair, 0, len(counted))
 	for _, p := range counted {
 		p.either = touches[p.a].All + touches[p.b].All - p.shared
+		p.eitherBase = touches[p.a].AtBase + touches[p.b].AtBase - p.atBase
 		found = append(found, *p)
 	}
 	slices.SortFunc(found, func(x, y pair) int { return cmp.Or(strings.Compare(x.a, y.a), strings.Compare(x.b, y.b)) })

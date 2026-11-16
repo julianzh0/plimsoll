@@ -43,8 +43,15 @@ func Compare(base, now Reading, step float64) (change Change, found bool) {
 
 // Order sorts new and grown marks: a mark that another detector backs with a remark first, then new before grown,
 // exact before candidate, the farthest past its limit first, then by identifier; then no more than two of one
-// detector come before the others. It returns a new slice.
+// detector come before the others. Context marks follow all others, in the same order among themselves. It returns
+// a new slice.
 func Order(marks []Mark, backed map[string]bool) []Mark {
+	facts := slices.DeleteFunc(slices.Clone(marks), func(m Mark) bool { return m.Context })
+	context := slices.DeleteFunc(slices.Clone(marks), func(m Mark) bool { return !m.Context })
+	return append(order(facts, backed), order(context, backed)...)
+}
+
+func order(marks []Mark, backed map[string]bool) []Mark {
 	sorted := slices.Clone(marks)
 	slices.SortStableFunc(sorted, func(a, b Mark) int {
 		return cmp.Or(

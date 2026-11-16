@@ -90,7 +90,11 @@ func marks(text *strings.Builder, a Answer, w Wording) {
 		fmt.Fprintf(text, "%d. [%s, %s] %s\n   verify: %s id: %s\n", i+1, m.Change, m.Confidence, sentence(w, m), m.Hint, m.ID)
 	}
 	if a.More > 0 {
-		fmt.Fprintf(text, "%d more: `report` lists them.\n", a.More)
+		if among := hiddenContext(a, w); among != "" {
+			fmt.Fprintf(text, "%d more, among them %s: `report` lists them.\n", a.More, among)
+		} else {
+			fmt.Fprintf(text, "%d more: `report` lists them.\n", a.More)
+		}
 	}
 	text.WriteString("\n")
 }
@@ -172,6 +176,24 @@ func explain(text *strings.Builder, a Answer, w Wording) {
 func trailer(text *strings.Builder, a Answer) {
 	fmt.Fprintf(text, "History: %s read, %s usable.\n", Plural(a.History.Read, "commit"), Count(float64(a.History.Usable)))
 	fmt.Fprintf(text, "Detectors run: %s.\n", strings.Join(a.Detectors, ", "))
+}
+
+// hiddenContext names the context marks among the marks status does not show, in each detector's own words, or is ""
+// when there are none.
+func hiddenContext(a Answer, w Wording) string {
+	var fragments []string
+	for _, detector := range a.Detectors {
+		var items []Mark
+		for _, m := range a.hidden {
+			if m.Context && DetectorOf(m.ID) == detector {
+				items = append(items, m)
+			}
+		}
+		if phrases, found := w[detector]; found && len(items) > 0 {
+			fragments = append(fragments, phrases.Standing(items))
+		}
+	}
+	return strings.Join(fragments, " and ")
 }
 
 func standingLine(a Answer, w Wording) string {

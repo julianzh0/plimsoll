@@ -90,6 +90,7 @@ func Assemble(q Question, version string, s snapshot.Snapshot, results []Result)
 	a.Marks = Order(a.Marks, backed)
 	if q == Status && len(a.Marks) > statusMarks {
 		a.More = len(a.Marks) - statusMarks
+		a.hidden = a.Marks[statusMarks:]
 		a.Marks = a.Marks[:statusMarks]
 	}
 	a.NotAnalysed = append(a.NotAnalysed, repositoryNotAnalysed(s)...)

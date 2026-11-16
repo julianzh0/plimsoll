@@ -8,8 +8,18 @@ import (
 
 // Wording is the sentence for a pair mark.
 func (Detector) Wording(m answer.Mark) string {
-	return fmt.Sprintf("`%s` and `%s` changed together in %s; %s at the base.", m.Subject.Paths[0], m.Subject.Paths[1],
-		together(int(m.Measured.Value), int(*m.Measured.Total)), answer.Count(*m.Measured.Before))
+	shared, either := int(m.Measured.Value), int(*m.Measured.Total)
+	return fmt.Sprintf("`%s` and `%s` changed together in %s (%d%%); %s at the base; limit %s shared commits (%s).",
+		m.Subject.Paths[0], m.Subject.Paths[1], together(shared, either), percent(shared, either),
+		answer.Count(*m.Measured.Before), answer.Count(*m.Measured.Limit), m.Measured.LimitSource)
+}
+
+// percent is shared as a rounded share of either.
+func percent(shared, either int) int {
+	if either == 0 {
+		return 0
+	}
+	return (shared*100 + either/2) / either
 }
 
 // Standing counts the standing pairs, with the limit they reach.
