@@ -5,6 +5,6 @@
   <path clip-path="url(#water)" fill="#1fa3a3" d="M-60 2 q4 -4 8 0 t8 0 t8 0 t8 0 t8 0 t8 0 t8 0 t8 0 t8 0 t8 0 t8 0 t8 0 t8 0 t8 0 t8 0 t8 0 t8 0 V40 H-60 Z"/>
   <path d="M-72 0 H-30 M30 0 H72" stroke="#e8553d" stroke-width="8" stroke-linecap="round"/>
   <circle class="ink-line" r="30" fill="none" stroke="#0f2a44" stroke-width="8"/>
-  <path class="ink-line" d="M-60 -11 V-26 H-54 A4 4 0 0 1 -54 -18 H-60" fill="none" stroke="#0f2a44" stroke-width="3.6" stroke-linejoin="miter"/>
-  <path class="ink-line" d="M49.75 -11 V-26 H55.75 A4 4 0 0 1 55.75 -18 H49.75 M54.75 -18 L60.25 -11" fill="none" stroke="#0f2a44" stroke-width="3.6" stroke-linejoin="miter"/>
+  <path class="ink-line" d="M-58 -11 V-26 H-52 A4 4 0 0 1 -52 -18 H-58" fill="none" stroke="#0f2a44" stroke-width="3.6" stroke-linejoin="miter"/>
+  <path class="ink-line" d="M48.75 -11 V-26 H54.75 A4 4 0 0 1 54.75 -18 H48.75 M53.75 -18 L59.25 -11" fill="none" stroke="#0f2a44" stroke-width="3.6" stroke-linejoin="miter"/>
 </svg>
