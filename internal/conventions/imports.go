@@ -6,7 +6,6 @@ import "regexp"
 type Imports struct {
 	Statements   []ImportForm   // the forms an import statement takes; every match is one import
 	Computed     ImportForm     // an import whose target is built at run time; its Pattern is nil when the language has none
-	PassesOn     *regexp.Regexp // matches the whole content of a file that only passes imports on; nil for none
 	Relative     RelativeForm   // how a relative import is written
 	Prefix       Prefix         // where the project's own prefix is declared
 	Target       TargetKind     // what an own import names

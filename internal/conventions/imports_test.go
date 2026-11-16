@@ -232,7 +232,8 @@ func TestNoEntryReadsAFactBothWays(t *testing.T) {
 		if l.Grammar == "" {
 			continue
 		}
-		if len(l.Imports.Statements) > 0 && strings.Contains(l.Query, "@spec") {
+		// Import patterns beside a query read only the stretches the query marks @text, which the grammar keeps as tokens.
+		if len(l.Imports.Statements) > 0 && strings.Contains(l.Query, "@spec") && !strings.Contains(l.Query, "@text") {
 			t.Errorf("%s reads its imports by patterns and by its query", l.Name)
 		}
 		if l.DynamicRead != nil && strings.Contains(l.Query, "@dynamic") {
@@ -284,30 +285,9 @@ func TestComputedAndWholeFilePatterns(t *testing.T) {
 			}
 		}
 	}
-	for name, texts := range passesOnCases() {
-		passesOn := language(t, name).Imports.PassesOn
-		for text, want := range texts {
-			if got := passesOn.MatchString(text); got != want {
-				t.Errorf("%s PassesOn(%q) = %v, want %v", name, text, got, want)
-			}
-		}
-	}
 	golang := language(t, "go").Imports
-	if golang.Computed.Pattern != nil || golang.PassesOn != nil || golang.NoRings != "the Go compiler rejects import cycles" {
-		t.Errorf("go: Computed %v, PassesOn %v, NoRings %q", golang.Computed, golang.PassesOn, golang.NoRings)
-	}
-}
-
-// passesOnCases are, per language with a PassesOn pattern, whole file contents and whether they only pass imports on.
-func passesOnCases() map[string]map[string]bool {
-	return map[string]map[string]bool{
-		"rust": {
-			"#![deny(missing_docs)]\n\nmod a;\npub mod b;\n\npub use a::A;\npub use crate::b::{B, C};\npub extern crate x as y;\n": true,
-			"#[cfg(test)]\nmod tests;\nmod a;\n": true,
-			"mod a;\n\npub fn f() {}\n":          false,
-			"mod a;\nuse a::A;\n":                false,
-			"mod a {\n}\n":                       false,
-		},
+	if golang.Computed.Pattern != nil || golang.NoRings != "the Go compiler rejects import cycles" {
+		t.Errorf("go: Computed %v, NoRings %q", golang.Computed, golang.NoRings)
 	}
 }
 
@@ -322,17 +302,6 @@ func computedCases() map[string]map[string]int {
 
 func TestLiteralsBlankCommentsStringsAndCharacters(t *testing.T) {
 	cases := map[string]map[string]string{ // per language with a Literals pattern: a text, and what stays of it
-		"rust": {
-			"a // b\nc":                    "a     \nc",
-			"a /* b /* c */ d */ e":        "a                   e",
-			"a /* src/**/x */ b":           "a                b",
-			`s = "a \" } b"; t`:            "s =           ; t",
-			"s = r#\"a \"} b\"#; t":        "s =            ; t",
-			`c = '}'; d = '\''; e = b'"';`: "c =    ; d =     ; e = b   ;",
-			"fn f<'a>(x: &'a str) {}":      "fn f<'a>(x: &'a str) {}",
-			"s = \"line\n}\nend\"; t":      "s =      \n \n    ; t",
-			"/**/ a /***/ b":               "     a       b",
-		},
 		"c":   commentCases(),
 		"cpp": commentCases(),
 	}

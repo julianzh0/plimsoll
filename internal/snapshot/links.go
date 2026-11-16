@@ -122,7 +122,7 @@ type reading struct {
 
 // scan finds the import statements of one file's content, its literals blanked.
 func scan(imports conventions.Imports, text []byte) reading {
-	r := reading{passesOn: imports.PassesOn != nil && imports.PassesOn.Match(text)}
+	var r reading
 	if imports.Computed.Pattern != nil {
 		r.computed = len(imports.Computed.Pattern.FindAllIndex(text, -1))
 	}

@@ -330,7 +330,7 @@ func TestBuildCountsTestCodeInsideProductFiles(t *testing.T) {
 	}{
 		{"a module with a string that holds a brace", "fn a() {}\n\n#[cfg(test)]\nmod tests {\n    const T: &str = \"\n}\n\";\n    #[test]\n    fn t() { assert!('}' != '{'); }\n}\nfn b() {}\n", 8},
 		{"single statements", "#[cfg(test)]\nuse crate::testutil;\n#[cfg(test)]\nmod testutil;\nfn a() {}\n", 4},
-		{"a field", "struct S {\n    #[cfg(test)]\n    extra: u8,\n    other: u8,\n}\n", 0},
+		{"a field", "struct S {\n    #[cfg(test)]\n    extra: u8,\n    other: u8,\n}\n", 2},
 		{"a function", "fn a() {}\n#[cfg(test)]\n#[test]\nfn t() {\n    assert!(true);\n}\n", 5},
 		{"other conditions", "#[cfg(not(test))]\nfn a() {}\n#[cfg(all(test, unix))]\nfn b() {}\n", 0},
 		{"test code inside test code", "#[cfg(test)]\nmod tests {\n    #[cfg(test)]\n    fn helper() {}\n}\n", 5},

@@ -6,12 +6,11 @@ import "regexp"
 // the mod lines declare.
 func rustLanguage() Language {
 	return Language{
-		Name: "rust", Extensions: []string{".rs"}, DynamicRead: rustDynamicRead, Literals: rustLiterals, TestBlock: rustTestBlock,
+		Name: "rust", Extensions: []string{".rs"}, Grammar: "rust", Query: rustQuery,
 		Imports: Imports{
 			Statements: []ImportForm{{Pattern: rustMod}, {Pattern: rustUse}, {Pattern: rustExtern}},
 			Grouped:    true,
 			Module:     rustModule,
-			PassesOn:   rustPassesOn,
 			Relative:   NoRelative,
 			Prefix:     Prefix{File: "Cargo.toml", Format: CargoCrates, Members: true},
 			Target:     FileTarget,
@@ -22,6 +21,33 @@ func rustLanguage() Language {
 	}
 }
 
+// rustQuery reads mod lines, use paths and extern crates (a use may group paths in braces, which own code expands),
+// the modules a file holds in braces, test code under #[cfg(test)] (the item after the attributes), macro bodies,
+// which the grammar keeps as tokens and the text forms below read, comments and strings blanked inside targets and
+// macro bodies, what a file that only passes imports on may hold, and a settings read whose name is not a quoted
+// literal.
+const rustQuery = `
+(mod_item !body name: (identifier) @spec.mod) @import
+(use_declaration argument: (_) @spec) @import
+(extern_crate_declaration name: (identifier) @spec) @import
+(mod_item name: (identifier) @module.name body: (declaration_list)) @module
+((attribute_item (attribute (identifier) @a arguments: (token_tree) @t)) @test . (attribute_item)* .
+  [(function_item) (mod_item) (impl_item) (struct_item) (enum_item) (union_item) (trait_item) (use_declaration)
+   (const_item) (static_item) (type_item) (macro_definition) (macro_invocation) (extern_crate_declaration)
+   (field_declaration) (expression_statement) (let_declaration) (enum_variant) (foreign_mod_item)
+   (associated_type) (function_signature_item)] @test.end
+  (#eq? @a "cfg") (#eq? @t "(test)"))
+(macro_invocation (token_tree) @text)
+(macro_rule right: (token_tree) @text)
+[(line_comment) (block_comment) (string_literal) (raw_string_literal)] @blank
+(source_file [(inner_attribute_item) (attribute_item) (line_comment) (block_comment)] @pass)
+(source_file (mod_item !body) @pass)
+(source_file (use_declaration (visibility_modifier)) @pass)
+(source_file (extern_crate_declaration (visibility_modifier)) @pass)
+((call_expression function: (_) @f arguments: (arguments . (_) @dynamic))
+  (#match? @f "(^|::)env::var(_os)?$") (#not-match? @dynamic "^\""))
+`
+
 // rustAttributes are the attributes before an item on its line, rustVisibility an item's visibility.
 const (
 	rustAttributes = `(?:#\[[^\]\n]*\][ \t]*)*`
@@ -29,16 +55,6 @@ const (
 )
 
 var (
-	// rustDynamicRead is a settings read whose name is not a quoted literal.
-	rustDynamicRead = regexp.MustCompile(`\benv::var(?:_os)?\([ \t\r\n]*[^" \t\r\n)]`)
-	// rustLiterals are a line comment, a block comment that may hold block comments one level deep, a raw string, a
-	// string over lines and a character literal; a lifetime ('a) is none.
-	// NOTE: block comments nested deeper than one level, and raw strings with more than three "#", end early.
-	// Upgrade: a lexer.
-	rustLiterals = regexp.MustCompile(`//[^\n]*|/\*(?:/+\*(?:[^*]|\*+[^*/])*\*+/|[^*/]|\*+[^*/]|/+[^*/])*\*+/|r"[^"]*"|(?s:r#".*?"#|r##".*?"##|r###".*?"###)|"(?:[^"\\]|\\[\s\S])*"|'(?:\\(?:[^xu\n]|x[0-9a-fA-F]{2}|u\{[0-9a-fA-F_]+\})|[^\\'\n])'`)
-	// rustTestBlock is #[cfg(test)] and what follows it up to the first ";" or "{" without a "}" between: a "}"
-	// first means a field or a variant under the attribute, which is no block.
-	rustTestBlock = regexp.MustCompile(`#\[cfg\(test\)\][^;{}]*[;{]`)
 	// rustMod is a module declared in its own file; the target keeps the word mod, so a declaration is told from a path.
 	rustMod = regexp.MustCompile(`(?m)^[ \t]*` + rustAttributes + rustVisibility + `(?P<spec>mod[ \t]+[A-Za-z_]\w*)[ \t]*;`)
 	// rustUse is a use declaration; its target may group paths in braces.
@@ -47,7 +63,4 @@ var (
 	rustExtern = regexp.MustCompile(`(?m)^[ \t]*` + rustAttributes + rustVisibility + `extern[ \t]+crate[ \t]+(?P<spec>[A-Za-z_]\w*)`)
 	// rustModule is the first line of a module a file holds in braces.
 	rustModule = regexp.MustCompile(`(?m)^[ \t]*` + rustAttributes + rustVisibility + `mod[ \t]+(?P<name>[A-Za-z_]\w*)[ \t\r\n]*\{`)
-	// rustPassesOn is a file of attributes, mod lines and public use and extern crate lines only; it is tried on text
-	// whose comments are blanked.
-	rustPassesOn = regexp.MustCompile(`\A(?:[ \t\r\n]*(?:#!?\[[^\]\n]*\]|` + rustVisibility + `mod[ \t]+\w+[ \t]*;|pub(?:\([^)\n]*\))?[ \t]+(?:use[ \t\r\n]+[^;]+|extern[ \t]+crate[ \t]+[^;]+);))*[ \t\r\n]*\z`)
 )

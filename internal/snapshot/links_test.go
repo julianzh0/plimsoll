@@ -230,6 +230,21 @@ func TestBuildListsDartFilesThatOnlyPassImportsOn(t *testing.T) {
 	}
 }
 
+func TestBuildListsRustFilesThatOnlyPassImportsOn(t *testing.T) {
+	got := linksOf(t, map[string]string{
+		"Cargo.toml":    "[package]\nname = \"app\"\n",
+		"src/lib.rs":    "mod p1;\nmod p2;\nmod p3;\nmod p4;\n",
+		"src/p1/mod.rs": "#![deny(missing_docs)]\n\nmod a;\npub mod b;\n\npub use a::A;\npub use crate::p1::b::{B, C};\npub extern crate x as y;\n",
+		"src/p1/a.rs":   "pub struct A;\n", "src/p1/b.rs": "pub struct B;\npub struct C;\n",
+		"src/p2/mod.rs": "#[cfg(test)]\nmod tests;\nmod a;\n", "src/p2/tests.rs": "", "src/p2/a.rs": "",
+		"src/p3/mod.rs": "mod a;\n\npub fn f() {}\n", "src/p3/a.rs": "",
+		"src/p4/mod.rs": "mod a;\nuse a::A;\n", "src/p4/a.rs": "pub struct A;\n",
+	})
+	if want := []string{"src/lib.rs", "src/p1/mod.rs", "src/p2/mod.rs"}; !reflect.DeepEqual(got.PassOn, want) {
+		t.Errorf("PassOn = %q, want %q", got.PassOn, want)
+	}
+}
+
 func goTree() map[string]string {
 	return map[string]string{
 		"go.mod": "module example.com/m\n\ngo 1.27\n",

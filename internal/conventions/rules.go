@@ -140,17 +140,19 @@ type Language struct {
 	// Literals are comments, strings and character literals; they are blanked before imports are read. Nil reads
 	// the text as written.
 	Literals *regexp.Regexp
-	// TestBlock is the start of test code inside a file that is no test code by its path: a match that ends with "{"
-	// runs to the brace that closes it, any other match is the test code. Nil for none.
-	TestBlock *regexp.Regexp
-	Imports   Imports       // how its imports are written and what they name
-	Layout    []Declaration // the standard files and keys in which a project declares its layout; nil for none
+	Imports  Imports       // how its imports are written and what they name
+	Layout   []Declaration // the standard files and keys in which a project declares its layout; nil for none
 	// Grammar is the tree-sitter grammar that reads the entry's files; "" reads them by the text patterns above.
 	Grammar string
 	// GrammarBySuffix names another grammar for some of the entry's suffixes.
 	GrammarBySuffix map[string]string
 	// Query is the tree-sitter query that reads, in one parse, everything the entry takes from a file. Its captures:
 	//   @import   an import statement; the @name captures inside it are the names it imports
+	//   @spec.mod a module declared in its own file: the target is "mod " and the name
+	//   @module, @module.name  a module a file holds in braces, and its name; a statement inside is resolved from it
+	//   @test, @test.end  test code inside a product file, from the start of the first to the end of the second
+	//   @text     a stretch the grammar keeps as tokens (a macro body): the entry's text forms read it
+	//   @blank    a comment or a string, blanked inside a target and inside @text
 	//   @spec     the target as written, one pair of quotes removed; several in one match are one target
 	//   @type     the statement imports types only
 	//   @everywhere  the statement is written once for every file of its project
