@@ -173,22 +173,117 @@ What it could not see is always named under "not analysed".
 ## How each language is read
 
 Every detector works the same way for every language. A language only adds how its files are written, as one data
-file in `internal/conventions/`.
+file in `internal/conventions/`. Each language below names what it adds, and anything it does not name follows the
+defaults at the end of this section.
 
-| | TypeScript and JavaScript | Go | Python | Dart | Java and Kotlin | Rust | C# | Swift | C and C++ |
-|---|---|---|---|---|---|---|---|---|---|
-| Files | `.ts`, `.tsx`, `.js`, `.mjs`, `.cjs` | `.go` | `.py`, `.pyi` | `.dart` | `.java`, `.kt`, `.kts` | `.rs` | `.cs` | `.swift` | `.c`, `.h` and `.cc`, `.cpp`, `.cxx`, `.hpp`, `.hh`, `.hxx`. A `.h` file counts with the one of the two that has more files of its own in the repository |
-| Imports | `import … from`, `export … from`, `import "x"`, `import()` and `require()`, relative or through the paths of `tsconfig.json` | the import path of a folder, under the module named in `go.mod` | `import x` and `from x import y`, relative with leading dots, `import_module()`, the project's packages at the root and under `src/` | `import`, `export`, `part` and `part of`, relative when the target has no scheme, `package:<name>/` for the package `pubspec.yaml` names and for the members of its `workspace:` | `import a.b.C`, `import static` and `a.b.*` name the package `a.b`: the folders whose files under `src/<set>/java` and `src/<set>/kotlin` declare it. A folder under a test source set is reached only from files under one | `mod x;` is `x.rs` or `x/mod.rs` below the file that declares it. A `use` or `extern crate` path that starts with `crate`, `self`, `super`, a module declared beside it or the name of a crate whose `Cargo.toml` is tracked names the file of its longest leading run of modules. Every path of a `use` group counts, and a module written in braces moves the paths inside it | `using A.B;` names the namespace `A.B`: the folders whose files declare it with `namespace A.B`, wherever they lie. `using static` and an alias name a type of a namespace. A `global using` reaches every file of its project and counts as not readable | `import X`, `@testable import X` and `import struct X.Y` name the module `X`: a target of `Package.swift`, whose folder (its `path:`, else `Sources/X` or `Tests/X`) holds every file of it at any depth. Without `Package.swift` own modules cannot be told from frameworks | `#include "x.h"` is the file beside the including one. Else, like `#include <x.h>`, it is the tracked file of that path under an include folder: a folder named `include`, or one that a `CMakeLists.txt` names by a path in `include_directories` or `target_include_directories`. Such a file under several folders is ambiguous, and an include that a macro names is not readable. Every `#if` branch is read |
-| Type-only imports, left out of rings | `import type`, `export type` | none, and no rings are looked for: the compiler rejects them | imports under `if TYPE_CHECKING:` | none | none, and no rings are looked for: an import names a package, not a file | none, and no rings are looked for: a crate's modules use each other | none, and no rings are looked for: a using names a namespace, not a file | none, and no rings are looked for: the compiler rejects modules that import each other | none |
-| Declared test folders and roots | the defaults | the defaults | pytest's `testpaths` and `pythonpath` in `pyproject.toml` | the defaults | the defaults | the defaults | the defaults | the defaults | the defaults |
-| Runtime dependencies | `package.json`, `dependencies` | `go.mod`, `require` without `// indirect` | `pyproject.toml`, `[project] dependencies` | `pubspec.yaml`, `dependencies` | `pom.xml`, `dependencies` in compile or runtime scope. `build.gradle` and `build.gradle.kts`, `implementation`, `api` and `runtimeOnly` | `Cargo.toml`, `[dependencies]` and the `dependencies` of `[target.…]` tables | every `*.csproj` outside test code: its `PackageReference` items, without those whose `PrivateAssets` is `all` | `Package.swift`, its `.package(url:)`, `.package(path:)` and `.package(id:)` lines, by the package's identity | `vcpkg.json`, the top-level `dependencies` without host tools |
-| Setting reads, besides the name as a word | a computed `process.env[…]` is counted | a computed `os.Getenv(…)` or `os.LookupEnv(…)` is counted | a computed `os.environ[…]` or `os.getenv(…)` is counted, and a pydantic `env_prefix` plus a field of the same file counts as read | a computed `Platform.environment[…]`, `String.fromEnvironment(…)` or `dotenv.env[…]` is counted | a computed `System.getenv(…)` is counted | a computed `env::var(…)` or `env::var_os(…)` is counted | a computed `Environment.GetEnvironmentVariable(…)` or index into a configuration object (`configuration[…]`) is counted | a computed `ProcessInfo.processInfo.environment[…]` is counted | a computed `getenv(…)` is counted |
-| One unit when files change together | the file | the package folder | the file | the file | the package folder | the file | the folder | the folder | the file |
+### C and C++
 
-The defaults, shared by all: test code lives in folders named `tests`, `Tests`, `test`, `__tests__`, `spec` or `integration_test`, in folders directly in `src/` named `test[A-Z]*` or `*Test*` (`androidTest`, `testFixtures`), in folders whose name ends in `.Tests` or `.Test` (`Acme.Tests`), in files whose
-name ends in `.test`, `.spec`, `_test` or `-test` or starts with `test_`, and in files that define a test
-(`func Test…`, `func test…`, `def test_…`, `test(…)`, `testWidgets(…)`, `it(…)`, `@Test`, `[Fact]`, `[Test]`, `#[test]`, `TEST(…)`, `TEST_CASE(…)`). Test code inside a product file counts as test lines where a language marks it: Rust's
-`#[cfg(test)]` items.
+- **Files:** `.c`, `.h` and `.cc`, `.cpp`, `.cxx`, `.hpp`, `.hh`, `.hxx`. A `.h` file counts with the one of the two
+  that has more files of its own in the repository.
+- **Imports:** `#include "x.h"` is the file beside the including one. Else, like `#include <x.h>`, it is the tracked
+  file of that path under an include folder: a folder named `include`, or one that a `CMakeLists.txt` names by a path
+  in `include_directories` or `target_include_directories`. Such a file under several folders is ambiguous, and an
+  include that a macro names is not readable. Every `#if` branch is read.
+- **Runtime dependencies:** `vcpkg.json`, the top-level `dependencies` without host tools.
+- **Setting reads:** a computed `getenv(…)` is counted.
+
+### C#
+
+- **Files:** `.cs`.
+- **Imports:** `using A.B;` names the namespace `A.B`: the folders whose files declare it with `namespace A.B`, wherever
+  they lie. `using static` and an alias name a type of a namespace. A `global using` reaches every file of its project
+  and counts as not readable.
+- **Import rings:** not looked for, because a using names a namespace, not a file.
+- **Runtime dependencies:** every `*.csproj` outside test code: its `PackageReference` items, without those whose
+  `PrivateAssets` is `all`.
+- **Setting reads:** a computed `Environment.GetEnvironmentVariable(…)` or index into a configuration object
+  (`configuration[…]`) is counted.
+- **Changed together:** the folder is one unit.
+
+### Dart
+
+- **Files:** `.dart`.
+- **Imports:** `import`, `export`, `part` and `part of`, relative when the target has no scheme, `package:<name>/` for the
+  package `pubspec.yaml` names and for the members of its `workspace:`.
+- **Runtime dependencies:** `pubspec.yaml`, `dependencies`.
+- **Setting reads:** a computed `Platform.environment[…]`, `String.fromEnvironment(…)` or `dotenv.env[…]` is counted.
+
+### Go
+
+- **Files:** `.go`.
+- **Imports:** the import path of a folder, under the module named in `go.mod`.
+- **Import rings:** not looked for, because the compiler rejects them.
+- **Runtime dependencies:** `go.mod`, `require` without `// indirect`.
+- **Setting reads:** a computed `os.Getenv(…)` or `os.LookupEnv(…)` is counted.
+- **Changed together:** the package folder is one unit.
+
+### Java and Kotlin
+
+- **Files:** `.java`, `.kt`, `.kts`.
+- **Imports:** `import a.b.C`, `import static` and `a.b.*` name the package `a.b`: the folders whose files under
+  `src/<set>/java` and `src/<set>/kotlin` declare it. A folder under a test source set is reached only from files under
+  one.
+- **Import rings:** not looked for, because an import names a package, not a file.
+- **Runtime dependencies:** `pom.xml`, `dependencies` in compile or runtime scope. `build.gradle` and
+  `build.gradle.kts`, `implementation`, `api` and `runtimeOnly`.
+- **Setting reads:** a computed `System.getenv(…)` is counted.
+- **Changed together:** the package folder is one unit.
+
+### Python
+
+- **Files:** `.py`, `.pyi`.
+- **Imports:** `import x` and `from x import y`, relative with leading dots, `import_module()`, the project's packages at
+  the root and under `src/`.
+- **Type-only imports,** left out of rings: imports under `if TYPE_CHECKING:`.
+- **Declared test folders and roots:** pytest's `testpaths` and `pythonpath` in `pyproject.toml`.
+- **Runtime dependencies:** `pyproject.toml`, `[project] dependencies`.
+- **Setting reads:** a computed `os.environ[…]` or `os.getenv(…)` is counted, and a pydantic `env_prefix` plus a field
+  of the same file counts as read.
+
+### Rust
+
+- **Files:** `.rs`.
+- **Imports:** `mod x;` is `x.rs` or `x/mod.rs` below the file that declares it. A `use` or `extern crate` path that
+  starts with `crate`, `self`, `super`, a module declared beside it or the name of a crate whose `Cargo.toml` is
+  tracked names the file of its longest leading run of modules. Every path of a `use` group counts, and a module
+  written in braces moves the paths inside it.
+- **Import rings:** not looked for, because a crate's modules use each other.
+- **Test code inside product files:** `#[cfg(test)]` items count as test lines.
+- **Runtime dependencies:** `Cargo.toml`, `[dependencies]` and the `dependencies` of `[target.…]` tables.
+- **Setting reads:** a computed `env::var(…)` or `env::var_os(…)` is counted.
+
+### Swift
+
+- **Files:** `.swift`.
+- **Imports:** `import X`, `@testable import X` and `import struct X.Y` name the module `X`: a target of
+  `Package.swift`, whose folder (its `path:`, else `Sources/X` or `Tests/X`) holds every file of it at any depth.
+  Without `Package.swift` own modules cannot be told from frameworks.
+- **Import rings:** not looked for, because the compiler rejects modules that import each other.
+- **Runtime dependencies:** `Package.swift`, its `.package(url:)`, `.package(path:)` and `.package(id:)` lines, by the
+  package's identity.
+- **Setting reads:** a computed `ProcessInfo.processInfo.environment[…]` is counted.
+- **Changed together:** the folder is one unit.
+
+### TypeScript and JavaScript
+
+- **Files:** `.ts`, `.tsx`, `.js`, `.mjs`, `.cjs`.
+- **Imports:** `import … from`, `export … from`, `import "x"`, `import()` and `require()`, relative or through the paths
+  of `tsconfig.json`.
+- **Type-only imports,** left out of rings: `import type`, `export type`.
+- **Runtime dependencies:** `package.json`, `dependencies`.
+- **Setting reads:** a computed `process.env[…]` is counted.
+
+### Defaults
+
+- **Test code** lives in folders named `tests`, `Tests`, `test`, `__tests__`, `spec` or `integration_test`, in folders
+  directly in `src/` named `test[A-Z]*` or `*Test*` (`androidTest`, `testFixtures`), in folders whose name ends in
+  `.Tests` or `.Test` (`Acme.Tests`), in files whose name ends in `.test`, `.spec`, `_test` or `-test` or starts with
+  `test_`, and in files that define a test (`func Test…`, `func test…`, `def test_…`, `test(…)`, `testWidgets(…)`,
+  `it(…)`, `@Test`, `[Fact]`, `[Test]`, `#[test]`, `TEST(…)`, `TEST_CASE(…)`).
+- **Type-only imports:** none.
+- **Import rings** are looked for.
+- **Setting reads:** every setting is also found by its name as a word.
+- **Changed together:** each file is one unit.
 
 ## Rules
 
