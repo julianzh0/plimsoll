@@ -58,7 +58,7 @@ func TestIntegrationToolsAnswerForAChangedRepository(t *testing.T) {
 	status, report, explain := result(t, responses[0]), result(t, responses[1]), result(t, responses[2])
 
 	first, _, _ := strings.Cut(text(t, status), "\n")
-	if status["isError"] == true || !regexp.MustCompile("^plimsoll 0\\.1\\.0 status: base `[0-9a-f]{40}` [0-9a-f]{10}, head [0-9a-f]{10}$").MatchString(first) {
+	if status["isError"] == true || !regexp.MustCompile("^plimsoll "+regexp.QuoteMeta(version)+" status: base `[0-9a-f]{40}` [0-9a-f]{10}, head [0-9a-f]{10}$").MatchString(first) {
 		t.Errorf("status = %s", responses[0])
 	}
 	structured := as[map[string]any](t, status["structuredContent"])

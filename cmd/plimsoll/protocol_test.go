@@ -55,7 +55,7 @@ func TestLegacyHandshake(t *testing.T) {
 		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"status","arguments":{}}}`,
 	)
 	sameJSON(t, responses[0], `{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{}},
-		"serverInfo":{"name":"plimsoll","version":"0.1.0"}}}`)
+		"serverInfo":{"name":"plimsoll","version":"`+version+`"}}}`)
 	if tools := as[[]any](t, at(t, decode(t, responses[1]), "result", "tools")); len(tools) != 3 {
 		t.Errorf("legacy tools/list = %s, want three tools", responses[1])
 	}
