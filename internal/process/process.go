@@ -45,6 +45,7 @@ func (Detector) Detect(s snapshot.Snapshot) answer.Findings {
 	if note := limitsNote(s); note != "" {
 		f.Notes = append(f.Notes, note)
 	}
+	f.Notes = append(f.Notes, answer.OwnNotes(s.Layout.OwnBase)...)
 	for _, problem := range s.OwnFileProblems {
 		f.NotAnalysed = append(f.NotAnalysed, fmt.Sprintf("`%s`: %s; what it does not set keeps plimsoll's default", s.OwnFile, problem))
 	}

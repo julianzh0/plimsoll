@@ -92,7 +92,11 @@ func readOwnFile(rules conventions.Rules, content map[string][]byte) ownFile {
 			problem("`%s` is set twice", key)
 		default:
 			seen[key] = true
-			o.readList(rules.OwnKeys[at], value, problem)
+			if rules.OwnKeys[at].Holds.Single() {
+				o.readString(rules.OwnKeys[at], value, problem)
+			} else {
+				o.readList(rules.OwnKeys[at], value, problem)
+			}
 		}
 	}
 	if !found {
@@ -148,6 +152,22 @@ func (o *ownFile) readList(key conventions.OwnKey, value string, problem func(st
 		}
 	}
 	o.values[key.Key] = values
+}
+
+// readString reads one basic or literal string on one line, which must have its key's form.
+func (o *ownFile) readString(key conventions.OwnKey, value string, problem func(string, ...any)) {
+	text := strings.TrimSpace(value)
+	if len(text) < 2 || (text[0] != '"' && text[0] != '\'') || text[len(text)-1] != text[0] || strings.ContainsAny(text[1:len(text)-1], "\"'\n") {
+		o.unread[key.Key] = true
+		problem("`%s` is not text", key.Key)
+		return
+	}
+	formed, usable := key.Holds.Form(text[1 : len(text)-1])
+	if !usable {
+		problem("`%s` is not the name of a branch, a remote branch or a tag", key.Key)
+		return
+	}
+	o.values[key.Key] = []string{formed}
 }
 
 // uncommented is a line up to a "#" that lies outside a string.

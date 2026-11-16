@@ -17,6 +17,9 @@ func TestBuildReadsTheTextKeysOfTheOwnFile(t *testing.T) {
 	files := func(now, before []string) snapshot.DeclaredValues {
 		return snapshot.DeclaredValues{Table: "layout", Key: "test_files", Name: "test files", Now: now, Before: before, Compared: true}
 	}
+	base := func(now, before []string) snapshot.DeclaredValues {
+		return snapshot.DeclaredValues{Table: "defaults", Key: "base", Name: "default base", Now: now, Before: before, Compared: true}
+	}
 	uncompared := func(d snapshot.DeclaredValues, unreadAtBase bool) snapshot.DeclaredValues {
 		d.Compared, d.UnreadAtBase = false, unreadAtBase
 		return d
@@ -50,6 +53,12 @@ func TestBuildReadsTheTextKeysOfTheOwnFile(t *testing.T) {
 		{"an empty file", "", "# nothing yet\n", nil, []string{"it holds no table plimsoll reads"}},
 		{"the key not read at the base", "[layout]\ntest_folders = 3\n", "[layout]\ntest_folders = [\"checks\"]\n",
 			[]snapshot.DeclaredValues{uncompared(folders([]string{"checks"}, nil), true)}, nil},
+		{"a default base", "", "[defaults]\nbase = \"main\"\n", []snapshot.DeclaredValues{base([]string{"main"}, nil)}, nil},
+		{"a default base as a literal string", "", "[defaults]\nbase = 'main'\n", []snapshot.DeclaredValues{base([]string{"main"}, nil)}, nil},
+		{"a base that is a number", "", "[defaults]\nbase = 3\n", nil, []string{"`base` is not text"}},
+		{"a base that is a list", "", "[defaults]\nbase = [\"main\"]\n", nil, []string{"`base` is not text"}},
+		{"a base without its form", "", "[defaults]\nbase = \"HEAD~1\"\n", nil, []string{"`base` is not the name of a branch, a remote branch or a tag"}},
+		{"a key the defaults do not hold", "", "[defaults]\nbranch = \"main\"\n", nil, []string{"`branch` is no key of `[defaults]`"}},
 		{"the key not read now", "[layout]\ntest_folders = [\"checks\"]\n", "[layout]\ntest_folders = 3\n",
 			[]snapshot.DeclaredValues{uncompared(folders(nil, []string{"checks"}), false)}, []string{notAList}},
 	}

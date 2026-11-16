@@ -15,8 +15,10 @@ type Layout struct {
 	TestFolders []Declared // one per test-folder key found on either side, in the entries' order
 	Roots       []Declared // one per root key found on either side, in the entries' order
 	Shadowing   []string   // root files tracked now that are not read and that a tool reads before a declaring file
-	// Own are the keys of the repository's own file that hold a value now, in the order of the rules.
-	Own []Declared
+	// Own are the list keys of the repository's own file that hold a value now, in the order of the rules, and
+	// OwnBase the default base it declares now, if any.
+	Own     []Declared
+	OwnBase []Declared
 }
 
 // Declared is one declared key and what became of its values.
@@ -196,6 +198,12 @@ func ownLayout(layout Layout, rules conventions.Rules, now ownFile, tracked []st
 	for _, k := range rules.OwnKeys {
 		values, read := now.values[k.Key]
 		if !read || len(values)+now.unusable[k.Key] == 0 {
+			continue
+		}
+		if k.Holds.Single() {
+			layout.OwnBase = append(layout.OwnBase, Declared{
+				File: rules.OwnFile, Table: k.Table, Key: k.Key, Name: k.Name, AsWritten: true, Now: KeyRead, InUse: []DeclaredFolder{{Path: values[0]}},
+			})
 			continue
 		}
 		pattern := k.Holds.Pattern()

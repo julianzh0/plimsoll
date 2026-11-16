@@ -125,6 +125,8 @@ const (
 	TestFolderPaths OwnValue = iota + 1
 	// TestFileNames are file-name patterns of test code.
 	TestFileNames
+	// BaseName is one name of a branch, a remote branch or a tag: the base of a question that names none.
+	BaseName
 )
 
 // OwnValueLength is the longest value an own key may hold: the longest tracked folder path of sixteen repositories is
@@ -140,6 +142,9 @@ var (
 	// NOTE: a pattern matches a file name, never a path across folders. Upgrade: match a folder path segment by
 	// segment.
 	ownName = regexp.MustCompile(`^[A-Za-z0-9._+*?-]+$`)
+	// ownBase is a branch, remote-branch or tag name: segments of letters, digits and ._- joined by "/", so no
+	// revision expression (~, ^, @{, :) and nothing that depends on the user's git configuration.
+	ownBase = regexp.MustCompile(`^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$`)
 )
 
 // Form brings a value as written to the form an answer may print, and says whether it has that form: a folder loses
@@ -147,6 +152,12 @@ var (
 func (v OwnValue) Form(value string) (formed string, usable bool) {
 	if value == "" || len(value) > OwnValueLength {
 		return "", false
+	}
+	if v == BaseName {
+		if !ownBase.MatchString(value) || strings.Contains(value, "..") || strings.HasPrefix(value, "-") {
+			return "", false
+		}
+		return value, true
 	}
 	if v.Pattern() {
 		if !ownName.MatchString(value) {
@@ -171,6 +182,9 @@ func (v OwnValue) Form(value string) (formed string, usable bool) {
 
 // Pattern says whether the values are file-name patterns rather than folders.
 func (v OwnValue) Pattern() bool { return v == TestFileNames }
+
+// Single says whether the key holds one string rather than a list.
+func (v OwnValue) Single() bool { return v == BaseName }
 
 // LimitKey is a key of a repository's limits file: the limit it sets, as an answer names it, and what the value
 // counts ("" for a ratio, printed with one decimal).
@@ -305,6 +319,7 @@ func Default() Rules {
 		OwnKeys: []OwnKey{
 			{Table: "layout", Key: "test_folders", Name: "test folders", Holds: TestFolderPaths},
 			{Table: "layout", Key: "test_files", Name: "test files", Holds: TestFileNames},
+			{Table: "defaults", Key: "base", Name: "default base", Holds: BaseName},
 		},
 		LimitKeys: []LimitKey{
 			{Key: "file_lines", Name: "file-size limit", Unit: "lines"},

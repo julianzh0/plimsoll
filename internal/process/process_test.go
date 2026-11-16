@@ -187,6 +187,8 @@ func TestAChangeToTheRepositorysOwnFileIsMarked(t *testing.T) {
 		{"reordered", ruleDeclarationChange, layout("test_folders = [\"a\", \"b\"]\n"), layout("test_folders = [\"b\", \"a\"]\n"), nil},
 		{"written another way", ruleDeclarationChange, layout("test_folders = [\"checks/\"]\n"), layout("test_folders = [\"./checks\"]\n"), nil},
 		{"a value without its form added", ruleDeclarationChange, layout("test_folders = [\"checks\"]\n"), layout("test_folders = [\"checks\", \"a b\"]\n"), nil},
+		{"the default base changed", ruleDeclarationChange, "[defaults]\nbase = \"main\"\n", "[defaults]\nbase = \"develop\"\n",
+			[]string{"This change altered the default base declared in `.plimsoll.toml`: added `develop`, removed 1; 1 declared now, 1 at the base."}},
 		{"not read at the base", ruleDeclarationChange, layout("test_folders = 3\n"), layout("test_folders = [\"checks\"]\n"), nil},
 	}
 	for _, tc := range cases {
@@ -246,6 +248,10 @@ func TestAChangeToTheRepositorysOwnFileIsMarked(t *testing.T) {
 		t.Errorf("the file not read at the base: marks %+v, not analysed %q; want no declaration mark and %q", f.Marks, f.NotAnalysed, entry)
 	}
 
+	_, f = detect(t, snapshottest.Files(nil, files("[defaults]\nbase = \"main\"\n")))
+	if note := "default base declared in `.plimsoll.toml` (`[defaults]` `base`): `main`"; !slices.Contains(f.Notes, note) {
+		t.Errorf("a declared base: notes %q, want %q", f.Notes, note)
+	}
 	_, f = detect(t, snapshottest.Files(nil, files("[limits]\nfile_lines = 1500\ntest_ratio = 2.5\nmax_depth = 3\n")))
 	note := "limits set by `.plimsoll.toml`: the file-size limit 1,500 lines (plimsoll's default: 1,000), the test-ratio limit 2.5 (plimsoll's default: 2.0)"
 	problem := "`.plimsoll.toml`: `max_depth` is no limit plimsoll knows; what it does not set keeps plimsoll's default"

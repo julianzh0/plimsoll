@@ -250,6 +250,10 @@ func TestOwnValuesAreBroughtToTheirForm(t *testing.T) {
 		{TestFileNames, "test-?.js", "test-?.js"}, {TestFileNames, "a/b", ""},
 		{TestFileNames, "[ab].go", ""}, {TestFileNames, "x y", ""}, {TestFileNames, "", ""},
 		{TestFileNames, long + "a", ""},
+		{BaseName, "main", "main"}, {BaseName, "origin/main", "origin/main"}, {BaseName, "v0.2.0", "v0.2.0"},
+		{BaseName, "release/1.x", "release/1.x"}, {BaseName, "HEAD", "HEAD"}, {BaseName, "HEAD~1", ""}, {BaseName, "main^", ""},
+		{BaseName, "main@{u}", ""}, {BaseName, "main:path", ""}, {BaseName, "a..b", ""}, {BaseName, "-x", ""}, {BaseName, "/main", ""},
+		{BaseName, "main/", ""}, {BaseName, "a//b", ""}, {BaseName, "my branch", ""}, {BaseName, long + "a", ""}, {BaseName, "", ""},
 	}
 	for _, c := range cases {
 		if formed, usable := c.kind.Form(c.value); formed != c.formed || usable != (c.formed != "") {
@@ -260,10 +264,14 @@ func TestOwnValuesAreBroughtToTheirForm(t *testing.T) {
 	want := []OwnKey{
 		{Table: "layout", Key: "test_folders", Name: "test folders", Holds: TestFolderPaths},
 		{Table: "layout", Key: "test_files", Name: "test files", Holds: TestFileNames},
+		{Table: "defaults", Key: "base", Name: "default base", Holds: BaseName},
 	}
 	if rules.OwnFile != ".plimsoll.toml" || rules.LimitsTable != "limits" || !slices.Equal(rules.OwnKeys, want) || len(rules.TestNames) != 0 {
 		t.Errorf("Default() own file %q, table %q, keys %+v, test names %q; want .plimsoll.toml, limits, %+v and none",
 			rules.OwnFile, rules.LimitsTable, rules.OwnKeys, rules.TestNames, want)
+	}
+	if !BaseName.Single() || TestFileNames.Single() || TestFolderPaths.Single() {
+		t.Errorf("Single() = %v for the base, %v for test files, %v for test folders; want true, false, false", BaseName.Single(), TestFileNames.Single(), TestFolderPaths.Single())
 	}
 	if !TestFileNames.Pattern() || TestFolderPaths.Pattern() {
 		t.Errorf("Pattern() = %v for test files, %v for test folders; want true and false", TestFileNames.Pattern(), TestFolderPaths.Pattern())
