@@ -98,6 +98,15 @@ func TestHotspotsRankChangesTimesLines(t *testing.T) {
 	if got := rows(detect(t, own)); len(got) != 4 {
 		t.Errorf("five changed files and hotspot_files = 4 = %d rows, want 4", len(got))
 	}
+	// A count beyond any int: converted as it is, it turns negative on amd64 and the slice bound panics.
+	for i := range own.Now {
+		if own.Now[i].Path == ".plimsoll.toml" {
+			own.Now[i].Content = []byte("[limits]\nhotspot_files = 1e19\n")
+		}
+	}
+	if got := rows(detect(t, own)); len(got) != 5 {
+		t.Errorf("five changed files and hotspot_files = 1e19 = %d rows, want all 5", len(got))
+	}
 }
 
 func TestHistoryWithoutAUsableCommitIsNotAnalysed(t *testing.T) {
