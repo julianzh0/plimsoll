@@ -25,20 +25,21 @@ stores nothing, and never says what to do.
 
 ## Why plimsoll
 
-**plimsoll tells a coding agent, after every change, what that change did to the whole repository, as a few findings
-it can check itself, with nothing to set up.**
+A coding agent sees the files it works on, not the repository around them. plimsoll fills that gap: after each
+change, it tells the agent what the change did to the repository as a whole. The answer is a few findings, and each
+one says how to check it, so the agent does not have to take plimsoll's word for it. There is nothing to install
+besides plimsoll itself and nothing to configure.
 
-Many tools cover one or two of these. plimsoll combines all four:
+What plimsoll brings together:
 
-| | plimsoll | Typical alternatives |
-|---|---|---|
-| Looks at | the change, against a base you choose | the whole current state (sentrux, SonarQube, Qlty) |
-| Covers | size, tests, wiring, history, settings and working habits in one answer | one aspect (linters, dependency-cruiser, diffguard) |
-| Answers with | a few findings, each with its measurement, its limit and a way to check it | a score or a grade (CodeScene, sentrux, Qlty) |
-| Needs | `git`, nothing else: no account, server or network, nothing to set up. An optional `.plimsoll.toml` sets your own limits | an account or a server (CodeScene, SonarQube), or a rules file (dependency-cruiser) |
+- **The change, not only the current state.** It compares now with a base you choose, such as `main`.
+- **Several sides in one answer.** Size, tests, wiring, history, settings and working habits.
+- **Findings, not a score.** Each finding names its measurement, its limit and a way to check it.
+- **Nothing to set up.** It needs `git` and nothing else: no account, no server, no network. An optional
+  `.plimsoll.toml` sets your own limits.
 
-It works next to your linters and CI, not instead of them: they go deeper into one thing, plimsoll keeps the overview
-of a change.
+It works next to your linters and CI, not instead of them. They go deeper into one thing, and plimsoll keeps the
+overview of a change.
 
 ## What it checks
 
@@ -166,7 +167,7 @@ Every number is measured at the base and now, from the tracked files only:
 - hotspots: the three code files with the most changes in usable commits times their lines now, as report rows and a remark on their size mark, with no rule of its own
 - changed together: pairs of code files that share usable commits, at least one product code, neither a file that defines tests, and not two files that the language treats as one unit
 - test folders and package roots that a project declares in its own configuration, added to the defaults and named with their source
-- import links, read by text patterns: the files that import the changed files and that the change did not touch, the three files that import the most others, import rings, cycles between sibling folders, and each new product file that no file imports. With `files`, also the files that import each named file.
+- import links, read from the code: the files that import the changed files and that the change did not touch, the three files that import the most others, import rings, cycles between sibling folders, and each new product file that no file imports. With `files`, also the files that import each named file.
 
 What it could not see is always named under "not analysed".
 
@@ -176,8 +177,23 @@ Every detector works the same way for every language. A language only adds how i
 file in `internal/conventions/`. Each language below names what it adds, and anything it does not name follows the
 defaults at the end of this section.
 
+plimsoll reads code with [tree-sitter](https://tree-sitter.github.io/) grammars that run inside it, so a comment or a
+string never counts as an import. Each language below names its grammar. C and C++ are read by text patterns, since
+their meaning depends on the preprocessor, and so are the package and namespace lines of Java, Kotlin and C#, which
+generated files declare too. A file that would need more than 128 MiB to parse is not read, and the answer names it
+under "not analysed". A changed file in which the grammar meets a syntax error, such as an unfinished edit, is named
+there too, since an import after the error may be missed. On a system that forbids executable memory the grammars
+still run, interpreted and about 80 times slower.
+
+| | | |
+|---|---|---|
+| [C and C++](#c-and-c) | [C#](#c) | [Dart](#dart) |
+| [Go](#go) | [Java and Kotlin](#java-and-kotlin) | [Python](#python) |
+| [Rust](#rust) | [Swift](#swift) | [TypeScript and JavaScript](#typescript-and-javascript) |
+
 ### C and C++
 
+- **Read by:** text patterns, comments blanked first.
 - **Files:** `.c`, `.h` and `.cc`, `.cpp`, `.cxx`, `.hpp`, `.hh`, `.hxx`. A `.h` file counts with the one of the two
   that has more files of its own in the repository.
 - **Imports:** `#include "x.h"` is the file beside the including one. Else, like `#include <x.h>`, it is the tracked
@@ -189,6 +205,7 @@ defaults at the end of this section.
 
 ### C#
 
+- **Read by:** the grammar tree-sitter-c-sharp v0.23.5.
 - **Files:** `.cs`.
 - **Imports:** `using A.B;` names the namespace `A.B`: the folders whose files declare it with `namespace A.B`, wherever
   they lie. `using static` and an alias name a type of a namespace. A `global using` reaches every file of its project
@@ -202,6 +219,7 @@ defaults at the end of this section.
 
 ### Dart
 
+- **Read by:** the grammar tree-sitter-dart (UserNobody14, commit `0038280b`).
 - **Files:** `.dart`.
 - **Imports:** `import`, `export`, `part` and `part of`, relative when the target has no scheme, `package:<name>/` for the
   package `pubspec.yaml` names and for the members of its `workspace:`.
@@ -210,6 +228,7 @@ defaults at the end of this section.
 
 ### Go
 
+- **Read by:** the grammar tree-sitter-go v0.25.0.
 - **Files:** `.go`.
 - **Imports:** the import path of a folder, under the module named in `go.mod`.
 - **Import rings:** not looked for, because the compiler rejects them.
@@ -219,6 +238,7 @@ defaults at the end of this section.
 
 ### Java and Kotlin
 
+- **Read by:** the grammars tree-sitter-java v0.23.5 and tree-sitter-kotlin (fwcd, commit `d6af96d2`).
 - **Files:** `.java`, `.kt`, `.kts`.
 - **Imports:** `import a.b.C`, `import static` and `a.b.*` name the package `a.b`: the folders whose files under
   `src/<set>/java` and `src/<set>/kotlin` declare it. A folder under a test source set is reached only from files under
@@ -231,6 +251,7 @@ defaults at the end of this section.
 
 ### Python
 
+- **Read by:** the grammar tree-sitter-python v0.25.0.
 - **Files:** `.py`, `.pyi`.
 - **Imports:** `import x` and `from x import y`, relative with leading dots, `import_module()`, the project's packages at
   the root and under `src/`.
@@ -242,6 +263,8 @@ defaults at the end of this section.
 
 ### Rust
 
+- **Read by:** the grammar tree-sitter-rust v0.24.2. Macro bodies, which the grammar keeps as tokens, are read by
+  text patterns, and so are setting reads, over the file with its comments and strings left out.
 - **Files:** `.rs`.
 - **Imports:** `mod x;` is `x.rs` or `x/mod.rs` below the file that declares it. A `use` or `extern crate` path that
   starts with `crate`, `self`, `super`, a module declared beside it or the name of a crate whose `Cargo.toml` is
@@ -250,10 +273,11 @@ defaults at the end of this section.
 - **Import rings:** not looked for, because a crate's modules use each other.
 - **Test code inside product files:** `#[cfg(test)]` items count as test lines.
 - **Runtime dependencies:** `Cargo.toml`, `[dependencies]` and the `dependencies` of `[target.…]` tables.
-- **Setting reads:** a computed `env::var(…)` or `env::var_os(…)` is counted.
+- **Setting reads:** a computed `env::var(…)` or `env::var_os(…)` is counted, also inside a macro such as `println!`.
 
 ### Swift
 
+- **Read by:** the grammar tree-sitter-swift 0.7.4.
 - **Files:** `.swift`.
 - **Imports:** `import X`, `@testable import X` and `import struct X.Y` name the module `X`: a target of
   `Package.swift`, whose folder (its `path:`, else `Sources/X` or `Tests/X`) holds every file of it at any depth.
@@ -266,6 +290,7 @@ defaults at the end of this section.
 
 ### TypeScript and JavaScript
 
+- **Read by:** the grammars of tree-sitter-typescript v0.23.2: TypeScript for `.ts`, TSX for the other suffixes.
 - **Files:** `.ts`, `.tsx`, `.js`, `.mjs`, `.cjs`.
 - **Imports:** `import … from`, `export … from`, `import "x"`, `import()` and `require()`, relative or through the paths
   of `tsconfig.json`.
@@ -328,9 +353,12 @@ first value.
 
 - **trust**: plimsoll never changes a repository it reads. It runs only read-only git commands, takes no lock, starts no file monitor, runs no filter and fetches nothing from a remote. Tests: `internal/gitrepo/history_integration_test.go::TestIntegrationReadLeavesTheRepositoryUnchanged`, `internal/gitrepo/history_integration_test.go::TestIntegrationReadFetchesNothingFromARemote`, `cmd/plimsoll/tools_integration_test.go::TestIntegrationAnswersAreRepeatableAndLeaveNoTrace`
 - **trust**: no answer shows the content of a file or the value of a setting: only names, paths, line numbers and counts. Content plimsoll does not need is never read. Tests: `internal/snapshot/facts_test.go::TestBuildReadsSettingNamesNeverValues`, `internal/snapshot/links_test.go::TestBuildKeepsNoImportText`, `internal/links/links_test.go::TestNoLinksLineHoldsImportText`, `internal/snapshot/settings_test.go::TestBuildReadsComposeEnvironmentKeys`, `internal/shape/explain_test.go::TestExplainHoldsNoFileContentOrSettingValue`, `internal/gitrepo/reader_integration_test.go::TestIntegrationReadLeavesUnwantedAndBinaryContentUnread`, `internal/answer/layout_test.go::TestLayoutLinesHoldNoValueFromOutsideTheRepository`
-- **idempotency**: the same question about the same repository state gives the same answer, in the same process or a new one, whatever the user's git configuration. The history kept between questions answers as a fresh read does, also for questions answered at the same time. Tests: `cmd/plimsoll/tools_integration_test.go::TestIntegrationAnswersAreRepeatableAndLeaveNoTrace`, `internal/gitrepo/history_integration_test.go::TestIntegrationKeptHistoryEqualsAFreshRead`, `internal/gitrepo/history_integration_test.go::TestIntegrationReadsAtTheSameTimeShareOneReader`, `internal/gitrepo/history_test.go::TestQuestionsAtTheSameTimeShareOneHistoryRead`, `internal/gitrepo/history_integration_test.go::TestIntegrationReadIsTheSameEverywhere`
+- **idempotency**: the same question about the same repository state gives the same answer, in the same process or a new one, whatever the user's git configuration. The history and the file readings kept between questions answer as a fresh read does, also for questions answered at the same time. Tests: `cmd/plimsoll/tools_integration_test.go::TestIntegrationAnswersAreRepeatableAndLeaveNoTrace`, `internal/snapshot/readings_test.go::TestKeptReadingsEqualFreshOnes`, `internal/gitrepo/history_integration_test.go::TestIntegrationKeptHistoryEqualsAFreshRead`, `internal/gitrepo/history_integration_test.go::TestIntegrationReadsAtTheSameTimeShareOneReader`, `internal/gitrepo/history_test.go::TestQuestionsAtTheSameTimeShareOneHistoryRead`, `internal/gitrepo/history_integration_test.go::TestIntegrationReadIsTheSameEverywhere`
 - **ordering**: new and grown marks come in one order (a mark another detector backs with a remark first, then new before grown, exact before candidate, the farthest past its limit first, then by identifier, at most two of one detector before the others). `status` shows at most five, and the report's sections follow the detector list. Tests: `internal/answer/mark_test.go::TestOrderPutsNewExactAndFarthestFirstWithTwoPerDetector`, `internal/answer/assemble_test.go::TestStatusShowsFiveMarksAndStaysInsideFortyLines`, `cmd/plimsoll/detectors_test.go::TestDetectorsAreListedInReportOrder`
 - **cleanup**: a SIGTERM or the end of its input ends the server with exit status 0. Tests: `cmd/plimsoll/main_e2e_test.go::TestE2EProgramAnswersAndEndsOnASignal`, `cmd/plimsoll/main_e2e_test.go::TestE2EEndOfInputEndsTheProcess`
+- **trust**: the grammars plimsoll runs are given no file, network, clock or environment, and the only functions they can call answer with a failure. Tests: `internal/parse/modules_test.go::TestModulesImportOnlyTheFailingHost`
+- **ownership**: a parser belongs to whoever created it. Closing it frees its grammars and their memory, and any other parser keeps working. Tests: `internal/parse/parse_test.go::TestClosingOneParserLeavesAnotherWorking`
+- **error mapping**: a file the parser cannot read, or a changed file in which it meets a syntax error, is named under "not analysed" and never fails the question. Tests: `internal/parse/parse_test.go::TestAFileOverTheCapIsAnErrorAndTheNextCallWorks`, `internal/snapshot/build_test.go::TestBuildListsAFileTheParserCannotRead`, `internal/snapshot/links_test.go::TestBuildReadsImportsAroundASyntaxError`
 - **error mapping**: git's own refusal (exit status 1 or 128) keeps its kind, such as an unknown base or no repository. Any other git failure is "git failed". Every refusal is one plain sentence without structured content. A malformed request, an unknown method or an unknown tool is a JSON-RPC error with its standard code. Tests: `internal/gitrepo/refusal_test.go::TestRefusalKeepsItsKindOnlyForGitsOwnAnswer`, `cmd/plimsoll/tools_integration_test.go::TestIntegrationRefusals`, `cmd/plimsoll/protocol_test.go::TestProtocolErrors`
 
 ## Protocol
@@ -338,8 +366,8 @@ first value.
 plimsoll speaks MCP through the official [MCP Go SDK](https://github.com/modelcontextprotocol/go-sdk): revision
 2026-07-28, and the `initialize` handshake of earlier revisions for clients that still open that way. Answers may
 arrive in any order, and each carries the id of its request. At most eight questions are answered at the same
-time and the others wait their turn, and questions that need the same history share one read of it, so memory stays
-bounded however many questions a client sends at once.
+time and the others wait their turn. Questions that need the same history share one read of it, and the grammars
+parse one file at a time, so memory stays bounded however many questions a client sends at once.
 
 ## Development
 
@@ -373,6 +401,8 @@ make hooks
 | `make lint` | golangci-lint |
 | `make build` | Builds `bin/plimsoll` |
 | `make hooks` | Enables the pre-commit hook in `.githooks/` |
+| `make grammars` | Builds the grammar modules from the sources `internal/parse/grammars/pins.txt` names, with zig 0.17.1, and records their hashes |
+| `make grammars-check` | Rebuilds the grammar modules and fails when one differs from its pin or from the committed file |
 
 Tests run with `-race` and `-shuffle=on`, and record coverage in `bin/cover/`. CI shows the coverage table in each run's summary. `make qa` also checks formatting, `go vet`, `go mod tidy`, `go fix`, agent files and known vulnerabilities, so it needs network access. It fails when a tracked (or, when the project is not its own Git top level, present) `CLAUDE.md`, `AGENTS.md`, `.claude/`, `.cursor/` or `.vscode/tasks.json` file is not listed in `AGENT_FILES_ALLOWED` in the `Makefile`. The shipped `CLAUDE.md` is listed.
 
@@ -391,12 +421,19 @@ internal/hotspots/               # the files changed most often times their size
 internal/cochange/               # pairs of files that change together
 internal/links/                  # import links: reach, product code importing test code, rings
 internal/mcpserver/              # the only code that knows MCP, through the official MCP Go SDK
+internal/parse/                  # the only code that knows WebAssembly: runs the tree-sitter grammars through wazero
+internal/parse/grammars/         # the grammar modules, their pins, the C shim and the build script
 ```
 
 A language is one file in `internal/conventions/` (`typescript.go`, `golang.go`, `python.go`) and one line in the
 list of `Default`. No detector names a language.
 
-`internal/gitrepo/gitrepotest` and `internal/snapshot/snapshottest` are test support. Their files do not end in
+To add a grammar: add its row to `pins.txt` and run `make grammars`, add its licence to `THIRD_PARTY_NOTICES.md`,
+name the grammar and write its query in the language's file, then extend the language's import cases and sample
+repository. Building a grammar takes zig and up to several gigabytes of memory for a large grammar, so it is not part
+of `make qa`.
+
+`internal/gitrepo/gitrepotest`, `internal/parse/parsetest` and `internal/snapshot/snapshottest` are test support. Their files do not end in
 `_test`, so plimsoll counts them as product code when it measures itself.
 
 ## License
