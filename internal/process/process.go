@@ -148,7 +148,7 @@ func limitMarks(s snapshot.Snapshot) []answer.Mark {
 func declarationMarks(s snapshot.Snapshot) []answer.Mark {
 	var marks []answer.Mark
 	for _, d := range s.Declarations {
-		added, removed := difference(d.Now, d.Before), difference(d.Before, d.Now)
+		added, removed := answer.Added(d.Before, d.Now), answer.Added(d.Now, d.Before)
 		if !d.Compared || len(added)+len(removed) == 0 {
 			continue
 		}
@@ -178,17 +178,6 @@ func notCompared(s snapshot.Snapshot) []string {
 		}
 	}
 	return entries
-}
-
-// difference are the values of one list that the other does not hold, in the first list's order.
-func difference(values, other []string) []string {
-	var found []string
-	for _, v := range values {
-		if !slices.Contains(other, v) {
-			found = append(found, v)
-		}
-	}
-	return found
 }
 
 // limitsNote names the limits the repository's limits file sets now, or is "" when it sets none.

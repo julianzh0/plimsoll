@@ -3,6 +3,7 @@ package answer
 import (
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 
 	"github.com/julianzh0/plimsoll/internal/snapshot"
@@ -130,12 +131,12 @@ func repositoryNotAnalysed(s snapshot.Snapshot) []NotAnalysed {
 	}
 	if len(s.Missing) > 0 {
 		add(fmt.Sprintf("content not in this partial clone, so its lines and history are not counted: %s (%s)",
-			Plural(len(s.Missing), "file"), strings.Join(Quoted(s.Missing), ", ")))
+			Plural(len(s.Missing), "file"), QuotedList(s.Missing)))
 	}
 	if len(s.Unparsed) > 0 {
 		add(fmt.Sprintf("the parser could not read %s, so their imports, test code and settings reads are not counted "+
 			"(a file may need at most %d MiB to parse): %s", Plural(len(s.Unparsed), "file"), snapshot.ParserCapMiB,
-			strings.Join(Quoted(s.Unparsed), ", ")))
+			QuotedList(s.Unparsed)))
 	}
 	if len(s.SyntaxErrors) > 0 {
 		verb := "hold"
@@ -143,7 +144,7 @@ func repositoryNotAnalysed(s snapshot.Snapshot) []NotAnalysed {
 			verb = "holds"
 		}
 		add(fmt.Sprintf("%s %s a syntax error, so an import after the error may be missed: %s",
-			Plural(len(s.SyntaxErrors), "changed file"), verb, strings.Join(Quoted(s.SyntaxErrors), ", ")))
+			Plural(len(s.SyntaxErrors), "changed file"), verb, QuotedList(s.SyntaxErrors)))
 	}
 	return entries
 }
@@ -166,6 +167,17 @@ func Quoted(names []string) []string {
 
 // QuotedList is names each in backticks, joined by commas: "`a`, `b`".
 func QuotedList(names []string) string { return strings.Join(Quoted(names), ", ") }
+
+// Added are the values now that before does not hold, each once, in the order of now: what a change added.
+func Added(before, now []string) []string {
+	var added []string
+	for _, value := range now {
+		if !slices.Contains(before, value) && !slices.Contains(added, value) {
+			added = append(added, value)
+		}
+	}
+	return added
+}
 
 // Agree puts a count before the singular or the plural phrase: "1 file is", "3 files are".
 func Agree(n int, one, many string) string {

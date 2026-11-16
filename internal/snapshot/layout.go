@@ -269,9 +269,7 @@ func withLayout(rules conventions.Rules, layout Layout) conventions.Rules {
 			list = &rules.TestNames
 		}
 		for _, value := range d.InUse {
-			if !slices.Contains(*list, value.Path) {
-				*list = append(*list, value.Path)
-			}
+			*list = appendNew(*list, value.Path)
 		}
 	}
 	rules.Languages = slices.Clone(rules.Languages)

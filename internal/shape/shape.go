@@ -369,12 +369,7 @@ func additionMark(rule, path string, added []string, now, before int, existed bo
 
 // addedNames are the names now that were not there before, sorted and without repeats.
 func addedNames(before, now []string) []string {
-	var added []string
-	for _, n := range now {
-		if !slices.Contains(before, n) && !slices.Contains(added, n) {
-			added = append(added, n)
-		}
-	}
+	added := answer.Added(before, now)
 	slices.Sort(added)
 	return added
 }

@@ -76,10 +76,10 @@ func declarationEvidence(s snapshot.Snapshot, m answer.Mark) []string {
 		fmt.Sprintf("`%s` `[%s]` `%s` at the base: %s", s.OwnFile, d.Table, d.Key, side(d.Before)),
 		fmt.Sprintf("`%s` `[%s]` `%s` now: %s", s.OwnFile, d.Table, d.Key, side(d.Now)),
 	}
-	if added := difference(d.Now, d.Before); len(added) > 0 {
+	if added := answer.Added(d.Before, d.Now); len(added) > 0 {
 		lines = append(lines, "added: "+answer.QuotedList(added))
 	}
-	if removed := difference(d.Before, d.Now); len(removed) > 0 {
+	if removed := answer.Added(d.Now, d.Before); len(removed) > 0 {
 		lines = append(lines, "removed: "+answer.QuotedList(removed))
 	}
 	return lines

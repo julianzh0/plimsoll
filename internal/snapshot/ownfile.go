@@ -27,6 +27,7 @@ type ownFile struct {
 	values     map[string][]string // per text key that was read: its usable values, in file order, each once
 	unusable   map[string]int      // per text key: the values that have not their form
 	unread     map[string]bool     // text keys whose value could not be read
+	single     map[string]string   // per key that holds one name and could not be used: its problem phrase
 	problems   []string            // what the file says that is not read: phrases, sorted, each once
 }
 
@@ -34,7 +35,7 @@ type ownFile struct {
 // not read is a problem phrase, and what it names keeps plimsoll's default. Values are brought to their form; one
 // without it is counted, never kept.
 func readOwnFile(rules conventions.Rules, content map[string][]byte) ownFile {
-	o := ownFile{limits: map[string]float64{}, values: map[string][]string{}, unusable: map[string]int{}, unread: map[string]bool{}}
+	o := ownFile{limits: map[string]float64{}, values: map[string][]string{}, unusable: map[string]int{}, unread: map[string]bool{}, single: map[string]string{}}
 	file, tracked := content[rules.OwnFile]
 	switch {
 	case !tracked:
@@ -147,8 +148,8 @@ func (o *ownFile) readList(key conventions.OwnKey, value string, problem func(st
 		switch {
 		case !usable:
 			o.unusable[key.Key]++
-		case !slices.Contains(values, formed):
-			values = append(values, formed)
+		default:
+			values = appendNew(values, formed)
 		}
 	}
 	o.values[key.Key] = values
@@ -159,23 +160,18 @@ func (o *ownFile) readString(key conventions.OwnKey, value string, problem func(
 	text := strings.TrimSpace(value)
 	if len(text) < 2 || (text[0] != '"' && text[0] != '\'') || text[len(text)-1] != text[0] || strings.ContainsAny(text[1:len(text)-1], "\"'\n") {
 		o.unread[key.Key] = true
-		problem("%s", notText(key.Key))
+		o.single[key.Key] = fmt.Sprintf("`%s` is not text", key.Key)
+		problem("%s", o.single[key.Key])
 		return
 	}
 	formed, usable := key.Holds.Form(text[1 : len(text)-1])
 	if !usable {
 		o.unusable[key.Key]++
-		problem("%s", notABranch(key.Key))
+		o.single[key.Key] = fmt.Sprintf("`%s` is not the name of a branch, a remote branch or a tag", key.Key)
+		problem("%s", o.single[key.Key])
 		return
 	}
 	o.values[key.Key] = []string{formed}
-}
-
-// notText and notABranch are the problems of a key that holds one name.
-func notText(key string) string { return fmt.Sprintf("`%s` is not text", key) }
-
-func notABranch(key string) string {
-	return fmt.Sprintf("`%s` is not the name of a branch, a remote branch or a tag", key)
 }
 
 // uncommented is a line up to a "#" that lies outside a string.

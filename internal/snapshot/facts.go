@@ -52,7 +52,7 @@ func WantsOf(rules conventions.Rules) Wants {
 // unusable; both are "" when the file declares none.
 func declaredBaseIn(rules conventions.Rules, content []byte) (name, problem string) {
 	o := readOwnFile(rules, map[string][]byte{rules.OwnFile: content})
-	at := slices.IndexFunc(rules.OwnKeys, func(k conventions.OwnKey) bool { return k.Holds.Single() })
+	at := slices.IndexFunc(rules.OwnKeys, func(k conventions.OwnKey) bool { return k.Holds == conventions.BaseName })
 	if at < 0 {
 		return "", ""
 	}
@@ -60,10 +60,8 @@ func declaredBaseIn(rules conventions.Rules, content []byte) (name, problem stri
 	switch {
 	case o.unreadable:
 		return "", o.problems[0]
-	case o.unread[key]:
-		return "", notText(key)
-	case o.unusable[key] > 0:
-		return "", notABranch(key)
+	case o.single[key] != "":
+		return "", o.single[key]
 	case len(o.values[key]) > 0:
 		return o.values[key][0], ""
 	}
