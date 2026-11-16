@@ -212,3 +212,53 @@ func moduleSources(t *testing.T, root string) []sourceFile {
 	}
 	return files
 }
+
+// TestNoticesNameEveryRedistributedComponent keeps THIRD_PARTY_NOTICES.md complete: every module of go.mod and every
+// source of the grammar modules is redistributed in the binary and needs its licence.
+func TestNoticesNameEveryRedistributedComponent(t *testing.T) {
+	notices, err := os.ReadFile("../../THIRD_PARTY_NOTICES.md")
+	if err != nil {
+		t.Fatalf("reading the notices: %v", err)
+	}
+	goMod, err := os.ReadFile("../../go.mod")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pins, err := os.ReadFile("../../internal/parse/grammars/pins.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var components []string
+	inBlock := false
+	for line := range strings.Lines(string(goMod)) {
+		fields := strings.Fields(line)
+		switch {
+		case len(fields) == 2 && fields[0] == "require" && fields[1] == "(":
+			inBlock = true
+		case inBlock && len(fields) > 0 && fields[0] == ")":
+			inBlock = false
+		case inBlock && len(fields) >= 2:
+			components = append(components, fields[0])
+		case len(fields) >= 3 && fields[0] == "require":
+			components = append(components, fields[1])
+		}
+	}
+	for line := range strings.Lines(string(pins)) {
+		fields := strings.Fields(line)
+		if len(fields) != 8 || strings.HasPrefix(fields[0], "#") {
+			continue
+		}
+		if strings.HasPrefix(fields[0], "zig-") {
+			components = append(components, "zig")
+		} else {
+			components = append(components, strings.TrimPrefix(fields[1], "https://"))
+		}
+	}
+	for _, component := range slices.Compact(slices.Sorted(slices.Values(components))) {
+		heading := "\n## " + component + "\n"
+		at := strings.Index(string(notices), heading)
+		if at < 0 || !strings.HasPrefix(string(notices)[at+len(heading):], "\nLicence: ") {
+			t.Errorf("THIRD_PARTY_NOTICES.md has no section %q followed by a line \"Licence: <identifier>\"", component)
+		}
+	}
+}

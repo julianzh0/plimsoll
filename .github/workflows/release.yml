@@ -33,5 +33,6 @@ jobs:
             done
             cd dist && sha256sum plimsoll_* > checksums.txt'
           cat dist/checksums.txt
+          cp THIRD_PARTY_NOTICES.md dist/
       - name: Publish
         run: gh release create "$TAG" dist/* --title "$TAG" --generate-notes --verify-tag
