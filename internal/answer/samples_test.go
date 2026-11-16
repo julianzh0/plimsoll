@@ -1,6 +1,8 @@
 package answer_test
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -148,6 +150,11 @@ func detectorSamples() []snapshot.Source {
 			"CMakeLists.txt": "project(app)\ninclude_directories(lib)\n", "lib/kit.h": "#pragma once\n",
 			"src/main.cc": "#include \"kit.h\"\n", "src/tool.c": "#include <kit.h>\n",
 		}),
+		// the repository's own file: test folders and test file names, one value matching nothing, one without its form
+		snapshottest.Files(map[string]string{"src/a.ts": "x\n", "checks/h.ts": "x\n", "src/a.check.ts": "x\n"}, map[string]string{
+			".plimsoll.toml": "[layout]\ntest_folders = [\"checks\", \"nowhere\"]\ntest_files = [\"*.check.ts\", \"a b\"]\n",
+			"src/a.ts":       "x\n", "checks/h.ts": "x\n", "src/a.check.ts": "x\n",
+		}),
 		// rust: a crate whose modules use each other, and a product file whose test code a change grows
 		snapshottest.Files(map[string]string{
 			"src/lib.rs": "mod a;\npub struct Root;\n",
@@ -172,7 +179,7 @@ func TestTheSamplesShowEveryRuleAndChange(t *testing.T) {
 		}
 	}
 	for _, want := range []string{
-		"process.planning-file new", "process.limit-change new", "process.planning-file standing", "process.planning-file resolved", "process.doc-churn new",
+		"process.planning-file new", "process.limit-change new", "process.declaration-change new", "process.planning-file standing", "process.planning-file resolved", "process.doc-churn new",
 		"settings.no-reader new", "settings.no-reader resolved", "settings.defined-twice grown", "settings.defined-twice resolved",
 		"settings.compose-only standing", "settings.compose-only resolved", "co-change.pair new", "co-change.pair grown",
 		"links.test-import new", "links.test-import grown", "links.test-import resolved", "links.test-import standing",
@@ -198,9 +205,56 @@ func TestTheSamplesShowEveryRuleAndChange(t *testing.T) {
 		"not seen: use between the files of one module", "no `Package.swift` at the root",
 		"This change raised the file-size limit from 1,000 to 1,500",
 		"not seen: an include reached only through an include folder", "`*.cc`, `*.cpp` and `*.cxx` run without an import of them", "limits set by `.plimsoll.toml`", "is no limit plimsoll knows",
+		"test folders declared in `.plimsoll.toml`", "test files declared in `.plimsoll.toml`", "matches no tracked file",
+		"is no plain file-name pattern", "This change altered the test folders declared", "what it does not set keeps plimsoll's default",
 	} {
 		if !strings.Contains(texts.String(), phrase) {
 			t.Errorf("no sample text holds %q", phrase)
+		}
+	}
+}
+
+func TestNoAnswerPrintsADeclaredValueOutsideItsForm(t *testing.T) {
+	long := "zzmarker" + strings.Repeat("a", 200)
+	now := "[layout]\ntest_folders = [\"checks\", \"zzmarker dir\", \"/zzmarker/abs\", \"../zzmarker\", \"zzmarker`tick\", \"$(zzmarker)\", \"zzmarker\\n\", \"" + long + "\"]\n" +
+		"test_files = [\"zzmarker/x.ts\", \"zzmarker *.ts\", \"[zzmarker].ts\"]\n"
+	tree := func(own string) map[string]string {
+		return map[string]string{"src/a.ts": "x\n", "checks/h.ts": "x\n", ".plimsoll.toml": own}
+	}
+	q, _ := questions(t, snapshottest.Files(tree("[layout]\ntest_folders = [\"zzmarker old\"]\n"), tree(now)), nil)
+	q.Detectors = everyDetector()
+	ctx := context.Background()
+	status, err := q.Status(ctx, "/repository", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	report, err := q.Report(ctx, "/repository", "main", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	answers := []answer.Answer{status, report}
+	for _, list := range [][]answer.Mark{report.Marks, report.Standing, report.Resolved} {
+		for _, m := range list {
+			explained, err := q.Explain(ctx, "/repository", "main", m.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			answers = append(answers, explained)
+		}
+	}
+	for _, a := range answers {
+		data, err := json.Marshal(a)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if text := q.Text(a); strings.Contains(text, "zzmarker") || strings.Contains(string(data), "zzmarker") {
+			t.Errorf("an answer holds a declared value outside its form:\n%s", text)
+		}
+	}
+	text := q.Text(report)
+	for _, want := range []string{"`checks/`", "7 values are no plain paths from the root", "3 values are no plain file-name patterns"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the report lacks %q:\n%s", want, text)
 		}
 	}
 }

@@ -28,7 +28,7 @@ stores nothing, and never says what to do.
 A coding agent sees the files it works on, not the repository around them. plimsoll fills that gap: after each
 change, it tells the agent what the change did to the repository as a whole. The answer is a few findings, and each
 one says how to check it, so the agent does not have to take plimsoll's word for it. There is nothing to install
-besides plimsoll itself and nothing to configure.
+besides plimsoll itself and nothing that has to be configured.
 
 What plimsoll brings together:
 
@@ -36,7 +36,7 @@ What plimsoll brings together:
 - **Several sides in one answer.** Size, tests, wiring, history, settings and working habits.
 - **Findings, not a score.** Each finding names its measurement, its limit and a way to check it.
 - **Nothing to set up.** It needs `git` and nothing else: no account, no server, no network. An optional
-  `.plimsoll.toml` sets your own limits.
+  `.plimsoll.toml` sets your own limits and declares your layout.
 
 It works next to your linters and CI, not instead of them. They go deeper into one thing, and plimsoll keeps the
 overview of a change.
@@ -60,7 +60,7 @@ Each detector compares now with a base you choose, such as `main`, so old debt s
 ## Highlights
 
 - **Read-only** // runs only read-only `git` commands, never changes a byte, fetches nothing and keeps no state
-- **One binary** // no runtime and nothing to configure, `git` is all it needs
+- **One binary** // no runtime and nothing that has to be configured, `git` is all it needs
 - **Change-based** // compares now with a base revision, so standing debt stays quiet and new growth is named
 - **Honest** // every number names its limit and source, and whatever it could not read is listed as "not analysed"
 - **Language-agnostic** // the same detectors for Go, TypeScript, Python, Dart, Java, Kotlin, Rust, C#, Swift and C/C++, and a language is one data file
@@ -166,7 +166,7 @@ Every number is measured at the base and now, from the tracked files only:
 - the settings audit: settings no product file names, names defined twice in `.env.example`, compose variables that are not settings, and reads whose name is computed at run time
 - hotspots: the three code files with the most changes in usable commits times their lines now, as report rows and a remark on their size mark, with no rule of its own
 - changed together: pairs of code files that share usable commits, at least one product code, neither a file that defines tests, and not two files that the language treats as one unit
-- test folders and package roots that a project declares in its own configuration, added to the defaults and named with their source
+- test folders and package roots that a project declares in its own configuration or in `.plimsoll.toml`, added to the defaults and named with their source
 - import links, read from the code: the files that import the changed files and that the change did not touch, the three files that import the most others, import rings, cycles between sibling folders, and each new product file that no file imports. With `files`, also the files that import each named file.
 
 What it could not see is always named under "not analysed".
@@ -306,8 +306,9 @@ still run, interpreted and about 80 times slower.
 - **Test code** lives in folders named `tests`, `Tests`, `test`, `__tests__`, `spec` or `integration_test`, in folders
   directly in `src/` named `test[A-Z]*` or `*Test*` (`androidTest`, `testFixtures`), in folders whose name ends in
   `.Tests` or `.Test` (`Acme.Tests`), in files whose name ends in `.test`, `.spec`, `_test` or `-test` or starts with
-  `test_`, and in files that define a test (`func Test…`, `func test…`, `def test_…`, `test(…)`, `testWidgets(…)`,
-  `it(…)`, `@Test`, `[Fact]`, `[Test]`, `#[test]`, `TEST(…)`, `TEST_CASE(…)`).
+  `test_`. A test file that defines a test (`func Test…`, `func test…`, `def test_…`, `test(…)`, `testWidgets(…)`,
+  `it(…)`, `@Test`, `[Fact]`, `[Test]`, `#[test]`, `TEST(…)`, `TEST_CASE(…)`) counts as a test, any other test file as
+  test infrastructure.
 - **Type-only imports:** none.
 - **Import rings** are looked for.
 - **Setting reads:** every setting is also found by its name as a word.
@@ -324,6 +325,7 @@ still run, interpreted and about 80 times slower.
 | `process.planning-file:<path>` | a file under a planning or review path is tracked now and was not at the base | repositories hold no planning records |
 | `process.doc-churn:repository` | over the commits since the base, documentation churn is above product plus test churn | documentation above code |
 | `process.limit-change:<key>` | `.plimsoll.toml` sets a limit to another value now than at the base, so a change that raised a limit to clear a mark says so | any change |
+| `process.declaration-change:<key>` | `.plimsoll.toml` declares other values under a key of `[layout]` now than at the base | any change |
 | `settings.no-reader:<NAME>` | a setting that no product file holds as a word or reads through a declared prefix (candidate) | plimsoll's rule: a setting has a reader |
 | `settings.defined-twice:<NAME>` | a name on two or more lines of `.env.example` that are not commented out (candidate) | plimsoll's rule: one name, one setting |
 | `settings.compose-only:<NAME>` | a compose `environment` key that takes its value from the host (no value, or `$`) and that `.env.example` does not name (candidate) | the three lists agree |
@@ -335,27 +337,44 @@ still run, interpreted and about 80 times slower.
 Something over its limit at the base and no longer over it is reported as resolved. Something over it on both
 sides that did not grow is standing.
 
-### Your own limits
+### Your own limits and layout
 
-A repository may set its own limits in `.plimsoll.toml` at its root, committed and reviewed like any other file:
+A repository may set its own limits and declare its layout in `.plimsoll.toml` at its root, committed and reviewed
+like any other file. Every key is optional:
 
 ```toml
 [limits]
-file_lines = 1500     # a code file's line limit (default 1,000)
-test_ratio = 3.0      # test lines per product line (default 2.0)
-shared_commits = 8    # commits two files share before they are a pair (default 5)
+file_lines = 1500                           # a code file's line limit (default 1,000)
+test_ratio = 3.0                            # test lines per product line (default 2.0)
+shared_commits = 8                          # commits two files share before they are a pair (default 5)
+
+[layout]
+test_folders = ["checks", "tools/harness"]  # folders whose code is test code
+test_files = ["*_spec.rb", "*IT.java"]      # names of test files
 ```
 
-Every mark then names its limit's source, for example "1,500 lines, set by `.plimsoll.toml`". A limit that changed
-since the base is itself a mark. The file holds limits only: no rule is switched off and no path is left out. A key
-plimsoll does not know, a value that is no number above 0 (a whole number for a limit that counts), a line outside
-`[limits]` or a key set twice is named under "not analysed". Such a limit keeps its default, and a key set twice its
-first value.
+| Key | What it declares |
+|---|---|
+| `file_lines`, `test_ratio`, `shared_commits` | The limits of the file-size, test-ratio and co-change rules |
+| `test_folders` | Folders, as paths from the root, whose code files count as test code, beside the defaults |
+| `test_files` | File names of code files that count as test code wherever they lie: `*` is any run of characters, `?` one |
+
+A declaration adds to the defaults and takes none away, and now's file applies to both sides of a question. Every
+mark names its limit's source, for example "1,500 lines, set by `.plimsoll.toml`", every report names what the file
+declares, and a limit or a declaration that changed since the base is itself a mark. The file switches no rule off
+and leaves no file out of the count: test code declared here counts as test code. A folder is a plain path, and a
+bare name is a folder at the root. A test folder that is the root or a package root, and a file name that is only
+`*`, are not applied.
+
+A key plimsoll does not know, a table it does not read, a value that is no number above 0 (a whole number for a limit
+that counts), a list that is no list of text, a line outside a table or a key set twice is named under "not
+analysed", and what it names keeps its default (a key set twice its first value). A declared value that matches no
+tracked file, or that is no plain path or file-name pattern, is named there too and not used.
 
 ## Guarantees
 
 - **trust**: plimsoll never changes a repository it reads. It runs only read-only git commands, takes no lock, starts no file monitor, runs no filter and fetches nothing from a remote. Tests: `internal/gitrepo/history_integration_test.go::TestIntegrationReadLeavesTheRepositoryUnchanged`, `internal/gitrepo/history_integration_test.go::TestIntegrationReadFetchesNothingFromARemote`, `cmd/plimsoll/tools_integration_test.go::TestIntegrationAnswersAreRepeatableAndLeaveNoTrace`
-- **trust**: no answer shows the content of a file or the value of a setting: only names, paths, line numbers and counts. Content plimsoll does not need is never read. Tests: `internal/snapshot/facts_test.go::TestBuildReadsSettingNamesNeverValues`, `internal/snapshot/links_test.go::TestBuildKeepsNoImportText`, `internal/links/links_test.go::TestNoLinksLineHoldsImportText`, `internal/snapshot/settings_test.go::TestBuildReadsComposeEnvironmentKeys`, `internal/shape/explain_test.go::TestExplainHoldsNoFileContentOrSettingValue`, `internal/gitrepo/reader_integration_test.go::TestIntegrationReadLeavesUnwantedAndBinaryContentUnread`, `internal/answer/layout_test.go::TestLayoutLinesHoldNoValueFromOutsideTheRepository`
+- **trust**: no answer shows the content of a file or the value of a setting: only names, paths, line numbers and counts, and, from the repository's own `.plimsoll.toml`, its limits and the declared values that are plain paths or file-name patterns. Content plimsoll does not need is never read. Tests: `internal/snapshot/facts_test.go::TestBuildReadsSettingNamesNeverValues`, `internal/snapshot/links_test.go::TestBuildKeepsNoImportText`, `internal/links/links_test.go::TestNoLinksLineHoldsImportText`, `internal/snapshot/settings_test.go::TestBuildReadsComposeEnvironmentKeys`, `internal/shape/explain_test.go::TestExplainHoldsNoFileContentOrSettingValue`, `internal/gitrepo/reader_integration_test.go::TestIntegrationReadLeavesUnwantedAndBinaryContentUnread`, `internal/answer/layout_test.go::TestLayoutLinesHoldNoValueFromOutsideTheRepository`, `internal/answer/samples_test.go::TestNoAnswerPrintsADeclaredValueOutsideItsForm`
 - **idempotency**: the same question about the same repository state gives the same answer, in the same process or a new one, whatever the user's git configuration. The history and the file readings kept between questions answer as a fresh read does, also for questions answered at the same time. Tests: `cmd/plimsoll/tools_integration_test.go::TestIntegrationAnswersAreRepeatableAndLeaveNoTrace`, `internal/snapshot/readings_test.go::TestKeptReadingsEqualFreshOnes`, `internal/gitrepo/history_integration_test.go::TestIntegrationKeptHistoryEqualsAFreshRead`, `internal/gitrepo/history_integration_test.go::TestIntegrationReadsAtTheSameTimeShareOneReader`, `internal/gitrepo/history_test.go::TestQuestionsAtTheSameTimeShareOneHistoryRead`, `internal/gitrepo/history_integration_test.go::TestIntegrationReadIsTheSameEverywhere`
 - **ordering**: new and grown marks come in one order (a mark another detector backs with a remark first, then new before grown, exact before candidate, the farthest past its limit first, then by identifier, at most two of one detector before the others). `status` shows at most five, and the report's sections follow the detector list. Tests: `internal/answer/mark_test.go::TestOrderPutsNewExactAndFarthestFirstWithTwoPerDetector`, `internal/answer/assemble_test.go::TestStatusShowsFiveMarksAndStaysInsideFortyLines`, `cmd/plimsoll/detectors_test.go::TestDetectorsAreListedInReportOrder`
 - **cleanup**: a SIGTERM or the end of its input ends the server with exit status 0. Tests: `cmd/plimsoll/main_e2e_test.go::TestE2EProgramAnswersAndEndsOnASignal`, `cmd/plimsoll/main_e2e_test.go::TestE2EEndOfInputEndsTheProcess`
