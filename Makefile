@@ -11,7 +11,7 @@ TAGS := -tags integration,e2e
 GO_TEST := go test -count=1 -race -shuffle=on
 # Coverage of the three test levels, merged: the packages measured leave out the test helpers.
 COVERDIR := $(CURDIR)/bin/cover
-COVERPKG = $(shell go list ./... | grep -v -e /snapshottest -e /gitrepotest | paste -sd, -)
+COVERPKG = $(shell go list ./... | grep -v -e /snapshottest -e /gitrepotest -e /parsetest | paste -sd, -)
 GO_COVER = -cover -coverpkg=$(COVERPKG)
 BINDIR ?= $(shell go env GOPATH)/bin
 

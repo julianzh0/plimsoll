@@ -2,7 +2,10 @@ module github.com/juzhxng/plimsoll
 
 go 1.27.4
 
-require github.com/modelcontextprotocol/go-sdk v1.8.0
+require (
+	github.com/modelcontextprotocol/go-sdk v1.8.0
+	github.com/tetratelabs/wazero v1.12.0
+)
 
 require (
 	github.com/google/jsonschema-go v0.4.3 // indirect

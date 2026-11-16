@@ -64,6 +64,10 @@ linters:
           - gosec
         path: ^internal/gitrepo/
         text: G204 # starting git with computed arguments is this package's purpose
+      - linters:
+          - gochecknoglobals
+        path: ^internal/parse/parsetest/
+        text: shared # one parser for a whole test binary: under the race detector a grammar compiles in up to 1.5 s and 720 MB
 
 formatters:
   enable:

@@ -11,10 +11,12 @@ Run `make fix`, then `make qa`. New or changed tests must also pass `make flake 
 - Packages by feature under `internal/`. No `util`, `common` or `types` package, no empty layer.
 - `internal/gitrepo` is the only package that runs a program or opens a file of an analysed repository, and it
   only reads. `internal/mcpserver` is the only package that knows MCP, and the only one that imports the MCP Go SDK.
+- `internal/parse` is the only package that knows WebAssembly and the only one that imports wazero, and it imports
+  nothing of this module.
 - A detector is one package. It imports `internal/answer` and `internal/snapshot` and nothing else of this
   module. It holds no language name and no limit: both reach it through the snapshot.
 - Rules, language entries and limits are data in `internal/conventions`, returned by functions.
-- Standard library only, except the official MCP Go SDK in `internal/mcpserver`. `git` is the one outside program. Do not add assertion or mocking libraries.
+- Standard library only, except the official MCP Go SDK in `internal/mcpserver` and wazero in `internal/parse`. `git` is the one outside program. Do not add assertion or mocking libraries.
 
 ## Design
 
