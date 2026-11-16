@@ -47,9 +47,16 @@ func Render(a Answer, w Wording) string {
 }
 
 func header(text *strings.Builder, a Answer) {
-	base := fmt.Sprintf("base `%s` %s", a.Base.Asked, Short(a.Base.Commit))
+	var about []string
+	if a.Base.DeclaredIn != "" {
+		about = append(about, fmt.Sprintf("declared in `%s`", a.Base.DeclaredIn))
+	}
 	if a.Base.MergeBase {
-		base = fmt.Sprintf("base `%s` (merge base with the head) %s", a.Base.Asked, Short(a.Base.Commit))
+		about = append(about, "merge base with the head")
+	}
+	base := fmt.Sprintf("base `%s` %s", a.Base.Asked, Short(a.Base.Commit))
+	if len(about) > 0 {
+		base = fmt.Sprintf("base `%s` (%s) %s", a.Base.Asked, strings.Join(about, "; "), Short(a.Base.Commit))
 	}
 	modified := ""
 	if a.Head.Modified {

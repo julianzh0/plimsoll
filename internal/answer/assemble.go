@@ -29,7 +29,7 @@ func Assemble(q Question, version string, s snapshot.Snapshot, results []Result)
 	a := Answer{
 		Question:    q,
 		Version:     version,
-		Base:        Base{Asked: s.AskedBase, Commit: s.Base, MergeBase: s.MergeBase},
+		Base:        Base{Asked: s.AskedBase, Commit: s.Base, MergeBase: s.MergeBase, DeclaredIn: declaredIn(s)},
 		Head:        Head{Commit: s.Head, Modified: s.Modified},
 		Footprint:   footprint(s.Footprint),
 		Marks:       []Mark{},
@@ -181,4 +181,12 @@ func Plural(n int, noun string) string {
 		return Count(float64(n)) + " " + noun
 	}
 	return Count(float64(n)) + " " + noun + "s"
+}
+
+// declaredIn is the file that declares the base of a question that named none, or "".
+func declaredIn(s snapshot.Snapshot) string {
+	if s.BaseDeclared {
+		return s.OwnFile
+	}
+	return ""
 }

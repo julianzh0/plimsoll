@@ -63,18 +63,27 @@ func TestQuestionsRefuseInOnePlainSentence(t *testing.T) {
 	if refusal, ok := errors.AsType[*answer.Refusal](err); !ok || refusal.Sentence != "`repository` must be an absolute path." || *called {
 		t.Errorf("Status(relative path) = %v, take called %v; want the absolute-path refusal before reading", err, *called)
 	}
-	cases := map[snapshot.RefusalKind]string{
-		snapshot.NotARepository:  "`repository` does not name a folder inside a git working tree.",
-		snapshot.NoCommit:        "The repository has no commit yet, so there is nothing to compare.",
-		snapshot.UnknownBase:     "Unknown base `nope`: git finds no such commit in this repository.",
-		snapshot.NoCommonHistory: "Base `nope` shares no history with the head commit.",
-		snapshot.GitFailed:       "git could not read the repository: `nope`.",
+	file := ".plimsoll.toml"
+	cases := []struct {
+		refusal snapshot.Refusal
+		want    string
+	}{
+		{snapshot.Refusal{Kind: snapshot.NotARepository, Detail: "nope"}, "`repository` does not name a folder inside a git working tree."},
+		{snapshot.Refusal{Kind: snapshot.NoCommit, Detail: "nope"}, "The repository has no commit yet, so there is nothing to compare."},
+		{snapshot.Refusal{Kind: snapshot.UnknownBase, Detail: "nope"}, "Unknown base `nope`: git finds no such commit in this repository."},
+		{snapshot.Refusal{Kind: snapshot.NoCommonHistory, Detail: "nope"}, "Base `nope` shares no history with the head commit."},
+		{snapshot.Refusal{Kind: snapshot.GitFailed, Detail: "nope"}, "git could not read the repository: `nope`."},
+		{snapshot.Refusal{Kind: snapshot.NoBase, File: file}, "The question names no base, and no tracked `.plimsoll.toml` declares a default base."},
+		{snapshot.Refusal{Kind: snapshot.NoBase, Detail: "`base` is not text", File: file},
+			"The question names no base, and the default base of `.plimsoll.toml` cannot be used: `base` is not text."},
+		{snapshot.Refusal{Kind: snapshot.UnknownDeclaredBase, Detail: "main", File: file},
+			"Unknown base `main`, the default base `.plimsoll.toml` declares: git finds no branch, remote branch or tag of this name in this repository."},
 	}
-	for kind, want := range cases {
-		q, _ := questions(t, snapshot.Source{}, &snapshot.Refusal{Kind: kind, Detail: "nope"})
+	for _, c := range cases {
+		q, _ := questions(t, snapshot.Source{}, &c.refusal)
 		_, err := q.Report(context.Background(), "/repository", "nope", nil)
-		if refusal, ok := errors.AsType[*answer.Refusal](err); !ok || refusal.Sentence != want {
-			t.Errorf("Report(refusal %d) = %v, want %q", kind, err, want)
+		if refusal, ok := errors.AsType[*answer.Refusal](err); !ok || refusal.Sentence != c.want {
+			t.Errorf("Report(refusal %+v) = %v, want %q", c.refusal, err, c.want)
 		}
 	}
 	boom := errors.New("boom")

@@ -246,6 +246,23 @@ func TestMergeBaseAndSingularsAreSaid(t *testing.T) {
 			t.Errorf("Render lacks %q:\n%s", want, text)
 		}
 	}
+	plain, err := json.Marshal(Assemble(Status, "0.1.0", s, []Result{{"shape", Findings{}}}))
+	if err != nil || strings.Contains(string(plain), "declaredIn") {
+		t.Errorf("a base the question names: JSON %s, %v; want no declaredIn", plain, err)
+	}
+	s.BaseDeclared, s.OwnFile = true, ".plimsoll.toml"
+	declared := Assemble(Status, "0.1.0", s, []Result{{"shape", Findings{}}})
+	if text := Render(declared, wording()); !strings.Contains(text, "base `main` (declared in `.plimsoll.toml`; merge base with the head) 1a2b3c4d5e") {
+		t.Errorf("Render(declared, merge base) lacks the declared header:\n%s", text)
+	}
+	if data, err := json.Marshal(declared); err != nil || !strings.Contains(string(data), `"declaredIn":".plimsoll.toml"`) {
+		t.Errorf("JSON of a declared base = %s, %v; want declaredIn", data, err)
+	}
+	s.MergeBase = false
+	if text := Render(Assemble(Status, "0.1.0", s, []Result{{"shape", Findings{}}}), wording()); !strings.Contains(text, "base `main` (declared in `.plimsoll.toml`) 1a2b3c4d5e") {
+		t.Errorf("Render(declared) lacks the declared header:\n%s", text)
+	}
+	s.BaseDeclared, s.MergeBase = false, true
 	one := 1.0
 	zero := 0.0
 	report := Assemble(Report, "0.1.0", s, []Result{{"shape", Findings{Statistics: []Statistic{{Name: "product lines", Value: &one, Before: &zero, Unit: "lines"}}}}})

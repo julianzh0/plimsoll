@@ -56,6 +56,8 @@ type Base struct {
 	Asked     string `json:"asked"`     // as the caller named it
 	Commit    string `json:"commit"`    // the full name of the commit compared with
 	MergeBase bool   `json:"mergeBase"` // Commit is the merge base of Asked and the head
+	// DeclaredIn is the file that declares the base, when the question named none.
+	DeclaredIn string `json:"declaredIn,omitempty"`
 }
 
 // Head is the head commit and whether the working tree differs from it.
