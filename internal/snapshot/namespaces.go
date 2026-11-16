@@ -15,7 +15,7 @@ import (
 // NOTE: a folder whose files declare several namespaces is reached whole. Upgrade: reach only the declaring files.
 // NOTE: a namespace declared inside another's block is not read, and a root namespace set in a project file is not
 // used. Upgrade: join a nested name to its enclosing one; read RootNamespace.
-// NOTE: a using line inside a multi-line string or under an inactive #if is read. Upgrade: a parser.
+// NOTE: a using line under an inactive #if is read: every branch is. Upgrade: evaluate the build's defines.
 func declaredNamespaces(language conventions.Language, content map[string][]byte, tracked map[string]bool) prefix {
 	imports := language.Imports
 	declared := imports.PackageLine.SubexpIndex("package")

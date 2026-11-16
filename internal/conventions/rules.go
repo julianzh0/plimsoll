@@ -153,6 +153,7 @@ type Language struct {
 	//   @import   an import statement; the @name captures inside it are the names it imports
 	//   @spec     the target as written, one pair of quotes removed; several in one match are one target
 	//   @type     the statement imports types only
+	//   @everywhere  the statement is written once for every file of its project
 	//   @computed an import whose target is built at run time; counts unless a @spec lies inside it
 	//   @pass     a top-level node a file that only passes imports on may hold; a file all of whose top-level nodes
 	//             are marked only passes imports on, and an entry whose query marks none never does

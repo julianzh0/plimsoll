@@ -23,7 +23,7 @@ func decode(result parse.Result, content []byte) reading {
 	for _, match := range result.Matches {
 		var specs []parse.Capture
 		var within parse.Capture
-		typeOnly := false
+		typeOnly, everywhere := false, false
 		for _, c := range match {
 			switch c.Name {
 			case "spec":
@@ -34,6 +34,8 @@ func decode(result parse.Result, content []byte) reading {
 				names = append(names, c)
 			case "type":
 				typeOnly = true
+			case "everywhere":
+				everywhere = true
 			case "type_block":
 				typeBlocks = append(typeBlocks, c)
 			case "computed":
@@ -62,7 +64,7 @@ func decode(result parse.Result, content []byte) reading {
 				return c
 			}, written)
 		}
-		statements = append(statements, found{statement{spec: unquoted(written), line: first.Line, typeOnly: typeOnly}, first.Start, within})
+		statements = append(statements, found{statement{spec: unquoted(written), line: first.Line, typeOnly: typeOnly, everywhere: everywhere}, first.Start, within})
 	}
 	for _, f := range statements {
 		st := f.statement
