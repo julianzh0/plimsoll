@@ -867,6 +867,31 @@ func TestBuildFollowsIncludesToFiles(t *testing.T) {
 	if !reflect.DeepEqual(inString.List, []snapshot.Link{link("src/a.c", 2, "src/b.h")}) {
 		t.Errorf("an include after a string holding /*: List = %+v, want src/a.c to src/b.h", inString.List)
 	}
+	// A file the grammar reads without an error: an include inside a raw string is text, not an include.
+	raw := linksOf(t, map[string]string{
+		"src/a.cpp": "const char *s = R\"(\n#include \"c.h\"\n)\";\n#include \"b.h\"\n", "src/b.h": "#pragma once\n",
+		"src/c.h": "#pragma once\n",
+	})
+	if !reflect.DeepEqual(raw.List, []snapshot.Link{link("src/a.cpp", 4, "src/b.h")}) {
+		t.Errorf("an include inside a raw string: List = %+v, want only src/a.cpp to src/b.h", raw.List)
+	}
+	// A file the grammar cannot read without an error is read line by line: every include counts, and the file is
+	// not named as one whose imports may be missed.
+	broken := snapshot.Build(snapshottest.Files(nil, map[string]string{
+		"src/a.c": "#include \"b.h\"\nint f( {\nstruct S {\n#include \"c.h\"\n", "src/b.h": "#pragma once\n",
+		"src/c.h": "#pragma once\n",
+	}), conventions.Default(), snapshottest.Readings(t))
+	if want := []snapshot.Link{link("src/a.c", 1, "src/b.h"), link("src/a.c", 4, "src/c.h")}; !reflect.DeepEqual(broken.Now.Links.List, want) || len(broken.SyntaxErrors) != 0 {
+		t.Errorf("a file with a syntax error: List = %+v, syntax errors %q; want %+v and none", broken.Now.Links.List, broken.SyntaxErrors, want)
+	}
+	// A define with no value and a trailing space is misread by the grammar without an error: the next line becomes
+	// its value. Such a file is read line by line too.
+	define := linksOf(t, map[string]string{
+		"src/a.h": "#ifndef A_H_\n#define A_H_ \n\n#include \"b.h\"\n#endif\n", "src/b.h": "#pragma once\n",
+	})
+	if want := []snapshot.Link{link("src/a.h", 4, "src/b.h")}; !reflect.DeepEqual(define.List, want) {
+		t.Errorf("an include after a define with a trailing space: List = %+v, want %+v", define.List, want)
+	}
 	// A path written with Windows separators names the same file.
 	windows := linksOf(t, map[string]string{"src/a.c": "#include \"sub\\x.h\"\n", "src/sub/x.h": "#pragma once\n"})
 	if !reflect.DeepEqual(windows.List, []snapshot.Link{link("src/a.c", 1, "src/sub/x.h")}) {

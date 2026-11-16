@@ -232,8 +232,9 @@ func TestNoEntryReadsAFactBothWays(t *testing.T) {
 		if l.Grammar == "" {
 			continue
 		}
-		// Import patterns beside a query read only the stretches the query marks @text, which the grammar keeps as tokens.
-		if len(l.Imports.Statements) > 0 && strings.Contains(l.Query, "@spec") && !strings.Contains(l.Query, "@text") {
+		// Import patterns beside a query read only the stretches the query marks @text, which the grammar keeps as
+		// tokens, or the files the grammar cannot read without an error.
+		if len(l.Imports.Statements) > 0 && strings.Contains(l.Query, "@spec") && !strings.Contains(l.Query, "@text") && !l.LineReadWhenBroken {
 			t.Errorf("%s reads its imports by patterns and by its query", l.Name)
 		}
 		if l.DynamicRead != nil && strings.Contains(l.Query, "@dynamic") {

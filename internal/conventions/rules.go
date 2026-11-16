@@ -164,8 +164,11 @@ type Language struct {
 	//   @type_block  a block whose statements import types only
 	//   @prefix   a declared prefix of settings names
 	//   @dynamic  a settings read whose name is computed at run time; each match counts once
-	// No fact is read both by a pattern and by the query.
+	// No fact is read both by a pattern and by the query, except under LineReadWhenBroken.
 	Query string
+	// LineReadWhenBroken reads a file the grammar cannot read without an error by the entry's text patterns instead:
+	// for a language whose files the grammar often misreads (macros), the patterns read every line on its own.
+	LineReadWhenBroken bool
 }
 
 // GrammarOf names the grammar that reads a file of the entry, or "" when the entry reads by text.

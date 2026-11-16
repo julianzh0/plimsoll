@@ -91,7 +91,9 @@ const syntaxErrorPattern = "\n(ERROR) @error\n"
 
 // read makes the reading of one file: by the entry's grammar when it names one, and every fact for which the entry
 // has a pattern by that pattern (no entry reads one fact both ways), over the file with its comments and strings
-// blanked when it is parsed. A file the parser cannot read is unread; its patterns still read it.
+// blanked when it is parsed. A file the parser cannot read is unread; its patterns still read it. For an entry that
+// reads broken files line by line, a file the grammar cannot read, or reads only with an error, is read by the
+// entry's text patterns alone.
 //
 // lasting is false for a failure of the moment (parse.ErrUnavailable): such a reading answers this question and is not
 // kept, so a later question reads the file again.
@@ -100,12 +102,19 @@ func (rs *Readings) read(language conventions.Language, grammar string, content 
 		return readByText(language, content), true
 	}
 	result, err := rs.parser.Read(grammar, language.Query+syntaxErrorPattern, content)
+	if err != nil && language.LineReadWhenBroken {
+		return readByText(language, content), !errors.Is(err, parse.ErrUnavailable)
+	}
 	if err != nil {
 		r = reading{unread: true}
 		readPatterns(language, content, &r)
 		return r, !errors.Is(err, parse.ErrUnavailable)
 	}
-	return decode(language, result, content), true
+	r = decode(language, result, content)
+	if r.syntaxError && language.LineReadWhenBroken {
+		return readByText(language, content), true
+	}
+	return r, true
 }
 
 // readByText is the reading of one file by its entry's text patterns.

@@ -37,7 +37,7 @@ func TestEveryGrammarAnswersAQuery(t *testing.T) {
 	lines := map[string]string{
 		"go": "package a\n", "typescript": "const a = 1;\n", "tsx": "const a = 1;\n", "python": "a = 1\n",
 		"java": "class A {}\n", "csharp": "class A {}\n", "kotlin": "val a = 1\n", "rust": "fn f() {}\n",
-		"swift": "let a = 1\n", "dart": "var a = 1;\n",
+		"swift": "let a = 1\n", "dart": "var a = 1;\n", "c": "int a = 1;\n", "cpp": "int a = 1;\n",
 	}
 	if got := parse.Grammars(); len(got) != len(lines) {
 		t.Fatalf("Grammars() = %v, want the %d of %v", got, len(lines), lines)

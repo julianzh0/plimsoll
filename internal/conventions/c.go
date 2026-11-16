@@ -31,6 +31,7 @@ var (
 func cFamily(name string, extensions, units []string) Language {
 	return Language{
 		Name: name, Extensions: extensions, DynamicRead: cDynamicRead, Literals: cComments,
+		Grammar: name, Query: cQuery, LineReadWhenBroken: true,
 		Imports: Imports{
 			Statements: []ImportForm{{Pattern: cIncludeQuoted}, {Pattern: cIncludeAngled}},
 			Computed:   ImportForm{Pattern: cIncludeComputed},
@@ -43,3 +44,14 @@ func cFamily(name string, extensions, units []string) Language {
 		},
 	}
 }
+
+// cQuery reads the includes of a file the grammar reads without an error: a quoted target is unquoted, an angled one
+// keeps its brackets, and an include a macro names is built at run time. Comments are blanked for cDynamicRead. A
+// define whose value is a directive is a misread the grammar reports no error for (a define with no value and a
+// trailing space takes the next directive line as its value), so it counts as one.
+const cQuery = `
+(preproc_include path: [(string_literal) (system_lib_string)] @spec) @import
+(preproc_include path: (identifier) @computed)
+(comment) @blank
+((preproc_def value: (preproc_arg) @error) (#match? @error "^#[ \t]*[a-z]"))
+`
