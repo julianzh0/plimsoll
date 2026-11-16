@@ -116,6 +116,12 @@ func TestBuildReadsRuntimeDependencies(t *testing.T) {
 		{"central versions and a build props file are no manifest", snapshottest.Files(nil, map[string]string{
 			"Directory.Packages.props": `<Project><ItemGroup><PackageVersion Include="A" Version="1" /></ItemGroup></Project>`,
 			"Directory.Build.props":    `<Project>` + csprojOwn + `</Project>`}), nil},
+		{"a vcpkg manifest: names, objects, a host tool, a repeated name; the dependencies of features left out", oneFile("vcpkg.json",
+			`{"dependencies": ["zlib", {"name": "boost-asio", "features": ["ssl"]}, {"name": "protobuf", "host": true}, "zlib"],`+
+				` "features": {"tests": {"description": "x", "dependencies": ["gtest"]}}}`), dependenciesOf("vcpkg.json", "boost-asio", "zlib")},
+		{"a vcpkg manifest without dependencies, with a byte order mark", oneFile("vcpkg.json", "\uFEFF{\"name\": \"x\"}\n"), dependenciesOf("vcpkg.json")},
+		{"a nested vcpkg manifest and a conanfile are no manifest", snapshottest.Files(nil, map[string]string{
+			"ports/x/vcpkg.json": `{"dependencies": ["zlib"]}`, "conanfile.txt": "[requires]\nzlib/1.3\n"}), nil},
 		{"a Swift package: urls with and without .git, a path, a registry id, an old name argument", oneFile("Package.swift",
 			"// swift-tools-version:5.9\nimport PackageDescription\n\nlet package = Package(\n    name: \"x\",\n    dependencies: [\n"+
 				"        .package(url: \"https://github.com/apple/swift-argument-parser.git\", from: \"1.3.0\"),\n"+
@@ -202,6 +208,11 @@ func TestBuildLeavesAnUnreadableManifestOut(t *testing.T) {
 		{"build.gradle", "dependencies {\n    implementation \"nocolon\"\n}\n"},
 		{"pom.xml", "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?><project><dependencies/></project>"},
 		{"Cargo.toml", "[package]\nname = \"x\"\n\n[dependencies]\nnot a key line\n"},
+		{"vcpkg.json", `{"dependencies": [`},
+		{"vcpkg.json", `{"dependencies": "zlib"}`},
+		{"vcpkg.json", `{"dependencies": ["zlib", 3]}`},
+		{"vcpkg.json", `{"dependencies": [{"version>=": "1.3"}]}`},
+		{"vcpkg.json", `["zlib"]`},
 		{"Package.swift", "let package = Package(name: \"x\", dependencies: [.package(url: kitURL, from: \"1.0.0\")])\n"},
 		{"src/App/App.csproj", `<Project Sdk="Microsoft.NET.Sdk"><ItemGroup>`},
 		{"src/App/App.csproj", sdkProject(`<ItemGroup><PackageReference Include="$(Driver)" /></ItemGroup>`)},
@@ -374,7 +385,7 @@ func TestWantsNamesWhatTheReaderReads(t *testing.T) {
 		"src/Acme/Form1.Designer.cs": true, "src/Acme/Views.g.cs": true,
 		"src/Acme/Acme.csproj": true, "Acme.csproj": true, "tests/Acme.Tests/Acme.Tests.csproj": false, "Acme.Tests/Acme.Tests.csproj": false,
 		"examples/Demo/Demo.csproj": false, "node_modules/x/X.csproj": false, "Directory.Packages.props": false,
-		"Package.swift": true, "Package.resolved": true, "nlohmann_json.natvis": false,
+		"Package.swift": true, "Package.resolved": true, "nlohmann_json.natvis": false, "vcpkg.json": true, "ports/x/vcpkg.json": false, "conanfile.txt": false,
 		"Cargo.toml": true, "Cargo.lock": true, "crates/cli/Cargo.toml": true, "vendor/x/Cargo.toml": false, "src/main.rs": true,
 		"pubspec.yaml": true, "app/pubspec.yaml": true, "packages/core/pubspec.yaml": true, "node_modules/x/pubspec.yaml": false,
 		"docs/.env.example": false, "node_modules/x/a.js": false, "assets/logo.bin": true,

@@ -127,6 +127,8 @@ func dependencies(format conventions.ManifestFormat, content []byte) (names []st
 		return csprojDependencies(content)
 	case conventions.SwiftDependencies:
 		return swiftDependencies(content)
+	case conventions.VcpkgDependencies:
+		return vcpkgDependencies(content)
 	case conventions.CargoDependencies:
 		return cargoDependencies(content)
 	case conventions.JSONDependencies:

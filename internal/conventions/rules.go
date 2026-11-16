@@ -90,6 +90,8 @@ const (
 	SwiftDependencies
 	// CargoDependencies reads the keys of [dependencies] and of the target tables of a Cargo.toml.
 	CargoDependencies
+	// VcpkgDependencies reads the names of the top-level dependencies of a vcpkg.json, without host tools.
+	VcpkgDependencies
 )
 
 // Limits are every number a mark compares with. No detector holds one.
@@ -198,6 +200,7 @@ func Default() Rules {
 			{File: "Cargo.toml", Format: CargoDependencies, Lockfiles: []string{"Cargo.lock"}},
 			{File: dotnetProject, Format: CsprojDependencies, Nested: true},
 			{File: "Package.swift", Format: SwiftDependencies, Lockfiles: []string{"Package.resolved"}},
+			{File: "vcpkg.json", Format: VcpkgDependencies},
 		},
 		LimitsFile: ".plimsoll.toml",
 		LimitKeys: []LimitKey{
