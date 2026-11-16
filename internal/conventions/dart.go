@@ -1,31 +1,39 @@
 package conventions
 
-import "regexp"
-
 // dartLanguage is the entry for Dart and Flutter.
 func dartLanguage() Language {
-	return Language{Name: "dart", Extensions: []string{".dart"}, DynamicRead: dartDynamicRead, Imports: dartImports()}
+	return Language{Name: "dart", Extensions: []string{".dart"}, Imports: dartImports(), Grammar: "dart", Query: dartQuery}
 }
 
-// dartDynamicRead is a settings read whose name is not a quoted literal: Platform.environment[…],
-// String/bool/int.fromEnvironment(…) and flutter_dotenv's dotenv.env[…].
-var dartDynamicRead = regexp.MustCompile(`(?:Platform\.environment|dotenv\.env)\[[ \t]*[^"' \t\]]|\b(?:String|bool|int)\.fromEnvironment\([ \t]*[^"' \t)]`)
-
-var (
-	// dartDirective is import, export, part and part of with a quoted target; a conditional import's first target
-	// is the one taken, and part of with a library name has no target.
-	dartDirective = regexp.MustCompile(`(?m)^[ \t]*(?:import|export|part(?:[ \t]+of)?)[ \t\r\n]+["'](?P<spec>[^"'\n]+)["']`)
-	// dartPassesOn is a file of export directives, a library directive and comments only.
-	dartPassesOn = regexp.MustCompile(`\A(?:[ \t\r\n]*(?:export[ \t]+["'][^"'\n]+["'][^;]*;|library\b[^;]*;|//[^\n]*|/\*(?:[^*]|\*+[^*/])*\*+/))*[ \t\r\n]*\z`)
-)
+// dartQuery reads import, export, part and part of with a quoted target (a conditional import's first target is the
+// one taken, and part of with a library name has no target), what a file that only passes imports on may hold, and a
+// settings read whose name is not a quoted literal: Platform.environment[…], String/bool/int.fromEnvironment(…) and
+// flutter_dotenv's dotenv.env[…].
+const dartQuery = `
+(configurable_uri . (uri (string_literal) @spec)) @import
+(import_specification . (uri (string_literal) @spec)) @import
+(part_directive (uri (string_literal) @spec)) @import
+(part_of_directive (uri (string_literal) @spec)) @import
+(program (import_or_export (library_export)) @pass)
+(program [(library_name) (comment) (documentation_comment)] @pass)
+((identifier) @o . (selector (unconditional_assignable_selector (identifier) @p)) .
+  (selector (unconditional_assignable_selector (index_selector . (_) @dynamic)))
+  (#eq? @o "Platform") (#eq? @p "environment") (#not-match? @dynamic "^[\"']"))
+((identifier) @o . (selector (unconditional_assignable_selector (identifier) @p)) .
+  (selector (unconditional_assignable_selector (index_selector . (_) @dynamic)))
+  (#eq? @o "dotenv") (#eq? @p "env") (#not-match? @dynamic "^[\"']"))
+((identifier) @o . (selector (unconditional_assignable_selector (identifier) @p)) .
+  (selector (argument_part (arguments . (argument) @dynamic)))
+  (#match? @o "^(String|bool|int)$") (#eq? @p "fromEnvironment") (#not-match? @dynamic "^[\"']"))
+((const_object_expression (type_identifier) @o (identifier) @p (arguments . (argument) @dynamic))
+  (#match? @o "^(String|bool|int)$") (#eq? @p "fromEnvironment") (#not-match? @dynamic "^[\"']"))
+`
 
 func dartImports() Imports {
 	return Imports{
-		Statements: []ImportForm{{Pattern: dartDirective}},
-		PassesOn:   dartPassesOn,
-		Relative:   NoScheme,
-		Prefix:     Prefix{File: "pubspec.yaml", Format: PubspecName, Members: true},
-		Target:     FileTarget,
-		Implicit:   []string{"main.dart"},
+		Relative: NoScheme,
+		Prefix:   Prefix{File: "pubspec.yaml", Format: PubspecName, Members: true},
+		Target:   FileTarget,
+		Implicit: []string{"main.dart"},
 	}
 }

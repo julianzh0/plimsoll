@@ -301,12 +301,6 @@ func TestComputedAndWholeFilePatterns(t *testing.T) {
 // passesOnCases are, per language with a PassesOn pattern, whole file contents and whether they only pass imports on.
 func passesOnCases() map[string]map[string]bool {
 	return map[string]map[string]bool{
-		"dart": {
-			"library app;\n\nexport 'src/a.dart';\nexport \"src/b.dart\" show B;\n": true,
-			"/// Barrel.\n/* all */\nexport 'a.dart' hide x;\n":                     true,
-			"export 'a.dart';\nconst x = 1;\n":                                      false,
-			"import 'a.dart';\nexport 'b.dart';\n":                                  false,
-		},
 		"rust": {
 			"#![deny(missing_docs)]\n\nmod a;\npub mod b;\n\npub use a::A;\npub use crate::b::{B, C};\npub extern crate x as y;\n": true,
 			"#[cfg(test)]\nmod tests;\nmod a;\n": true,

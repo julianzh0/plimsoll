@@ -216,6 +216,19 @@ func TestBuildListsPythonFilesThatOnlyPassImportsOn(t *testing.T) {
 	}
 }
 
+func TestBuildListsDartFilesThatOnlyPassImportsOn(t *testing.T) {
+	got := linksOf(t, map[string]string{
+		"lib/a.dart": "const a = 1;\n", "lib/b.dart": "const b = 1;\n",
+		"lib/app.dart":    "library app;\n\nexport 'a.dart';\nexport \"b.dart\" show B;\n",
+		"lib/barrel.dart": "/// Barrel.\n/* all */\nexport 'a.dart' hide x;\n",
+		"lib/own.dart":    "export 'a.dart';\nconst x = 1;\n",
+		"lib/reuse.dart":  "import 'a.dart';\nexport 'b.dart';\n",
+	})
+	if !reflect.DeepEqual(got.PassOn, []string{"lib/app.dart", "lib/barrel.dart"}) {
+		t.Errorf("PassOn = %q, want lib/app.dart and lib/barrel.dart", got.PassOn)
+	}
+}
+
 func goTree() map[string]string {
 	return map[string]string{
 		"go.mod": "module example.com/m\n\ngo 1.27\n",
