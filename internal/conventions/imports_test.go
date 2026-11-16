@@ -1,7 +1,6 @@
 package conventions
 
 import (
-	"maps"
 	"slices"
 	"strings"
 	"testing"
@@ -95,8 +94,8 @@ func importCases() map[string]map[string][]string {
 		},
 		"python": {
 			"import a.b as c\n":                  {"a.b"},
-			"import a, b\n":                      {"a"},
-			"import a; import b\n":               {"a"},
+			"import a, b\n":                      {"a", "b"},
+			"import a; import b\n":               {"a", "b"},
 			"import a.b  # why\n":                {"a.b"},
 			"    import a\n\tfrom .x import y\n": {".x", "a"},
 			"from a.b import (\n    c,  # (kept)\n    d as e,\n)\n":         {"a.b"},
@@ -302,13 +301,6 @@ func TestComputedAndWholeFilePatterns(t *testing.T) {
 // passesOnCases are, per language with a PassesOn pattern, whole file contents and whether they only pass imports on.
 func passesOnCases() map[string]map[string]bool {
 	return map[string]map[string]bool{
-		"python": {
-			"\"\"\"Doc.\"\"\"\n\nfrom .a import A\nfrom .b import (\n    B,\n)\n\n__all__ = [\"A\", \"B\"]\n": true,
-			"# only this\nfrom __future__ import annotations\nfrom .a import A\n":                             true,
-			"from .a import A\n\ndef f(): ...\n":                                                              false,
-			"from .a import A\nVERSION = \"1\"\n":                                                             false,
-			"from .a import A; import os\n":                                                                   false,
-		},
 		"dart": {
 			"library app;\n\nexport 'src/a.dart';\nexport \"src/b.dart\" show B;\n": true,
 			"/// Barrel.\n/* all */\nexport 'a.dart' hide x;\n":                     true,
@@ -331,54 +323,6 @@ func computedCases() map[string]map[string]int {
 	return map[string]map[string]int{
 		"c":   includeComputedCases(),
 		"cpp": includeComputedCases(),
-		"python": {
-			"importlib.import_module(name)": 1, "import_module(f\"a.{x}\")": 1, "__import__(\"a.\" + x)": 1,
-			"import_module(\"a\" if c else \"b\")": 1, "import_module(\".x\", __package__)": 1,
-			"importlib.import_module(\"a.b\")": 0, "__import__('a', b)": 0,
-		},
-	}
-}
-
-func TestPythonTypeOnlyBlock(t *testing.T) {
-	block := language(t, "python").Imports.TypeOnlyBlock.Pattern
-	for text, before := range map[string]string{
-		"if TYPE_CHECKING:\n    from a import b\n\n    import c\nx = 1\n":       "x = 1",
-		"if typing.TYPE_CHECKING:  # note\n    import a\nelse:\n    import b\n": "else:",
-		"if TYPE_CHECKING:\r\n    import a":                                     "",
-		"if not TYPE_CHECKING:\n    import a\n":                                 "-",
-		"    if TYPE_CHECKING:\n        import a\n":                             "-",
-	} {
-		spans := block.FindAllStringIndex(text, -1)
-		switch {
-		case before == "-" && len(spans) != 0:
-			t.Errorf("TypeOnlyBlock in %q = %v, want none", text, spans)
-		case before != "-" && (len(spans) != 1 || spans[0][0] != 0 || text[spans[0][1]:] != text[strings.LastIndex(text, before):]):
-			t.Errorf("TypeOnlyBlock in %q = %v, want one block ending before %q", text, spans, before)
-		}
-	}
-}
-
-func TestAFormMatchesOnlyTextThatHoldsOneOfItsWords(t *testing.T) {
-	for _, l := range Default().Languages {
-		forms := append(slices.Clone(l.Imports.Statements), l.Imports.Computed)
-		texts := slices.Collect(maps.Keys(importCases()[l.Name]))
-		texts = append(texts, slices.Collect(maps.Keys(computedCases()[l.Name]))...)
-		worded := 0
-		for _, form := range forms {
-			if form.Pattern == nil || len(form.Words) == 0 {
-				continue
-			}
-			worded++
-			for _, text := range texts {
-				holds := slices.ContainsFunc(form.Words, func(w string) bool { return strings.Contains(text, w) })
-				if form.Pattern.MatchString(text) && !holds {
-					t.Errorf("%s: %s matches %q, which holds none of its words %q", l.Name, form.Pattern, text, form.Words)
-				}
-			}
-		}
-		if want := map[string]int{"typescript": 0, "go": 0, "python": 2, "dart": 0, "java": 0, "kotlin": 0, "rust": 0, "csharp": 0, "swift": 0, "c": 0, "cpp": 0}[l.Name]; worded != want {
-			t.Errorf("%s: %d forms with words, want %d", l.Name, worded, want)
-		}
 	}
 }
 

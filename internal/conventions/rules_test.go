@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/juzhxng/plimsoll/internal/parse"
@@ -149,7 +150,7 @@ func TestEveryLanguageNamesItsDynamicRead(t *testing.T) {
 		"cpp": {[]string{"std::getenv(name.c_str())", "getenv(key)", "::getenv(k)"}, []string{`std::getenv("X")`, `getenv( "X")`, "environ[i]"}},
 	}
 	// wraps make a row valid code for an entry that reads by its grammar.
-	wraps := map[string]string{"go": "package a\nfunc f() { _ = %s }\n", "typescript": "const v = %s;\n"}
+	wraps := map[string]string{"go": "package a\nfunc f() { _ = %s }\n", "typescript": "const v = %s;\n", "python": "x = %s\n"}
 	for _, language := range Default().Languages {
 		if language.Grammar != "" {
 			for i, lines := range [][]string{cases[language.Name].matches, cases[language.Name].misses} {
@@ -180,30 +181,35 @@ func TestEveryLanguageNamesItsDynamicRead(t *testing.T) {
 }
 
 func TestSettingsPrefixFindsADeclaredPrefix(t *testing.T) {
-	cases := map[string]map[string]string{
-		"python": {
-			`model_config = SettingsConfigDict(env_prefix="APP_", extra="ignore")`: "APP_",
-			`env_prefix = 'job_'`:        "job_",
-			`Settings(_env_prefix="X_")`: "X_",
-			`env_prefix=prefix`:          "",
-			`env_prefix=""`:              "",
-		},
+	cases := map[string]string{
+		`model_config = SettingsConfigDict(env_prefix="APP_", extra="ignore")`: "APP_",
+		`env_prefix = 'job_'`:        "job_",
+		`Settings(_env_prefix="X_")`: "X_",
+		`env_prefix=prefix`:          "",
+		`env_prefix=""`:              "",
 	}
 	for _, language := range Default().Languages {
-		texts, declares := cases[language.Name]
-		if !declares {
-			if language.SettingsPrefix != nil {
-				t.Errorf("%s: SettingsPrefix = %v, want none", language.Name, language.SettingsPrefix)
+		if language.Name != "python" {
+			if strings.Contains(language.Query, "@prefix") {
+				t.Errorf("%s: its query reads settings prefixes, want none", language.Name)
 			}
 			continue
 		}
-		for text, want := range texts {
+		for text, want := range cases {
+			result, err := parsetest.Parser(t).Read(language.Grammar, language.Query, []byte(text+"\n"))
+			if err != nil {
+				t.Fatalf("Read(%q) error = %v", text, err)
+			}
 			got := ""
-			if m := language.SettingsPrefix.FindStringSubmatch(text); m != nil {
-				got = m[language.SettingsPrefix.SubexpIndex("prefix")]
+			for _, match := range result.Matches {
+				for _, c := range match {
+					if c.Name == "prefix" {
+						got = text[c.Start:c.End]
+					}
+				}
 			}
 			if got != want {
-				t.Errorf("%s SettingsPrefix in %q = %q, want %q", language.Name, text, got, want)
+				t.Errorf("python settings prefix in %q = %q, want %q", text, got, want)
 			}
 		}
 	}

@@ -6,7 +6,6 @@ import (
 	"path"
 	"slices"
 	"strings"
-	"unicode"
 
 	"github.com/juzhxng/plimsoll/internal/conventions"
 )
@@ -121,42 +120,23 @@ type reading struct {
 	unread     bool     // the parser could not read the file
 }
 
-// tries says whether a form is tried on a text: it has a pattern, and the text holds one of its words when it names any.
-func tries(form conventions.ImportForm, text []byte) bool {
-	if form.Pattern == nil {
-		return false
-	}
-	return len(form.Words) == 0 || slices.ContainsFunc(form.Words, func(word string) bool { return bytes.Contains(text, []byte(word)) })
-}
-
 // scan finds the import statements of one file's content, its literals blanked.
 func scan(imports conventions.Imports, text []byte) reading {
 	r := reading{passesOn: imports.PassesOn != nil && imports.PassesOn.Match(text)}
-	if tries(imports.Computed, text) {
+	if imports.Computed.Pattern != nil {
 		r.computed = len(imports.Computed.Pattern.FindAllIndex(text, -1))
-	}
-	var typeOnlyBlocks [][]int
-	if tries(imports.TypeOnlyBlock, text) {
-		typeOnlyBlocks = imports.TypeOnlyBlock.Pattern.FindAllIndex(text, -1)
 	}
 	modules := spansOf(imports.Module, text)
 	for _, form := range imports.Statements {
-		if !tries(form, text) {
-			continue
-		}
-		spec, typeGroup, namesGroup := form.Pattern.SubexpIndex("spec"), form.Pattern.SubexpIndex("type"), form.Pattern.SubexpIndex("names")
+		spec, typeGroup := form.Pattern.SubexpIndex("spec"), form.Pattern.SubexpIndex("type")
 		everywhereGroup := form.Pattern.SubexpIndex("everywhere")
 		for _, m := range form.Pattern.FindAllSubmatchIndex(text, -1) {
 			at, written := m[2*spec], string(text[m[2*spec]:m[2*spec+1]])
 			st := statement{
-				line: 1 + bytes.Count(text[:at], []byte("\n")),
-				typeOnly: typeGroup >= 0 && m[2*typeGroup] >= 0 ||
-					slices.ContainsFunc(typeOnlyBlocks, func(block []int) bool { return block[0] <= at && at < block[1] }),
+				line:       1 + bytes.Count(text[:at], []byte("\n")),
+				typeOnly:   typeGroup >= 0 && m[2*typeGroup] >= 0,
 				within:     modulesAt(modules, at),
 				everywhere: everywhereGroup >= 0 && m[2*everywhereGroup] >= 0,
-			}
-			if namesGroup >= 0 && m[2*namesGroup] >= 0 {
-				st.names = importedNames(string(text[m[2*namesGroup]:m[2*namesGroup+1]]))
 			}
 			targets := []string{written}
 			if imports.Grouped {
@@ -476,22 +456,3 @@ func (s side) filesOf(folder string, tree bool) []string {
 	}
 	return s.paths[start:end]
 }
-
-// importedNames are the names a statement imports out of its target, as its "names" group writes them: comments,
-// parentheses and line continuations dropped, split at commas, each name's first word; "*" names nothing. Nil when it
-// names none.
-func importedNames(text string) []string {
-	var names []string
-	for line := range strings.SplitSeq(text, "\n") {
-		line, _, _ = strings.Cut(line, "#")
-		for part := range strings.SplitSeq(line, ",") {
-			if words := strings.FieldsFunc(part, isNameNoise); len(words) > 0 && words[0] != "*" {
-				names = append(names, words[0])
-			}
-		}
-	}
-	return names
-}
-
-// isNameNoise is a character between imported names: white space, a parenthesis or a line continuation.
-func isNameNoise(r rune) bool { return unicode.IsSpace(r) || r == '(' || r == ')' || r == '\\' }

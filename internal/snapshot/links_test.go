@@ -169,6 +169,53 @@ func TestBuildLinksTheSameContentUnderTwoSuffixes(t *testing.T) {
 	}
 }
 
+func TestBuildMarksImportsUnderTypeChecking(t *testing.T) {
+	cases := map[string]map[int]bool{ // the line of each import of a.py, b.py or c.py, and whether it is type-only
+		"if TYPE_CHECKING:\n    from a import b\n\n    import c\nx = 1\n":       {2: true, 4: true},
+		"if typing.TYPE_CHECKING:  # note\n    import a\nelse:\n    import b\n": {2: true, 4: false},
+		"if TYPE_CHECKING:\r\n    import a":                                     {2: true},
+		"if not TYPE_CHECKING:\n    import a\n":                                 {2: false},
+	}
+	for text, want := range cases {
+		got := linksOf(t, map[string]string{"m.py": text, "a.py": "", "b.py": "", "c.py": ""})
+		lines := map[int]bool{}
+		for _, l := range got.List {
+			lines[l.Line] = l.TypeOnly
+		}
+		if !reflect.DeepEqual(lines, want) {
+			t.Errorf("type-only links of %q = %v, want %v", text, lines, want)
+		}
+	}
+}
+
+func TestBuildCountsPythonImportsBuiltAtRunTime(t *testing.T) {
+	cases := map[string]int{
+		"importlib.import_module(name)": 1, "import_module(f\"a.{x}\")": 1, "__import__(\"a.\" + x)": 1,
+		"import_module(\"a\" if c else \"b\")": 1, "import_module(\".x\", __package__)": 1,
+		"importlib.import_module(\"a.b\")": 0, "__import__('a', b)": 0,
+	}
+	for text, want := range cases {
+		got := linksOf(t, map[string]string{"m.py": text + "\n"})
+		if len(got.Languages) != 1 || got.Languages[0].Unreadable != want {
+			t.Errorf("imports built at run time in %q = %+v, want %d", text, got.Languages, want)
+		}
+	}
+}
+
+func TestBuildListsPythonFilesThatOnlyPassImportsOn(t *testing.T) {
+	got := linksOf(t, map[string]string{
+		"pkg/__init__.py": "", "pkg/a.py": "A = 1\n", "pkg/b.py": "B = 1\n",
+		"pkg/doc.py":    "\"\"\"Doc.\"\"\"\n\nfrom .a import A\nfrom .b import (\n    B,\n)\n\n__all__ = [\"A\", \"B\"]\n",
+		"pkg/future.py": "# only this\nfrom __future__ import annotations\nfrom .a import A\n",
+		"pkg/def.py":    "from .a import A\n\ndef f(): ...\n",
+		"pkg/const.py":  "from .a import A\nVERSION = \"1\"\n",
+		"pkg/mixed.py":  "from .a import A; import os\n",
+	})
+	if !reflect.DeepEqual(got.PassOn, []string{"pkg/doc.py", "pkg/future.py"}) {
+		t.Errorf("PassOn = %q, want pkg/doc.py and pkg/future.py", got.PassOn)
+	}
+}
+
 func goTree() map[string]string {
 	return map[string]string{
 		"go.mod": "module example.com/m\n\ngo 1.27\n",

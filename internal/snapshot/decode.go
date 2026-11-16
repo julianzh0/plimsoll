@@ -12,21 +12,37 @@ import (
 // with the queries, listed at conventions.Language.Query.
 func decode(result parse.Result, content []byte) reading {
 	var r reading
-	var targets, computed []parse.Capture
+	var targets, computed, names, typeBlocks []parse.Capture
 	passes := map[parse.Span]bool{}
+	type found struct {
+		statement statement
+		within    parse.Capture // the @import capture, which holds the statement's @name captures
+	}
+	var statements []found
 	for _, match := range result.Matches {
 		var specs []parse.Capture
+		var within parse.Capture
 		typeOnly := false
 		for _, c := range match {
 			switch c.Name {
 			case "spec":
 				specs = append(specs, c)
+			case "import":
+				within = c
+			case "name":
+				names = append(names, c)
 			case "type":
 				typeOnly = true
+			case "type_block":
+				typeBlocks = append(typeBlocks, c)
 			case "computed":
 				computed = append(computed, c)
 			case "pass":
 				passes[parse.Span{Start: c.Start, End: c.End}] = true
+			case "prefix":
+				if prefix := string(content[c.Start:c.End]); !slices.Contains(r.prefixes, prefix) {
+					r.prefixes = append(r.prefixes, prefix)
+				}
 			case "dynamic":
 				r.dynamic++
 			}
@@ -45,7 +61,18 @@ func decode(result parse.Result, content []byte) reading {
 				return c
 			}, written)
 		}
-		r.statements = append(r.statements, statement{spec: unquoted(written), line: first.Line, typeOnly: typeOnly})
+		statements = append(statements, found{statement{spec: unquoted(written), line: first.Line, typeOnly: typeOnly}, within})
+	}
+	for _, f := range statements {
+		st := f.statement
+		for _, n := range names {
+			if f.within.Start <= n.Start && n.End <= f.within.End {
+				st.names = append(st.names, string(content[n.Start:n.End]))
+			}
+		}
+		at := targets[len(r.statements)].Start
+		st.typeOnly = st.typeOnly || slices.ContainsFunc(typeBlocks, func(b parse.Capture) bool { return b.Start <= at && at < b.End })
+		r.statements = append(r.statements, st)
 	}
 	for _, c := range computed {
 		if !slices.ContainsFunc(targets, func(t parse.Capture) bool { return c.Start <= t.Start && t.End <= c.End }) {

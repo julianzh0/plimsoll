@@ -143,21 +143,22 @@ type Language struct {
 	// TestBlock is the start of test code inside a file that is no test code by its path: a match that ends with "{"
 	// runs to the brace that closes it, any other match is the test code. Nil for none.
 	TestBlock *regexp.Regexp
-	// SettingsPrefix is a declaration of a prefix of settings names; its group "prefix" holds it. Nil for none.
-	SettingsPrefix *regexp.Regexp
-	Imports        Imports       // how its imports are written and what they name
-	Layout         []Declaration // the standard files and keys in which a project declares its layout; nil for none
+	Imports   Imports       // how its imports are written and what they name
+	Layout    []Declaration // the standard files and keys in which a project declares its layout; nil for none
 	// Grammar is the tree-sitter grammar that reads the entry's files; "" reads them by the text patterns above.
 	Grammar string
 	// GrammarBySuffix names another grammar for some of the entry's suffixes.
 	GrammarBySuffix map[string]string
 	// Query is the tree-sitter query that reads, in one parse, everything the entry takes from a file. Its captures:
-	//   @import   an import statement
+	//   @import   an import statement; the @name captures inside it are the names it imports
 	//   @spec     the target as written, one pair of quotes removed; several in one match are one target
 	//   @type     the statement imports types only
 	//   @computed an import whose target is built at run time; counts unless a @spec lies inside it
 	//   @pass     a top-level node a file that only passes imports on may hold; a file all of whose top-level nodes
 	//             are marked only passes imports on, and an entry whose query marks none never does
+	//   @name     one name a statement imports out of its target, inside the statement's @import
+	//   @type_block  a block whose statements import types only
+	//   @prefix   a declared prefix of settings names
 	//   @dynamic  a settings read whose name is computed at run time; each match counts once
 	// No fact is read both by a pattern and by the query.
 	Query string

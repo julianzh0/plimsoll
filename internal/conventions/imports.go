@@ -32,20 +32,14 @@ type Imports struct {
 	// NotSeen is the use between files the language allows without an import statement, as a note names it; "" for
 	// none.
 	NotSeen string
-	// TypeOnlyBlock matches a block whose imports are of types only; a statement whose target starts inside one is
-	// type-only. Its Pattern is nil for a language without such blocks.
-	TypeOnlyBlock ImportForm
 }
 
-// ImportForm is a pattern, tried only on text that holds one of its words. As a statement form, its named group
-// "spec" holds the target as written; its optional named group "type" takes part only in a statement that imports
-// types alone; its optional named group "names" holds the names a statement imports out of its target, each of
-// which may itself be a module under the target, tried before the target. Its optional named group "everywhere"
+// ImportForm is a pattern. As a statement form, its named group "spec" holds the target as written; its optional
+// named group "type" takes part only in a statement that imports types alone. Its optional named group "everywhere"
 // takes part only in a statement written once for every file of its project; one that names the repository's own
 // code is counted as not readable and gives no link.
 type ImportForm struct {
 	Pattern *regexp.Regexp
-	Words   []string // the pattern is tried only on content that holds one of these; nil tries every file
 }
 
 // RelativeForm is how a language writes an import relative to the importing file.

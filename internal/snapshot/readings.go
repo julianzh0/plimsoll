@@ -3,7 +3,6 @@ package snapshot
 import (
 	"crypto/sha256"
 	"errors"
-	"slices"
 	"sync"
 
 	"github.com/juzhxng/plimsoll/internal/conventions"
@@ -114,20 +113,13 @@ func readByText(language conventions.Language, content []byte) reading {
 	return r
 }
 
-// readPatterns reads the facts other than imports for which the entry has a pattern.
+// readPatterns reads the facts other than imports for which the entry has a pattern: test lines and computed settings
+// reads.
 func readPatterns(language conventions.Language, content []byte, r *reading) {
 	if language.TestBlock != nil {
 		r.testLines = testLines(language, content)
 	}
 	if language.DynamicRead != nil {
 		r.dynamic = len(language.DynamicRead.FindAllIndex(content, -1))
-	}
-	if language.SettingsPrefix != nil {
-		group := language.SettingsPrefix.SubexpIndex("prefix")
-		for _, m := range language.SettingsPrefix.FindAllSubmatch(content, -1) {
-			if prefix := string(m[group]); !slices.Contains(r.prefixes, prefix) {
-				r.prefixes = append(r.prefixes, prefix)
-			}
-		}
 	}
 }
