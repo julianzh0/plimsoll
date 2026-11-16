@@ -105,6 +105,7 @@ type Limits struct {
 	FileLines     Limit // per code file
 	TestRatio     Limit // over the repository
 	SharedCommits Limit // per pair of files
+	HotspotFiles  Limit // the files a report lists as hotspots
 	// ImportsNotFollowed is the share of a language's own imports that may stay not followed before its link
 	// numbers are not given. It gates the link numbers and is no mark, so it has no step.
 	ImportsNotFollowed Limit
@@ -172,7 +173,7 @@ func (v OwnValue) Form(value string) (formed string, usable bool) {
 	if !ownFolder.MatchString(formed) {
 		return "", false
 	}
-	for _, segment := range strings.Split(formed, "/") {
+	for segment := range strings.SplitSeq(formed, "/") {
 		if segment == "." || segment == ".." {
 			return "", false
 		}
@@ -201,6 +202,8 @@ func (l *Limits) ByKey(key string) *Limit {
 		return &l.TestRatio
 	case "shared_commits":
 		return &l.SharedCommits
+	case "hotspot_files":
+		return &l.HotspotFiles
 	}
 	return nil
 }
@@ -325,6 +328,7 @@ func Default() Rules {
 			{Key: "file_lines", Name: "file-size limit", Unit: "lines"},
 			{Key: "test_ratio", Name: "test-ratio limit"},
 			{Key: "shared_commits", Name: "co-change limit", Unit: "shared commits"},
+			{Key: "hotspot_files", Name: "hotspot count", Unit: "files"},
 		},
 		PlanningPaths: []string{
 			"docs/superpowers/", "docs/stories/", "docs/plans/", "docs/specs/", "projects/", ".review-work/",
@@ -339,6 +343,8 @@ func Default() Rules {
 			TestRatio: Limit{Value: 2.0, Step: 0.1, Source: "plimsoll's rule: test code at most twice the product code"},
 			// The requirements set the floor for a pair of files that changed together (R-16).
 			SharedCommits: Limit{Value: 5, Step: 1, Source: "at least 5 shared commits"},
+			// The requirements name the three files changed most often times their size (R-15).
+			HotspotFiles: Limit{Value: 3, Step: 1, Source: "the three files changed most often times their size"},
 			// The share of own imports not followed was 1.4% on the BFF and 0% on plimsoll, where the links equalled those
 			// of dependency-cruiser and go list; 10% leaves room for code that embeds program text in strings.
 			ImportsNotFollowed: Limit{Value: 0.10, Source: "links checked against go list and dependency-cruiser, 2026-11"},

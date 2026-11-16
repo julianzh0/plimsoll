@@ -18,8 +18,6 @@ const (
 	shapeFileSize = "file-size"
 )
 
-const shown = 3
-
 // Detector is the hotspots detector. It gives no mark: its rows are statistics and its remarks join the size marks.
 type Detector struct{}
 
@@ -50,7 +48,7 @@ func (Detector) Detect(s snapshot.Snapshot) answer.Findings {
 		return cmp.Compare(b.changes*b.file.Lines, a.changes*a.file.Lines)
 	})
 	f := answer.Findings{Notes: []string{"hotspots: changes in usable commits x lines now, per code file; planning, review and measurement paths left out"}}
-	for _, spot := range spots[:min(shown, len(spots))] {
+	for _, spot := range spots[:min(int(s.Limits.HotspotFiles.Value), len(spots))] {
 		value, atBase := float64(spot.changes), float64(spot.before)
 		size := "x " + answer.Plural(spot.file.Lines, "line")
 		f.Statistics = append(f.Statistics, answer.Statistic{

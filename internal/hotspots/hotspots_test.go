@@ -91,6 +91,13 @@ func TestHotspotsRankChangesTimesLines(t *testing.T) {
 	if got := rows(detect(t, five)); len(got) != 3 {
 		t.Errorf("five changed files = %d rows, want 3", len(got))
 	}
+	own := snapshottest.Files(nil, map[string]string{
+		"a.go": "x\n", "b.go": "x\n", "c.go": "x\n", "d.go": "x\n", "e.go": "x\n", ".plimsoll.toml": "[limits]\nhotspot_files = 4\n",
+	})
+	own.Commits = five.Commits
+	if got := rows(detect(t, own)); len(got) != 4 {
+		t.Errorf("five changed files and hotspot_files = 4 = %d rows, want 4", len(got))
+	}
 }
 
 func TestHistoryWithoutAUsableCommitIsNotAnalysed(t *testing.T) {

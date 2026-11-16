@@ -165,7 +165,7 @@ Every number is measured at the base and now, from the tracked files only:
 - churn by area (product, tests, docs, other) over the last 150 non-merge commits
 - tracked planning and review files, and documentation churn against product and test churn since the base
 - the settings audit: settings no product file names, names defined twice in `.env.example`, compose variables that are not settings, and reads whose name is computed at run time
-- hotspots: the three code files with the most changes in usable commits times their lines now, as report rows and a remark on their size mark, with no rule of its own
+- hotspots: the three code files (or as many as `hotspot_files` sets) with the most changes in usable commits times their lines now, as report rows and a remark on their size mark, with no rule of its own
 - changed together: pairs of code files that share usable commits, at least one product code, neither a file that defines tests, and not two files that the language treats as one unit
 - test folders and package roots that a project declares in its own configuration or in `.plimsoll.toml`, added to the defaults and named with their source
 - import links, read from the code: the files that import the changed files and that the change did not touch, the three files that import the most others, import rings, cycles between sibling folders, and each new product file that no file imports. With `files`, also the files that import each named file.
@@ -348,6 +348,7 @@ like any other file. Every key is optional:
 file_lines = 1500                           # a code file's line limit (default 1,000)
 test_ratio = 3.0                            # test lines per product line (default 2.0)
 shared_commits = 8                          # commits two files share before they are a pair (default 5)
+hotspot_files = 5                           # files the report lists as hotspots (default 3)
 
 [layout]
 test_folders = ["checks", "tools/harness"]  # folders whose code is test code
@@ -360,6 +361,7 @@ base = "main"                               # the base of a question that names 
 | Key | What it declares |
 |---|---|
 | `file_lines`, `test_ratio`, `shared_commits` | The limits of the file-size, test-ratio and co-change rules |
+| `hotspot_files` | How many files the report lists as hotspots, and so how many size marks say "Also a hotspot" |
 | `test_folders` | Folders, as paths from the root, whose code files count as test code, beside the defaults |
 | `test_files` | File names of code files that count as test code wherever they lie: `*` is any run of characters, `?` one |
 | `base` | The branch, remote branch or tag a question without a base compares with. A branch of the name comes before a remote branch, and a remote branch before a tag |
