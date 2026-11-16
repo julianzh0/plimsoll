@@ -721,6 +721,21 @@ func TestBuildFollowsRustImportsToFiles(t *testing.T) {
 	}), entry(2, 0, 0, 0, snapshot.PrefixAbsent), []snapshot.Link{link("src/a.rs", 1, "src/lib.rs"), link("src/lib.rs", 1, "src/a.rs")},
 		[]string{"src/lib.rs"})
 
+	// A comment inside a group, holding a comma, is no part of a path; a character of several bytes before a macro
+	// body moves no line.
+	group := map[string]string{"src/c/mod.rs": "mod d;\nmod e;\n", "src/c/d.rs": "", "src/c/e.rs": "", "src/m.rs": ""}
+	wantGroup := []snapshot.Link{link("src/c/mod.rs", 1, "src/c/d.rs"), link("src/c/mod.rs", 2, "src/c/e.rs"),
+		link(lib, 1, "src/c/mod.rs"), link(lib, 2, "src/c/d.rs"), link(lib, 2, "src/c/e.rs"), link(lib, 6, "src/m.rs")}
+	for _, text := range []string{
+		"mod c;\nuse crate::c::{d /* , */, e};\n// " + strings.Repeat("é ", 14) + "\nx! {\n\n    mod m;\n}\n",
+		"mod c;\nuse crate::c::{d, // y, z\n e};\n// —\nx! {\n    mod m;\n}\n",
+	} {
+		group[lib] = text
+		if got := linksOf(t, group).List; !reflect.DeepEqual(got, wantGroup) {
+			t.Errorf("Links of lib.rs %q = %+v, want %+v", text, got, wantGroup)
+		}
+	}
+
 	// A brace that never closes: the inline module runs to the end of the file.
 	check("a module that does not close", linksOf(t, map[string]string{"src/lib.rs": "mod a {\n    use super::b;\nmod c;\n"}),
 		entry(1, 0, 0, 1, snapshot.PrefixAbsent), nil, nil)

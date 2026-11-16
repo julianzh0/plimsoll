@@ -48,7 +48,7 @@ func TestEmbeddedModulesMatchThePins(t *testing.T) {
 		t.Fatal(err)
 	}
 	pinned := map[string]string{}
-	for _, line := range strings.Split(string(pins), "\n") {
+	for line := range strings.SplitSeq(string(pins), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) == 8 && !strings.HasPrefix(line, "#") && fields[6] != "-" {
 			pinned[fields[0]] = fields[7]

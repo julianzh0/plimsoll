@@ -29,28 +29,6 @@ type span struct {
 	name       string
 }
 
-// spansOf are the stretches an opener's matches cover, in the text's order: a match that ends with "{" runs to the
-// brace that closes it, any other match is the stretch itself. A brace that never closes runs to the end. The text
-// is read with its literals blanked, so a brace in a string or a comment counts for nothing.
-func spansOf(opener *regexp.Regexp, text []byte) []span {
-	if opener == nil {
-		return nil
-	}
-	name := opener.SubexpIndex("name")
-	var found []span
-	for _, m := range opener.FindAllSubmatchIndex(text, -1) {
-		s := span{start: m[0], end: m[1] - 1}
-		if name >= 0 && m[2*name] >= 0 {
-			s.name = string(text[m[2*name]:m[2*name+1]])
-		}
-		if text[s.end] == '{' {
-			s.end = closing(text, s.end)
-		}
-		found = append(found, s)
-	}
-	return found
-}
-
 // closing is the offset of the bracket that closes the one at open, a parenthesis or a brace, or the text's last
 // offset when none does.
 func closing(text []byte, open int) int {

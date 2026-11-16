@@ -25,9 +25,6 @@ type Imports struct {
 	// Grouped is a target that may group paths in nested braces: "a::{b, c::{d, e}}" names a::b, a::c::d and
 	// a::c::e, each one import.
 	Grouped bool
-	// Module is the first line of a module a file holds in braces; its group "name" holds the module's name. A
-	// statement inside is resolved from those modules, the outermost first. Nil for none.
-	Module *regexp.Regexp
 	// NotSeen is the use between files the language allows without an import statement, as a note names it; "" for
 	// none.
 	NotSeen string

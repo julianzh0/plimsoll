@@ -337,6 +337,8 @@ func TestBuildCountsTestCodeInsideProductFiles(t *testing.T) {
 		{"a block that does not close", "fn a() {}\n#[cfg(test)]\nmod tests {\n    fn t() {}\n", 3},
 		{"two on one line", "#[cfg(test)] use a::b; #[cfg(test)] use c::d;\nfn a() {}\n", 1},
 		{"a comment that names it", "// #[cfg(test)]\n/* #[cfg(test)] mod x { */\nfn a() {}\n", 0},
+		{"a comment between the attribute and the module", "#[cfg(test)]\n// helpers\nmod tests {\n    fn t() {}\n}\n", 5},
+		{"a doc comment between the attribute and the function", "#[cfg(test)]\n/// helper\nfn helper() {\n}\n", 4},
 		{"a raw string that holds it", "const S: &str = r#\"\n#[cfg(test)]\nmod tests {\n}\n\"#;\n", 0},
 	} {
 		for _, text := range []string{tc.text, strings.ReplaceAll(tc.text, "\n", "\r\n")} {

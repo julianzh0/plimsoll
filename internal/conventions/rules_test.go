@@ -150,9 +150,9 @@ func TestEveryLanguageNamesItsDynamicRead(t *testing.T) {
 		"cpp": {[]string{"std::getenv(name.c_str())", "getenv(key)", "::getenv(k)"}, []string{`std::getenv("X")`, `getenv( "X")`, "environ[i]"}},
 	}
 	// wraps make a row valid code for an entry that reads by its grammar.
-	wraps := map[string]string{"go": "package a\nfunc f() { _ = %s }\n", "typescript": "const v = %s;\n", "python": "x = %s\n", "dart": "var v = %s;\n", "java": "class A { void f() { var v = %s; } }\n", "kotlin": "val v = %s\n", "csharp": "var v = %s;\n", "swift": "let v = %s\n", "rust": "fn f() { let v = %s; }\n"}
+	wraps := map[string]string{"go": "package a\nfunc f() { _ = %s }\n", "typescript": "const v = %s;\n", "python": "x = %s\n", "dart": "var v = %s;\n", "java": "class A { void f() { var v = %s; } }\n", "kotlin": "val v = %s\n", "csharp": "var v = %s;\n", "swift": "let v = %s\n"}
 	for _, language := range Default().Languages {
-		if language.Grammar != "" {
+		if language.DynamicRead == nil && language.Grammar != "" {
 			for i, lines := range [][]string{cases[language.Name].matches, cases[language.Name].misses} {
 				for _, line := range lines {
 					code := fmt.Sprintf(wraps[language.Name], line)

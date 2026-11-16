@@ -149,9 +149,7 @@ func TestReadsFromManyGoroutinesAllSucceed(t *testing.T) {
 	}
 	var wg sync.WaitGroup
 	for g := range 8 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for range 20 {
 				in := inputs[g%len(inputs)]
 				got, err := parser.Read(in.grammar, "(identifier) @x", []byte(in.content))
@@ -160,7 +158,7 @@ func TestReadsFromManyGoroutinesAllSucceed(t *testing.T) {
 					return
 				}
 			}
-		}()
+		})
 	}
 	wg.Wait()
 }

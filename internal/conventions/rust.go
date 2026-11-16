@@ -6,11 +6,10 @@ import "regexp"
 // the mod lines declare.
 func rustLanguage() Language {
 	return Language{
-		Name: "rust", Extensions: []string{".rs"}, Grammar: "rust", Query: rustQuery,
+		Name: "rust", Extensions: []string{".rs"}, Grammar: "rust", Query: rustQuery, DynamicRead: rustDynamicRead,
 		Imports: Imports{
 			Statements: []ImportForm{{Pattern: rustMod}, {Pattern: rustUse}, {Pattern: rustExtern}},
 			Grouped:    true,
-			Module:     rustModule,
 			Relative:   NoRelative,
 			Prefix:     Prefix{File: "Cargo.toml", Format: CargoCrates, Members: true},
 			Target:     FileTarget,
@@ -22,16 +21,15 @@ func rustLanguage() Language {
 }
 
 // rustQuery reads mod lines, use paths and extern crates (a use may group paths in braces, which own code expands),
-// the modules a file holds in braces, test code under #[cfg(test)] (the item after the attributes), macro bodies,
-// which the grammar keeps as tokens and the text forms below read, comments and strings blanked inside targets and
-// macro bodies, what a file that only passes imports on may hold, and a settings read whose name is not a quoted
-// literal.
+// the modules a file holds in braces, test code under #[cfg(test)] (the item after the attributes and comments),
+// macro bodies, which the grammar keeps as tokens and the text forms below read, comments and strings, blanked inside
+// targets, macro bodies and for rustDynamicRead, and what a file that only passes imports on may hold.
 const rustQuery = `
 (mod_item !body name: (identifier) @spec.mod) @import
 (use_declaration argument: (_) @spec) @import
 (extern_crate_declaration name: (identifier) @spec) @import
 (mod_item name: (identifier) @module.name body: (declaration_list)) @module
-((attribute_item (attribute (identifier) @a arguments: (token_tree) @t)) @test . (attribute_item)* .
+((attribute_item (attribute (identifier) @a arguments: (token_tree) @t)) @test . [(attribute_item) (line_comment) (block_comment)]* .
   [(function_item) (mod_item) (impl_item) (struct_item) (enum_item) (union_item) (trait_item) (use_declaration)
    (const_item) (static_item) (type_item) (macro_definition) (macro_invocation) (extern_crate_declaration)
    (field_declaration) (expression_statement) (let_declaration) (enum_variant) (foreign_mod_item)
@@ -44,8 +42,6 @@ const rustQuery = `
 (source_file (mod_item !body) @pass)
 (source_file (use_declaration (visibility_modifier)) @pass)
 (source_file (extern_crate_declaration (visibility_modifier)) @pass)
-((call_expression function: (_) @f arguments: (arguments . (_) @dynamic))
-  (#match? @f "(^|::)env::var(_os)?$") (#not-match? @dynamic "^\""))
 `
 
 // rustAttributes are the attributes before an item on its line, rustVisibility an item's visibility.
@@ -61,6 +57,7 @@ var (
 	rustUse = regexp.MustCompile(`(?m)^[ \t]*` + rustAttributes + rustVisibility + `use[ \t\r\n]+(?P<spec>[^;]+);`)
 	// rustExtern is an extern crate declaration.
 	rustExtern = regexp.MustCompile(`(?m)^[ \t]*` + rustAttributes + rustVisibility + `extern[ \t]+crate[ \t]+(?P<spec>[A-Za-z_]\w*)`)
-	// rustModule is the first line of a module a file holds in braces.
-	rustModule = regexp.MustCompile(`(?m)^[ \t]*` + rustAttributes + rustVisibility + `mod[ \t]+(?P<name>[A-Za-z_]\w*)[ \t\r\n]*\{`)
+	// rustDynamicRead is a settings read whose name is not a quoted literal. It is read over the file with comments and
+	// strings blanked, so it also finds the reads inside macro bodies, which the grammar keeps as tokens.
+	rustDynamicRead = regexp.MustCompile(`\benv::var(?:_os)?\([ \t\r\n]*[^" \t\r\n)]`)
 )

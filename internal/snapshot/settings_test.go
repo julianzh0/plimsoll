@@ -70,14 +70,14 @@ func TestBuildCountsDynamicReadsPerLanguage(t *testing.T) {
 		"src/b.py":              "os.environ[key]\n",
 		"src/main/java/A.java":  "System.getenv(name);\nSystem.getenv(\"X\");\n",
 		"src/main/kotlin/B.kt":  "System.getenv(key)\n",
-		"src/config.rs":         "env::var(name);\nenv::var(\"X\");\n",
+		"src/config.rs":         "env::var(name);\nenv::var(\"X\");\nprintln!(\"{:?}\", std::env::var(k));\n// env::var(c)\n",
 		"src/env.c":             "getenv(name);\ngetenv(\"X\");\n",
 		"src/env.cc":            "std::getenv(key.c_str());\nstd::getenv(\"X\");\n::getenv(k);\n",
 		"Sources/Kit/Env.swift": "ProcessInfo.processInfo.environment[key]\nProcessInfo.processInfo.environment[\"X\"]\n",
 		"src/Acme/C.cs":         "Environment.GetEnvironmentVariable(name);\nconfiguration[key];\nconfiguration[\"X\"];\n",
 	}
 	got := snapshot.Build(snapshottest.Files(nil, files), conventions.Default(), snapshottest.Readings(t)).Now.Dynamic
-	if want := []snapshot.DynamicRead{{Path: "Sources/Kit/Env.swift", Count: 1}, {Path: "cmd/main.go", Count: 1}, {Path: "src/Acme/C.cs", Count: 2}, {Path: "src/a.ts", Count: 2}, {Path: "src/b.py", Count: 1}, {Path: "src/config.rs", Count: 1}, {Path: "src/env.c", Count: 1}, {Path: "src/env.cc", Count: 2}, {Path: "src/main/java/A.java", Count: 1}, {Path: "src/main/kotlin/B.kt", Count: 1}}; !reflect.DeepEqual(got, want) {
+	if want := []snapshot.DynamicRead{{Path: "Sources/Kit/Env.swift", Count: 1}, {Path: "cmd/main.go", Count: 1}, {Path: "src/Acme/C.cs", Count: 2}, {Path: "src/a.ts", Count: 2}, {Path: "src/b.py", Count: 1}, {Path: "src/config.rs", Count: 2}, {Path: "src/env.c", Count: 1}, {Path: "src/env.cc", Count: 2}, {Path: "src/main/java/A.java", Count: 1}, {Path: "src/main/kotlin/B.kt", Count: 1}}; !reflect.DeepEqual(got, want) {
 		t.Errorf("Build.Dynamic = %+v, want %+v", got, want)
 	}
 }
