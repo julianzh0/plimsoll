@@ -94,6 +94,16 @@ func TestIntegrationToolsAnswerForAChangedRepository(t *testing.T) {
 		t.Errorf("status without a base = %s, want the declared base main in the header and the size mark", declared[0])
 	}
 
+	// The declared base is the branch the head is on: the question compares the head with itself.
+	onMain := gitrepotest.New(t)
+	onMain.Commit(gitrepotest.Commit{Message: "main", Files: map[string]string{"src/a.ts": "a\n", ".plimsoll.toml": "[defaults]\nbase = \"main\"\n"}})
+	self, _ := exchange(t, call(5, "status", map[string]any{"repository": onMain.Dir}))
+	selfText := text(t, result(t, self[0]))
+	if !strings.Contains(selfText, "base `main` (declared in `.plimsoll.toml`)") || !strings.Contains(selfText, "0 new, 0 grown, 0 resolved") ||
+		!strings.Contains(selfText, "0 commits") {
+		t.Errorf("status on the declared base's own branch = %s, want the declared base and 0 commits compared", self[0])
+	}
+
 	legacyCall := strings.Replace(call(1, "status", arguments), ","+modern, "", 1)
 	legacy, _ := exchange(t, `{"jsonrpc":"2.0","id":0,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{}}}`, legacyCall)
 	legacyResult := result(t, legacy[1])

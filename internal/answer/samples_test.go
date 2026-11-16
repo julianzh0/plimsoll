@@ -225,7 +225,7 @@ func TestTheSamplesShowEveryRuleAndChange(t *testing.T) {
 func TestNoAnswerPrintsADeclaredValueOutsideItsForm(t *testing.T) {
 	long := "zzmarker" + strings.Repeat("a", 200)
 	now := "[layout]\ntest_folders = [\"checks\", \"zzmarker dir\", \"/zzmarker/abs\", \"../zzmarker\", \"zzmarker`tick\", \"$(zzmarker)\", \"zzmarker\\n\", \"" + long + "\"]\n" +
-		"test_files = [\"zzmarker/x.ts\", \"zzmarker *.ts\", \"[zzmarker].ts\"]\n[defaults]\nbase = \"zzmarker@{u}\"\n"
+		"test_files = [\"zzmarker/x.ts\", \"zzmarker *.ts\", \"[zzmarker].ts\"]\n[defaults]\nbase = \"zzmarker@{u}\"\n\"zzmarker key\" = 1\n[zzmarker table]\n"
 	tree := func(own string) map[string]string {
 		return map[string]string{"src/a.ts": "x\n", "checks/h.ts": "x\n", ".plimsoll.toml": own}
 	}

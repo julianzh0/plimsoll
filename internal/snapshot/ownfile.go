@@ -3,6 +3,7 @@ package snapshot
 import (
 	"fmt"
 	"math"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -57,7 +58,7 @@ func readOwnFile(rules conventions.Rules, content map[string][]byte) ownFile {
 			table = header
 			found = found || known[header]
 			if header != "" && !known[header] {
-				problem("`[%s]` is no table plimsoll reads", header)
+				problem("%s is no table plimsoll reads", tableName(header))
 			}
 			continue
 		}
@@ -69,7 +70,7 @@ func readOwnFile(rules conventions.Rules, content map[string][]byte) ownFile {
 		key := dottedName(name)
 		switch {
 		case table == "" && assigns:
-			problem("`%s` lies outside a table", key)
+			problem("%s lies outside a table", keyName(key))
 			continue
 		case !known[table]:
 			continue
@@ -88,7 +89,7 @@ func readOwnFile(rules conventions.Rules, content map[string][]byte) ownFile {
 		at := slices.IndexFunc(rules.OwnKeys, func(k conventions.OwnKey) bool { return k.Table == table && k.Key == key })
 		switch {
 		case at < 0:
-			problem("`%s` is no key of `[%s]`", key, table)
+			problem("%s is no key of `[%s]`", keyName(key), table)
 		case seen[key]:
 			problem("`%s` is set twice", key)
 		default:
@@ -108,13 +109,32 @@ func readOwnFile(rules conventions.Rules, content map[string][]byte) ownFile {
 	return o
 }
 
+// plainName is a TOML bare key, dotted or not: the only form in which a name the file gives and plimsoll does not
+// know is printed. Any other name is only counted, so no text of the file reaches an answer.
+var plainName = regexp.MustCompile(`^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*$`)
+
+// keyName and tableName print a name the file gives and plimsoll does not know.
+func keyName(name string) string {
+	if len(name) <= conventions.OwnValueLength && plainName.MatchString(name) {
+		return "`" + name + "`"
+	}
+	return "a key with no plain name"
+}
+
+func tableName(name string) string {
+	if len(name) <= conventions.OwnValueLength && plainName.MatchString(name) {
+		return "`[" + name + "]`"
+	}
+	return "a table with no plain name"
+}
+
 // largestExactCount is the largest whole number a float64 holds exactly (2^53); a larger one would be rounded.
 const largestExactCount = 1 << 53
 
 // readLimit reads one key of the limits table: a number above 0, whole for a limit that counts.
 func (o *ownFile) readLimit(rules conventions.Rules, key, value string, problem func(string, ...any)) {
 	if !slices.ContainsFunc(rules.LimitKeys, func(k conventions.LimitKey) bool { return k.Key == key }) {
-		problem("`%s` is no limit plimsoll knows", key)
+		problem("%s is no limit plimsoll knows", keyName(key))
 		return
 	}
 	if _, twice := o.limits[key]; twice {

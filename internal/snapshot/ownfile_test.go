@@ -50,6 +50,9 @@ func TestBuildReadsTheTextKeysOfTheOwnFile(t *testing.T) {
 		{"a line that is no key = value", "", "[layout]\ntest_folders\n", nil, []string{"`[layout]` holds a line that is no `key = value`"}},
 		{"another table and a key outside any", "", "x = 1\n[rules]\nno_print = true\n[layout]\ntest_folders = [\"a\"]\n",
 			[]snapshot.DeclaredValues{folders([]string{"a"}, nil)}, []string{"`[rules]` is no table plimsoll reads", "`x` lies outside a table"}},
+		{"names that are no plain names", "", "\"a b\" = 1\n[zz y]\n[layout]\n\"c d\" = [\"x\"]\n[limits]\n\"e f\" = 1\n", nil, []string{
+			"a key with no plain name is no key of `[layout]`", "a key with no plain name is no limit plimsoll knows",
+			"a key with no plain name lies outside a table", "a table with no plain name is no table plimsoll reads"}},
 		{"an empty file", "", "# nothing yet\n", nil, []string{"it holds no table plimsoll reads"}},
 		{"the key not read at the base", "[layout]\ntest_folders = 3\n", "[layout]\ntest_folders = [\"checks\"]\n",
 			[]snapshot.DeclaredValues{uncompared(folders([]string{"checks"}, nil), true)}, nil},
