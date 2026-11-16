@@ -3,6 +3,7 @@ package snapshot
 import (
 	"bytes"
 	"regexp"
+	"strings"
 
 	"github.com/juzhxng/plimsoll/internal/conventions"
 )
@@ -93,4 +94,15 @@ func testLines(language conventions.Language, content []byte) int {
 		}
 	}
 	return counted
+}
+
+// withoutComments is a text with every match of a pattern of strings and comments that is a comment blanked: a
+// match that starts with a quote is a string and stays, so a comment marker inside one is no comment.
+func withoutComments(stringsAndComments *regexp.Regexp, text string) string {
+	return stringsAndComments.ReplaceAllStringFunc(text, func(match string) string {
+		if match[0] == '"' {
+			return match
+		}
+		return strings.Repeat(" ", len(match))
+	})
 }

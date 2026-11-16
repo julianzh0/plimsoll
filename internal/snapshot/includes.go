@@ -23,9 +23,13 @@ var (
 	cmakeFolder = regexp.MustCompile(`^\$\{(?P<of>CMAKE_CURRENT_SOURCE|CMAKE_CURRENT_LIST|PROJECT_SOURCE|CMAKE_SOURCE)_DIR\}`)
 )
 
-// cmakeKeywords are the arguments of the two commands that are no folder.
-func cmakeKeywords() []string {
-	return []string{"SYSTEM", "BEFORE", "AFTER", "PUBLIC", "PRIVATE", "INTERFACE"}
+// cmakeKeyword says whether an argument of include_directories or target_include_directories is a keyword, no folder.
+func cmakeKeyword(argument string) bool {
+	switch argument {
+	case "SYSTEM", "BEFORE", "AFTER", "PUBLIC", "PRIVATE", "INTERFACE":
+		return true
+	}
+	return false
 }
 
 // includeFolders finds the folders in which an include is looked for besides the including file's own: every folder
@@ -57,12 +61,7 @@ func includeFolders(imports conventions.Imports, content map[string][]byte, trac
 		if path.Base(file) != imports.Prefix.File || content[file] == nil {
 			continue
 		}
-		text := cmakeComment.ReplaceAllStringFunc(string(content[file]), func(match string) string {
-			if match[0] == '"' {
-				return match
-			}
-			return strings.Repeat(" ", len(match))
-		})
+		text := withoutComments(cmakeComment, string(content[file]))
 		texts[path.Dir(file)] = text
 		projects[path.Dir(file)] = cmakeProject.MatchString(text)
 	}
@@ -76,6 +75,10 @@ func includeFolders(imports conventions.Imports, content map[string][]byte, trac
 	}
 	slices.Sort(folders)
 	folders = slices.Compact(folders)
+	isFolder := make(map[string]bool, len(folders))
+	for _, folder := range folders {
+		isFolder[folder] = true
+	}
 	return prefix{state: PrefixRead, own: func(from, spec string, _ []string) ([]string, bool) {
 		name, angled := strings.CutPrefix(spec, "<")
 		name = strings.TrimSuffix(name, ">")
@@ -84,9 +87,18 @@ func includeFolders(imports conventions.Imports, content map[string][]byte, trac
 			return []string{beside}, false
 		}
 		var found []string
-		for _, folder := range folders {
-			if file := path.Join(folder, name); tracked[file] {
-				found = append(found, file)
+		if written := path.Clean(name); leaves(written) {
+			for _, folder := range folders {
+				if file := path.Join(folder, name); tracked[file] {
+					found = append(found, file)
+				}
+			}
+		} else { // the files of that name whose path ends in it under an include folder
+			for _, file := range byName[path.Base(written)] {
+				folder, under := strings.CutSuffix(file, "/"+written)
+				if under && isFolder[folder] || file == written && isFolder["."] {
+					found = append(found, file)
+				}
 			}
 		}
 		if len(found) > 0 || angled {
@@ -132,8 +144,9 @@ func projectFolders(projects map[string]bool, folder string) (nearest, farthest 
 // function of the project or by another build system is not known. Upgrade: follow set(...) of a path.
 func cmakeIncludeFolders(text, here, project, top string) []string {
 	var folders []string
+	raw := []byte(text)
 	for _, at := range cmakeIncludes.FindAllStringSubmatchIndex(text, -1) {
-		arguments := cmakeArgument.FindAllString(text[at[1]:closing([]byte(text), at[1]-1)], -1)
+		arguments := cmakeArgument.FindAllString(text[at[1]:closing(raw, at[1]-1)], -1)
 		if at[2] >= 0 && len(arguments) > 0 {
 			arguments = arguments[1:] // the target
 		}
@@ -152,7 +165,7 @@ func cmakeIncludeFolders(text, here, project, top string) []string {
 				}
 				argument = "." + argument[len(m[0]):]
 			}
-			if argument == "" || slices.Contains(cmakeKeywords(), argument) || strings.Contains(argument, "$") || path.IsAbs(argument) {
+			if argument == "" || cmakeKeyword(argument) || strings.Contains(argument, "$") || path.IsAbs(argument) {
 				continue
 			}
 			if folder := path.Join(base, argument); !leaves(folder) {

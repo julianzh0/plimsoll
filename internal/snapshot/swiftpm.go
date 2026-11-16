@@ -101,12 +101,7 @@ func swiftTargets(content []byte) prefix {
 
 // swiftManifest is a Package.swift's text with its comments blanked, and whether it declares a Package.
 func swiftManifest(content []byte) (string, bool) {
-	text := swiftComment.ReplaceAllStringFunc(strings.TrimPrefix(string(content), byteOrderMark), func(match string) string {
-		if match[0] == '"' {
-			return match
-		}
-		return strings.Repeat(" ", len(match))
-	})
+	text := withoutComments(swiftComment, strings.TrimPrefix(string(content), byteOrderMark))
 	return text, swiftPackageDeclaration.MatchString(text)
 }
 
