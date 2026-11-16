@@ -10,7 +10,8 @@ import (
 )
 
 // KeptReadings is how many file readings are kept between questions: more than 25 times the code files of the largest
-// field repository (json, 634). A reading is a few hundred bytes.
+// field repository (json, 634). A kept reading with its key takes about 1.4 KB of heap (4,078 readings of the sixteen
+// field repositories took 5.8 MB), so the bound holds about 23 MB.
 //
 // NOTE: when a new reading would exceed the bound, every kept reading is dropped first, so a repository with more code
 // files than the bound is read again on every question. Upgrade: drop the least recently used.

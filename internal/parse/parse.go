@@ -18,7 +18,7 @@ import (
 )
 
 // MemoryCapMiB is the memory one grammar may use to read one file. The largest file each grammar read in the sixteen
-// field repositories needed at most 46 MiB of module memory (Python, 662 KB), so 128 MiB leaves 2.8 times that. A file
+// field repositories needed at most 46 MiB of module memory (Python, 678 KB), so 128 MiB leaves 2.8 times that. A file
 // that needs more is not read: the call returns an error and the grammar starts afresh on its next file.
 const MemoryCapMiB = 128
 
@@ -28,7 +28,8 @@ const (
 	memoryCapPages = MemoryCapMiB * pagesPerMiB
 	// recyclePages is the memory a grammar may keep between files: half the cap. Memory of a WebAssembly module never
 	// shrinks, so a grammar that grew past it for one large file is closed and made again on its next file. It lies
-	// above the 21 to 33 MiB a grammar holds after reading ordinary files, so those keep their instance.
+	// above the 18 to 33 MiB a grammar holds after the largest files of the field repositories other than that one
+	// Python file, so those keep their instance.
 	recyclePages = memoryCapPages / 2
 )
 
