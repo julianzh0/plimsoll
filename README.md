@@ -124,7 +124,7 @@ Then ask your agent, for example: *"Use plimsoll to check what this branch did t
 `status` on plimsoll's own repository, 30 commits back:
 
 ```text
-plimsoll 0.2.0 status: base `HEAD~30` 422ce612e0, head 42a374430f
+plimsoll 0.3.0 status: base `HEAD~30` 422ce612e0, head 42a374430f
 3 new, 1 grown, 0 resolved
 Footprint of the change since the base: 30 commits, 75 files; product +1,649 -327, test +1,278 -90, documentation +18 -11; 0.8 test lines added per product line added.
 
