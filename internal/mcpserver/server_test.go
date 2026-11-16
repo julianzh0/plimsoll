@@ -38,7 +38,7 @@ func TestAQuestionWaitsForAFreeAnswerSlot(t *testing.T) {
 	s := Server{Questions: answer.Questions{
 		Take: func(context.Context, string, string) (snapshot.Snapshot, error) {
 			taken++
-			return snapshot.Build(snapshottest.Files(nil, map[string]string{"src/a.ts": "a\n"}), conventions.Default()), nil
+			return snapshot.Build(snapshottest.Files(nil, map[string]string{"src/a.ts": "a\n"}), conventions.Default(), snapshottest.Readings(t)), nil
 		},
 		Version: "0.1.0",
 	}}

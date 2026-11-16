@@ -29,7 +29,7 @@ func TestBuildFindsWhichFilesHoldASettingName(t *testing.T) {
 		"src/other.py":    "timeout = 3\n",
 		"src/jobs.py":     "env_prefix = 'job_'\nretries = 1\n",
 	}
-	s := snapshot.Build(snapshottest.Files(files, files), conventions.Default())
+	s := snapshot.Build(snapshottest.Files(files, files), conventions.Default(), snapshottest.Readings(t))
 	want := map[string]snapshot.SettingUse{
 		"PORT":             {Name: "PORT", Product: []string{"src/a.ts"}},
 		"SESSION_GRACE_MS": {Name: "SESSION_GRACE_MS", Product: []string{"src/a.ts"}},
@@ -49,13 +49,13 @@ func TestBuildFindsWhichFilesHoldASettingName(t *testing.T) {
 		}
 	}
 	files["src/a.ts"] = strings.Replace(files["src/a.ts"], "process.env.PORT; ", "", 1)
-	if got := uses(snapshot.Build(snapshottest.Files(nil, files), conventions.Default()).Now)["PORT"]; len(got.Product) != 0 {
+	if got := uses(snapshot.Build(snapshottest.Files(nil, files), conventions.Default(), snapshottest.Readings(t)).Now)["PORT"]; len(got.Product) != 0 {
 		t.Errorf("PORT inside EXPORT_PORT and TRANSPORT counted as a read: %+v", got)
 	}
 }
 
 func TestBuildKeepsCommentedOutNamesApart(t *testing.T) {
-	s := snapshot.Build(snapshottest.Files(nil, map[string]string{".env.example": "# LOG_LEVEL=debug\nLOG_LEVEL=info\nPORT=1\n"}), conventions.Default())
+	s := snapshot.Build(snapshottest.Files(nil, map[string]string{".env.example": "# LOG_LEVEL=debug\nLOG_LEVEL=info\nPORT=1\n"}), conventions.Default(), snapshottest.Readings(t))
 	if got := s.Now.Settings; !reflect.DeepEqual(got.Names, []string{"LOG_LEVEL", "LOG_LEVEL", "PORT"}) || !reflect.DeepEqual(got.Active, []string{"LOG_LEVEL", "PORT"}) {
 		t.Errorf("Build.Settings = %+v, want names with the commented one and active without it", got)
 	}
@@ -76,7 +76,7 @@ func TestBuildCountsDynamicReadsPerLanguage(t *testing.T) {
 		"Sources/Kit/Env.swift": "ProcessInfo.processInfo.environment[key]\nProcessInfo.processInfo.environment[\"X\"]\n",
 		"src/Acme/C.cs":         "Environment.GetEnvironmentVariable(name);\nconfiguration[key];\nconfiguration[\"X\"];\n",
 	}
-	got := snapshot.Build(snapshottest.Files(nil, files), conventions.Default()).Now.Dynamic
+	got := snapshot.Build(snapshottest.Files(nil, files), conventions.Default(), snapshottest.Readings(t)).Now.Dynamic
 	if want := []snapshot.DynamicRead{{Path: "Sources/Kit/Env.swift", Count: 1}, {Path: "cmd/main.go", Count: 1}, {Path: "src/Acme/C.cs", Count: 2}, {Path: "src/a.ts", Count: 2}, {Path: "src/b.py", Count: 1}, {Path: "src/config.rs", Count: 1}, {Path: "src/env.c", Count: 1}, {Path: "src/env.cc", Count: 2}, {Path: "src/main/java/A.java", Count: 1}, {Path: "src/main/kotlin/B.kt", Count: 1}}; !reflect.DeepEqual(got, want) {
 		t.Errorf("Build.Dynamic = %+v, want %+v", got, want)
 	}
@@ -102,7 +102,7 @@ func TestBuildReadsComposeEnvironmentKeys(t *testing.T) {
 `, "\n", "\r\n")
 	files := map[string]string{"docker-compose.yml": compose, "deploy/compose.prod.yaml": "x:\n  environment:\n    - OTHER=1\n",
 		"node_modules/x/compose.yml": compose, "compose.txt": compose}
-	s := snapshot.Build(snapshottest.Files(nil, files), conventions.Default())
+	s := snapshot.Build(snapshottest.Files(nil, files), conventions.Default(), snapshottest.Readings(t))
 	want := []snapshot.ComposeFile{
 		{Path: "deploy/compose.prod.yaml"},
 		{Path: "docker-compose.yml", Keys: []string{"DEBUG", "LOG_LEVEL", "POSTGRES_PASSWORD", "POSTGRES_USER"}, Unread: 3},

@@ -340,7 +340,7 @@ func Forms(name string) []string {
 // product files that declare a prefix of the name and hold the rest of it in lower case.
 // NOTE: a prefix is matched per file, not per class; a field not in lower case, a prefix built at run time, an alias
 // in another case and env_nested_delimiter are not seen. Upgrade: read class bodies.
-func settingUses(rules conventions.Rules, settings *Settings, entries []Entry, files []File) []SettingUse {
+func settingUses(settings *Settings, entries []Entry, files []File, readings map[string]reading) []SettingUse {
 	if settings == nil {
 		return nil
 	}
@@ -368,7 +368,7 @@ func settingUses(rules conventions.Rules, settings *Settings, entries []Entry, f
 		}
 		var prefixes []string
 		if role == Product {
-			prefixes = declaredPrefixes(rules, entry)
+			prefixes = readings[entry.Path].prefixes
 		}
 		words := map[string]bool{} // filled only for a file that declares a prefix
 		eachWord(entry.Content, func(w []byte) {
@@ -408,22 +408,6 @@ func settingUses(rules conventions.Rules, settings *Settings, entries []Entry, f
 	return found
 }
 
-// declaredPrefixes are the distinct settings prefixes a code file declares, by its language's pattern.
-func declaredPrefixes(rules conventions.Rules, entry Entry) []string {
-	language, known := rules.LanguageOf(entry.Path)
-	if !known || language.SettingsPrefix == nil {
-		return nil
-	}
-	group := language.SettingsPrefix.SubexpIndex("prefix")
-	var prefixes []string
-	for _, m := range language.SettingsPrefix.FindAllSubmatch(entry.Content, -1) {
-		if prefix := string(m[group]); !slices.Contains(prefixes, prefix) {
-			prefixes = append(prefixes, prefix)
-		}
-	}
-	return prefixes
-}
-
 func sortedKeys(set map[string]bool) []string {
 	if len(set) == 0 {
 		return nil
@@ -432,19 +416,13 @@ func sortedKeys(set map[string]bool) []string {
 }
 
 // dynamicReads counts, per product file, the settings reads whose name is computed at run time.
-func dynamicReads(rules conventions.Rules, entries []Entry, files []File) []DynamicRead {
-	roles := rolesOf(files)
+func dynamicReads(files []File, readings map[string]reading) []DynamicRead {
 	var found []DynamicRead
-	for _, entry := range entries {
-		language, known := rules.LanguageOf(entry.Path)
-		if !known || language.DynamicRead == nil || roles[entry.Path] != Product {
-			continue
-		}
-		if n := len(language.DynamicRead.FindAllIndex(entry.Content, -1)); n > 0 {
-			found = append(found, DynamicRead{Path: entry.Path, Count: n})
+	for _, file := range files {
+		if n := readings[file.Path].dynamic; file.Role == Product && n > 0 {
+			found = append(found, DynamicRead{Path: file.Path, Count: n})
 		}
 	}
-	slices.SortFunc(found, func(a, b DynamicRead) int { return strings.Compare(a.Path, b.Path) })
 	return found
 }
 

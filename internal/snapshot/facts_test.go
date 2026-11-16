@@ -15,19 +15,19 @@ import (
 
 func TestBuildReadsSettingNamesNeverValues(t *testing.T) {
 	source := snapshottest.Files(nil, map[string]string{".env.example": "PORT=8080\n# DEBUG=true\nlowercase=x\n\nPORT=9090\n"})
-	s := snapshot.Build(source, conventions.Default())
+	s := snapshot.Build(source, conventions.Default(), snapshottest.Readings(t))
 	if s.Now.Settings == nil || !reflect.DeepEqual(s.Now.Settings.Names, []string{"PORT", "DEBUG", "PORT"}) {
 		t.Fatalf("Build(.env.example).Now.Settings = %+v, want PORT, DEBUG, PORT", s.Now.Settings)
 	}
 	if printed := fmt.Sprintf("%+v", s); strings.Contains(printed, "8080") || strings.Contains(printed, "9090") {
 		t.Errorf("Build(.env.example) holds a setting's value: %s", printed)
 	}
-	if got := snapshot.Build(snapshottest.Files(nil, map[string]string{"src/a.ts": "x\n"}), conventions.Default()).Now.Settings; got != nil {
+	if got := snapshot.Build(snapshottest.Files(nil, map[string]string{"src/a.ts": "x\n"}), conventions.Default(), snapshottest.Readings(t)).Now.Settings; got != nil {
 		t.Errorf("Build(no .env.example).Now.Settings = %+v, want nil", got)
 	}
 	unreadable := snapshottest.Files(nil, map[string]string{".env.example": "PORT=1\n"})
 	unreadable.Now[0].Content, unreadable.Now[0].Binary = nil, true
-	broken := snapshot.Build(unreadable, conventions.Default())
+	broken := snapshot.Build(unreadable, conventions.Default(), snapshottest.Readings(t))
 	if broken.Now.Settings != nil || !slices.Contains(broken.Now.Broken, ".env.example") || !slices.Contains(broken.Unreadable, ".env.example") {
 		t.Errorf("Build(unreadable .env.example) = settings %+v, broken %v, unreadable %v; want none, and it named twice", broken.Now.Settings, broken.Now.Broken, broken.Unreadable)
 	}
@@ -158,7 +158,7 @@ func TestBuildReadsRuntimeDependencies(t *testing.T) {
 		{"a nested Cargo.toml", oneFile("crates/a/Cargo.toml", "[package]\nname = \"a\"\n\n[dependencies]\nlog = \"0.4\"\n"), nil},
 	}
 	for _, tc := range cases {
-		if got := snapshot.Build(tc.source, conventions.Default()).Now.Manifests; !reflect.DeepEqual(got, tc.want) {
+		if got := snapshot.Build(tc.source, conventions.Default(), snapshottest.Readings(t)).Now.Manifests; !reflect.DeepEqual(got, tc.want) {
 			t.Errorf("Build(%s).Now.Manifests = %#v, want %#v", tc.name, got, tc.want)
 		}
 	}
@@ -189,7 +189,7 @@ func TestBuildNamesDependenciesNoLockfileHolds(t *testing.T) {
 			[]snapshot.Manifest{{Path: "package.json", Dependencies: []string{"a"}}}},
 	}
 	for _, tc := range cases {
-		if got := snapshot.Build(snapshottest.Files(nil, tc.files), conventions.Default()).Now.Manifests; !reflect.DeepEqual(got, tc.want) {
+		if got := snapshot.Build(snapshottest.Files(nil, tc.files), conventions.Default(), snapshottest.Readings(t)).Now.Manifests; !reflect.DeepEqual(got, tc.want) {
 			t.Errorf("%s: Manifests = %+v, want %+v", tc.name, got, tc.want)
 		}
 	}
@@ -221,7 +221,7 @@ func TestBuildLeavesAnUnreadableManifestOut(t *testing.T) {
 		{"src/App/App.csproj", sdkProject(`<ItemGroup><PackageReference Include="A;B" /></ItemGroup>`)},
 		{"src/App/App.csproj", `<?xml version="1.0" encoding="utf-16"?><Project Sdk="Microsoft.NET.Sdk"></Project>`},
 	} {
-		s := snapshot.Build(snapshottest.Files(nil, map[string]string{tc.file: tc.content}), conventions.Default())
+		s := snapshot.Build(snapshottest.Files(nil, map[string]string{tc.file: tc.content}), conventions.Default(), snapshottest.Readings(t))
 		if len(s.Now.Manifests) != 0 || !reflect.DeepEqual(s.Unreadable, []string{tc.file}) {
 			t.Errorf("Build(%s %q) = manifests %v, unreadable %v; want none and [%s]", tc.file, tc.content, s.Now.Manifests, s.Unreadable, tc.file)
 		}
@@ -286,11 +286,11 @@ func TestBuildSumsTheFootprintByArea(t *testing.T) {
 		Commits: 5, Files: 5, Product: snapshot.Lines{Added: 120, Removed: 80}, Test: snapshot.Lines{Added: 300, Removed: 10},
 		Docs: snapshot.Lines{Added: 40}, TestPerProduct: &ratio,
 	}
-	if got := snapshot.Build(source, conventions.Default()).Footprint; !reflect.DeepEqual(got, want) {
+	if got := snapshot.Build(source, conventions.Default(), snapshottest.Readings(t)).Footprint; !reflect.DeepEqual(got, want) {
 		t.Fatalf("Build(changes).Footprint = %+v, want %+v", got, want)
 	}
 	source.Changes = changes[2:]
-	if got := snapshot.Build(source, conventions.Default()).Footprint.TestPerProduct; got != nil {
+	if got := snapshot.Build(source, conventions.Default(), snapshottest.Readings(t)).Footprint.TestPerProduct; got != nil {
 		t.Errorf("Build(no product change).Footprint.TestPerProduct = %v, want nil", *got)
 	}
 	product := func(n int) string { return strings.Repeat("fn p() {}\n", n) }
@@ -319,7 +319,7 @@ func TestBuildSumsTheFootprintByArea(t *testing.T) {
 		inside := snapshottest.Files(side(tc.base), side(tc.now))
 		tc.change.Path = "src/a.rs"
 		inside.Changes = []snapshot.Change{tc.change}
-		if got := snapshot.Build(inside, conventions.Default()).Footprint; got.Product != tc.product || got.Test != tc.test {
+		if got := snapshot.Build(inside, conventions.Default(), snapshottest.Readings(t)).Footprint; got.Product != tc.product || got.Test != tc.test {
 			t.Errorf("%s: footprint product %+v, test %+v; want %+v, %+v", tc.name, got.Product, got.Test, tc.product, tc.test)
 		}
 	}
@@ -337,7 +337,7 @@ func TestBuildFlagsUsableCommits(t *testing.T) {
 		Since:   []string{"c1"},
 		Commits: []snapshot.Commit{{ID: "c1", Files: touching(21)}, {ID: "c2"}, {ID: "c3", Files: touching(20)}},
 	}
-	history := snapshot.Build(source, conventions.Default()).History
+	history := snapshot.Build(source, conventions.Default(), snapshottest.Readings(t)).History
 	for i, want := range []struct{ since, usable bool }{{true, false}, {false, false}, {false, true}} {
 		if got := history.Commits[i]; got.Since != want.since || got.Usable != want.usable {
 			t.Errorf("Build(history).Commits[%d] = since %v, usable %v; want %v, %v", i, got.Since, got.Usable, want.since, want.usable)
@@ -369,7 +369,7 @@ func TestBuildGivesEachHistoryPathItsArea(t *testing.T) {
 	}
 	for p, want := range areas {
 		source := snapshot.Source{Commits: []snapshot.Commit{{ID: "x", Files: []snapshot.FileChange{{Path: p}}}}}
-		if got := snapshot.Build(source, conventions.Default()).History.Commits[0].Files[0].Area; got != want {
+		if got := snapshot.Build(source, conventions.Default(), snapshottest.Readings(t)).History.Commits[0].Files[0].Area; got != want {
 			t.Errorf("area of %s = %v, want %v", p, got, want)
 		}
 	}
@@ -412,7 +412,7 @@ func TestTouchesCountUsableCommitsPerPath(t *testing.T) {
 		snapshottest.Commit("c3", "src/a.ts"), snapshottest.Commit("c2", "src/a.ts", "src/b.ts"),
 		snapshottest.Commit("c1", append(wide, "src/a.ts")...), snapshottest.Commit("c0", "src/b.ts"),
 	}}
-	got := snapshot.Build(source, conventions.Default()).History.Touches()
+	got := snapshot.Build(source, conventions.Default(), snapshottest.Readings(t)).History.Touches()
 	want := map[string]snapshot.Touches{"src/a.ts": {All: 2, AtBase: 1}, "src/b.ts": {All: 2, AtBase: 2}}
 	if !maps.Equal(got, want) {
 		t.Errorf("Touches() = %v, want %v", got, want)

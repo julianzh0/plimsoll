@@ -79,7 +79,7 @@ func TestLinksWordingStandingAndEvidence(t *testing.T) {
 	}
 	tsCase, goCase := languageCases()["typescript"], languageCases()["go"]
 	explainFolders := func(base, now map[string]string) []string {
-		s := snapshot.Build(snapshottest.Files(base, now), conventions.Default())
+		s := snapshot.Build(snapshottest.Files(base, now), conventions.Default(), snapshottest.Readings(t))
 		return (Detector{}).Explain(s, marksOf(Detector{}.Detect(s), ruleFolderCycle)[0])
 	}
 	open := tsCase.folders("a/x>b/y", "a/u>b/v", "b/z", "a/w")
@@ -104,7 +104,7 @@ func TestLinksWordingStandingAndEvidence(t *testing.T) {
 		t.Errorf("Explain(go folder cycle) = %q", got)
 	}
 	explainRing := func(base, now map[string]string) []string {
-		s := snapshot.Build(snapshottest.Files(base, now), conventions.Default())
+		s := snapshot.Build(snapshottest.Files(base, now), conventions.Default(), snapshottest.Readings(t))
 		return (Detector{}).Explain(s, marksOf(Detector{}.Detect(s), ruleCycle)[0])
 	}
 	if got, want := explainRing(ring("a>b", "b>c"), ring("a>b", "b>c", "c>a")), []string{
@@ -124,7 +124,7 @@ func TestLinksWordingStandingAndEvidence(t *testing.T) {
 	ts := languageCases()["typescript"]
 	a, db, clock := ts.product("a"), ts.support("db"), ts.support("clock")
 	base, now := ts.imports(a, db), ts.imports(a, db, clock)
-	s := snapshot.Build(snapshottest.Files(base, now), conventions.Default())
+	s := snapshot.Build(snapshottest.Files(base, now), conventions.Default(), snapshottest.Readings(t))
 	grown := marksOf(Detector{}.Detect(s), ruleTestImport)[0]
 	want := []string{
 		"`src/a.ts` line 1 imports `tests/support/db.ts` (test infrastructure)",
@@ -136,7 +136,7 @@ func TestLinksWordingStandingAndEvidence(t *testing.T) {
 	}
 	typeOnly := ts.imports("", db)
 	typeOnly[a] = `import type { T } from "../tests/support/db.ts";` + "\n"
-	s = snapshot.Build(snapshottest.Files(ts.tree(nil), typeOnly), conventions.Default())
+	s = snapshot.Build(snapshottest.Files(ts.tree(nil), typeOnly), conventions.Default(), snapshottest.Readings(t))
 	if got := (Detector{}).Explain(s, marksOf(Detector{}.Detect(s), ruleTestImport)[0]); len(got) == 0 ||
 		got[0] != "`src/a.ts` line 1 imports `tests/support/db.ts` (test infrastructure), type-only" {
 		t.Errorf("Explain(type-only) = %q", got)
@@ -144,7 +144,7 @@ func TestLinksWordingStandingAndEvidence(t *testing.T) {
 
 	golang := languageCases()["go"]
 	goNow := golang.imports(golang.product("a"), golang.support("db"))
-	s = snapshot.Build(snapshottest.Files(golang.tree(nil), goNow), conventions.Default())
+	s = snapshot.Build(snapshottest.Files(golang.tree(nil), goNow), conventions.Default(), snapshottest.Readings(t))
 	if got := (Detector{}).Explain(s, marksOf(Detector{}.Detect(s), ruleTestImport)[0]); len(got) == 0 ||
 		got[0] != "`internal/a/a.go` line 4 imports the folder `internal/test/db` (1 file of test code)" {
 		t.Errorf("Explain(go) = %q", got)

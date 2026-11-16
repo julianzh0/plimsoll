@@ -109,7 +109,7 @@ func TestLayoutLinesHoldNoValueFromOutsideTheRepository(t *testing.T) {
 			"pythonpath = [\"/zzmarker/root\", \"zzmarker-none\"]\n",
 		"src/app/__init__.py": "",
 	}
-	layout := snapshot.Build(snapshottest.Files(nil, tree), conventions.Default()).Layout
+	layout := snapshot.Build(snapshottest.Files(nil, tree), conventions.Default(), snapshottest.Readings(t)).Layout
 	all := slices.Concat(TestFolderNotes(layout), TestFoldersNotUsed(layout), RootNotes(layout), RootsNotUsed(layout))
 	for _, line := range all {
 		if strings.Contains(line, "zzmarker") {

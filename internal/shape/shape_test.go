@@ -16,7 +16,7 @@ import (
 // the source of its limit, a way to verify it, and exact confidence.
 func detect(t *testing.T, source snapshot.Source, rules conventions.Rules) answer.Findings {
 	t.Helper()
-	findings := Detector{}.Detect(snapshot.Build(source, rules))
+	findings := Detector{}.Detect(snapshot.Build(source, rules, snapshottest.Readings(t)))
 	for _, m := range findings.Marks {
 		if m.ID == "" || m.Change == "" || m.Subject.Kind == "" || m.Measured.Unit == "" || m.Measured.LimitSource == "" ||
 			m.Hint == "" || m.Confidence != answer.Exact {
@@ -126,7 +126,7 @@ func TestDetectOnEachLanguageSample(t *testing.T) {
 				t.Errorf("Detect(%s) = churn row %v, marks %v; want neither", tc.name, found, findings.Marks)
 			}
 			total := 0
-			for _, file := range snapshot.Build(source, conventions.Default()).Now.Files {
+			for _, file := range snapshot.Build(source, conventions.Default(), snapshottest.Readings(t)).Now.Files {
 				total += file.Lines
 			}
 			if sum := tc.product + tc.test + tc.other; sum != float64(total) {

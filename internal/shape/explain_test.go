@@ -12,7 +12,7 @@ import (
 
 func explain(t *testing.T, source snapshot.Source, rule string) []string {
 	t.Helper()
-	s := snapshot.Build(source, conventions.Default())
+	s := snapshot.Build(source, conventions.Default(), snapshottest.Readings(t))
 	findings := Detector{}.Detect(s)
 	for _, m := range findings.Marks {
 		if strings.HasPrefix(m.ID, "shape."+rule+":") {
@@ -86,7 +86,7 @@ func TestExplainHoldsNoFileContentOrSettingValue(t *testing.T) {
 		".env.example": "SECRET_TOKEN=hunter2\n", "src/a.ts": "const password = 'swordfish'\n" + snapshottest.Lines(1600),
 		"tests/a.ts": snapshottest.Lines(4000),
 	})
-	s := snapshot.Build(source, conventions.Default())
+	s := snapshot.Build(source, conventions.Default(), snapshottest.Readings(t))
 	for _, m := range (Detector{}).Detect(s).Marks {
 		for _, line := range (Detector{}).Explain(s, m) {
 			if strings.Contains(line, "hunter2") || strings.Contains(line, "swordfish") {

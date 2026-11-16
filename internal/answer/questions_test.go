@@ -18,7 +18,8 @@ import (
 	"github.com/juzhxng/plimsoll/internal/snapshot/snapshottest"
 )
 
-func questions(source snapshot.Source, err error) (answer.Questions, *bool) {
+func questions(t testing.TB, source snapshot.Source, err error) (answer.Questions, *bool) {
+	t.Helper()
 	called := false
 	return answer.Questions{
 		Take: func(context.Context, string, string) (snapshot.Snapshot, error) {
@@ -26,7 +27,7 @@ func questions(source snapshot.Source, err error) (answer.Questions, *bool) {
 			if err != nil {
 				return snapshot.Snapshot{}, err
 			}
-			return snapshot.Build(source, conventions.Default()), nil
+			return snapshot.Build(source, conventions.Default(), snapshottest.Readings(t)), nil
 		},
 		Detectors: []answer.Detector{shape.Detector{}},
 		Version:   "0.1.0",
@@ -40,7 +41,7 @@ func grown() snapshot.Source {
 }
 
 func TestQuestionsAnswerWithARealDetector(t *testing.T) {
-	q, _ := questions(grown(), nil)
+	q, _ := questions(t, grown(), nil)
 	status, err := q.Status(context.Background(), "/repository", "main")
 	if err != nil || status.Question != answer.Status || status.Version != "0.1.0" || len(status.Detectors) != 1 ||
 		len(status.Marks) != 1 || status.Marks[0].ID != "shape.file-size:src/a.ts" || status.Sections != nil {
@@ -57,7 +58,7 @@ func TestQuestionsAnswerWithARealDetector(t *testing.T) {
 }
 
 func TestQuestionsRefuseInOnePlainSentence(t *testing.T) {
-	q, called := questions(grown(), nil)
+	q, called := questions(t, grown(), nil)
 	_, err := q.Status(context.Background(), "relative/path", "main")
 	if refusal, ok := errors.AsType[*answer.Refusal](err); !ok || refusal.Sentence != "`repository` must be an absolute path." || *called {
 		t.Errorf("Status(relative path) = %v, take called %v; want the absolute-path refusal before reading", err, *called)
@@ -70,14 +71,14 @@ func TestQuestionsRefuseInOnePlainSentence(t *testing.T) {
 		snapshot.GitFailed:       "git could not read the repository: `nope`.",
 	}
 	for kind, want := range cases {
-		q, _ := questions(snapshot.Source{}, &snapshot.Refusal{Kind: kind, Detail: "nope"})
+		q, _ := questions(t, snapshot.Source{}, &snapshot.Refusal{Kind: kind, Detail: "nope"})
 		_, err := q.Report(context.Background(), "/repository", "nope", nil)
 		if refusal, ok := errors.AsType[*answer.Refusal](err); !ok || refusal.Sentence != want {
 			t.Errorf("Report(refusal %d) = %v, want %q", kind, err, want)
 		}
 	}
 	boom := errors.New("boom")
-	q, _ = questions(snapshot.Source{}, boom)
+	q, _ = questions(t, snapshot.Source{}, boom)
 	if _, err := q.Status(context.Background(), "/repository", "main"); !errors.Is(err, boom) {
 		t.Errorf("Status(other error) = %v, want it returned as it is", err)
 	}
@@ -102,7 +103,7 @@ func sampleAnswers(t *testing.T) (answer.Questions, []answer.Answer) {
 	var all []answer.Answer
 	var q answer.Questions
 	for _, source := range sources {
-		q, _ = questions(source, nil)
+		q, _ = questions(t, source, nil)
 		q.Detectors = everyDetector()
 		for _, ask := range []func(context.Context, string, string) (answer.Answer, error){q.Status, func(ctx context.Context, repository, base string) (answer.Answer, error) {
 			return q.Report(ctx, repository, base, nil)
@@ -148,7 +149,7 @@ func TestExplainAnswersForOneItem(t *testing.T) {
 		map[string]string{"src/new.ts": "x\n", "src/gone.ts": snapshottest.Lines(1600), "src/old.ts": snapshottest.Lines(1600)},
 		map[string]string{"src/new.ts": snapshottest.Lines(1600), "src/old.ts": snapshottest.Lines(1600)},
 	)
-	q, _ := questions(source, nil)
+	q, _ := questions(t, source, nil)
 	report, err := q.Report(context.Background(), "/repository", "main", nil)
 	if err != nil {
 		t.Fatal(err)
@@ -168,7 +169,7 @@ func TestExplainOfALongMarkEndsWithATruncationLine(t *testing.T) {
 	for i := range 300 {
 		files[fmt.Sprintf("tests/t%03d.ts", i)] = "x\n"
 	}
-	q, _ := questions(snapshottest.Files(nil, files), nil)
+	q, _ := questions(t, snapshottest.Files(nil, files), nil)
 	a, err := q.Explain(context.Background(), "/repository", "main", "shape.test-ratio:repository")
 	if err != nil || len(a.Evidence.Lines) != 180 || a.Evidence.Omitted == 0 {
 		t.Fatalf("Explain(ratio with 300 test files) = %+v, %v; want 180 lines and some omitted", a.Evidence, err)
@@ -180,7 +181,7 @@ func TestExplainOfALongMarkEndsWithATruncationLine(t *testing.T) {
 }
 
 func TestExplainRefusesAnUnknownMark(t *testing.T) {
-	q, _ := questions(grown(), nil)
+	q, _ := questions(t, grown(), nil)
 	_, err := q.Explain(context.Background(), "/repository", "main", "shape.file-size:nope.ts")
 	want := "Unknown mark `shape.file-size:nope.ts`: nothing with this identifier exists against this base now. `report` lists the current identifiers."
 	if refusal, ok := errors.AsType[*answer.Refusal](err); !ok || refusal.Sentence != want {
@@ -189,7 +190,7 @@ func TestExplainRefusesAnUnknownMark(t *testing.T) {
 }
 
 func TestReportTakesNamedFiles(t *testing.T) {
-	q, called := questions(snapshottest.Files(nil, map[string]string{"src/a.ts": "import \"./b.ts\";\n", "src/b.ts": "export const b = 1;\n"}), nil)
+	q, called := questions(t, snapshottest.Files(nil, map[string]string{"src/a.ts": "import \"./b.ts\";\n", "src/b.ts": "export const b = 1;\n"}), nil)
 	q.Detectors = []answer.Detector{shape.Detector{}, links.Detector{}}
 	named := func(a answer.Answer) []string {
 		var subjects []string

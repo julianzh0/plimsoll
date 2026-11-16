@@ -54,7 +54,7 @@ func (c languageCase) fan(resolved int, specs ...string) map[string]string {
 // detect builds the snapshot, runs the detector and checks what every mark must carry.
 func detect(t *testing.T, source snapshot.Source) answer.Findings {
 	t.Helper()
-	f := Detector{}.Detect(snapshot.Build(source, conventions.Default()))
+	f := Detector{}.Detect(snapshot.Build(source, conventions.Default(), snapshottest.Readings(t)))
 	for _, m := range f.Marks {
 		if m.ID == "" || m.Change == "" || m.Subject.Kind == "" || m.Measured.Unit == "" || m.Measured.LimitSource == "" ||
 			m.Hint == "" || m.Confidence != answer.Candidate {
@@ -291,7 +291,7 @@ func TestTestImportMarksInEachLanguage(t *testing.T) {
 		if len(goneMarks) != 1 || goneMarks[0].ID != "links.test-import:"+a || goneMarks[0].Change != answer.Resolved {
 			t.Errorf("a product file gone since the base: marks %+v, want it resolved under its base path", goneMarks)
 		}
-		s := snapshot.Build(gone, conventions.Default())
+		s := snapshot.Build(gone, conventions.Default(), snapshottest.Readings(t))
 		if got := (Detector{}).Explain(s, goneMarks[0]); len(got) == 0 || !strings.HasPrefix(got[0], "at the base `"+a+"` line ") {
 			t.Errorf("Explain of a gone file = %q, want its base import first", got)
 		}
@@ -671,8 +671,9 @@ func TestNewProductFilesWithoutAnImporterAreListed(t *testing.T) {
 }
 
 // withNamed builds the snapshot of a source with the named files set, as Report sets them.
-func withNamed(source snapshot.Source, named ...string) snapshot.Snapshot {
-	s := snapshot.Build(source, conventions.Default())
+func withNamed(t testing.TB, source snapshot.Source, named ...string) snapshot.Snapshot {
+	t.Helper()
+	s := snapshot.Build(source, conventions.Default(), snapshottest.Readings(t))
 	s.Named = named
 	return s
 }
@@ -683,7 +684,7 @@ func TestNamedFilesGetTheirImporters(t *testing.T) {
 		tree := c.tree(map[string]string{
 			a: c.importing(a, nil), b: c.importing(b, []string{a}), c.test("b"): c.testFile(c.test("b"), a), "README.md": "x\n",
 		})
-		f := Detector{}.Detect(withNamed(same(tree), "README.md", a, "src/nope"))
+		f := Detector{}.Detect(withNamed(t, same(tree), "README.md", a, "src/nope"))
 		two, one := 2.0, 1.0
 		if reach, _ := statisticNamed(f, "reach of the named files"); !sameStatistic(reach, answer.Statistic{
 			Name: "reach of the named files", Value: &two, Before: &two, Unit: "files", Note: "3 named, 1 not found; 1 product, 1 test",
@@ -709,15 +710,15 @@ func TestNamedFilesGetTheirImporters(t *testing.T) {
 				t.Errorf("named row %d = %+v, want %+v", i, rows[i], want[i])
 			}
 		}
-		both := Detector{}.Detect(withNamed(same(tree), a, b))
+		both := Detector{}.Detect(withNamed(t, same(tree), a, b))
 		if reach, _ := statisticNamed(both, "reach of the named files"); reach.Value == nil || *reach.Value != one {
 			t.Errorf("a and b named: reach = %+v, want the test of b only", reach)
 		}
-		if _, has := statisticNamed(Detector{}.Detect(withNamed(same(tree))), "reach of the named files"); has {
+		if _, has := statisticNamed(Detector{}.Detect(withNamed(t, same(tree))), "reach of the named files"); has {
 			t.Errorf("no file named: a reach row of named files")
 		}
 		over := c.fan(8, c.nowhere)
-		overFindings := Detector{}.Detect(withNamed(same(over), c.product("a")))
+		overFindings := Detector{}.Detect(withNamed(t, same(over), c.product("a")))
 		row, _ := statisticNamed(overFindings, "named file")
 		if row.Value != nil || row.Note != "its language is not analysed" {
 			t.Errorf("a named file of a language over the limit = %+v", row)
@@ -764,7 +765,7 @@ func TestNoLinksLineHoldsImportText(t *testing.T) {
 		{"folder cycle", map[string]string{"src/a/x.ts": "import \"../b/y.ts\";\nimport \"zzmarker-outside\";\n", "src/b/y.ts": "export const y = 1;\n",
 			"src/b/z.ts": "import \"../a/w.ts\";\n", "src/a/w.ts": "export const w = 1;\n"}, "src/a/x.ts", true},
 	} {
-		s := withNamed(snapshottest.Files(nil, tc.files), tc.named)
+		s := withNamed(t, snapshottest.Files(nil, tc.files), tc.named)
 		f := Detector{}.Detect(s)
 		printed := []string{(Detector{}).Standing(f.Marks)}
 		for _, m := range f.Marks {

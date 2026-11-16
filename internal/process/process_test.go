@@ -13,7 +13,7 @@ import (
 
 func detect(t *testing.T, source snapshot.Source) (snapshot.Snapshot, answer.Findings) {
 	t.Helper()
-	s := snapshot.Build(source, conventions.Default())
+	s := snapshot.Build(source, conventions.Default(), snapshottest.Readings(t))
 	return s, Detector{}.Detect(s)
 }
 

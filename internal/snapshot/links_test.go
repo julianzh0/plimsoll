@@ -13,8 +13,9 @@ import (
 	"github.com/juzhxng/plimsoll/internal/snapshot/snapshottest"
 )
 
-func linksOf(files map[string]string) snapshot.Links {
-	return snapshot.Build(snapshottest.Files(nil, files), conventions.Default()).Now.Links
+func linksOf(t testing.TB, files map[string]string) snapshot.Links {
+	t.Helper()
+	return snapshot.Build(snapshottest.Files(nil, files), conventions.Default(), snapshottest.Readings(t)).Now.Links
 }
 
 func withCRLF(files map[string]string) map[string]string {
@@ -46,7 +47,7 @@ func TestBuildSortsTypeScriptImportsIntoKinds(t *testing.T) {
 	for _, p := range []string{"src/b.ts", "src/c.ts", "src/d.ts", "src/feature/index.ts", "src/x.ts", "src/x/index.ts", "src/t.ts", "src/store.ts"} {
 		files[p] = "export const v = 1;\n"
 	}
-	got := linksOf(files)
+	got := linksOf(t, files)
 	wantLanguages := []snapshot.LanguageImports{{
 		Language: "typescript", Resolved: 6, Outside: 2, Ambiguous: 1, Unreadable: 1, NotFound: 2,
 		PrefixFile: "tsconfig.json", Prefix: snapshot.PrefixAbsent,
@@ -63,24 +64,24 @@ func TestBuildSortsTypeScriptImportsIntoKinds(t *testing.T) {
 	if !reflect.DeepEqual(got.List, wantList) {
 		t.Errorf("List = %+v, want %+v", got.List, wantList)
 	}
-	if crlf := linksOf(withCRLF(files)); !reflect.DeepEqual(crlf, got) {
+	if crlf := linksOf(t, withCRLF(files)); !reflect.DeepEqual(crlf, got) {
 		t.Errorf("CRLF line ends: Links = %+v, want %+v", crlf, got)
 	}
 	bom := map[string]string{}
 	maps.Copy(bom, files)
 	bom["src/a.ts"] = "\uFEFF" + importer
-	if withBOM := linksOf(bom); !reflect.DeepEqual(withBOM, got) {
+	if withBOM := linksOf(t, bom); !reflect.DeepEqual(withBOM, got) {
 		t.Errorf("a byte order mark: Links = %+v, want %+v", withBOM, got)
 	}
 
-	index := linksOf(map[string]string{"src/feature/b.ts": `import { i } from ".";` + "\n", "src/feature/index.ts": "export const i = 1;\n"})
+	index := linksOf(t, map[string]string{"src/feature/b.ts": `import { i } from ".";` + "\n", "src/feature/index.ts": "export const i = 1;\n"})
 	if want := []snapshot.Link{link("src/feature/b.ts", 1, "src/feature/index.ts")}; !reflect.DeepEqual(index.List, want) {
 		t.Errorf(`import "." = %+v, want the folder's index file`, index.List)
 	}
-	if out := linksOf(map[string]string{"src/a.ts": `import "../../out.ts";` + "\n"}); out.Languages[0].NotFound != 1 || len(out.List) != 0 {
+	if out := linksOf(t, map[string]string{"src/a.ts": `import "../../out.ts";` + "\n"}); out.Languages[0].NotFound != 1 || len(out.List) != 0 {
 		t.Errorf("a path that leaves the repository = %+v, want not found", out)
 	}
-	if self := linksOf(map[string]string{"src/self.ts": `import "./self.ts";` + "\n"}); self.Languages[0].Resolved != 1 || len(self.List) != 0 {
+	if self := linksOf(t, map[string]string{"src/self.ts": `import "./self.ts";` + "\n"}); self.Languages[0].Resolved != 1 || len(self.List) != 0 {
 		t.Errorf("a file that imports itself = %+v, want resolved and no link", self)
 	}
 }
@@ -101,29 +102,29 @@ func TestBuildResolvesAliasesFromTheRootConfig(t *testing.T) {
 			"src/app/special.ts": "x\n", "src/shared/local.ts": "x\n",
 		}
 	}
-	got := linksOf(tree(config("", aliases)))
+	got := linksOf(t, tree(config("", aliases)))
 	wantList := []snapshot.Link{link("src/main.ts", 1, "src/app/util.ts"), link("src/main.ts", 2, "src/app/special/entry.ts"), link("src/main.ts", 5, "src/shared/local.ts")}
 	if l := got.Languages[0]; !reflect.DeepEqual(got.List, wantList) || l.Resolved != 3 || l.NotFound != 1 || l.Outside != 2 || l.Prefix != snapshot.PrefixRead {
 		t.Errorf("aliases: Links = %+v, want three links, 3 resolved, 1 not found, 2 outside, the prefix read", got)
 	}
-	extends := linksOf(tree(config("  \"extends\": \"./base.json\",\n", aliases)))
+	extends := linksOf(t, tree(config("  \"extends\": \"./base.json\",\n", aliases)))
 	if extends.Languages[0].Prefix != snapshot.PrefixExtends || !reflect.DeepEqual(extends.List, wantList) {
 		t.Errorf("a config that extends another: %+v, want PrefixExtends and the same links", extends)
 	}
-	broken := linksOf(tree("{not json"))
+	broken := linksOf(t, tree("{not json"))
 	if l := broken.Languages[0]; l.Prefix != snapshot.PrefixUnreadable || l.Outside != 6 {
 		t.Errorf("an unreadable config: %+v, want PrefixUnreadable and every alias outside", l)
 	}
-	if shape := linksOf(tree(config("", "      \"@app/*\": \"app/*\",\n"))); shape.Languages[0].Prefix != snapshot.PrefixUnreadable {
+	if shape := linksOf(t, tree(config("", "      \"@app/*\": \"app/*\",\n"))); shape.Languages[0].Prefix != snapshot.PrefixUnreadable {
 		t.Errorf("paths that are not lists: Prefix = %v, want PrefixUnreadable", shape.Languages[0].Prefix)
 	}
-	if bom := linksOf(tree("\uFEFF" + config("", aliases))); bom.Languages[0].Prefix != snapshot.PrefixRead {
+	if bom := linksOf(t, tree("\uFEFF"+config("", aliases))); bom.Languages[0].Prefix != snapshot.PrefixRead {
 		t.Errorf("a config with a byte order mark: Prefix = %v, want PrefixRead", bom.Languages[0].Prefix)
 	}
 }
 
 func TestBuildListsFilesThatOnlyPassImportsOn(t *testing.T) {
-	got := linksOf(map[string]string{
+	got := linksOf(t, map[string]string{
 		"src/index.ts": "export * from \"./a.ts\";\nexport { b } from \"./b.ts\";\n",
 		"src/mixed.ts": "export * from \"./a.ts\";\nexport const own = 1;\n",
 		"src/empty.ts": "", "src/a.ts": "export const a = 1;\n", "src/b.ts": "export const b = 1;\n",
@@ -157,7 +158,7 @@ func goTree() map[string]string {
 }
 
 func TestBuildFollowsGoImportsToFolders(t *testing.T) {
-	got := linksOf(goTree())
+	got := linksOf(t, goTree())
 	wantLanguages := []snapshot.LanguageImports{{
 		Language: "go", Resolved: 4, Outside: 4, NotFound: 1, PrefixFile: "go.mod", Prefix: snapshot.PrefixRead,
 		PrefixRequired: true, Folders: true, NoRings: "the Go compiler rejects import cycles",
@@ -173,22 +174,22 @@ func TestBuildFollowsGoImportsToFolders(t *testing.T) {
 	if !reflect.DeepEqual(got.List, wantList) {
 		t.Errorf("List = %+v, want %+v", got.List, wantList)
 	}
-	if crlf := linksOf(withCRLF(goTree())); !reflect.DeepEqual(crlf, got) {
+	if crlf := linksOf(t, withCRLF(goTree())); !reflect.DeepEqual(crlf, got) {
 		t.Errorf("CRLF line ends: Links = %+v, want %+v", crlf, got)
 	}
 	without := goTree()
 	delete(without, "go.mod")
-	if l := linksOf(without).Languages[0]; l.Prefix != snapshot.PrefixAbsent || l.Outside != 9 || l.Resolved != 0 {
+	if l := linksOf(t, without).Languages[0]; l.Prefix != snapshot.PrefixAbsent || l.Outside != 9 || l.Resolved != 0 {
 		t.Errorf("without go.mod: %+v, want PrefixAbsent and every import outside", l)
 	}
 	noModule := goTree()
 	noModule["go.mod"] = "go 1.27\n"
-	if l := linksOf(noModule).Languages[0]; l.Prefix != snapshot.PrefixUnreadable {
+	if l := linksOf(t, noModule).Languages[0]; l.Prefix != snapshot.PrefixUnreadable {
 		t.Errorf("go.mod without a module line: Prefix = %v, want PrefixUnreadable", l.Prefix)
 	}
 	quoted := goTree()
 	quoted["go.mod"] = "module \"example.com/m\" // note\n"
-	if q := linksOf(quoted); q.Languages[0].Prefix != snapshot.PrefixRead || !reflect.DeepEqual(q.List, wantList) {
+	if q := linksOf(t, quoted); q.Languages[0].Prefix != snapshot.PrefixRead || !reflect.DeepEqual(q.List, wantList) {
 		t.Errorf("a quoted module line with a comment: %+v, want the same links", q)
 	}
 }
@@ -198,18 +199,18 @@ func TestBuildCountsEachLanguageApart(t *testing.T) {
 	files["src/a.ts"] = `import { b } from "./b.ts";` + "\n"
 	files["src/b.ts"] = "export const b = 1;\n"
 	files["src/x.py"] = "x = 1\n"
-	got := linksOf(files)
+	got := linksOf(t, files)
 	if len(got.Languages) != 3 || got.Languages[0].Language != "typescript" || got.Languages[1].Language != "go" || got.Languages[2].Language != "python" {
 		t.Errorf("Languages = %+v, want typescript, go, python: the entries' order", got.Languages)
 	}
-	if shell := linksOf(map[string]string{"bin/a.sh": "echo a\n"}); len(shell.Languages) != 0 || len(shell.List) != 0 {
+	if shell := linksOf(t, map[string]string{"bin/a.sh": "echo a\n"}); len(shell.Languages) != 0 || len(shell.List) != 0 {
 		t.Errorf("a shell script only: Links = %+v, want none", shell)
 	}
 }
 
 func TestBuildResolvesEachSideAgainstItsOwnFiles(t *testing.T) {
 	build := func(base, now map[string]string) snapshot.Snapshot {
-		return snapshot.Build(snapshottest.Files(base, now), conventions.Default())
+		return snapshot.Build(snapshottest.Files(base, now), conventions.Default(), snapshottest.Readings(t))
 	}
 	tree := map[string]string{"src/a.ts": `import x from "./b.ts";` + "\n", "src/b.ts": "export const b = 1;\n"}
 	same := build(tree, tree)
@@ -256,7 +257,7 @@ func TestBuildKeepsNoImportText(t *testing.T) {
 		"src/zz.h":   "#pragma once\n",
 		"src/lib.rs": "mod zzmarker_gone;\nuse zzmarker::Outside;\nuse crate::zzmarker_item::{A, zzmarker_b};\nmod zzmarker_inline {\n    use super::zzmarker_x;\n}\n",
 	}
-	s := snapshot.Build(snapshottest.Files(tree, tree), conventions.Default())
+	s := snapshot.Build(snapshottest.Files(tree, tree), conventions.Default(), snapshottest.Readings(t))
 	printed := fmt.Sprintf("%+v", s)
 	if strings.Contains(printed, "zzmarker") {
 		t.Errorf("the snapshot holds import text: %s", printed)
@@ -284,7 +285,7 @@ func pythonTree() map[string]string {
 }
 
 func TestBuildFollowsDartImportsToFiles(t *testing.T) {
-	got := snapshot.Build(snapshottest.Load(t, "testdata/dart"), conventions.Default()).Now.Links
+	got := snapshot.Build(snapshottest.Load(t, "testdata/dart"), conventions.Default(), snapshottest.Readings(t)).Now.Links
 	// note.dart's part note.g.dart resolves, but a generated file is no code, so the list leaves that link out.
 	want := []snapshot.LanguageImports{{Language: "dart", Resolved: 10, Outside: 5, PrefixFile: "pubspec.yaml", Prefix: snapshot.PrefixRead, Implicit: []string{"main.dart"}}}
 	if !reflect.DeepEqual(got.Languages, want) {
@@ -307,7 +308,7 @@ func TestBuildFollowsDartImportsToFiles(t *testing.T) {
 }
 
 func TestBuildFollowsImportsIntoDartWorkspaceMembers(t *testing.T) {
-	got := linksOf(map[string]string{
+	got := linksOf(t, map[string]string{
 		"pubspec.yaml":                  "name: _ws\nworkspace:\n  - app # the app\n  - 'packages/core'\n  - packages/gone\n",
 		"app/pubspec.yaml":              "name: app\nresolution: workspace\n",
 		"packages/core/pubspec.yaml":    "name: core\nresolution: workspace\n",
@@ -365,7 +366,7 @@ func TestBuildFollowsJavaAndKotlinImportsToPackages(t *testing.T) {
 	}{
 		// App.java reaches the store folder under src/main only; AppTest.java also the one under src/test. The
 		// import of the generated NoteProto resolves and gives no link.
-		{"the Maven sample", snapshot.Build(snapshottest.Load(t, "testdata/java"), conventions.Default()).Now.Links,
+		{"the Maven sample", snapshot.Build(snapshottest.Load(t, "testdata/java"), conventions.Default(), snapshottest.Readings(t)).Now.Links,
 			[]snapshot.LanguageImports{java(7, 5, 0)},
 			[]snapshot.Link{
 				folderLink(notes+"/App.java", 3, notes+"/model", notes+"/model/Note.java"),
@@ -377,7 +378,7 @@ func TestBuildFollowsJavaAndKotlinImportsToPackages(t *testing.T) {
 				folderLink(notesTest+"/store/NoteStoreTest.java", 3, notes+"/model", notes+"/model/Note.java"),
 			}},
 		// Kotlin reaches the Java class and Java the Kotlin one; a top-level function is a member of its package.
-		{"the Gradle sample", snapshot.Build(snapshottest.Load(t, "testdata/kotlin"), conventions.Default()).Now.Links,
+		{"the Gradle sample", snapshot.Build(snapshottest.Load(t, "testdata/kotlin"), conventions.Default(), snapshottest.Readings(t)).Now.Links,
 			[]snapshot.LanguageImports{java(1, 0, 0), entry("kotlin", 10, 3, 0)},
 			[]snapshot.Link{
 				folderLink(device, 3, tasks+"/data", data...),
@@ -395,7 +396,7 @@ func TestBuildFollowsJavaAndKotlinImportsToPackages(t *testing.T) {
 			}},
 		// A.java: fakes lies under a test source set only (outside), gen.proto is no tracked package (not found),
 		// com.other shares no package (outside). BTest.kt imports its own package and gets no link to itself.
-		{"a package in several folders", linksOf(jvmTree()),
+		{"a package in several folders", linksOf(t, jvmTree()),
 			[]snapshot.LanguageImports{java(3, 2, 1), entry("kotlin", 1, 0, 0)},
 			[]snapshot.Link{
 				folderLink(a, 3, demo, demo+"/Demo.kt"), folderLink(a, 3, mainB, mainB+"/B.kt"),
@@ -413,23 +414,23 @@ func TestBuildFollowsJavaAndKotlinImportsToPackages(t *testing.T) {
 			t.Errorf("%s: List = %+v, PassOn %q; want %+v and none", tc.name, tc.got.List, tc.got.PassOn, tc.list)
 		}
 	}
-	want := linksOf(jvmTree())
-	if crlf := linksOf(withCRLF(jvmTree())); !reflect.DeepEqual(crlf, want) {
+	want := linksOf(t, jvmTree())
+	if crlf := linksOf(t, withCRLF(jvmTree())); !reflect.DeepEqual(crlf, want) {
 		t.Errorf("CRLF line ends: Links = %+v, want %+v", crlf, want)
 	}
 	bom := jvmTree()
 	bom[a] = "\uFEFF" + bom[a]
-	if withBOM := linksOf(bom); !reflect.DeepEqual(withBOM, want) {
+	if withBOM := linksOf(t, bom); !reflect.DeepEqual(withBOM, want) {
 		t.Errorf("a byte order mark: Links = %+v, want %+v", withBOM, want)
 	}
-	noRoot := linksOf(map[string]string{"app/A.java": "import com.acme.b.B;\n", "app/com/acme/b/B.java": "package com.acme.b;\n"})
+	noRoot := linksOf(t, map[string]string{"app/A.java": "import com.acme.b.B;\n", "app/com/acme/b/B.java": "package com.acme.b;\n"})
 	if l := noRoot.Languages[0]; l.Prefix != snapshot.PrefixAbsent || l.Outside != 1 || len(noRoot.List) != 0 {
 		t.Errorf("Java files without a source root: %+v, want PrefixAbsent and the import outside", noRoot)
 	}
 }
 
 func TestBuildFollowsPythonImportsToFiles(t *testing.T) {
-	got := linksOf(pythonTree())
+	got := linksOf(t, pythonTree())
 	want := []snapshot.LanguageImports{{
 		Language: "python", Resolved: 14, Outside: 7, Ambiguous: 1, Unreadable: 2, NotFound: 2, Prefix: snapshot.PrefixRead, PrefixRequired: true,
 		Roots: []string{".", "src"}, Implicit: []string{"__init__.py", "__main__.py"},
@@ -454,7 +455,7 @@ func TestBuildFollowsPythonImportsToFiles(t *testing.T) {
 	if !reflect.DeepEqual(got.PassOn, []string{"src/app/models/__init__.py"}) {
 		t.Errorf("PassOn = %q, want the models package", got.PassOn)
 	}
-	sample := snapshot.Build(snapshottest.Load(t, "testdata/python-declared"), conventions.Default()).Now.Links
+	sample := snapshot.Build(snapshottest.Load(t, "testdata/python-declared"), conventions.Default(), snapshottest.Readings(t)).Now.Links
 	if l := sample.Languages[0]; l.Resolved != 3 || l.Outside != 0 || l.Prefix != snapshot.PrefixRead || !slices.Equal(l.Roots, []string{".", "src", "lib"}) ||
 		!reflect.DeepEqual(sample.List, []snapshot.Link{link("checks/test_flow.py", 1, "checks/helpers.py"), link("src/app/service.py", 1, "lib/core/model.py"), link("tests/test_service.py", 1, "src/app/service.py")}) {
 		t.Errorf("a declared root: Links = %+v", sample)
@@ -465,39 +466,39 @@ func TestBuildFollowsPythonImportsToFiles(t *testing.T) {
 			undeclared.Now[i].Content = []byte("[project]\nname = \"sample\"\ndependencies = []\n")
 		}
 	}
-	if l := snapshot.Build(undeclared, conventions.Default()).Now.Links; l.Languages[0].Resolved != 2 || l.Languages[0].Outside != 1 || !slices.Equal(l.Languages[0].Roots, []string{".", "src"}) ||
+	if l := snapshot.Build(undeclared, conventions.Default(), snapshottest.Readings(t)).Now.Links; l.Languages[0].Resolved != 2 || l.Languages[0].Outside != 1 || !slices.Equal(l.Languages[0].Roots, []string{".", "src"}) ||
 		slices.ContainsFunc(l.List, func(k snapshot.Link) bool { return k.From == "src/app/service.py" }) {
 		t.Errorf("no declared root: Links = %+v", l)
 	}
-	if l := linksOf(map[string]string{"pyproject.toml": "[tool.pytest.ini_options]\npythonpath = [\"lib\"]\n", "lib/app/__init__.py": "", "lib/app/b.py": "x = 1\n", "src/main.py": "import app.b\n"}); !reflect.DeepEqual(l.List, []snapshot.Link{link("src/main.py", 1, "lib/app/b.py")}) {
+	if l := linksOf(t, map[string]string{"pyproject.toml": "[tool.pytest.ini_options]\npythonpath = [\"lib\"]\n", "lib/app/__init__.py": "", "lib/app/b.py": "x = 1\n", "src/main.py": "import app.b\n"}); !reflect.DeepEqual(l.List, []snapshot.Link{link("src/main.py", 1, "lib/app/b.py")}) {
 		t.Errorf("a declared root alone: List = %+v", l.List)
 	}
-	if crlf := linksOf(withCRLF(pythonTree())); !reflect.DeepEqual(crlf, got) {
+	if crlf := linksOf(t, withCRLF(pythonTree())); !reflect.DeepEqual(crlf, got) {
 		t.Errorf("CRLF line ends: Links = %+v, want %+v", crlf, got)
 	}
 	bom := pythonTree()
 	bom[main] = "\uFEFF" + bom[main]
-	if withBOM := linksOf(bom); !reflect.DeepEqual(withBOM, got) {
+	if withBOM := linksOf(t, bom); !reflect.DeepEqual(withBOM, got) {
 		t.Errorf("a byte order mark: Links = %+v, want %+v", withBOM, got)
 	}
-	lib := linksOf(map[string]string{"lib/app/a.py": "import app.b\n", "lib/app/b.py": "x = 1\n"})
+	lib := linksOf(t, map[string]string{"lib/app/a.py": "import app.b\n", "lib/app/b.py": "x = 1\n"})
 	if l := lib.Languages[0]; l.Prefix != snapshot.PrefixAbsent || l.Outside != 1 || len(lib.List) != 0 {
 		t.Errorf("packages outside the roots: %+v, want PrefixAbsent and the import outside", lib)
 	}
-	root := linksOf(map[string]string{"main.py": "import helper\nfrom . import helper\nfrom .. import x\nimport main\n", "helper.py": "x = 1\n"})
+	root := linksOf(t, map[string]string{"main.py": "import helper\nfrom . import helper\nfrom .. import x\nimport main\n", "helper.py": "x = 1\n"})
 	if l := root.Languages[0]; l.Resolved != 3 || l.NotFound != 1 ||
 		!reflect.DeepEqual(root.List, []snapshot.Link{link("main.py", 1, "helper.py"), link("main.py", 2, "helper.py")}) {
 		t.Errorf("modules at the root: %+v", root)
 	}
-	if semicolon := linksOf(map[string]string{"src/a.py": "from app import b; x = 1\n", "src/app/__init__.py": "", "src/app/b.py": "x = 1\n"}); !reflect.DeepEqual(semicolon.List, []snapshot.Link{link("src/a.py", 1, "src/app/b.py")}) {
+	if semicolon := linksOf(t, map[string]string{"src/a.py": "from app import b; x = 1\n", "src/app/__init__.py": "", "src/app/b.py": "x = 1\n"}); !reflect.DeepEqual(semicolon.List, []snapshot.Link{link("src/a.py", 1, "src/app/b.py")}) {
 		t.Errorf("a name list ended by a semicolon: %+v, want the link to b", semicolon.List)
 	}
-	if stub := linksOf(map[string]string{"src/a.py": "import stub\n", "src/stub.pyi": "x: int\n"}); stub.Languages[0].Outside != 1 || len(stub.List) != 0 {
+	if stub := linksOf(t, map[string]string{"src/a.py": "import stub\n", "src/stub.pyi": "x: int\n"}); stub.Languages[0].Outside != 1 || len(stub.List) != 0 {
 		t.Errorf("an import of a stub: %+v, want outside: a stub is no target", stub)
 	}
 	mixed := pythonTree()
 	mixed["src/app/mixed.py"] = "from app import store, both\nfrom examples.demo import run, nope\n"
-	m := linksOf(mixed)
+	m := linksOf(t, mixed)
 	from := 0
 	for _, l := range m.List {
 		if l.From == "src/app/mixed.py" {
@@ -558,7 +559,7 @@ func TestBuildFollowsRustImportsToFiles(t *testing.T) {
 	// The sample: cli.rs is declared by main.rs, so its crate is main.rs; the uses inside `mod tests` of super
 	// name their own file; the `use` line in the comment of lib.rs is no statement.
 	lib, bin, memory, store, model, member := "src/lib.rs", "src/main.rs", "src/store/memory.rs", "src/store/mod.rs", "src/model.rs", "crates/notes-store/src/"
-	check("the sample", snapshot.Build(snapshottest.Load(t, "testdata/rust"), conventions.Default()).Now.Links,
+	check("the sample", snapshot.Build(snapshottest.Load(t, "testdata/rust"), conventions.Default(), snapshottest.Readings(t)).Now.Links,
 		entry(27, 3, 0, 0, snapshot.PrefixRead),
 		[]snapshot.Link{
 			link(member+"lib.rs", 1, member+"disk.rs"), link(member+"lib.rs", 3, member+"disk.rs"),
@@ -580,14 +581,14 @@ func TestBuildFollowsRustImportsToFiles(t *testing.T) {
 		link(lib, 11, "core/src/util.rs"), link(lib, 14, a), link(lib, 14, sub), link(lib, 15, "core/src/lib.rs"),
 		link(common, 1, "tests/it.rs"), link("tests/it.rs", 1, common), link("tests/it.rs", 2, a), link("tests/it.rs", 3, common),
 	}
-	got := linksOf(rustTree())
+	got := linksOf(t, rustTree())
 	check("the tree", got, entry(23, 3, 1, 2, snapshot.PrefixRead), wantTree, []string{"core/src/lib.rs"})
-	if crlf := linksOf(withCRLF(rustTree())); !reflect.DeepEqual(crlf, got) {
+	if crlf := linksOf(t, withCRLF(rustTree())); !reflect.DeepEqual(crlf, got) {
 		t.Errorf("CRLF line ends: Links = %+v, want %+v", crlf, got)
 	}
 	bom := rustTree()
 	bom[lib], bom["Cargo.toml"] = "\uFEFF"+bom[lib], "\uFEFF"+bom["Cargo.toml"]
-	if withBOM := linksOf(bom); !reflect.DeepEqual(withBOM, got) {
+	if withBOM := linksOf(t, bom); !reflect.DeepEqual(withBOM, got) {
 		t.Errorf("a byte order mark: Links = %+v, want %+v", withBOM, got)
 	}
 
@@ -598,28 +599,28 @@ func TestBuildFollowsRustImportsToFiles(t *testing.T) {
 	byName := func(l snapshot.Link) bool {
 		return l.From == lib && (l.Line == 11 || l.Line == 15) || l.From == "tests/it.rs" && l.Line == 2
 	}
-	check("no Cargo.toml", linksOf(bare), entry(20, 6, 1, 2, snapshot.PrefixAbsent), slices.DeleteFunc(slices.Clone(wantTree), byName), []string{"core/src/lib.rs"})
+	check("no Cargo.toml", linksOf(t, bare), entry(20, 6, 1, 2, snapshot.PrefixAbsent), slices.DeleteFunc(slices.Clone(wantTree), byName), []string{"core/src/lib.rs"})
 
 	// A package without a library: its name leads nowhere of its own.
-	check("a binary alone", linksOf(map[string]string{
+	check("a binary alone", linksOf(t, map[string]string{
 		"Cargo.toml": "[package]\nname = \"tool\"\n", "src/main.rs": "use tool::x;\nmod cli;\n", "src/cli.rs": "use crate::run;\n",
 	}), entry(2, 1, 0, 0, snapshot.PrefixRead), []snapshot.Link{link("src/cli.rs", 1, "src/main.rs"), link("src/main.rs", 2, "src/cli.rs")}, nil)
 
 	// A module that two crate roots declare: its crate paths agree, its parent does not. A file of one mod line
 	// only passes imports on.
-	check("a module of two tests", linksOf(map[string]string{
+	check("a module of two tests", linksOf(t, map[string]string{
 		"tests/a.rs": "mod common;\n", "tests/b.rs": "mod common;\n", "tests/common/mod.rs": "use crate::common::x;\nuse super::y;\n",
 	}), entry(3, 0, 1, 0, snapshot.PrefixAbsent), []snapshot.Link{link("tests/a.rs", 1, common), link("tests/b.rs", 1, common)},
 		[]string{"tests/a.rs", "tests/b.rs"})
 
 	// A package table without a name names no crate; the links by crate, self and super need none.
-	check("a package without a name", linksOf(map[string]string{
+	check("a package without a name", linksOf(t, map[string]string{
 		"Cargo.toml": "[package]\nversion = \"1\"\n", "src/lib.rs": "mod a;\n", "src/a.rs": "use crate::X;\n",
 	}), entry(2, 0, 0, 0, snapshot.PrefixAbsent), []snapshot.Link{link("src/a.rs", 1, "src/lib.rs"), link("src/lib.rs", 1, "src/a.rs")},
 		[]string{"src/lib.rs"})
 
 	// A brace that never closes: the inline module runs to the end of the file.
-	check("a module that does not close", linksOf(map[string]string{"src/lib.rs": "mod a {\n    use super::b;\nmod c;\n"}),
+	check("a module that does not close", linksOf(t, map[string]string{"src/lib.rs": "mod a {\n    use super::b;\nmod c;\n"}),
 		entry(1, 0, 0, 1, snapshot.PrefixAbsent), nil, nil)
 }
 
@@ -664,7 +665,7 @@ func TestBuildFollowsCSharpUsingsToNamespaces(t *testing.T) {
 	}{
 		// Properties is declared by a designer file and Mapping by a file with the header: both resolve and give no
 		// link. System and System.Collections.Generic stay outside beside the declared System.Runtime.CompilerServices.
-		{"the sample", snapshot.Build(snapshottest.Load(t, "testdata/csharp"), conventions.Default()).Now.Links,
+		{"the sample", snapshot.Build(snapshottest.Load(t, "testdata/csharp"), conventions.Default(), snapshottest.Readings(t)).Now.Links,
 			[]snapshot.LanguageImports{csharp(11, 5, 0, 0)},
 			[]snapshot.Link{
 				folderLink(tests+"/NoteStoreTests.cs", 1, notes+"/Model", model...),
@@ -680,7 +681,7 @@ func TestBuildFollowsCSharpUsingsToNamespaces(t *testing.T) {
 		// Invoice.cs: Acme.Grpc is the project's own by its name and declared nowhere (not found); Acme and System
 		// only hold namespaces, System.IO and the nested Inner are declared nowhere (outside); System.Text is
 		// declared beside Acme.Core. The global using of Acme.Core is not readable and gives no link.
-		{"a namespace in two folders", linksOf(csharpTree()),
+		{"a namespace in two folders", linksOf(t, csharpTree()),
 			[]snapshot.LanguageImports{csharp(6, 5, 1, 1)},
 			[]snapshot.Link{
 				folderLink(invoice, 1, extras, extras+"/More.cs"), folderLink(invoice, 1, core, coreFiles...),
@@ -699,21 +700,21 @@ func TestBuildFollowsCSharpUsingsToNamespaces(t *testing.T) {
 			t.Errorf("%s: List = %+v, PassOn %q; want %+v and none", tc.name, tc.got.List, tc.got.PassOn, tc.list)
 		}
 	}
-	want := linksOf(csharpTree())
-	if crlf := linksOf(withCRLF(csharpTree())); !reflect.DeepEqual(crlf, want) {
+	want := linksOf(t, csharpTree())
+	if crlf := linksOf(t, withCRLF(csharpTree())); !reflect.DeepEqual(crlf, want) {
 		t.Errorf("CRLF line ends: Links = %+v, want %+v", crlf, want)
 	}
 	bom := csharpTree()
 	bom[invoice] = "\uFEFF" + bom[invoice]
-	if withBOM := linksOf(bom); !reflect.DeepEqual(withBOM, want) {
+	if withBOM := linksOf(t, bom); !reflect.DeepEqual(withBOM, want) {
 		t.Errorf("a byte order mark: Links = %+v, want %+v", withBOM, want)
 	}
 	noProject := csharpTree()
 	delete(noProject, "src/Acme/Acme.csproj")
-	if got := linksOf(noProject); !reflect.DeepEqual(got.Languages, []snapshot.LanguageImports{csharp(6, 6, 1, 0)}) || !reflect.DeepEqual(got.List, want.List) {
+	if got := linksOf(t, noProject); !reflect.DeepEqual(got.Languages, []snapshot.LanguageImports{csharp(6, 6, 1, 0)}) || !reflect.DeepEqual(got.List, want.List) {
 		t.Errorf("without a project file: %+v, want the import of Acme.Grpc outside and the same links", got)
 	}
-	bare := linksOf(map[string]string{"src/A.cs": "using Acme.B;\n", "src/B.cs": "class B {}\n"})
+	bare := linksOf(t, map[string]string{"src/A.cs": "using Acme.B;\n", "src/B.cs": "class B {}\n"})
 	if l := bare.Languages[0]; l.Prefix != snapshot.PrefixAbsent || l.Outside != 1 || len(bare.List) != 0 {
 		t.Errorf("C# files that declare no namespace: %+v, want PrefixAbsent and the import outside", bare)
 	}
@@ -749,7 +750,7 @@ func TestBuildFollowsSwiftImportsToModules(t *testing.T) {
 		}}
 	}
 	core := []string{"Sources/NotesCore/Config.swift", "Sources/NotesCore/Model/Note.swift", "Sources/NotesCore/Store.swift"}
-	sample := snapshot.Build(snapshottest.Load(t, "testdata/swift"), conventions.Default()).Now.Links
+	sample := snapshot.Build(snapshottest.Load(t, "testdata/swift"), conventions.Default(), snapshottest.Readings(t)).Now.Links
 	wantSample := []snapshot.Link{
 		folderLink("Old/Legacy/Clock.swift", 2, "Sources/NotesCore", core...),
 		folderLink("Sources/notes/main.swift", 2, "Sources/NotesCore", core...),
@@ -769,18 +770,18 @@ func TestBuildFollowsSwiftImportsToModules(t *testing.T) {
 		folderLink("Sources/tool/main.swift", 2, "Old/Legacy", "Old/Legacy/L.swift"),
 		folderLink("Tests/CoreTests/CoreTests.swift", 2, "Sources/Core", coreFiles...),
 	}
-	got := linksOf(swiftTree())
+	got := linksOf(t, swiftTree())
 	if !reflect.DeepEqual(got.Languages, swift(4, 6, 1, snapshot.PrefixRead)) || !reflect.DeepEqual(got.List, wantTree) {
 		t.Errorf("the tree: Languages %+v, List %+v; want %+v and %+v", got.Languages, got.List, swift(4, 6, 1, snapshot.PrefixRead), wantTree)
 	}
-	if crlf := linksOf(withCRLF(swiftTree())); !reflect.DeepEqual(crlf, got) {
+	if crlf := linksOf(t, withCRLF(swiftTree())); !reflect.DeepEqual(crlf, got) {
 		t.Errorf("CRLF line ends: Links = %+v, want %+v", crlf, got)
 	}
 
 	// Without Package.swift an own module cannot be told from a framework.
 	bare := swiftTree()
 	delete(bare, "Package.swift")
-	if l := linksOf(bare); !reflect.DeepEqual(l.Languages, swift(0, 10, 0, snapshot.PrefixAbsent)) || len(l.List) != 0 {
+	if l := linksOf(t, bare); !reflect.DeepEqual(l.Languages, swift(0, 10, 0, snapshot.PrefixAbsent)) || len(l.List) != 0 {
 		t.Errorf("no Package.swift: %+v, want every import outside and no link", l)
 	}
 }
@@ -829,7 +830,7 @@ func TestBuildFollowsIncludesToFiles(t *testing.T) {
 		languages []snapshot.LanguageImports
 		list      []snapshot.Link
 	}{
-		{"the C sample", snapshot.Build(snapshottest.Load(t, "testdata/c"), conventions.Default()).Now.Links,
+		{"the C sample", snapshot.Build(snapshottest.Load(t, "testdata/c"), conventions.Default(), snapshottest.Readings(t)).Now.Links,
 			[]snapshot.LanguageImports{c(4, 2, 0, 0, 0)},
 			[]snapshot.Link{
 				link("src/buffer.c", 1, "src/buffer.h"), link("src/tally.c", 1, "include/tally.h"), link("src/tally.c", 5, "src/buffer.h"),
@@ -837,7 +838,7 @@ func TestBuildFollowsIncludesToFiles(t *testing.T) {
 			}},
 		// The include inside the comment of src/store.cc is not read; fake_clock.h reaches src/clock.h through the
 		// folder that only the root CMakeLists.txt names, and store_test.cc its support folder through tests/CMakeLists.txt.
-		{"the C++ sample", snapshot.Build(snapshottest.Load(t, "testdata/cpp"), conventions.Default()).Now.Links,
+		{"the C++ sample", snapshot.Build(snapshottest.Load(t, "testdata/cpp"), conventions.Default(), snapshottest.Readings(t)).Now.Links,
 			[]snapshot.LanguageImports{cpp(7, 7, 0, 0, 0)},
 			[]snapshot.Link{
 				link(store, 5, "include/notes/note.h"), link("src/main.cpp", 3, store), link("src/store.cc", 5, store),
@@ -845,7 +846,7 @@ func TestBuildFollowsIncludesToFiles(t *testing.T) {
 				link("tests/store_test.cc", 4, store), link("tests/support/fake_clock.h", 3, "src/clock.h"),
 			}},
 		// One .c and one .cc file: the headers stay with the first entry that lists .h.
-		{"the tree", linksOf(includeTree()),
+		{"the tree", linksOf(t, includeTree()),
 			[]snapshot.LanguageImports{c(3, 1, 0, 0, 0), cpp(7, 2, 1, 1, 1)},
 			[]snapshot.Link{
 				link("src/core.h", 1, "src/util/strings.h"),
@@ -863,22 +864,22 @@ func TestBuildFollowsIncludesToFiles(t *testing.T) {
 			t.Errorf("%s: List = %+v, PassOn %q; want %+v and none", tc.name, tc.got.List, tc.got.PassOn, tc.list)
 		}
 	}
-	want := linksOf(includeTree())
-	if crlf := linksOf(withCRLF(includeTree())); !reflect.DeepEqual(crlf, want) {
+	want := linksOf(t, includeTree())
+	if crlf := linksOf(t, withCRLF(includeTree())); !reflect.DeepEqual(crlf, want) {
 		t.Errorf("CRLF line ends: Links = %+v, want %+v", crlf, want)
 	}
 	marked := includeTree()
 	for _, p := range []string{"CMakeLists.txt", "tools/CMakeLists.txt", "src/main.cc"} {
 		marked[p] = "\uFEFF" + marked[p]
 	}
-	if bom := linksOf(marked); !reflect.DeepEqual(bom, want) {
+	if bom := linksOf(t, marked); !reflect.DeepEqual(bom, want) {
 		t.Errorf("a byte order mark: Links = %+v, want %+v", bom, want)
 	}
 	// A command in capitals and over lines with a comment inside it names the same folders; one that never closes
 	// is no failure.
 	shouted := includeTree()
 	shouted["CMakeLists.txt"] = "PROJECT(app)\nINCLUDE_DIRECTORIES(\n  src # the sources\n  \"${CMAKE_CURRENT_SOURCE_DIR}/third\"\n)\nadd_subdirectory(tools)\ninclude_directories(private"
-	if got := linksOf(shouted); !reflect.DeepEqual(got.Languages, want.Languages) {
+	if got := linksOf(t, shouted); !reflect.DeepEqual(got.Languages, want.Languages) {
 		t.Errorf("a command in capitals, over lines and unclosed: Languages = %+v, want %+v", got.Languages, want.Languages)
 	}
 	// Without the CMake files only the folders named include are known: what the declared folders led to is not
@@ -887,11 +888,11 @@ func TestBuildFollowsIncludesToFiles(t *testing.T) {
 	delete(bare, "CMakeLists.txt")
 	delete(bare, "tools/CMakeLists.txt")
 	// A path written with Windows separators names the same file.
-	windows := linksOf(map[string]string{"src/a.c": "#include \"sub\\x.h\"\n", "src/sub/x.h": "#pragma once\n"})
+	windows := linksOf(t, map[string]string{"src/a.c": "#include \"sub\\x.h\"\n", "src/sub/x.h": "#pragma once\n"})
 	if !reflect.DeepEqual(windows.List, []snapshot.Link{link("src/a.c", 1, "src/sub/x.h")}) {
 		t.Errorf("an include with a backslash: List = %+v, want src/a.c to src/sub/x.h", windows.List)
 	}
-	if got := linksOf(bare).Languages; !reflect.DeepEqual(got, []snapshot.LanguageImports{c(1, 1, 0, 0, 2), cpp(5, 3, 1, 1, 2)}) {
+	if got := linksOf(t, bare).Languages; !reflect.DeepEqual(got, []snapshot.LanguageImports{c(1, 1, 0, 0, 2), cpp(5, 3, 1, 1, 2)}) {
 		t.Errorf("no CMake file: Languages = %+v, want %+v", got, []snapshot.LanguageImports{c(1, 1, 0, 0, 2), cpp(5, 3, 1, 1, 2)})
 	}
 }

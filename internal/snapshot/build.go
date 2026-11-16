@@ -1,15 +1,15 @@
 package snapshot
 
 import (
-	"maps"
 	"slices"
 	"strings"
 
 	"github.com/juzhxng/plimsoll/internal/conventions"
 )
 
-// Build classifies both sides of a source by the rules. It reads nothing and cannot fail.
-func Build(source Source, rules conventions.Rules) Snapshot {
+// Build classifies both sides of a source by the rules. It reads nothing and cannot fail. What each code file's content
+// says comes from readings, which keep it between questions.
+func Build(source Source, rules conventions.Rules, readings *Readings) Snapshot {
 	changed := map[string]bool{}
 	for _, change := range source.Changes {
 		changed[change.Path] = true
@@ -25,6 +25,8 @@ func Build(source Source, rules conventions.Rules) Snapshot {
 	limits, declaredLimits, limitProblems := declaredLimits(rules, nowContent, beforeContent)
 	rules.Limits = limits
 	now := tree(rules, source.Now, nil)
+	nowReadings := readings.side(rules, nowContent, now.Files)
+	withTestLines(now.Files, nowReadings)
 	unchanged := map[string]File{}
 	for _, file := range now.Files {
 		if !changed[file.Path] {
@@ -32,6 +34,8 @@ func Build(source Source, rules conventions.Rules) Snapshot {
 		}
 	}
 	before := tree(rules, beforeEntries, unchanged)
+	beforeReadings := readings.side(rules, beforeContent, before.Files)
+	withTestLines(before.Files, beforeReadings)
 	unreadable := slices.Clone(source.Unreadable)
 	now.Settings, before.Settings = settings(source.Now), settings(beforeEntries)
 	var unreadableNow []string
@@ -45,14 +49,11 @@ func Build(source Source, rules conventions.Rules) Snapshot {
 	}
 	now.Broken = unreadableNow
 	now.Planning, before.Planning = planningFiles(rules, now.Paths), planningFiles(rules, before.Paths)
-	now.Uses, before.Uses = settingUses(rules, now.Settings, source.Now, now.Files), settingUses(rules, before.Settings, beforeEntries, before.Files)
-	now.Dynamic = dynamicReads(rules, source.Now, now.Files)
+	now.Uses, before.Uses = settingUses(now.Settings, source.Now, now.Files, nowReadings), settingUses(before.Settings, beforeEntries, before.Files, beforeReadings)
+	now.Dynamic = dynamicReads(now.Files, nowReadings)
 	now.Compose, before.Compose = composeFiles(rules, source.Now), composeFiles(rules, beforeEntries)
-	nowReadings := readImports(rules, nowContent, now.Files, nil)
-	unchangedReadings := maps.Clone(nowReadings)
-	maps.DeleteFunc(unchangedReadings, func(p string, _ reading) bool { return changed[p] })
 	now.Links = links(rules, nowContent, now, nowReadings)
-	before.Links = links(rules, beforeContent, before, readImports(rules, beforeContent, before.Files, unchangedReadings))
+	before.Links = links(rules, beforeContent, before, beforeReadings)
 	unreadable = append(unreadable, unreadableNow...)
 	slices.Sort(unreadable)
 	return Snapshot{
@@ -137,11 +138,17 @@ func codeFile(rules conventions.Rules, entry Entry) (File, bool) {
 	file.Record = onPaths(rules, entry.Path, rules.PlanningPaths) || onPaths(rules, entry.Path, rules.MeasurementPaths)
 	if language, found := rules.LanguageOf(entry.Path); found {
 		file.Language = language.Name
-		if file.Role == Product {
-			file.TestLines = testLines(language, entry.Content)
-		}
 	}
 	return file, true
+}
+
+// withTestLines gives each product file the test lines its reading counts.
+func withTestLines(files []File, readings map[string]reading) {
+	for i, file := range files {
+		if file.Role == Product {
+			files[i].TestLines = readings[file.Path].testLines
+		}
+	}
 }
 
 func unverified(files []File) []Extension {

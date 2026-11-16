@@ -22,7 +22,8 @@ type sample struct {
 	base, since [][]string
 }
 
-func (s sample) build() snapshot.Snapshot {
+func (s sample) build(t testing.TB) snapshot.Snapshot {
+	t.Helper()
 	source := snapshottest.Files(nil, s.files)
 	for i, paths := range s.since {
 		id := fmt.Sprintf("5%09d", len(s.since)-i)
@@ -32,7 +33,7 @@ func (s sample) build() snapshot.Snapshot {
 	for i, paths := range s.base {
 		source.Commits = append(source.Commits, snapshottest.Commit(fmt.Sprintf("b%09d", len(s.base)-i), paths...))
 	}
-	return snapshot.Build(source, conventions.Default())
+	return snapshot.Build(source, conventions.Default(), snapshottest.Readings(t))
 }
 
 func files(paths ...string) map[string]string {
@@ -78,7 +79,10 @@ func check(t *testing.T, m answer.Mark, x, y string, change answer.Change, value
 	}
 }
 
-func marks(s sample) []answer.Mark { return Detector{}.Detect(s.build()).Marks }
+func marks(t testing.TB, s sample) []answer.Mark {
+	t.Helper()
+	return Detector{}.Detect(s.build(t)).Marks
+}
 
 func TestPairMarks(t *testing.T) {
 	cases := map[string]struct {
@@ -93,18 +97,18 @@ func TestPairMarks(t *testing.T) {
 		"20 paths": {sample{files: files(), base: append(times(4, a, b), wide(20, a, b))}, answer.Standing, 5, 5, 5},
 	}
 	for name, c := range cases {
-		found := marks(c.s)
+		found := marks(t, c.s)
 		if len(found) != 1 {
 			t.Errorf("%s: marks = %+v, want one", name, found)
 			continue
 		}
 		check(t, found[0], a, b, c.change, c.value, c.before, c.total)
 	}
-	if found := marks(sample{files: files(), base: append(times(4, a, b), wide(21, a, b))}); len(found) != 0 {
+	if found := marks(t, sample{files: files(), base: append(times(4, a, b), wide(21, a, b))}); len(found) != 0 {
 		t.Errorf("the fifth shared commit touches 21 paths: marks = %+v, want none", found)
 	}
 	for _, other := range []string{"scripts/x.ts", "src/c.ts"} {
-		found := marks(sample{files: files(other), base: times(6, a, other)})
+		found := marks(t, sample{files: files(other), base: times(6, a, other)})
 		if len(found) != 1 || found[0].Subject.Paths[1] != other && found[0].Subject.Paths[0] != other {
 			t.Errorf("a with %s: marks = %+v, want one", other, found)
 		}
@@ -117,7 +121,7 @@ func TestPairMarks(t *testing.T) {
 		"a record":         {files: files("docs/qualification/run.ts"), base: times(6, a, "docs/qualification/run.ts")},
 	}
 	for name, s := range none {
-		if found := marks(s); len(found) != 0 {
+		if found := marks(t, s); len(found) != 0 {
 			t.Errorf("%s: marks = %+v, want none", name, found)
 		}
 	}
@@ -136,7 +140,7 @@ func rowsNamed(f answer.Findings, name string) []answer.Statistic {
 func TestTopPairsAndTheirCountAreStatistics(t *testing.T) {
 	c, d, e := "src/c.ts", "src/d.ts", "src/e.ts"
 	history := slices.Concat(times(9, a, b), times(3, a), times(7, d, e), times(7, c, d), times(5, c, e))
-	f := Detector{}.Detect(sample{files: files(c, d, e), base: history}.build())
+	f := Detector{}.Detect(sample{files: files(c, d, e), base: history}.build(t))
 	count := rowsNamed(f, "pairs with at least 5 shared commits")
 	if len(count) != 1 || *count[0].Value != 4 || *count[0].Before != 4 || count[0].Unit != "pairs" {
 		t.Errorf("count rows = %+v, want one with 4 pairs", count)
@@ -152,7 +156,7 @@ func TestTopPairsAndTheirCountAreStatistics(t *testing.T) {
 	if first := pairs[0]; *first.Value != 9 || *first.Before != 9 || first.Unit != "shared commits" || first.Note != "of the 12 that touched either" {
 		t.Errorf("first pair row = %+v", first)
 	}
-	f = Detector{}.Detect(sample{files: files(), base: times(2, a, b)}.build())
+	f = Detector{}.Detect(sample{files: files(), base: times(2, a, b)}.build(t))
 	if count := rowsNamed(f, "pairs with at least 5 shared commits"); len(count) != 1 || *count[0].Value != 0 || len(rowsNamed(f, "pair")) != 0 {
 		t.Errorf("no pair at the limit: statistics %+v", f.Statistics)
 	}
@@ -162,14 +166,14 @@ func TestTopPairsAndTheirCountAreStatistics(t *testing.T) {
 }
 
 func TestHistoryWithoutAUsableCommitIsNotAnalysed(t *testing.T) {
-	f := Detector{}.Detect(sample{files: files(), base: times(6, wide(21, a, b)...)}.build())
+	f := Detector{}.Detect(sample{files: files(), base: times(6, wide(21, a, b)...)}.build(t))
 	if len(f.Marks) != 0 || len(f.Statistics) != 0 || !slices.Equal(f.NotAnalysed, []string{"no usable commit in the history, so no pairs"}) {
 		t.Errorf("no usable commit: %+v", f)
 	}
 }
 
 func TestPairsRunWithoutALanguageEntry(t *testing.T) {
-	found := marks(sample{files: map[string]string{"bin/a.sh": "x\n", "bin/b.sh": "x\n"}, base: times(5, "bin/a.sh", "bin/b.sh")})
+	found := marks(t, sample{files: map[string]string{"bin/a.sh": "x\n", "bin/b.sh": "x\n"}, base: times(5, "bin/a.sh", "bin/b.sh")})
 	if len(found) != 1 || found[0].ID != "co-change.pair:bin/a.sh+bin/b.sh" {
 		t.Errorf("shell scripts: marks = %+v", found)
 	}
@@ -177,13 +181,13 @@ func TestPairsRunWithoutALanguageEntry(t *testing.T) {
 
 func TestNoPairsInsideOnePackageFolder(t *testing.T) {
 	goFiles := map[string]string{"go.mod": "module example.com/m\n", "internal/s/one.go": "package s\n", "internal/s/two.go": "package s\n", "internal/u/u.go": "package u\n"}
-	if found := marks(sample{files: goFiles, base: times(6, "internal/s/one.go", "internal/s/two.go")}); len(found) != 0 {
+	if found := marks(t, sample{files: goFiles, base: times(6, "internal/s/one.go", "internal/s/two.go")}); len(found) != 0 {
 		t.Errorf("two files of one Go package: marks %+v, want none: a package changes together", found)
 	}
-	if found := marks(sample{files: goFiles, base: times(6, "internal/s/one.go", "internal/u/u.go")}); len(found) != 1 {
+	if found := marks(t, sample{files: goFiles, base: times(6, "internal/s/one.go", "internal/u/u.go")}); len(found) != 1 {
 		t.Errorf("files of two Go packages: marks %+v, want one", found)
 	}
-	if found := marks(sample{files: files("src/c.ts"), base: times(6, a, "src/c.ts")}); len(found) != 1 {
+	if found := marks(t, sample{files: files("src/c.ts"), base: times(6, a, "src/c.ts")}); len(found) != 1 {
 		t.Errorf("two TypeScript files of one folder: marks %+v, want one: a file names one file", found)
 	}
 	jvm := map[string]string{
@@ -200,15 +204,15 @@ func TestNoPairsInsideOnePackageFolder(t *testing.T) {
 		{"a Java and a Kotlin file of one folder", "src/main/java/com/acme/p/C.kt", 0},
 		{"a class and its fake in another source set", fake, 1},
 	} {
-		if found := marks(sample{files: jvm, base: times(6, class, tc.other)}); len(found) != tc.want {
+		if found := marks(t, sample{files: jvm, base: times(6, class, tc.other)}); len(found) != tc.want {
 			t.Errorf("%s: marks %+v, want %d", tc.name, found, tc.want)
 		}
 	}
 	cs := map[string]string{"src/Acme/Core/A.cs": "namespace Acme.Core;\n", "src/Acme/Core/B.cs": "namespace Acme.Core;\n", "src/Acme/Store/S.cs": "namespace Acme.Store;\n"}
-	if found := marks(sample{files: cs, base: times(6, "src/Acme/Core/A.cs", "src/Acme/Core/B.cs")}); len(found) != 0 {
+	if found := marks(t, sample{files: cs, base: times(6, "src/Acme/Core/A.cs", "src/Acme/Core/B.cs")}); len(found) != 0 {
 		t.Errorf("two C# files of one folder: marks %+v, want none", found)
 	}
-	if found := marks(sample{files: cs, base: times(6, "src/Acme/Core/A.cs", "src/Acme/Store/S.cs")}); len(found) != 1 {
+	if found := marks(t, sample{files: cs, base: times(6, "src/Acme/Core/A.cs", "src/Acme/Store/S.cs")}); len(found) != 1 {
 		t.Errorf("C# files of two folders: marks %+v, want one", found)
 	}
 }

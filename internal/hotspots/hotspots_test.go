@@ -11,8 +11,9 @@ import (
 	"github.com/juzhxng/plimsoll/internal/snapshot/snapshottest"
 )
 
-func detect(source snapshot.Source) answer.Findings {
-	return Detector{}.Detect(snapshot.Build(source, conventions.Default()))
+func detect(t testing.TB, source snapshot.Source) answer.Findings {
+	t.Helper()
+	return Detector{}.Detect(snapshot.Build(source, conventions.Default(), snapshottest.Readings(t)))
 }
 
 type hotspot struct {
@@ -64,7 +65,7 @@ func TestHotspotsRankChangesTimesLines(t *testing.T) {
 		touches[0] = append(touches[0], fmt.Sprintf("src/other%d.ts", i))
 	}
 	source.Commits, source.Since = history(touches, 10), []string{"c10"}
-	f := detect(source)
+	f := detect(t, source)
 	want := []hotspot{{"src/big.ts", 3, 3, "x 100 lines"}, {"tests/a.test.ts", 4, 4, "x 50 lines"}, {"src/busy.ts", 8, 7, "x 10 lines"}}
 	if got := rows(f); !slices.Equal(got, want) {
 		t.Errorf("hotspots = %+v, want %+v", got, want)
@@ -82,12 +83,12 @@ func TestHotspotsRankChangesTimesLines(t *testing.T) {
 	}
 	ties := snapshottest.Files(nil, map[string]string{"src/tie-b.ts": snapshottest.Lines(10), "src/tie-a.ts": snapshottest.Lines(10)})
 	ties.Commits = []snapshot.Commit{snapshottest.Commit("c1", "src/tie-b.ts"), snapshottest.Commit("c0", "src/tie-a.ts")}
-	if got := rows(detect(ties)); len(got) != 2 || got[0].path != "src/tie-a.ts" {
+	if got := rows(detect(t, ties)); len(got) != 2 || got[0].path != "src/tie-a.ts" {
 		t.Errorf("a tie = %+v, want tie-a first", got)
 	}
 	five := snapshottest.Files(nil, map[string]string{"a.go": "x\n", "b.go": "x\n", "c.go": "x\n", "d.go": "x\n", "e.go": "x\n"})
 	five.Commits = []snapshot.Commit{snapshottest.Commit("c0", "a.go", "b.go", "c.go", "d.go", "e.go")}
-	if got := rows(detect(five)); len(got) != 3 {
+	if got := rows(detect(t, five)); len(got) != 3 {
 		t.Errorf("five changed files = %d rows, want 3", len(got))
 	}
 }
@@ -99,11 +100,11 @@ func TestHistoryWithoutAUsableCommitIsNotAnalysed(t *testing.T) {
 		wide = append(wide, fmt.Sprintf("src/f%d.ts", i))
 	}
 	source.Commits = []snapshot.Commit{snapshottest.Commit("c2", wide...), snapshottest.Commit("c1", wide...), snapshottest.Commit("c0", wide...)}
-	if f := detect(source); len(f.Statistics) != 0 || len(f.Remarks) != 0 || !slices.Equal(f.NotAnalysed, []string{"no usable commit in the history, so no hotspots"}) {
+	if f := detect(t, source); len(f.Statistics) != 0 || len(f.Remarks) != 0 || !slices.Equal(f.NotAnalysed, []string{"no usable commit in the history, so no hotspots"}) {
 		t.Errorf("no usable commit: %+v", f)
 	}
 	source.Commits = []snapshot.Commit{snapshottest.Commit("c0", "README.md")}
-	if f := detect(source); !slices.Equal(f.NotAnalysed, []string{"no code file tracked now changed in a usable commit, so no hotspots"}) {
+	if f := detect(t, source); !slices.Equal(f.NotAnalysed, []string{"no code file tracked now changed in a usable commit, so no hotspots"}) {
 		t.Errorf("only a README changed: not analysed %q", f.NotAnalysed)
 	}
 }
@@ -113,7 +114,7 @@ func TestHotspotsRunWithoutALanguageEntry(t *testing.T) {
 	source.Commits = []snapshot.Commit{
 		snapshottest.Commit("c3", "bin/a.sh"), snapshottest.Commit("c2", "bin/a.sh"), snapshottest.Commit("c1", "bin/a.sh", "bin/b.sh"), snapshottest.Commit("c0", "bin/a.sh"),
 	}
-	if got := rows(detect(source)); len(got) != 2 || got[0] != (hotspot{"bin/a.sh", 4, 4, "x 3 lines"}) || got[1].changes != 1 {
+	if got := rows(detect(t, source)); len(got) != 2 || got[0] != (hotspot{"bin/a.sh", 4, 4, "x 3 lines"}) || got[1].changes != 1 {
 		t.Errorf("shell scripts: hotspots %+v", got)
 	}
 }

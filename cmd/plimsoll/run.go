@@ -10,13 +10,15 @@ import (
 	"github.com/juzhxng/plimsoll/internal/conventions"
 	"github.com/juzhxng/plimsoll/internal/gitrepo"
 	"github.com/juzhxng/plimsoll/internal/mcpserver"
+	"github.com/juzhxng/plimsoll/internal/parse"
 	"github.com/juzhxng/plimsoll/internal/snapshot"
 )
 
-// questions composes the rules, the reader and the detectors.
-func questions(environ []string) answer.Questions {
+// questions composes the rules, the reader, the kept readings of the parser and the detectors.
+func questions(environ []string, parser *parse.Parser) answer.Questions {
 	rules := conventions.Default()
 	reader := gitrepo.NewReader(environ)
+	readings := snapshot.NewReadings(parser)
 	wants := snapshot.WantsOf(rules)
 	return answer.Questions{
 		Take: func(ctx context.Context, repository, base string) (snapshot.Snapshot, error) {
@@ -24,7 +26,7 @@ func questions(environ []string) answer.Questions {
 			if err != nil {
 				return snapshot.Snapshot{}, err
 			}
-			return snapshot.Build(source, rules), nil
+			return snapshot.Build(source, rules, readings), nil
 		},
 		Detectors: detectors(),
 		Version:   version,
@@ -33,8 +35,14 @@ func questions(environ []string) answer.Questions {
 
 // run serves MCP on the standard streams until the input ends.
 func run(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, environ []string) int {
+	parser, err := parse.New()
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, "plimsoll:", err)
+		return 1
+	}
+	defer parser.Close()
 	server := mcpserver.Server{
-		Questions: questions(environ),
+		Questions: questions(environ, parser),
 		Version:   version,
 		Log:       slog.New(slog.NewJSONHandler(stderr, nil)),
 	}

@@ -16,7 +16,7 @@ import (
 // detect runs the detector and checks what every mark must carry.
 func detect(t *testing.T, source snapshot.Source) (snapshot.Snapshot, answer.Findings) {
 	t.Helper()
-	s := snapshot.Build(source, conventions.Default())
+	s := snapshot.Build(source, conventions.Default(), snapshottest.Readings(t))
 	f := Detector{}.Detect(s)
 	for _, m := range f.Marks {
 		if m.ID == "" || m.Change == "" || m.Subject.Kind != "setting" || len(m.Subject.Names) != 1 || m.Measured.Unit == "" ||

@@ -109,29 +109,16 @@ type statement struct {
 	everywhere bool
 }
 
-// reading is what one file's content says about its imports, before they are resolved against a side.
+// reading is what one file's content says: its imports, before they are resolved against a side, its test code and
+// its settings reads.
 type reading struct {
 	statements []statement
-	computed   int  // imports whose target is built at run time
-	passesOn   bool // the whole content only passes imports on
-}
-
-// readImports reads the imports of a side's code files, once per content: a file that reuse holds keeps that
-// reading.
-func readImports(rules conventions.Rules, content map[string][]byte, files []File, reuse map[string]reading) map[string]reading {
-	found := map[string]reading{}
-	for _, file := range files {
-		language, known := rules.LanguageOf(file.Path)
-		if !known || len(language.Imports.Statements) == 0 {
-			continue
-		}
-		if r, kept := reuse[file.Path]; kept {
-			found[file.Path] = r
-			continue
-		}
-		found[file.Path] = scan(language.Imports, masked(language.Literals, content[file.Path]))
-	}
-	return found
+	computed   int      // imports whose target is built at run time
+	passesOn   bool     // the whole content only passes imports on
+	testLines  int      // lines of test code inside the file, by the entry's blocks
+	dynamic    int      // settings reads whose name is computed at run time
+	prefixes   []string // settings prefixes the file declares, each once, in order
+	unread     bool     // the parser could not read the file
 }
 
 // tries says whether a form is tried on a text: it has a pattern, and the text holds one of its words when it names any.

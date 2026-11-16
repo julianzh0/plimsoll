@@ -26,7 +26,7 @@ func TestPairWordingStandingAndEvidence(t *testing.T) {
 	if got := (Detector{}).Standing(items[:1]); got != "1 pair of files that changed together in at least 5 commits" {
 		t.Errorf("Standing(1) = %q", got)
 	}
-	s := sample{files: files(), base: times(5, a, b), since: times(1, a, b)}.build()
+	s := sample{files: files(), base: times(5, a, b), since: times(1, a, b)}.build(t)
 	grown := Detector{}.Detect(s).Marks[0]
 	got := Detector{}.Explain(s, grown)
 	wantLines := []string{

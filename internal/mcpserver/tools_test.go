@@ -127,7 +127,7 @@ func TestEveryAnswerMatchesTheOutputSchema(t *testing.T) {
 	for name, source := range sources {
 		q := answer.Questions{
 			Take: func(context.Context, string, string) (snapshot.Snapshot, error) {
-				return snapshot.Build(source, conventions.Default()), nil
+				return snapshot.Build(source, conventions.Default(), snapshottest.Readings(t)), nil
 			},
 			Detectors: []answer.Detector{shape.Detector{}, process.Detector{}, settings.Detector{}, hotspots.Detector{}, cochange.Detector{}, links.Detector{}},
 			Version:   "0.1.0",
@@ -212,7 +212,7 @@ func TestReportTakesAnOptionalListOfFiles(t *testing.T) {
 	source := snapshottest.Files(nil, map[string]string{"src/a.ts": "import \"./b.ts\";\n", "src/b.ts": "export const b = 1;\n"})
 	s := Server{Questions: answer.Questions{
 		Take: func(context.Context, string, string) (snapshot.Snapshot, error) {
-			return snapshot.Build(source, conventions.Default()), nil
+			return snapshot.Build(source, conventions.Default(), snapshottest.Readings(t)), nil
 		},
 		Detectors: []answer.Detector{links.Detector{}}, Version: "0.1.0",
 	}}

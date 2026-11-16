@@ -10,8 +10,9 @@ import (
 	"github.com/juzhxng/plimsoll/internal/snapshot/snapshottest"
 )
 
-func layoutOf(base, now map[string]string) snapshot.Layout {
-	return snapshot.Build(snapshottest.Files(base, now), conventions.Default()).Layout
+func layoutOf(t testing.TB, base, now map[string]string) snapshot.Layout {
+	t.Helper()
+	return snapshot.Build(snapshottest.Files(base, now), conventions.Default(), snapshottest.Readings(t)).Layout
 }
 
 // declaring is a tree with a pyproject.toml and each file holding one line.
@@ -42,7 +43,7 @@ func testpaths(inUse ...string) snapshot.Declared {
 }
 
 func TestBuildReadsWhatAProjectDeclares(t *testing.T) {
-	both := func(tree map[string]string) snapshot.Layout { return layoutOf(tree, tree) }
+	both := func(tree map[string]string) snapshot.Layout { return layoutOf(t, tree, tree) }
 	one := func(d snapshot.Declared) snapshot.Layout { return snapshot.Layout{TestFolders: []snapshot.Declared{d}} }
 
 	edge := testpaths("checks")
@@ -83,8 +84,8 @@ func TestBuildReadsWhatAProjectDeclares(t *testing.T) {
 		{"no string in the array", both(declaring(pytestTable + "testpaths = [\"tests\", 3]\n")), one(unreadable)},
 		{"an array that does not end", both(declaring(pytestTable + "testpaths = [\n  \"tests\",\n")), one(unreadable)},
 		{"a number", both(declaring(pytestTable + "testpaths = 3\n")), one(unreadable)},
-		{"unreadable at the base", layoutOf(declaring(pytestTable+"testpaths = [3]\n", "checks/h.py"), declaring(pytestTable+"testpaths = [\"checks\"]\n", "checks/h.py")), one(fixed)},
-		{"declared at the base only", layoutOf(declaring(pytestTable+"testpaths = [\"old\"]\n", "old/h.py"), declaring(pytestTable+"testpaths = [\"checks\"]\n", "checks/h.py")), one(moved)},
+		{"unreadable at the base", layoutOf(t, declaring(pytestTable+"testpaths = [3]\n", "checks/h.py"), declaring(pytestTable+"testpaths = [\"checks\"]\n", "checks/h.py")), one(fixed)},
+		{"declared at the base only", layoutOf(t, declaring(pytestTable+"testpaths = [\"old\"]\n", "old/h.py"), declaring(pytestTable+"testpaths = [\"checks\"]\n", "checks/h.py")), one(moved)},
 		{"a dotted key outside the table", both(declaring("tool.pytest.ini_options.testpaths = [\"checks\"]\n", "checks/h.py")), one(notRead)},
 		{"a dotted key in tool.pytest", both(declaring("[tool.pytest]\nini_options.testpaths = [\"checks\"]\n", "checks/h.py")), one(notRead)},
 		{"an inline table", both(declaring("[tool.pytest]\nini_options = { testpaths = [\"checks\"] }\n", "checks/h.py")), one(notRead)},
@@ -94,7 +95,7 @@ func TestBuildReadsWhatAProjectDeclares(t *testing.T) {
 		{"an array of tables is no table", both(declaring("[[tool.pytest.ini_options]]\ntestpaths = [\"checks\"]\n", "checks/h.py")), snapshot.Layout{}},
 		{"a spaced and quoted header", both(declaring("[ tool.\"pytest\".ini_options ]\ntestpaths = [\"checks\"]\n", "checks/h.py")), one(testpaths("checks"))},
 		{"shadowing files without a table", both(declaring("[project]\n", "pytest.ini", "pytest.toml")), snapshot.Layout{Shadowing: []string{"pytest.toml", "pytest.ini"}}},
-		{"pytest.ini at the base only", layoutOf(declaring(pytestTable+"testpaths = [\"checks\"]\n", "checks/h.py", "pytest.ini"), declaring(pytestTable+"testpaths = [\"checks\"]\n", "checks/h.py")),
+		{"pytest.ini at the base only", layoutOf(t, declaring(pytestTable+"testpaths = [\"checks\"]\n", "checks/h.py", "pytest.ini"), declaring(pytestTable+"testpaths = [\"checks\"]\n", "checks/h.py")),
 			one(testpaths("checks"))},
 		{"a byte order mark", both(declaring("\uFEFF"+pytestTable+"testpaths = [\"checks\"]\n", "checks/h.py")), one(testpaths("checks"))},
 		{"CRLF line ends", both(declaring("[tool.pytest.ini_options]\r\ntestpaths = [\"checks\"]\r\n", "checks/h.py")), one(testpaths("checks"))},
@@ -111,7 +112,7 @@ func TestBuildReadsWhatAProjectDeclares(t *testing.T) {
 		}
 	}
 	source := snapshot.Source{Now: []snapshot.Entry{{Path: "pyproject.toml"}}}
-	if got := snapshot.Build(source, conventions.Default()).Layout; !reflect.DeepEqual(got, snapshot.Layout{}) {
+	if got := snapshot.Build(source, conventions.Default(), snapshottest.Readings(t)).Layout; !reflect.DeepEqual(got, snapshot.Layout{}) {
 		t.Errorf("a pyproject.toml whose content was not read: Build.Layout = %+v, want none", got)
 	}
 }
@@ -149,7 +150,7 @@ func TestBuildCountsADeclaredTestFolderAsTestCode(t *testing.T) {
 		{"under a skipped folder", declaring(declare(`"build/checks"`), "build/checks/x.py"), map[string]snapshot.Role{"build/checks/x.py": none}},
 	}
 	for _, tc := range cases {
-		s := snapshot.Build(snapshottest.Files(tc.tree, tc.tree), conventions.Default())
+		s := snapshot.Build(snapshottest.Files(tc.tree, tc.tree), conventions.Default(), snapshottest.Readings(t))
 		for p, want := range tc.roles {
 			got, isCode := roleOf(s.Now, p)
 			if want == none && isCode || want != none && got != want {
@@ -160,14 +161,14 @@ func TestBuildCountsADeclaredTestFolderAsTestCode(t *testing.T) {
 
 	history := snapshottest.Files(nil, declaring(declare(`"checks"`), "checks/h.py"))
 	history.Commits = []snapshot.Commit{{ID: "x", Files: []snapshot.FileChange{{Path: "checks/h.py"}}}}
-	if got := snapshot.Build(history, conventions.Default()).History.Commits[0].Files[0].Area; got != snapshot.AreaTests {
+	if got := snapshot.Build(history, conventions.Default(), snapshottest.Readings(t)).History.Commits[0].Files[0].Area; got != snapshot.AreaTests {
 		t.Errorf("a commit touching a declared folder: area %v, want tests", got)
 	}
 	for name, sides := range map[string][2]map[string]string{
 		"declared now only":         {{"checks/h.py": "x = 1\n"}, declaring(declare(`"checks"`), "checks/h.py")},
 		"declared at the base only": {declaring(declare(`"checks"`), "checks/h.py"), declaring("[project]\n", "checks/h.py")},
 	} {
-		s := snapshot.Build(snapshottest.Files(sides[0], sides[1]), conventions.Default())
+		s := snapshot.Build(snapshottest.Files(sides[0], sides[1]), conventions.Default(), snapshottest.Readings(t))
 		before, _ := roleOf(s.Before, "checks/h.py")
 		now, _ := roleOf(s.Now, "checks/h.py")
 		if before != snapshot.TestInfrastructure || now != snapshot.TestInfrastructure {
@@ -176,8 +177,8 @@ func TestBuildCountsADeclaredTestFolderAsTestCode(t *testing.T) {
 	}
 
 	rules := conventions.Default()
-	snapshot.Build(snapshottest.Files(nil, declaring(declare(`"checks"`)+"pythonpath = [\"lib\"]\n", "checks/h.py", "lib/x/__init__.py", "src/a.py")), rules)
-	second := snapshot.Build(snapshottest.Files(nil, map[string]string{"checks/h.py": "x = 1\n", "src/a.py": "x = 1\n"}), rules)
+	snapshot.Build(snapshottest.Files(nil, declaring(declare(`"checks"`)+"pythonpath = [\"lib\"]\n", "checks/h.py", "lib/x/__init__.py", "src/a.py")), rules, snapshottest.Readings(t))
+	second := snapshot.Build(snapshottest.Files(nil, map[string]string{"checks/h.py": "x = 1\n", "src/a.py": "x = 1\n"}), rules, snapshottest.Readings(t))
 	if got, _ := roleOf(second.Now, "checks/h.py"); got != snapshot.Product || !reflect.DeepEqual(second.Layout, snapshot.Layout{}) ||
 		!slices.Equal(second.Now.Links.Languages[0].Roots, []string{".", "src"}) {
 		t.Errorf("a second build with the same rules: checks/h.py %v, layout %+v, links %+v", got, second.Layout, second.Now.Links.Languages)
