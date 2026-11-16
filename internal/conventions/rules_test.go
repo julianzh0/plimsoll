@@ -17,6 +17,9 @@ func TestTestDefinitionMatchesOnlyStatementStarts(t *testing.T) {
 		`    [Fact]`, `[Theory]`, `    [Fact(Skip = "slow")]`, `[Test] public void X() {}`, `[TestMethod, TestCategory("x")]`,
 		`[Xunit.Fact]`, `[TestCase(1, 2)]`, `[FactAttribute]`,
 		"    func testCount() {", "func testThrows() throws {",
+		`TEST(Store, Adds) {`, `TEST_F(StoreTest, Adds) {`, `  TEST_P(Suite, Works) {`, `TYPED_TEST(Suite, Works) {`, `TYPED_TEST_P(Suite, Works) {`,
+		`TEST_CASE("adds a note") {`, `TEST_CASE("adds", "[store]")`, `TEST_CASE_TEMPLATE("x", T, int, long) {`, `TEST_CASE_METHOD(Fixture, "x") {`,
+		`TEST_CASE_FIXTURE(Fixture, "x") {`, `TEMPLATE_TEST_CASE("x", "[t]", int) {`, `SCENARIO("a note is added") {`,
 		`class TestStore(Base):  # the store`, "class TestStore(\n    Base,\n):", `it.each(rows)("%s", (row) => {`, `it.only("x", () => {`,
 	}
 	misses := []string{
@@ -28,6 +31,8 @@ func TestTestDefinitionMatchesOnlyStatementStarts(t *testing.T) {
 		`[TestClass]`, `[TestFixture]`, `[TestCategory("x")]`, `[TestInitialize]`, `[TestCaseSource(nameof(Cases))]`,
 		`[DataTestMethod]`, `[Theorem]`, `// [Fact]`, `[InlineData(1)]`, `var a = [Test];`, `[Benchmark]`,
 		"// func testCount() {", "let test = func", "functional(test())", "func testServer(t *testing.T) *Server {",
+		`#define TEST(a, b) void a##b()`, `// TEST(Store, Adds) {`, `TEST_IMPL(fs_poll) {`, `TESTING(x)`, `MY_TEST(a) {`, `GTEST_TEST(a, b) {`,
+		`EXPECT_EQ(TEST(1), 2);`, `TEST_ASSERT_EQUAL(1, x);`, `INSTANTIATE_TEST_SUITE_P(a, b, c);`, `TEST_SUITE("x") {`, `TEST_MAIN()`, `SCENARIOS(x)`,
 	}
 	rules := Default()
 	for _, line := range matches {

@@ -349,7 +349,8 @@ func TestBuildGivesEachHistoryPathItsArea(t *testing.T) {
 		"src/projects/list.ts": snapshot.AreaProduct,
 		"Acme.Tests/A.cs":      snapshot.AreaTests, "src/Acme.Core.Test/Util/A.cs": snapshot.AreaTests,
 		"Acme.Testing/A.cs": snapshot.AreaProduct, "Tests/NotesTests/StoreTests.swift": snapshot.AreaTests,
-		"Sources/Notes/Tests.swift": snapshot.AreaProduct, "src/Contests/A.cs": snapshot.AreaProduct, "UnitTests/A.cs": snapshot.AreaProduct,
+		"Sources/Notes/Tests.swift": snapshot.AreaProduct,
+		"nlohmann_json.natvis":      snapshot.AreaOther, "src/a.cc": snapshot.AreaProduct, "tests/a-test.cc": snapshot.AreaTests, "CMakeLists.txt": snapshot.AreaOther, "src/Contests/A.cs": snapshot.AreaProduct, "UnitTests/A.cs": snapshot.AreaProduct,
 		"Acme.tests/A.cs": snapshot.AreaProduct, "src/Acme/Acme.csproj": snapshot.AreaOther, "Acme.sln": snapshot.AreaOther,
 		"Directory.Build.props": snapshot.AreaOther, "src/Acme/Form1.Designer.cs": snapshot.AreaProduct,
 	}
@@ -373,7 +374,7 @@ func TestWantsNamesWhatTheReaderReads(t *testing.T) {
 		"src/Acme/Form1.Designer.cs": true, "src/Acme/Views.g.cs": true,
 		"src/Acme/Acme.csproj": true, "Acme.csproj": true, "tests/Acme.Tests/Acme.Tests.csproj": false, "Acme.Tests/Acme.Tests.csproj": false,
 		"examples/Demo/Demo.csproj": false, "node_modules/x/X.csproj": false, "Directory.Packages.props": false,
-		"Package.swift": true, "Package.resolved": true,
+		"Package.swift": true, "Package.resolved": true, "nlohmann_json.natvis": false,
 		"Cargo.toml": true, "Cargo.lock": true, "crates/cli/Cargo.toml": true, "vendor/x/Cargo.toml": false, "src/main.rs": true,
 		"pubspec.yaml": true, "app/pubspec.yaml": true, "packages/core/pubspec.yaml": true, "node_modules/x/pubspec.yaml": false,
 		"docs/.env.example": false, "node_modules/x/a.js": false, "assets/logo.bin": true,
