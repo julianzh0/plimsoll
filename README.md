@@ -63,7 +63,7 @@ Each detector compares now with a base you choose, such as `main`, so old debt s
 - **One binary** // no runtime and nothing to configure, `git` is all it needs
 - **Change-based** // compares now with a base revision, so standing debt stays quiet and new growth is named
 - **Honest** // every number names its limit and source, and whatever it could not read is listed as "not analysed"
-- **Language-agnostic** // the same detectors for Go, TypeScript, Python, Dart, Java, Kotlin, Rust, C#, Swift, C and C++, and a language is one data file
+- **Language-agnostic** // the same detectors for Go, TypeScript, Python, Dart, Java, Kotlin, Rust, C#, Swift and C/C++, and a language is one data file
 
 ## Install
 
@@ -178,7 +178,7 @@ file in `internal/conventions/`. Each language below names what it adds, and any
 defaults at the end of this section.
 
 plimsoll reads code with [tree-sitter](https://tree-sitter.github.io/) grammars that run inside it, so a comment or a
-string never counts as an import. Each language below names its grammar. C and C++ are read by text patterns, since
+string never counts as an import. Each language below names its grammar. C/C++ files are read by text patterns, since
 their meaning depends on the preprocessor, and so are the package and namespace lines of Java, Kotlin and C#, which
 generated files declare too. A file that would need more than 128 MiB to parse is not read, and the answer names it
 under "not analysed". A changed file in which the grammar meets a syntax error, such as an unfinished edit, is named
@@ -187,11 +187,12 @@ still run, interpreted and about 80 times slower.
 
 | | | |
 |---|---|---|
-| [C and C++](#c-and-c) | [C#](#c) | [Dart](#dart) |
-| [Go](#go) | [Java and Kotlin](#java-and-kotlin) | [Python](#python) |
-| [Rust](#rust) | [Swift](#swift) | [TypeScript and JavaScript](#typescript-and-javascript) |
+| [C](#cc) | [C++](#cc) | [C#](#c) |
+| [Dart](#dart) | [Go](#go) | [Java](#javakotlin) |
+| [JavaScript](#typescriptjavascript) | [Kotlin](#javakotlin) | [Python](#python) |
+| [Rust](#rust) | [Swift](#swift) | [TypeScript](#typescriptjavascript) |
 
-### C and C++
+### C/C++
 
 - **Read by:** text patterns, comments blanked first.
 - **Files:** `.c`, `.h` and `.cc`, `.cpp`, `.cxx`, `.hpp`, `.hh`, `.hxx`. A `.h` file counts with the one of the two
@@ -236,7 +237,7 @@ still run, interpreted and about 80 times slower.
 - **Setting reads:** a computed `os.Getenv(…)` or `os.LookupEnv(…)` is counted.
 - **Changed together:** the package folder is one unit.
 
-### Java and Kotlin
+### Java/Kotlin
 
 - **Read by:** the grammars tree-sitter-java v0.23.5 and tree-sitter-kotlin (fwcd, commit `d6af96d2`).
 - **Files:** `.java`, `.kt`, `.kts`.
@@ -288,7 +289,7 @@ still run, interpreted and about 80 times slower.
 - **Setting reads:** a computed `ProcessInfo.processInfo.environment[…]` is counted.
 - **Changed together:** the folder is one unit.
 
-### TypeScript and JavaScript
+### TypeScript/JavaScript
 
 - **Read by:** the grammars of tree-sitter-typescript v0.23.2: TypeScript for `.ts`, TSX for the other suffixes.
 - **Files:** `.ts`, `.tsx`, `.js`, `.mjs`, `.cjs`.
