@@ -109,12 +109,15 @@ func (in *instance) read(source string, content []byte) (Result, error) {
 	if !ok {
 		return Result{}, errMemory
 	}
-	return decode(q, raw, content), nil
+	return decode(q, raw, content)
 }
 
+var errRecord = errors.New("a capture record outside its bounds")
+
 // decode turns capture records into a result: the captures of each match whose predicates hold, and the top-level
-// nodes. The shim writes the captures of one match together.
-func decode(q *query, raw, content []byte) Result {
+// nodes. The shim writes the captures of one match together. A record that names no capture or pattern of the query,
+// or a range outside the content, is an error: the module's memory may be corrupt, and the file is not read.
+func decode(q *query, raw, content []byte) (Result, error) {
 	var result Result
 	le := binary.LittleEndian
 	var captures []Capture
@@ -129,6 +132,9 @@ func decode(q *query, raw, content []byte) Result {
 	for at := 0; at+captureRecord <= len(raw); at += captureRecord {
 		b := raw[at:]
 		start, end := int(le.Uint32(b[12:])), int(le.Uint32(b[16:]))
+		if start > end || end > len(content) {
+			return Result{}, errRecord
+		}
 		if le.Uint32(b[4:]) == topLevel {
 			result.Top = append(result.Top, Span{Start: start, End: end})
 			continue
@@ -137,10 +143,14 @@ func decode(q *query, raw, content []byte) Result {
 			flush()
 		}
 		pattern, match = le.Uint32(b[4:]), le.Uint32(b)
-		captures = append(captures, Capture{Name: q.names[le.Uint32(b[8:])], Start: start, End: end, Line: int(le.Uint32(b[20:])) + 1})
+		capture := le.Uint32(b[8:])
+		if int(pattern) >= len(q.predicates) || int(capture) >= len(q.names) {
+			return Result{}, errRecord
+		}
+		captures = append(captures, Capture{Name: q.names[capture], Start: start, End: end, Line: int(le.Uint32(b[20:])) + 1})
 	}
 	flush()
-	return result
+	return result, nil
 }
 
 // compile compiles a query in this instance once and keeps it.
@@ -234,6 +244,9 @@ func (in *instance) predicates(q *query, length uint32, pattern uint64) ([]predi
 			found = append(found, p)
 			args = nil
 		case 1:
+			if int(value) >= len(q.names) {
+				return nil, errRecord
+			}
 			args = append(args, "@"+q.names[value])
 		case 2:
 			s, err := in.lengthString("shim_query_string", length, q.ptr, uint64(value))

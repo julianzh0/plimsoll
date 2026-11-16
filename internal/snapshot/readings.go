@@ -2,6 +2,7 @@ package snapshot
 
 import (
 	"crypto/sha256"
+	"errors"
 	"slices"
 	"sync"
 
@@ -57,9 +58,17 @@ func (rs *Readings) of(language conventions.Language, grammar string, content []
 	kept := &keptReading{read: make(chan struct{})}
 	rs.kept[key] = kept
 	rs.mu.Unlock()
-	kept.r = rs.read(language, grammar, content)
+	r, lasting := rs.read(language, grammar, content)
+	kept.r = r
 	close(kept.read)
-	return kept.r
+	if !lasting {
+		rs.mu.Lock()
+		if rs.kept[key] == kept {
+			delete(rs.kept, key)
+		}
+		rs.mu.Unlock()
+	}
+	return r
 }
 
 // side reads the code files of one side that have a language entry, from content with its byte order mark dropped.
@@ -78,18 +87,21 @@ func (rs *Readings) side(rules conventions.Rules, content map[string][]byte, fil
 // read makes the reading of one file: by the entry's grammar when it names one, and every fact for which the entry
 // has a pattern by that pattern (no entry reads one fact both ways). A file the parser cannot read is unread; its
 // patterns still read it.
-func (rs *Readings) read(language conventions.Language, grammar string, content []byte) reading {
+//
+// lasting is false for a failure of the moment (parse.ErrUnavailable): such a reading answers this question and is not
+// kept, so a later question reads the file again.
+func (rs *Readings) read(language conventions.Language, grammar string, content []byte) (r reading, lasting bool) {
 	if grammar == "" {
-		return readByText(language, content)
+		return readByText(language, content), true
 	}
-	var r reading
-	if result, err := rs.parser.Read(grammar, language.Query, content); err != nil {
+	result, err := rs.parser.Read(grammar, language.Query, content)
+	if err != nil {
 		r.unread = true
 	} else {
 		r = decode(result, content)
 	}
 	readPatterns(language, content, &r)
-	return r
+	return r, !errors.Is(err, parse.ErrUnavailable)
 }
 
 // readByText is the reading of one file by its entry's text patterns.

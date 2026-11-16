@@ -64,7 +64,11 @@ type Parser struct {
 	unmapped bool
 }
 
-var errClosed = errors.New("the parser is closed")
+// ErrUnavailable marks a failure of the moment, not of the file: the parser is closed, or the system refused a
+// grammar's memory. The same content may read on a later call.
+var ErrUnavailable = errors.New("the parser is not available")
+
+var errClosed = fmt.Errorf("closed: %w", ErrUnavailable)
 
 // New returns a parser. It compiles nothing yet: a grammar is compiled on its first use.
 func New() (*Parser, error) {
@@ -144,7 +148,7 @@ func (p *Parser) start(compiled wazero.CompiledModule) (mod api.Module, err erro
 			if !p.unmapped {
 				panic(r)
 			}
-			mod, err = nil, fmt.Errorf("the system refused the grammar's memory: %v", r)
+			mod, err = nil, fmt.Errorf("the system refused the grammar's memory (%v): %w", r, ErrUnavailable)
 		}
 	}()
 	return p.runtime.InstantiateModule(p.ctx, compiled, wazero.NewModuleConfig().WithName("").WithStartFunctions("_initialize"))
