@@ -212,8 +212,94 @@ func TestIntegrationReadRefuses(t *testing.T) {
 	if got := gitrepotest.Fingerprint(t, repo.Dir); got != before {
 		t.Errorf("the repository changed during the refused reads")
 	}
+
+	declaring := func(content string) string {
+		r := gitrepotest.New(t, gitrepotest.Commit{Message: "base", Files: map[string]string{"a.ts": "a\n", ".plimsoll.toml": content}})
+		return r.Dir
+	}
+	untracked := gitrepotest.New(t, gitrepotest.Commit{Message: "base", Files: map[string]string{"a.ts": "a\n"}})
+	untracked.Write(".plimsoll.toml", "[defaults]\nbase = \"main\"\n")
+	hashed := gitrepotest.New(t)
+	hash := hashed.Commit(gitrepotest.Commit{Message: "base", Files: map[string]string{"a.ts": "a\n"}})
+	hashed.Commit(gitrepotest.Commit{Message: "declare", Files: map[string]string{".plimsoll.toml": "[defaults]\nbase = \"" + hash + "\"\n"}})
+	lonely := gitrepotest.New(t, gitrepotest.Commit{Message: "base", Files: map[string]string{"a.ts": "a\n"}})
+	lonely.Git("switch", "-q", "--orphan", "other")
+	lonely.Commit(gitrepotest.Commit{Message: "other", Files: map[string]string{"b.ts": "b\n", ".plimsoll.toml": "[defaults]\nbase = \"main\"\n"}})
+	notName := "`base` is not the name of a branch, a remote branch or a tag"
+	withoutBase := []struct {
+		name, repository string
+		want             snapshot.RefusalKind
+		detail, file     string
+	}{
+		{"no file", repo.Dir, snapshot.NoBase, "", ".plimsoll.toml"},
+		{"limits only", declaring("[limits]\nfile_lines = 1500\n"), snapshot.NoBase, "", ".plimsoll.toml"},
+		{"an untracked file", untracked.Dir, snapshot.NoBase, "", ".plimsoll.toml"},
+		{"a base that is no text", declaring("[defaults]\nbase = 3\n"), snapshot.NoBase, "`base` is not text", ".plimsoll.toml"},
+		{"a base without its form", declaring("[defaults]\nbase = \"HEAD~1\"\n"), snapshot.NoBase, notName, ".plimsoll.toml"},
+		{"HEAD", declaring("[defaults]\nbase = \"HEAD\"\n"), snapshot.UnknownDeclaredBase, "HEAD", ".plimsoll.toml"},
+		{"a commit hash", hashed.Dir, snapshot.UnknownDeclaredBase, hash, ".plimsoll.toml"},
+		{"no such branch", declaring("[defaults]\nbase = \"nope\"\n"), snapshot.UnknownDeclaredBase, "nope", ".plimsoll.toml"},
+		{"no common history", lonely.Dir, snapshot.NoCommonHistory, "main", ""},
+	}
+	for _, tc := range withoutBase {
+		src, err := read(t, tc.repository, "")
+		refusal, ok := errors.AsType[*snapshot.Refusal](err)
+		if !ok || refusal.Kind != tc.want || refusal.Detail != tc.detail || refusal.File != tc.file || !reflect.DeepEqual(src, snapshot.Source{}) {
+			t.Errorf("Read(%s, no base) = %+v, %v; want refusal %d, detail %q, file %q", tc.name, src, err, tc.want, tc.detail, tc.file)
+		}
+	}
 	if _, err := os.Stat(written); err == nil {
 		t.Errorf("a base that looks like an option wrote a file")
+	}
+}
+
+func TestIntegrationReadWithoutABaseUsesTheDeclaredOne(t *testing.T) {
+	declare := func(base string) string { return "[defaults]\nbase = \"" + base + "\"\n" }
+	// setup gives a repository on branch feature, cut from main, whose main commit tracks the file declaring main.
+	setup := func() (*gitrepotest.Repo, string, string) {
+		repo := gitrepotest.New(t)
+		mainCommit := repo.Commit(gitrepotest.Commit{Message: "main", Files: map[string]string{"a.ts": "a\n", ".plimsoll.toml": declare("main")}})
+		repo.Git("switch", "-q", "-c", "feature")
+		feature := repo.Commit(gitrepotest.Commit{Message: "feature", Files: map[string]string{"c.ts": "c\n"}})
+		return repo, mainCommit, feature
+	}
+	cases := []struct {
+		name    string
+		prepare func(repo *gitrepotest.Repo, mainCommit, feature string)
+		asked   string
+	}{
+		{"a branch", func(*gitrepotest.Repo, string, string) {}, "main"},
+		{"a remote branch", func(repo *gitrepotest.Repo, mainCommit, _ string) {
+			repo.Git("update-ref", "refs/remotes/origin/main", mainCommit)
+			repo.Write(".plimsoll.toml", declare("origin/main"))
+		}, "origin/main"},
+		{"a tag", func(repo *gitrepotest.Repo, mainCommit, _ string) {
+			repo.Git("tag", "v1", mainCommit)
+			repo.Write(".plimsoll.toml", declare("v1"))
+		}, "v1"},
+		{"a branch before a tag of its name", func(repo *gitrepotest.Repo, mainCommit, feature string) {
+			repo.Git("tag", "x", feature)
+			repo.Git("branch", "x", mainCommit)
+			repo.Write(".plimsoll.toml", declare("x"))
+		}, "x"},
+		{"an edit not yet committed", func(repo *gitrepotest.Repo, mainCommit, _ string) {
+			repo.Git("tag", "v1", mainCommit)
+			repo.Commit(gitrepotest.Commit{Message: "nope", Files: map[string]string{".plimsoll.toml": declare("nope")}})
+			repo.Write(".plimsoll.toml", declare("v1"))
+		}, "v1"},
+	}
+	for _, tc := range cases {
+		repo, mainCommit, feature := setup()
+		tc.prepare(repo, mainCommit, feature)
+		src, err := read(t, repo.Dir, "")
+		if err != nil || src.AskedBase != tc.asked || !src.BaseDeclared || src.Base != mainCommit || src.MergeBase {
+			t.Errorf("%s: Read without a base = asked %q, declared %v, base %s, merge base %v, %v; want %q, true, %s, false",
+				tc.name, src.AskedBase, src.BaseDeclared, src.Base, src.MergeBase, err, tc.asked, mainCommit)
+		}
+	}
+	repo, _, _ := setup()
+	if src, err := read(t, repo.Dir, "HEAD"); err != nil || src.BaseDeclared || src.AskedBase != "HEAD" {
+		t.Errorf("Read(HEAD) = asked %q, declared %v, %v; want HEAD as asked, not declared", src.AskedBase, src.BaseDeclared, err)
 	}
 }
 

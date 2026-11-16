@@ -41,11 +41,13 @@ func TestIntegrationReadLeavesTheRepositoryUnchanged(t *testing.T) {
 	}
 	for name, prepare := range cases {
 		t.Run(name, func(t *testing.T) {
-			repo := gitrepotest.New(t, gitrepotest.Commit{Message: "base", Files: map[string]string{"a.ts": "a\n", "b.ts": "b\n"}})
+			repo := gitrepotest.New(t, gitrepotest.Commit{Message: "base", Files: map[string]string{"a.ts": "a\n", "b.ts": "b\n", ".plimsoll.toml": "[defaults]\nbase = \"main\"\n"}})
 			prepare(repo)
 			before := gitrepotest.Fingerprint(t, repo.Dir)
-			if _, err := read(t, repo.Dir, "HEAD"); err != nil {
-				t.Fatalf("Read = %v", err)
+			for _, base := range []string{"HEAD", ""} {
+				if _, err := read(t, repo.Dir, base); err != nil {
+					t.Fatalf("Read(%q) = %v", base, err)
+				}
 			}
 			if got := gitrepotest.Fingerprint(t, repo.Dir); got != before {
 				t.Errorf("Read changed the repository folder")

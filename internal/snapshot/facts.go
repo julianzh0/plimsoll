@@ -43,7 +43,31 @@ func WantsOf(rules conventions.Rules) Wants {
 		},
 		Binary:     conventions.IsBinary,
 		SniffBytes: conventions.BinarySniffBytes,
+		BaseFile:   rules.OwnFile,
+		Base:       func(content []byte) (string, string) { return declaredBaseIn(rules, content) },
 	}
+}
+
+// declaredBaseIn reads the default base from the own file's content: its name, or the problem that makes it
+// unusable; both are "" when the file declares none.
+func declaredBaseIn(rules conventions.Rules, content []byte) (name, problem string) {
+	o := readOwnFile(rules, map[string][]byte{rules.OwnFile: content})
+	at := slices.IndexFunc(rules.OwnKeys, func(k conventions.OwnKey) bool { return k.Holds.Single() })
+	if at < 0 {
+		return "", ""
+	}
+	key := rules.OwnKeys[at].Key
+	switch {
+	case o.unreadable:
+		return "", o.problems[0]
+	case o.unread[key]:
+		return "", notText(key)
+	case o.unusable[key] > 0:
+		return "", notABranch(key)
+	case len(o.values[key]) > 0:
+		return o.values[key][0], ""
+	}
+	return "", ""
 }
 
 // settings reads the names of the settings template; it keeps no value.

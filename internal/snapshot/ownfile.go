@@ -159,15 +159,23 @@ func (o *ownFile) readString(key conventions.OwnKey, value string, problem func(
 	text := strings.TrimSpace(value)
 	if len(text) < 2 || (text[0] != '"' && text[0] != '\'') || text[len(text)-1] != text[0] || strings.ContainsAny(text[1:len(text)-1], "\"'\n") {
 		o.unread[key.Key] = true
-		problem("`%s` is not text", key.Key)
+		problem("%s", notText(key.Key))
 		return
 	}
 	formed, usable := key.Holds.Form(text[1 : len(text)-1])
 	if !usable {
-		problem("`%s` is not the name of a branch, a remote branch or a tag", key.Key)
+		o.unusable[key.Key]++
+		problem("%s", notABranch(key.Key))
 		return
 	}
 	o.values[key.Key] = []string{formed}
+}
+
+// notText and notABranch are the problems of a key that holds one name.
+func notText(key string) string { return fmt.Sprintf("`%s` is not text", key) }
+
+func notABranch(key string) string {
+	return fmt.Sprintf("`%s` is not the name of a branch, a remote branch or a tag", key)
 }
 
 // uncommented is a line up to a "#" that lies outside a string.

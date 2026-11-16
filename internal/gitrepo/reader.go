@@ -58,12 +58,20 @@ func (r *Reader) Read(ctx context.Context, repository, base string, wants snapsh
 	if err != nil {
 		return snapshot.Source{}, refusal(err, snapshot.NoCommit, "")
 	}
-	asked, err := run(nil, "rev-parse", "--verify", "--quiet", "--end-of-options", base+"^{commit}")
-	if err != nil {
-		return snapshot.Source{}, refusal(err, snapshot.UnknownBase, base)
+	declared := base == ""
+	var askedCommit string
+	if declared {
+		if base, askedCommit, err = declaredBase(run, top, wants); err != nil {
+			return snapshot.Source{}, err
+		}
+	} else {
+		asked, err := run(nil, "rev-parse", "--verify", "--quiet", "--end-of-options", base+"^{commit}")
+		if err != nil {
+			return snapshot.Source{}, refusal(err, snapshot.UnknownBase, base)
+		}
+		askedCommit = strings.TrimSpace(string(asked))
 	}
-	source := snapshot.Source{AskedBase: base, Head: strings.TrimSpace(string(head))}
-	askedCommit := strings.TrimSpace(string(asked))
+	source := snapshot.Source{AskedBase: base, BaseDeclared: declared, Head: strings.TrimSpace(string(head))}
 	mergeBase, err := run(nil, "merge-base", askedCommit, "HEAD")
 	if err != nil {
 		return snapshot.Source{}, refusal(err, snapshot.NoCommonHistory, base)
@@ -161,6 +169,48 @@ func readHistory(run runner, exclude []string) ([]snapshot.Commit, error) {
 }
 
 type runner func(input []byte, args ...string) ([]byte, error)
+
+// declaredBase is the base a repository declares in its tracked file, read from the working tree, and its commit: a
+// branch first, then a remote branch, then a tag of that name, never a revision expression.
+func declaredBase(run runner, top string, wants snapshot.Wants) (name, commit string, err error) {
+	noBase := func(problem string) error {
+		return &snapshot.Refusal{Kind: snapshot.NoBase, Detail: problem, File: wants.BaseFile}
+	}
+	listed, err := run(nil, "ls-files", "-s", "-z", "--", wants.BaseFile)
+	if err != nil {
+		return "", "", gitFailed(err)
+	}
+	tracked := parseTracked(listed, 1)
+	if len(tracked) == 0 || !regular(tracked[0].mode) {
+		return "", "", noBase("")
+	}
+	root, err := os.OpenRoot(top)
+	if err != nil {
+		return "", "", gitFailed(err)
+	}
+	defer func() { _ = root.Close() }()
+	content, readErr := readFile(root, wants.BaseFile, wants)
+	switch {
+	case errors.Is(readErr, os.ErrNotExist):
+		return "", "", noBase("")
+	case readErr != nil:
+		content = nil
+	}
+	name, problem := wants.Base(content)
+	if name == "" {
+		return "", "", noBase(problem)
+	}
+	for _, prefix := range []string{"refs/heads/", "refs/remotes/", "refs/tags/"} {
+		found, err := run(nil, "rev-parse", "--verify", "--quiet", "--end-of-options", prefix+name+"^{commit}")
+		if err == nil {
+			return name, strings.TrimSpace(string(found)), nil
+		}
+		if failure, ok := errors.AsType[*gitError](err); !ok || failure.code != 1 && failure.code != 128 {
+			return "", "", gitFailed(err) // git failed, rather than answered that no such name exists
+		}
+	}
+	return "", "", &snapshot.Refusal{Kind: snapshot.UnknownDeclaredBase, Detail: name, File: wants.BaseFile}
+}
 
 func changes(run runner, base string, exclude []string) ([]snapshot.Change, error) {
 	output, err := run(nil, append([]string{"diff-index", "--numstat", "-z", "-M50%", "-l1000", "--no-textconv", "--no-ext-diff", base}, exclude...)...)

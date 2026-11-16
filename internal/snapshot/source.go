@@ -4,13 +4,14 @@ import "fmt"
 
 // Source is what the reader gives: plain data from git and the working tree, no git type.
 type Source struct {
-	AskedBase  string // the base as the caller named it
-	Base, Head string // full commit names; Base is the commit compared with
-	MergeBase  bool   // Base is the merge base of the asked base and the head
-	Modified   bool   // the working tree differs from the head commit
-	Untracked  int
-	Submodules []string
-	Unreadable []string
+	BaseDeclared bool   // the question named no base, and the base is the one the repository declares
+	AskedBase    string // the base as the caller named it
+	Base, Head   string // full commit names; Base is the commit compared with
+	MergeBase    bool   // Base is the merge base of the asked base and the head
+	Modified     bool   // the working tree differs from the head commit
+	Untracked    int
+	Submodules   []string
+	Unreadable   []string
 	// Missing are the paths whose content a partial clone lacks in some commit; their lines and history are not read.
 	Missing []string
 	Before  []Entry  // tracked regular files at the base; Content only for wanted, changed paths
@@ -56,6 +57,10 @@ type Wants struct {
 	Path       func(path string) bool // whether the reader reads this path's content
 	Binary     func(head []byte) bool // whether these first bytes make a file binary
 	SniffBytes int                    // how many first bytes Binary needs
+	// BaseFile is the file that may declare the base of a question that names none, and Base reads that base from
+	// its content (nil when it could not be read): the name, or the problem that makes it unusable.
+	BaseFile string
+	Base     func(content []byte) (name, problem string)
 }
 
 // RefusalKind says why a question cannot be answered.
@@ -72,12 +77,17 @@ const (
 	NoCommonHistory
 	// GitFailed: git could not run or failed otherwise.
 	GitFailed
+	// NoBase: the question names no base, and the repository declares none it can use.
+	NoBase
+	// UnknownDeclaredBase: git finds no branch, remote branch or tag by the declared base's name.
+	UnknownDeclaredBase
 )
 
 // Refusal is the error of a question that cannot be answered. Detail is the base, or git's first error line.
 type Refusal struct {
 	Kind   RefusalKind
 	Detail string
+	File   string // the file that declares the base, for the two refusals about a declared base
 }
 
 func (r *Refusal) Error() string {

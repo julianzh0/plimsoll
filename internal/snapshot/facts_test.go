@@ -398,6 +398,24 @@ func TestWantsNamesWhatTheReaderReads(t *testing.T) {
 			t.Errorf("Wants.Path(%q) = %v, want %v", p, got, want)
 		}
 	}
+	if w.BaseFile != ".plimsoll.toml" {
+		t.Errorf("Wants.BaseFile = %q, want .plimsoll.toml", w.BaseFile)
+	}
+	for _, c := range []struct {
+		content       []byte
+		name, problem string
+	}{
+		{[]byte("[defaults]\nbase = \"main\"\n"), "main", ""},
+		{[]byte("\uFEFF[defaults]\nbase = \"main\"\n"), "main", ""},
+		{[]byte("[limits]\nfile_lines = 1500\n"), "", ""},
+		{nil, "", "it could not be read"},
+		{[]byte("[defaults]\nbase = 3\n"), "", "`base` is not text"},
+		{[]byte("[defaults]\nbase = \"HEAD~1\"\n"), "", "`base` is not the name of a branch, a remote branch or a tag"},
+	} {
+		if name, problem := w.Base(c.content); name != c.name || problem != c.problem {
+			t.Errorf("Wants.Base(%q) = %q, %q; want %q, %q", c.content, name, problem, c.name, c.problem)
+		}
+	}
 	if !w.Binary([]byte{'a', 0}) || w.Binary([]byte("ab")) || w.SniffBytes != 8192 {
 		t.Errorf("Wants.Binary or SniffBytes wrong: %v, %v, %d", w.Binary([]byte{'a', 0}), w.Binary([]byte("ab")), w.SniffBytes)
 	}

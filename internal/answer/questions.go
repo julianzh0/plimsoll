@@ -138,6 +138,14 @@ func sentenceOf(refusal *snapshot.Refusal) string {
 		return fmt.Sprintf("Base `%s` shares no history with the head commit.", refusal.Detail)
 	case snapshot.GitFailed:
 		return fmt.Sprintf("git could not read the repository: `%s`.", refusal.Detail)
+	case snapshot.NoBase:
+		if refusal.Detail == "" {
+			return fmt.Sprintf("The question names no base, and no tracked `%s` declares a default base.", refusal.File)
+		}
+		return fmt.Sprintf("The question names no base, and the default base of `%s` cannot be used: %s.", refusal.File, refusal.Detail)
+	case snapshot.UnknownDeclaredBase:
+		return fmt.Sprintf("Unknown base `%s`, the default base `%s` declares: git finds no branch, remote branch or tag of this name in this repository.",
+			refusal.Detail, refusal.File)
 	}
 	return "The repository could not be read."
 }

@@ -21,6 +21,7 @@ type Snapshot struct {
 	// limits it sets on either side, Declarations the text keys it declares on either side, and OwnFileProblems what
 	// the file says now that is not read, each a phrase. OwnFileUnreadAtBase says the file could not be read at the
 	// base, so a change to its declarations is not compared.
+	BaseDeclared        bool // the question named no base; Base is the one the repository declares
 	OwnFile             string
 	DeclaredLimits      []DeclaredLimit
 	Declarations        []DeclaredValues
