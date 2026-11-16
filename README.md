@@ -185,12 +185,12 @@ under "not analysed". A changed file in which the grammar meets a syntax error, 
 there too, since an import after the error may be missed. On a system that forbids executable memory the grammars
 still run, interpreted and about 80 times slower.
 
-| | | |
-|---|---|---|
-| [C](#cc) | [C++](#cc) | [C#](#c) |
-| [Dart](#dart) | [Go](#go) | [Java](#javakotlin) |
-| [JavaScript](#typescriptjavascript) | [Kotlin](#javakotlin) | [Python](#python) |
-| [Rust](#rust) | [Swift](#swift) | [TypeScript](#typescriptjavascript) |
+<table>
+  <tr><td><a href="#cc">C</a></td><td><a href="#cc">C++</a></td><td><a href="#c">C#</a></td></tr>
+  <tr><td><a href="#dart">Dart</a></td><td><a href="#go">Go</a></td><td><a href="#javakotlin">Java</a></td></tr>
+  <tr><td><a href="#typescriptjavascript">JavaScript</a></td><td><a href="#javakotlin">Kotlin</a></td><td><a href="#python">Python</a></td></tr>
+  <tr><td><a href="#rust">Rust</a></td><td><a href="#swift">Swift</a></td><td><a href="#typescriptjavascript">TypeScript</a></td></tr>
+</table>
 
 ### C/C++
 
