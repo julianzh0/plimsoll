@@ -46,7 +46,7 @@ func testPath(rules conventions.Rules, filePath string) bool {
 		return true
 	}
 	name := path.Base(filePath)
-	if slices.ContainsFunc(rules.TestNames, func(pattern string) bool { matched, _ := path.Match(pattern, name); return matched }) {
+	if slices.ContainsFunc(rules.TestNames, func(pattern string) bool { return nameMatches(pattern, filePath) }) {
 		return true
 	}
 	stem := strings.TrimSuffix(name, conventions.Suffix(filePath))
@@ -205,11 +205,17 @@ func onPaths(rules conventions.Rules, filePath string, entries []string) bool {
 			if strings.HasPrefix(filePath, folder+"/") || strings.Contains(folder, "/") && strings.Contains(filePath, "/"+folder+"/") {
 				return true
 			}
-		} else if matched, _ := path.Match(entry, path.Base(filePath)); matched {
+		} else if nameMatches(entry, filePath) {
 			return true
 		}
 	}
 	return false
+}
+
+// nameMatches says whether a path's file name matches a file-name pattern of path.Match.
+func nameMatches(pattern, filePath string) bool {
+	matched, _ := path.Match(pattern, path.Base(filePath))
+	return matched
 }
 
 // countLines counts newline bytes, plus one when non-empty content does not end with a newline.

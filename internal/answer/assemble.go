@@ -164,6 +164,9 @@ func Quoted(names []string) []string {
 	return quoted
 }
 
+// QuotedList is names each in backticks, joined by commas: "`a`, `b`".
+func QuotedList(names []string) string { return strings.Join(Quoted(names), ", ") }
+
 // Agree puts a count before the singular or the plural phrase: "1 file is", "3 files are".
 func Agree(n int, one, many string) string {
 	if n == 1 {

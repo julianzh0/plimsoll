@@ -17,7 +17,7 @@ func (Detector) Wording(m answer.Mark) string {
 			return fmt.Sprintf("`%s` no longer stands as a setting without a reader: product code holds it as a word now, or `%s` no longer names it.", settingName, file)
 		}
 		return fmt.Sprintf("`%s` is a setting in `%s`; product files that hold it as a word: 0 of %s (forms searched: %s).",
-			settingName, file, answer.Count(*m.Measured.Total), quoted(snapshot.Forms(settingName)))
+			settingName, file, answer.Count(*m.Measured.Total), answer.QuotedList(snapshot.Forms(settingName)))
 	case ruleDefinedTwice:
 		if m.Change == answer.Resolved {
 			return fmt.Sprintf("`%s` is defined on %s of `%s`, no longer on more than one; it was on %s at the base.",
@@ -36,8 +36,6 @@ func (Detector) Wording(m answer.Mark) string {
 	}
 	return m.ID
 }
-
-func quoted(items []string) string { return strings.Join(answer.Quoted(items), ", ") }
 
 // Standing is the detector's part of the standing line: one count per rule that has standing items.
 func (Detector) Standing(items []answer.Mark) string {

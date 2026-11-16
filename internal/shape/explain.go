@@ -64,7 +64,7 @@ func ratioEvidence(s snapshot.Snapshot, m answer.Mark) []string {
 		"test code recognized by: " + s.TestRule,
 	}
 	lines = append(lines, answer.TestFolderNotes(s.Layout)...)
-	lines = append(lines, answer.OwnNotes(ownTestKeys(s))...)
+	lines = append(lines, answer.OwnNotes(s.Layout.Own)...)
 	lines = append(lines, fmt.Sprintf("limit: %s (%s)", answer.Decimal(*m.Measured.Limit), m.Measured.LimitSource))
 	var tests []snapshot.File
 	for _, file := range s.Now.Files {

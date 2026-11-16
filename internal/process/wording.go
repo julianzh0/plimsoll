@@ -31,7 +31,7 @@ func (Detector) Wording(m answer.Mark) string {
 		now, before := int(m.Measured.Value), int(*m.Measured.Before)
 		var parts []string
 		if len(m.Subject.Names) > 0 {
-			parts = append(parts, "added "+strings.Join(answer.Quoted(m.Subject.Names), ", "))
+			parts = append(parts, "added "+answer.QuotedList(m.Subject.Names))
 		}
 		if removed := before + len(m.Subject.Names) - now; removed > 0 {
 			parts = append(parts, fmt.Sprintf("removed %d", removed))

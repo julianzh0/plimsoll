@@ -26,7 +26,7 @@ type ownFile struct {
 	limits     map[string]float64  // the limits it sets, by key
 	values     map[string][]string // per text key that was read: its usable values, in file order, each once
 	unusable   map[string]int      // per text key: the values that have not their form
-	unread     map[string]string   // text keys whose value could not be read, each with its problem phrase
+	unread     map[string]bool     // text keys whose value could not be read
 	problems   []string            // what the file says that is not read: phrases, sorted, each once
 }
 
@@ -34,7 +34,7 @@ type ownFile struct {
 // not read is a problem phrase, and what it names keeps plimsoll's default. Values are brought to their form; one
 // without it is counted, never kept.
 func readOwnFile(rules conventions.Rules, content map[string][]byte) ownFile {
-	o := ownFile{limits: map[string]float64{}, values: map[string][]string{}, unusable: map[string]int{}, unread: map[string]string{}}
+	o := ownFile{limits: map[string]float64{}, values: map[string][]string{}, unusable: map[string]int{}, unread: map[string]bool{}}
 	file, tracked := content[rules.OwnFile]
 	switch {
 	case !tracked:
@@ -133,12 +133,11 @@ func (o *ownFile) readList(key conventions.OwnKey, value string, problem func(st
 		items, closed = stringArray(text[1:])
 	}
 	if !closed {
-		phrase := fmt.Sprintf("`%s` is not a list of text", key.Key)
-		o.unread[key.Key] = phrase
-		problem("%s", phrase)
+		o.unread[key.Key] = true
+		problem("`%s` is not a list of text", key.Key)
 		return
 	}
-	values := []string{}
+	var values []string
 	for _, item := range items {
 		formed, usable := key.Holds.Form(item)
 		switch {
@@ -178,21 +177,11 @@ func declaredValues(rules conventions.Rules, now, before ownFile) []DeclaredValu
 		if len(nowValues) == 0 && len(beforeValues) == 0 {
 			continue
 		}
-		_, unreadNow := now.unread[k.Key]
-		_, unreadBefore := before.unread[k.Key]
 		declared = append(declared, DeclaredValues{
-			Table: k.Table, Key: k.Key, Name: k.Name,
-			Now: nilWhenEmpty(nowValues), Before: nilWhenEmpty(beforeValues),
-			Compared:     !now.unreadable && !before.unreadable && !unreadNow && !unreadBefore,
-			UnreadAtBase: unreadBefore,
+			Table: k.Table, Key: k.Key, Name: k.Name, Now: nowValues, Before: beforeValues,
+			Compared:     !now.unreadable && !before.unreadable && !now.unread[k.Key] && !before.unread[k.Key],
+			UnreadAtBase: before.unread[k.Key],
 		})
 	}
 	return declared
-}
-
-func nilWhenEmpty(values []string) []string {
-	if len(values) == 0 {
-		return nil
-	}
-	return values
 }

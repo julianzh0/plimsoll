@@ -142,18 +142,17 @@ func TestBuildReadsWhatAProjectDeclares(t *testing.T) {
 		want snapshot.Layout
 	}{
 		{"own: in use", both(owning("test_folders = [\"checks\", \"tools/harness\"]\ntest_files = [\"*.check.ts\"]\n", "checks/h.py", "tools/harness/run.py", "src/a.check.ts")),
-			snapshot.Layout{OwnTestFolders: []snapshot.Declared{own("test_folders", "test folders", false, "checks", "tools/harness")},
-				OwnTestFiles: []snapshot.Declared{own("test_files", "test files", true, "*.check.ts")}}},
+			snapshot.Layout{Own: []snapshot.Declared{own("test_folders", "test folders", false, "checks", "tools/harness"), own("test_files", "test files", true, "*.check.ts")}}},
 		{"own: held, unmatched, unusable", both(owning("test_folders = [\".\", \"src\", \"nowhere\", \"Checks\", \"a b\", \"tests\"]\ntest_files = [\"*\", \"**\", \"*_nope.rb\", \"checks\", \"a/b\"]\n",
 			"src/app/__init__.py", "tests/test_a.py", "checks/h.py")),
-			snapshot.Layout{OwnTestFolders: []snapshot.Declared{ownFolders}, OwnTestFiles: []snapshot.Declared{ownFiles}}},
+			snapshot.Layout{Own: []snapshot.Declared{ownFolders, ownFiles}}},
 		{"own: no guard for a folder holding test folders", both(owning("test_folders = [\"pkg\"]\n", "pkg/core.py", "pkg/tests/test_core.py")),
-			snapshot.Layout{OwnTestFolders: []snapshot.Declared{own("test_folders", "test folders", false, "pkg")}}},
+			snapshot.Layout{Own: []snapshot.Declared{own("test_folders", "test folders", false, "pkg")}}},
 		{"own: tracked at the base only", layoutOf(t, map[string]string{"checks/h.py": "x = 1\n"}, owning("test_folders = [\"checks\"]\n", "src/a.py")),
-			snapshot.Layout{OwnTestFolders: []snapshot.Declared{own("test_folders", "test folders", false, "checks")}}},
+			snapshot.Layout{Own: []snapshot.Declared{own("test_folders", "test folders", false, "checks")}}},
 		{"own: an empty list", both(owning("test_folders = []\n", "src/a.py")), snapshot.Layout{}},
 		{"own: beside pytest", both(pytestAndOwn),
-			snapshot.Layout{TestFolders: []snapshot.Declared{testpaths("tests")}, OwnTestFolders: []snapshot.Declared{own("test_folders", "test folders", false, "checks")}}},
+			snapshot.Layout{TestFolders: []snapshot.Declared{testpaths("tests")}, Own: []snapshot.Declared{own("test_folders", "test folders", false, "checks")}}},
 	}
 	for _, tc := range ownCases {
 		if !reflect.DeepEqual(tc.got, tc.want) {

@@ -5,7 +5,6 @@ package settings
 import (
 	"fmt"
 	"slices"
-	"strings"
 
 	"github.com/julianzh0/plimsoll/internal/answer"
 	"github.com/julianzh0/plimsoll/internal/snapshot"
@@ -276,7 +275,7 @@ func computedReads(t snapshot.Tree) (reads int, files []string) {
 
 // named lists up to three names in backticks, then counts the rest.
 func named(items []string) string {
-	text := strings.Join(answer.Quoted(items[:min(len(items), namedShown)]), ", ")
+	text := answer.QuotedList(items[:min(len(items), namedShown)])
 	if len(items) > namedShown {
 		text += fmt.Sprintf(" and %d more", len(items)-namedShown)
 	}

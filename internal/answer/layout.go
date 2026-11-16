@@ -1,6 +1,7 @@
 package answer
 
 import (
+	"cmp"
 	"fmt"
 	"strings"
 
@@ -36,7 +37,17 @@ func TestFoldersNotUsed(l snapshot.Layout) []string {
 }
 
 // OwnNotes are the note lines of the keys of a repository's own file with a value in use.
-func OwnNotes(declared []snapshot.Declared) []string {
+func OwnNotes(declared []snapshot.Declared) []string { return layoutNotes(declared, "", false) }
+
+// OwnNotUsed are the "not analysed" sentences about the keys of a repository's own file: held values, values that
+// match no tracked file, and values without their form.
+func OwnNotUsed(declared []snapshot.Declared) []string { return layoutGaps(declared, "", false) }
+
+// RootsNotUsed are the "not analysed" sentences about declared roots; each starts with its language.
+func RootsNotUsed(l snapshot.Layout) []string { return layoutGaps(l.Roots, "roots", true) }
+
+// layoutNotes are the note lines of declared keys with a value in use; a key of the own file names itself.
+func layoutNotes(declared []snapshot.Declared, things string, lead bool) []string {
 	var lines []string
 	for _, d := range declared {
 		if len(d.InUse) == 0 {
@@ -44,71 +55,23 @@ func OwnNotes(declared []snapshot.Declared) []string {
 		}
 		values := make([]string, 0, len(d.InUse))
 		for _, value := range d.InUse {
-			values = append(values, ownValue(d, value.Path))
+			shown := declaredValue(d, value.Path)
+			if value.BaseOnly {
+				shown += " (at the base only)"
+			}
+			values = append(values, shown)
 		}
-		lines = append(lines, fmt.Sprintf("%s declared in `%s` (`[%s]` `%s`): %s", d.Name, d.File, d.Table, d.Key, strings.Join(values, ", ")))
+		lines = append(lines, leadOf(d, lead)+fmt.Sprintf("%s declared in `%s` (`[%s]` `%s`): %s", cmp.Or(d.Name, things), d.File, d.Table, d.Key, strings.Join(values, ", ")))
 	}
 	return lines
 }
 
-// OwnNotUsed are the "not analysed" sentences about the keys of a repository's own file: held values, values that
-// match no tracked file, and values without their form.
-func OwnNotUsed(declared []snapshot.Declared) []string {
-	var sentences []string
-	for _, d := range declared {
-		for _, held := range d.Held {
-			sentences = append(sentences, heldSentence(d, held))
-		}
-		if len(d.Unmatched) > 0 {
-			values := make([]string, 0, len(d.Unmatched))
-			for _, value := range d.Unmatched {
-				values = append(values, ownValue(d, value))
-			}
-			verb := "match no tracked file; they are not used"
-			if len(values) == 1 {
-				verb = "matches no tracked file; it is not used"
-			}
-			sentences = append(sentences, fmt.Sprintf("`%s` `%s`: %s %s", d.File, d.Key, strings.Join(values, ", "), verb))
-		}
-		if d.Unusable > 0 {
-			what := Agree(d.Unusable, "value is no plain path from the root; it is not used", "values are no plain paths from the root; they are not used")
-			if d.AsWritten {
-				what = Agree(d.Unusable, "value is no plain file-name pattern; it is not used", "values are no plain file-name patterns; they are not used")
-			}
-			sentences = append(sentences, fmt.Sprintf("`%s` `%s`: %s", d.File, d.Key, what))
-		}
-	}
-	return sentences
-}
-
-// ownValue is one value of an own key as an answer prints it: a pattern as written, a folder as a folder.
-func ownValue(d snapshot.Declared, value string) string {
+// declaredValue is one declared value as an answer prints it: a file-name pattern as written, a folder as a folder.
+func declaredValue(d snapshot.Declared, value string) string {
 	if d.AsWritten {
 		return "`" + value + "`"
 	}
 	return Folder(value)
-}
-
-// RootsNotUsed are the "not analysed" sentences about declared roots; each starts with its language.
-func RootsNotUsed(l snapshot.Layout) []string { return layoutGaps(l.Roots, "roots", true) }
-
-func layoutNotes(declared []snapshot.Declared, things string, lead bool) []string {
-	var lines []string
-	for _, d := range declared {
-		if len(d.InUse) == 0 {
-			continue
-		}
-		folders := make([]string, 0, len(d.InUse))
-		for _, folder := range d.InUse {
-			shown := Folder(folder.Path)
-			if folder.BaseOnly {
-				shown += " (at the base only)"
-			}
-			folders = append(folders, shown)
-		}
-		lines = append(lines, leadOf(d, lead)+fmt.Sprintf("%s declared in `%s` (`[%s]` `%s`): %s", things, d.File, d.Table, d.Key, strings.Join(folders, ", ")))
-	}
-	return lines
 }
 
 func layoutGaps(declared []snapshot.Declared, things string, lead bool) []string {
@@ -126,13 +89,34 @@ func layoutGaps(declared []snapshot.Declared, things string, lead bool) []string
 		for _, held := range d.Held {
 			sentences = append(sentences, leadOf(d, lead)+heldSentence(d, held))
 		}
+		if len(d.Unmatched) > 0 {
+			values := make([]string, 0, len(d.Unmatched))
+			for _, value := range d.Unmatched {
+				values = append(values, declaredValue(d, value))
+			}
+			verb := "match no tracked file; they are not used"
+			if len(values) == 1 {
+				verb = "matches no tracked file; it is not used"
+			}
+			sentences = append(sentences, fmt.Sprintf("`%s` `%s`: %s %s", d.File, d.Key, strings.Join(values, ", "), verb))
+		}
 		if d.Unusable > 0 {
-			sentences = append(sentences, leadOf(d, lead)+fmt.Sprintf("`%s` `%s`: %s", d.File, d.Key, Agree(d.Unusable,
-				"value is absolute, leaves the repository or holds a pattern; it is not used",
-				"values are absolute, leave the repository or hold a pattern; they are not used")))
+			sentences = append(sentences, leadOf(d, lead)+fmt.Sprintf("`%s` `%s`: %s", d.File, d.Key, unusableClause(d)))
 		}
 	}
 	return sentences
+}
+
+// unusableClause says how many values of a key are not used for want of their form.
+func unusableClause(d snapshot.Declared) string {
+	switch {
+	case d.Name == "":
+		return Agree(d.Unusable, "value is absolute, leaves the repository or holds a pattern; it is not used",
+			"values are absolute, leave the repository or hold a pattern; they are not used")
+	case d.AsWritten:
+		return Agree(d.Unusable, "value is no plain file-name pattern; it is not used", "values are no plain file-name patterns; they are not used")
+	}
+	return Agree(d.Unusable, "value is no plain path from the root; it is not used", "values are no plain paths from the root; they are not used")
 }
 
 // shadowedClause says that a key is not used because its tool reads another file.

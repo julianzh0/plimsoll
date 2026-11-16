@@ -20,7 +20,7 @@ func (Detector) Explain(s snapshot.Snapshot, m answer.Mark) []string {
 			use = s.Now.Uses[index]
 		}
 		lines := []string{
-			"forms searched as whole words: " + quoted(snapshot.Forms(settingName)),
+			"forms searched as whole words: " + answer.QuotedList(snapshot.Forms(settingName)),
 			fmt.Sprintf("product files searched: %s; holding a form: %d", answer.Count(productFiles(s.Now)), len(use.Product)),
 			fmt.Sprintf("test files holding a form: %d", len(use.Test)),
 		}

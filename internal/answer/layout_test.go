@@ -55,10 +55,7 @@ func TestLayoutSaysWhatIsDeclaredAndWhatIsNotUsed(t *testing.T) {
 	ownFiles := func(inUse ...string) snapshot.Declared { return ownRecord("test_files", "test files", true, inUse...) }
 	ownWith := func(d snapshot.Declared, change func(*snapshot.Declared)) snapshot.Layout {
 		change(&d)
-		if d.AsWritten {
-			return snapshot.Layout{OwnTestFiles: []snapshot.Declared{d}}
-		}
-		return snapshot.Layout{OwnTestFolders: []snapshot.Declared{d}}
+		return snapshot.Layout{Own: []snapshot.Declared{d}}
 	}
 	moved := testpaths("tests")
 	moved.InUse = append(moved.InUse, snapshot.DeclaredFolder{Path: "old", BaseOnly: true})
@@ -103,9 +100,9 @@ func TestLayoutSaysWhatIsDeclaredAndWhatIsNotUsed(t *testing.T) {
 			"`pytest.toml` is not read: test folders and roots declared there are not seen, and `testpaths` in `pyproject.toml` is not used, because pytest reads `pytest.toml` instead",
 			"`pytest.ini` is not read: test folders and roots declared there are not seen",
 		}}},
-		{"own: folders in use", snapshot.Layout{OwnTestFolders: []snapshot.Declared{ownFolders("checks", "tools/harness")}},
+		{"own: folders in use", snapshot.Layout{Own: []snapshot.Declared{ownFolders("checks", "tools/harness")}},
 			lines{ownNotes: []string{"test folders declared in `.plimsoll.toml` (`[layout]` `test_folders`): `checks/`, `tools/harness/`"}}},
-		{"own: names in use", snapshot.Layout{OwnTestFiles: []snapshot.Declared{ownFiles("*_spec.rb", "*IT.java")}},
+		{"own: names in use", snapshot.Layout{Own: []snapshot.Declared{ownFiles("*_spec.rb", "*IT.java")}},
 			lines{ownNotes: []string{"test files declared in `.plimsoll.toml` (`[layout]` `test_files`): `*_spec.rb`, `*IT.java`"}}},
 		{"own: held root", ownWith(ownFolders(), func(d *snapshot.Declared) {
 			d.Held = []snapshot.HeldFolder{{Path: ".", Why: snapshot.HeldRepositoryRoot}}
@@ -137,7 +134,7 @@ func TestLayoutSaysWhatIsDeclaredAndWhatIsNotUsed(t *testing.T) {
 			rootGaps: []string{"`python`: `pythonpath` in `pyproject.toml` is not used, because pytest reads `pytest.ini` instead"}}},
 	}
 	for _, tc := range cases {
-		own := slices.Concat(tc.layout.OwnTestFolders, tc.layout.OwnTestFiles)
+		own := tc.layout.Own
 		got := lines{TestFolderNotes(tc.layout), TestFoldersNotUsed(tc.layout), RootNotes(tc.layout), RootsNotUsed(tc.layout), OwnNotes(own), OwnNotUsed(own)}
 		if !slices.Equal(got.testNotes, tc.want.testNotes) || !slices.Equal(got.testGaps, tc.want.testGaps) ||
 			!slices.Equal(got.rootNotes, tc.want.rootNotes) || !slices.Equal(got.rootGaps, tc.want.rootGaps) ||
