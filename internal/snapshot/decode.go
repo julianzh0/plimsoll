@@ -16,6 +16,7 @@ func decode(result parse.Result, content []byte) reading {
 	passes := map[parse.Span]bool{}
 	type found struct {
 		statement statement
+		at        int           // where its target starts
 		within    parse.Capture // the @import capture, which holds the statement's @name captures
 	}
 	var statements []found
@@ -61,7 +62,7 @@ func decode(result parse.Result, content []byte) reading {
 				return c
 			}, written)
 		}
-		statements = append(statements, found{statement{spec: unquoted(written), line: first.Line, typeOnly: typeOnly}, within})
+		statements = append(statements, found{statement{spec: unquoted(written), line: first.Line, typeOnly: typeOnly}, first.Start, within})
 	}
 	for _, f := range statements {
 		st := f.statement
@@ -70,8 +71,7 @@ func decode(result parse.Result, content []byte) reading {
 				st.names = append(st.names, string(content[n.Start:n.End]))
 			}
 		}
-		at := targets[len(r.statements)].Start
-		st.typeOnly = st.typeOnly || slices.ContainsFunc(typeBlocks, func(b parse.Capture) bool { return b.Start <= at && at < b.End })
+		st.typeOnly = st.typeOnly || slices.ContainsFunc(typeBlocks, func(b parse.Capture) bool { return b.Start <= f.at && f.at < b.End })
 		r.statements = append(r.statements, st)
 	}
 	for _, c := range computed {

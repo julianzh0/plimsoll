@@ -16,8 +16,7 @@ func pythonLanguage() Language {
 // pydantic's env_prefix.
 const pythonQuery = `
 (import_from_statement module_name: (_) @spec) @import
-(import_from_statement name: (dotted_name) @name)
-(import_from_statement name: (aliased_import name: (dotted_name) @name))
+(import_from_statement name: [(dotted_name) @name (aliased_import name: (dotted_name) @name)])
 (future_import_statement "__future__" @spec) @import
 (future_import_statement name: (dotted_name) @name)
 (import_statement name: [(dotted_name) @spec (aliased_import name: (dotted_name) @spec)]) @import
@@ -33,13 +32,13 @@ const pythonQuery = `
 (module (expression_statement (string)) @pass)
 ((module (expression_statement (assignment left: (identifier) @n)) @pass) (#eq? @n "__all__"))
 ((subscript value: (attribute object: (identifier) @o attribute: (identifier) @a) subscript: (_) @dynamic)
-  (#eq? @o "os") (#eq? @a "environ") (#not-match? @dynamic "^[\"']"))
+  (#match? @o "os$") (#eq? @a "environ") (#not-match? @dynamic "^[\"']"))
 ((call function: (attribute object: (identifier) @o attribute: (identifier) @a) arguments: (argument_list . (_) @dynamic))
-  (#eq? @o "os") (#eq? @a "getenv") (#not-match? @dynamic "^[\"']"))
+  (#match? @o "os$") (#eq? @a "getenv") (#not-match? @dynamic "^[\"']"))
 ((call
    function: (attribute object: (attribute object: (identifier) @o attribute: (identifier) @e) attribute: (identifier) @a)
    arguments: (argument_list . (_) @dynamic))
-  (#eq? @o "os") (#eq? @e "environ") (#eq? @a "get") (#not-match? @dynamic "^[\"']"))
+  (#match? @o "os$") (#eq? @e "environ") (#eq? @a "get") (#not-match? @dynamic "^[\"']"))
 ((keyword_argument name: (identifier) @k value: (string (string_content) @prefix))
   (#match? @k "env_prefix$") (#match? @prefix "^[A-Za-z0-9_]+$"))
 ((assignment left: (identifier) @k right: (string (string_content) @prefix))

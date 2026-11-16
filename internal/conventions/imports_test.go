@@ -24,12 +24,9 @@ func language(t *testing.T, name string) Language {
 func found(imports Imports, text string) []string {
 	var all []string
 	for _, form := range imports.Statements {
-		spec, kind, everywhere := form.Pattern.SubexpIndex("spec"), form.Pattern.SubexpIndex("type"), form.Pattern.SubexpIndex("everywhere")
+		spec, everywhere := form.Pattern.SubexpIndex("spec"), form.Pattern.SubexpIndex("everywhere")
 		for _, m := range form.Pattern.FindAllStringSubmatchIndex(text, -1) {
 			item := text[m[2*spec]:m[2*spec+1]]
-			if kind >= 0 && m[2*kind] >= 0 {
-				item += ":type"
-			}
 			if everywhere >= 0 && m[2*everywhere] >= 0 {
 				item += ":everywhere"
 			}
@@ -84,6 +81,7 @@ func importCases() map[string]map[string][]string {
 			"import a from './a'\n// import b from './b'\n":                    {"./a"},
 			"import from from \"./from\"\n":                                    {"./from"},
 			"const s = \"import x from './old'\"\n":                            nil,
+			"import x from './a\\b'\n":                                         {"./a\\b"},
 		},
 		"go": {
 			"package a\n\nimport \"fmt\"\nimport x \"os\"\n": {"fmt", "os"},

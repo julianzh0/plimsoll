@@ -16,10 +16,10 @@ func typescriptLanguage() Language {
 // `require()` with a string first, every such call as one built at run time unless a target lies inside it, the
 // statements a file that only passes imports on may hold, and a settings read through a computed name.
 const typescriptQuery = `
-(import_statement "type"? @type source: (string (string_fragment) @spec)) @import
-(export_statement "type"? @type source: (string (string_fragment) @spec)) @import
-(import_require_clause source: (string (string_fragment) @spec)) @import
-((call_expression function: [(import) (identifier) @f] arguments: (arguments . (string (string_fragment) @spec))) @import
+(import_statement "type"? @type source: (string (string_fragment)) @spec) @import
+(export_statement "type"? @type source: (string (string_fragment)) @spec) @import
+(import_require_clause source: (string (string_fragment)) @spec) @import
+((call_expression function: [(import) (identifier) @f] arguments: (arguments . (string (string_fragment)) @spec)) @import
   (#eq? @f "require"))
 ((call_expression function: [(import) (identifier) @f] arguments: (arguments . (_) @computed)) (#eq? @f "require"))
 (program (export_statement source: (string)) @pass)

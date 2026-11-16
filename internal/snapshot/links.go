@@ -128,13 +128,12 @@ func scan(imports conventions.Imports, text []byte) reading {
 	}
 	modules := spansOf(imports.Module, text)
 	for _, form := range imports.Statements {
-		spec, typeGroup := form.Pattern.SubexpIndex("spec"), form.Pattern.SubexpIndex("type")
+		spec := form.Pattern.SubexpIndex("spec")
 		everywhereGroup := form.Pattern.SubexpIndex("everywhere")
 		for _, m := range form.Pattern.FindAllSubmatchIndex(text, -1) {
 			at, written := m[2*spec], string(text[m[2*spec]:m[2*spec+1]])
 			st := statement{
 				line:       1 + bytes.Count(text[:at], []byte("\n")),
-				typeOnly:   typeGroup >= 0 && m[2*typeGroup] >= 0,
 				within:     modulesAt(modules, at),
 				everywhere: everywhereGroup >= 0 && m[2*everywhereGroup] >= 0,
 			}

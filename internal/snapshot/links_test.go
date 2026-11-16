@@ -175,6 +175,7 @@ func TestBuildMarksImportsUnderTypeChecking(t *testing.T) {
 		"if typing.TYPE_CHECKING:  # note\n    import a\nelse:\n    import b\n": {2: true, 4: false},
 		"if TYPE_CHECKING:\r\n    import a":                                     {2: true},
 		"if not TYPE_CHECKING:\n    import a\n":                                 {2: false},
+		"def f():\n    if TYPE_CHECKING:\n        import a\n":                   {3: false},
 	}
 	for text, want := range cases {
 		got := linksOf(t, map[string]string{"m.py": text, "a.py": "", "b.py": "", "c.py": ""})

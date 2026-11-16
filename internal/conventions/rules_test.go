@@ -134,9 +134,9 @@ func TestEveryLanguageNamesItsDynamicRead(t *testing.T) {
 	cases := map[string]struct{ matches, misses []string }{
 		"typescript": {[]string{"process.env[name]", "process.env[`${p}X`]"}, []string{`process.env["X"]`, "process.env.X"}},
 		"go":         {[]string{"os.Getenv(name)", `os.LookupEnv(prefix + "X")`}, []string{`os.Getenv("X")`, `os.Getenv( "X")`}},
-		"python": {[]string{"os.environ[name]", `os.getenv(prefix + "X")`, `os.environ.get(f"A_{x}")`},
+		"python": {[]string{"os.environ[name]", "_os.environ[k]", `os.getenv(prefix + "X")`, `os.environ.get(f"A_{x}")`},
 			[]string{`os.environ["X"]`, `os.getenv('X')`, `os.environ.get("X", "d")`}},
-		"dart": {[]string{"Platform.environment[name]", "String.fromEnvironment(key)", "bool.fromEnvironment(flag)", "dotenv.env[k]"},
+		"dart": {[]string{"Platform.environment[name]", "io.Platform.environment[name]", "String.fromEnvironment(key)", "bool.fromEnvironment(flag)", "dotenv.env[k]"},
 			[]string{"Platform.environment['X']", `String.fromEnvironment("X")`, "dotenv.env['X']", "const int.fromEnvironment('N')"}},
 		"java":   {[]string{"System.getenv(name)", `System.getenv(prefix + "X")`}, []string{`System.getenv("X")`, `System.getenv( "X")`, "System.getenv()"}},
 		"kotlin": {[]string{"System.getenv(name)", `System.getenv(prefix + "X")`}, []string{`System.getenv("X")`, `System.getenv( "X")`, "System.getenv()"}},

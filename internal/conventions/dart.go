@@ -16,13 +16,16 @@ const dartQuery = `
 (part_of_directive (uri (string_literal) @spec)) @import
 (program (import_or_export (library_export)) @pass)
 (program [(library_name) (comment) (documentation_comment)] @pass)
-((identifier) @o . (selector (unconditional_assignable_selector (identifier) @p)) .
+([(identifier) @o (selector (unconditional_assignable_selector (identifier) @o))] .
+  (selector (unconditional_assignable_selector (identifier) @p)) .
   (selector (unconditional_assignable_selector (index_selector . (_) @dynamic)))
   (#eq? @o "Platform") (#eq? @p "environment") (#not-match? @dynamic "^[\"']"))
-((identifier) @o . (selector (unconditional_assignable_selector (identifier) @p)) .
+([(identifier) @o (selector (unconditional_assignable_selector (identifier) @o))] .
+  (selector (unconditional_assignable_selector (identifier) @p)) .
   (selector (unconditional_assignable_selector (index_selector . (_) @dynamic)))
   (#eq? @o "dotenv") (#eq? @p "env") (#not-match? @dynamic "^[\"']"))
-((identifier) @o . (selector (unconditional_assignable_selector (identifier) @p)) .
+([(identifier) @o (selector (unconditional_assignable_selector (identifier) @o))] .
+  (selector (unconditional_assignable_selector (identifier) @p)) .
   (selector (argument_part (arguments . (argument) @dynamic)))
   (#match? @o "^(String|bool|int)$") (#eq? @p "fromEnvironment") (#not-match? @dynamic "^[\"']"))
 ((const_object_expression (type_identifier) @o (identifier) @p (arguments . (argument) @dynamic))
