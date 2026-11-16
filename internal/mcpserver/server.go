@@ -14,12 +14,13 @@ import (
 	"github.com/juzhxng/plimsoll/internal/answer"
 )
 
-// concurrentAnswers is how many questions are answered at the same time; the others wait for a free slot. One answer
-// on nlohmann/json (299,000 code lines, 4,686 commits) peaks at 781 MB, plimsoll and its git processes together, nearly
-// all of it git reading the history (measured 2026-11-16); two keep the worst case near 1.6 GB on any machine, and let a
-// client that asks two things together be answered without waiting. Without a limit, 634 questions sent at once
-// exhausted 32 GB.
-const concurrentAnswers = 2
+// concurrentAnswers is how many questions are answered at the same time; the others wait for a free slot. Measured on
+// nlohmann/json (299,000 code lines, 4,686 commits), 12 cores, 2026-11-16: a burst of 64 questions after the history is
+// read gives 5.0 answers per second with 8 slots, 5.4 with 16, 4.8 with 32 and 5.3 with 64, while the peak memory of
+// plimsoll and its git processes grows from 0.8 GB to 1.0, 2.1 and 3.8 GB; with 2 slots it is 1.8 per second. Reading
+// the history is the heavy part (about 780 MB of git) and is shared by questions that need it at the same time, so 8
+// slots keep a burst near 1 GB. Without a limit, 634 questions sent at once exhausted 32 GB.
+const concurrentAnswers = 8
 
 // listTTL is how long, in milliseconds, a client may keep the tool list: it changes only with a new version.
 const listTTL = 300000

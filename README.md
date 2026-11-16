@@ -242,9 +242,9 @@ first value.
 
 plimsoll speaks MCP through the official [MCP Go SDK](https://github.com/modelcontextprotocol/go-sdk): revision
 2026-07-28, and the `initialize` handshake of earlier revisions for clients that still open that way. Answers may
-arrive in any order, and each carries the id of its request. At most two questions are answered at the same
-time and the others wait their turn, so memory stays near two answers' worth however many questions a client sends
-at once.
+arrive in any order, and each carries the id of its request. At most eight questions are answered at the same
+time and the others wait their turn, and questions that need the same history share one read of it, so memory stays
+bounded however many questions a client sends at once.
 
 ## Development
 
