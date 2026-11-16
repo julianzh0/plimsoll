@@ -8,7 +8,9 @@ ZIG_VERSION := 0.17.1
 AGENT_FILES_ALLOWED ?= CLAUDE.md
 COUNT ?= 20
 TAGS := -tags integration,e2e
-GO_TEST := go test -count=1 -race -shuffle=on
+# One test package at a time: a test binary that parses compiles grammars under the race detector, up to 1.2 GB for one
+# binary (measured 2026-11-16, Swift's grammar alone about 720 MB); at Go's default count the whole suite passed 3.7 GB.
+GO_TEST := go test -count=1 -race -shuffle=on -p 1
 # Coverage of the three test levels, merged: the packages measured leave out the test helpers.
 COVERDIR := $(CURDIR)/bin/cover
 COVERPKG = $(shell go list ./... | grep -v -e /snapshottest -e /gitrepotest -e /parsetest | paste -sd, -)
