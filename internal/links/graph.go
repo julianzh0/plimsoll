@@ -39,7 +39,10 @@ func graphOf(tree snapshot.Tree, languages []snapshot.LanguageImports) graph {
 		rings, analysed := looksForRings[file.Language]
 		if analysed {
 			g.files, g.known[file.Path], g.byDir[file.Path] = append(g.files, file.Path), true, folders[file.Language]
-			g.runs[file.Path] = slices.Contains(implicit[file.Language], path.Base(file.Path))
+			g.runs[file.Path] = slices.ContainsFunc(implicit[file.Language], func(pattern string) bool {
+				matched, _ := path.Match(pattern, path.Base(file.Path))
+				return matched
+			})
 		}
 		if rings {
 			g.nodes = append(g.nodes, file.Path)

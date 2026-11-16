@@ -33,7 +33,7 @@ type LanguageImports struct {
 	Folders        bool     // its imports name folders
 	NoRings        string   // the entry's reason; "" when rings are looked for
 	Roots          []string // for a language that names no prefix file: the folders whose packages are its own
-	Implicit       []string // file names the language runs without an import of them
+	Implicit       []string // file names, or patterns of them, the language runs without an import of them
 	SourceSets     bool     // its packages lie under source roots, and a test source set is reached only from one
 	NotSeen        string   // the entry's sentence on use between files without an import statement; "" for none
 }

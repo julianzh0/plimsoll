@@ -60,7 +60,7 @@ func TestSuffixIsTheLastExtension(t *testing.T) {
 }
 
 func TestLanguageOfAPath(t *testing.T) {
-	cases := map[string]string{"a.tsx": "typescript", "a.mjs": "typescript", "a.go": "go", "a.py": "python", "a.pyi": "python", "a.dart": "dart", "A.java": "java", "a.kt": "kotlin", "build.gradle.kts": "kotlin", "a.rs": "rust", "A.cs": "csharp", "App.csproj": "", "A.swift": "swift", "a.sh": "", "Makefile": ""}
+	cases := map[string]string{"a.tsx": "typescript", "a.mjs": "typescript", "a.go": "go", "a.py": "python", "a.pyi": "python", "a.dart": "dart", "A.java": "java", "a.kt": "kotlin", "build.gradle.kts": "kotlin", "a.rs": "rust", "A.cs": "csharp", "App.csproj": "", "A.swift": "swift", "a.c": "c", "a.h": "c", "a.cc": "cpp", "a.cpp": "cpp", "a.cxx": "cpp", "a.hpp": "cpp", "a.hh": "cpp", "a.hxx": "cpp", "CMakeLists.txt": "", "a.m": "", "a.sh": "", "Makefile": ""}
 	rules := Default()
 	for path, want := range cases {
 		language, found := rules.LanguageOf(path)
@@ -137,6 +137,12 @@ func TestEveryLanguageNamesItsDynamicRead(t *testing.T) {
 			[]string{`env::var("X")`, `std::env::var_os( "X")`, "env::vars()", `env!("X")`, `option_env!("X")`}},
 		"csharp": {[]string{"Environment.GetEnvironmentVariable(name)", `Environment.GetEnvironmentVariable(prefix + "X")`, "configuration[key]", "_config[k]", `builder.Configuration[$"Db:{name}"]`},
 			[]string{`Environment.GetEnvironmentVariable("X")`, `Environment.GetEnvironmentVariable( "X")`, "Environment.GetEnvironmentVariables()", `configuration["X"]`, "config[0]", "reconfiguration[key]"}},
+	}
+	for name, c := range map[string]struct{ matches, misses []string }{
+		"c":   {[]string{"getenv(name)", "getenv( key )", "secure_getenv(buf)"}, []string{`getenv("X")`, `getenv( "X")`, "setenv(name, value, 1)", "getenv_r"}},
+		"cpp": {[]string{"std::getenv(name.c_str())", "getenv(key)", "::getenv(k)"}, []string{`std::getenv("X")`, `getenv( "X")`, "environ[i]"}},
+	} {
+		cases[name] = c
 	}
 	cases["swift"] = struct{ matches, misses []string }{
 		[]string{"ProcessInfo.processInfo.environment[key]", `ProcessInfo.processInfo.environment[prefix + "X"]`},

@@ -51,6 +51,8 @@ func languageCases() map[string]struct{ file, testFile, static, dynamic string }
 		"java":       {"src/main/java/com/acme/Config.java", "src/test/java/com/acme/ConfigTest.java", `System.getenv("%s")`, "System.getenv(name)"},
 		"kotlin":     {"src/main/kotlin/com/acme/Config.kt", "src/test/kotlin/com/acme/ConfigTest.kt", `System.getenv("%s")`, "System.getenv(name)"},
 		"csharp":     {"src/Acme/Config.cs", "tests/Acme.Tests/ConfigTests.cs", `Environment.GetEnvironmentVariable("%s")`, "Environment.GetEnvironmentVariable(name)"},
+		"c":          {"src/config.c", "tests/test_config.c", `getenv("%s")`, "getenv(name)"},
+		"cpp":        {"src/config.cc", "tests/config_test.cc", `std::getenv("%s")`, "std::getenv(name.c_str())"},
 		"swift":      {"Sources/Kit/Config.swift", "Tests/KitTests/ConfigTests.swift", `ProcessInfo.processInfo.environment["%s"]`, "ProcessInfo.processInfo.environment[name]"},
 		"rust":       {"src/config.rs", "tests/config.rs", `env::var("%s")`, "env::var(name)"},
 	}

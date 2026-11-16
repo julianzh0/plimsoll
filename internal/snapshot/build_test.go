@@ -108,6 +108,22 @@ func TestBuildClassifiesEachSampleLanguage(t *testing.T) {
 			{"Acme.Notes/Store/Clock.cs", "csharp", snapshot.Product, 8},
 			{"Acme.Notes/Store/NoteStore.cs", "csharp", snapshot.Product, 24},
 		},
+		"c": {
+			{"include/tally.h", "c", snapshot.Product, 7},
+			{"src/buffer.c", "c", snapshot.Product, 12},
+			{"src/buffer.h", "c", snapshot.Product, 8},
+			{"src/tally.c", "c", snapshot.Product, 18},
+			{"tests/test_tally.c", "c", snapshot.TestInfrastructure, 9},
+		},
+		"cpp": {
+			{"include/notes/note.h", "cpp", snapshot.Product, 9},
+			{"include/notes/store.hpp", "cpp", snapshot.Product, 16},
+			{"src/clock.h", "cpp", snapshot.Product, 5},
+			{"src/main.cpp", "cpp", snapshot.Product, 10},
+			{"src/store.cc", "cpp", snapshot.Product, 26},
+			{"tests/store_test.cc", "cpp", snapshot.Test, 10},
+			{"tests/support/fake_clock.h", "cpp", snapshot.TestInfrastructure, 5},
+		},
 		"swift": {
 			{"Old/Legacy/Clock.swift", "swift", snapshot.Product, 4},
 			{"Package.swift", "swift", snapshot.Product, 19},

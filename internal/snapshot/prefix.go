@@ -68,6 +68,8 @@ func readPrefix(rules conventions.Rules, language conventions.Language, content 
 		return sourcePackages(rules, language, content, tracked)
 	case conventions.PubspecName:
 		return fromFile(func(file []byte) prefix { return pubspecPackages(file, content) })
+	case conventions.IncludeFolders:
+		return includeFolders(imports, content, tracked)
 	case conventions.SwiftTargets:
 		return fromFile(swiftTargets)
 	case conventions.DeclaredNamespaces:

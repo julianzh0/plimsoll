@@ -137,6 +137,8 @@ func importCases() map[string]map[string][]string {
 			"// use a::b;\n/// use a::b;\nlet used = 1;\nfn user() {}\nmodule!(x);\n": nil,
 			"use a::b;\r\nmod c;\r\n":                                                 {"a::b", "mod c"},
 		},
+		"c":   includeCases(),
+		"cpp": includeCases(),
 		"swift": {
 			"import Foundation\nimport struct Foo.Bar\n@testable import App\n@_exported import Kit\n@_implementationOnly import Hidden\n": {
 				"App", "Foo", "Foundation", "Hidden", "Kit",
@@ -246,6 +248,8 @@ func computedCases() map[string]map[string]int {
 			"await import(name)": 1, "import(`./x/${a}.ts`)": 1, "require(\"./a\" + b)": 1,
 			"import(\"./a.ts\")": 0, "require('x', y)": 0, "obj.require(x)": 0,
 		},
+		"c":   includeComputedCases(),
+		"cpp": includeComputedCases(),
 		"python": {
 			"importlib.import_module(name)": 1, "import_module(f\"a.{x}\")": 1, "__import__(\"a.\" + x)": 1,
 			"import_module(\"a\" if c else \"b\")": 1, "import_module(\".x\", __package__)": 1,
@@ -291,7 +295,7 @@ func TestAFormMatchesOnlyTextThatHoldsOneOfItsWords(t *testing.T) {
 				}
 			}
 		}
-		if want := map[string]int{"typescript": 2, "go": 0, "python": 2, "dart": 0, "java": 0, "kotlin": 0, "rust": 0, "csharp": 0, "swift": 0}[l.Name]; worded != want {
+		if want := map[string]int{"typescript": 2, "go": 0, "python": 2, "dart": 0, "java": 0, "kotlin": 0, "rust": 0, "csharp": 0, "swift": 0, "c": 0, "cpp": 0}[l.Name]; worded != want {
 			t.Errorf("%s: %d forms with words, want %d", l.Name, worded, want)
 		}
 	}
@@ -310,6 +314,8 @@ func TestLiteralsBlankCommentsStringsAndCharacters(t *testing.T) {
 			"s = \"line\n}\nend\"; t":      "s =      \n \n    ; t",
 			"/**/ a /***/ b":               "     a       b",
 		},
+		"c":   commentCases(),
+		"cpp": commentCases(),
 		"swift": {
 			"a // b\nc":                       "a     \nc",
 			"a /* b */ c":                     "a         c",
@@ -337,5 +343,35 @@ func TestLiteralsBlankCommentsStringsAndCharacters(t *testing.T) {
 				t.Errorf("%s Literals in %q leaves %q, want %q", l.Name, text, got, want)
 			}
 		}
+	}
+}
+
+// includeCases are the import cases of the C and C++ entries, which read includes alike.
+func includeCases() map[string][]string {
+	return map[string][]string{
+		"#include \"store.h\"\n#include <stdio.h>\n#include \"notes/note.h\"\n":                                                                  {"<stdio.h>", "notes/note.h", "store.h"},
+		"  #  include \"a.h\"\n#include<b.h>\n#include\"c.h\"\n#\tinclude <sys/types.h> /* why */\n":                                             {"<b.h>", "<sys/types.h>", "a.h", "c.h"},
+		"#if defined(_WIN32)\n#  include <windows.h>\n#else\n#  include \"posix.h\"\n#endif\n":                                                   {"<windows.h>", "posix.h"},
+		"// #include \"a.h\"\nconst char *s = \"#include <b.h>\";\n#include_next <c.h>\n#import \"d.h\"\n#include CONFIG_H\n#define X \"e.h\"\n": nil,
+		"#include \"a.h\"\r\n#include <b.h>\r\n":                                                                                                 {"<b.h>", "a.h"},
+	}
+}
+
+// includeComputedCases are texts and the number of includes in them that a macro names.
+func includeComputedCases() map[string]int {
+	return map[string]int{
+		"#include CONFIG_H": 1, "  #  include FT_FREETYPE_H\n#include BOOST_PP_ITERATE()": 2,
+		"#include \"a.h\"": 0, "#include <a.h>": 0, "#include_next <a.h>": 0, "#includes": 0, "// #include X": 0,
+	}
+}
+
+// commentCases are texts and what stays of them once their comments are blanked.
+func commentCases() map[string]string {
+	return map[string]string{
+		"a // b\nc": "a     \nc",
+		"/*\n#include \"x.h\"\n*/\n#include \"y.h\"": "  \n              \n  \n#include \"y.h\"",
+		"#include <a.h> /* b */ // c":                "#include <a.h>             ",
+		"x = 1; /* a // b */ y = 2; // z":            "x = 1;              y = 2;     ",
+		"/**/ a /***/ b":                             "     a       b",
 	}
 }

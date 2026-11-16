@@ -11,7 +11,8 @@ import (
 )
 
 // The two shared patterns are compiled once; everything else is built by Default. Each language's own patterns live
-// in its file: typescript.go, golang.go, python.go, dart.go, java.go, kotlin.go, rust.go. A test is defined by a Go test function or an XCTest method, a Python test
+// in its file: typescript.go, golang.go, python.go, dart.go, java.go, kotlin.go, rust.go,
+// csharp.go, swift.go, c.go, cpp.go. A test is defined by a Go test function or an XCTest method, a Python test
 // function or test class, a JUnit-family annotation, a .NET test attribute, a Rust attribute whose last name is test, a test-runner call, or a test macro of GoogleTest, Catch2 or doctest (TEST,
 // TEST_F, TEST_CASE, SCENARIO) (test, testWidgets, describe, it).
 var (
@@ -226,7 +227,7 @@ func Default() Rules {
 			ImportsNotFollowed: Limit{Value: 0.10, Source: "links checked against go list and dependency-cruiser, 2026-11"},
 		},
 		// One entry per language, each in its own file. A new language is one file and one line here.
-		Languages: []Language{typescriptLanguage(), goLanguage(), pythonLanguage(), dartLanguage(), javaLanguage(), kotlinLanguage(), rustLanguage(), csharpLanguage(), swiftLanguage()},
+		Languages: []Language{typescriptLanguage(), goLanguage(), pythonLanguage(), dartLanguage(), javaLanguage(), kotlinLanguage(), rustLanguage(), csharpLanguage(), swiftLanguage(), cLanguage(), cppLanguage()},
 	}
 }
 

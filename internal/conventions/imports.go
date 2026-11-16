@@ -14,7 +14,7 @@ type Imports struct {
 	Candidates   Candidates     // for a file target: the tracked paths an import may mean
 	FolderExcept *regexp.Regexp // for a folder target: file names an import of the folder does not reach
 	NoRings      string         // why import rings are not looked for among its files; "" looks for them
-	Implicit     []string       // file names the language runs without an import of them
+	Implicit     []string       // file names, or patterns of them, that the language runs without an import of them
 	// FolderAlso, for a folder target, names extensions of other entries' files that share its folders; an import of
 	// the folder reaches them too.
 	FolderAlso []string
@@ -82,10 +82,12 @@ type Prefix struct {
 	Roots    []string // for OwnPackages: the folders whose packages and modules are the project's own
 	Format   PrefixFormat
 	Required bool // without it the language's own imports cannot be told from outside ones, so no link numbers
-	Members  bool // the prefix file in other folders is read too: the members of a workspace the root file lists
+	Members  bool // the prefix file in other folders is read too: the members of a workspace the root file lists, or, for IncludeFolders, every such file
 	// Projects, for DeclaredNamespaces, is the file-name pattern of a project file, tracked at any depth: an import
 	// that begins with such a file's name, without its suffix, is the project's own also when no file declares it.
 	Projects string
+	// Folders, for IncludeFolders, are the names of folders that are include folders by convention, at any depth.
+	Folders []string
 }
 
 // PrefixFormat is how a prefix file declares the project's own imports.
@@ -110,6 +112,9 @@ const (
 	SwiftTargets
 	// DeclaredNamespaces are the namespaces that the language's tracked files declare, wherever they lie.
 	DeclaredNamespaces
+	// IncludeFolders are the folders an include is looked for in: those with a conventional name, and those the
+	// tracked prefix files name by a path.
+	IncludeFolders
 )
 
 // Candidates are the tracked paths a file import may mean when the path as written is not a tracked file.

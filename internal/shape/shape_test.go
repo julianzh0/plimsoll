@@ -78,6 +78,11 @@ func TestDetectOnEachLanguageSample(t *testing.T) {
 		{"csharp", 48, 26, 0, 0.5, []string{"Acme.Notes/Store/NoteStore.cs", "Acme.Notes.Tests/NoteStoreTests.cs", "Acme.Notes.Tests/Support/FixedClock.cs"},
 			map[string]string{"Acme.Notes/Acme.Notes.csproj": "Microsoft.Extensions.Configuration, Npgsql, System.Text.Json"},
 			[]string{"no `.env.example`, so no settings count"}},
+		{"c", 45, 9, 0, 0.2, []string{"src/tally.c", "src/buffer.c", "tests/test_tally.c"}, nil, []string{
+			"no `.env.example`, so no settings count", "no known dependency manifest, at the root or as a project file outside test and other code, so no dependency count",
+		}},
+		{"cpp", 66, 15, 0, 0.2, []string{"src/store.cc", "include/notes/store.hpp", "src/main.cpp"},
+			map[string]string{"vcpkg.json": "fmt, sqlite3"}, []string{"no `.env.example`, so no settings count"}},
 		{"swift", 56, 11, 0, 0.2, []string{"Package.swift", "Sources/NotesCore/Store.swift", "Sources/notes/main.swift"},
 			map[string]string{"Package.swift": "swift-argument-parser, swift-log"}, []string{"no `.env.example`, so no settings count"}},
 		{"rust", 86, 41, 0, 0.5, []string{"src/store/memory.rs", "src/model.rs", "src/lib.rs"},

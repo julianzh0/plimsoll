@@ -1,0 +1,11 @@
+{
+  "name": "notes",
+  "dependencies": [
+    "fmt",
+    { "name": "sqlite3", "default-features": false },
+    { "name": "protobuf", "host": true }
+  ],
+  "features": {
+    "tests": { "description": "Build the tests", "dependencies": ["gtest"] }
+  }
+}

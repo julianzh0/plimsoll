@@ -251,7 +251,10 @@ func TestBuildKeepsNoImportText(t *testing.T) {
 		"src/Acme/A.cs":         "global using Acme.Core;\nusing Acme.zzmarker;\nusing zzmarker.Outside;\n\nnamespace Acme.Core;\n",
 		"Package.swift":         "let package = Package(name: \"x\", targets: [.target(name: \"Kit\")])\n",
 		"Sources/Kit/Kit.swift": "import zzmarkerOutside\nimport Kit\n",
-		"src/lib.rs":            "mod zzmarker_gone;\nuse zzmarker::Outside;\nuse crate::zzmarker_item::{A, zzmarker_b};\nmod zzmarker_inline {\n    use super::zzmarker_x;\n}\n",
+		// Outside in both forms, not readable, and resolved: the reader keeps no name.
+		"src/zz.c":   "#include <zzmarker/outside.h>\n#include \"zzmarker/gone.h\"\n#include ZZMARKER_H\n#include \"zz.h\"\n",
+		"src/zz.h":   "#pragma once\n",
+		"src/lib.rs": "mod zzmarker_gone;\nuse zzmarker::Outside;\nuse crate::zzmarker_item::{A, zzmarker_b};\nmod zzmarker_inline {\n    use super::zzmarker_x;\n}\n",
 	}
 	s := snapshot.Build(snapshottest.Files(tree, tree), conventions.Default())
 	printed := fmt.Sprintf("%+v", s)
@@ -779,5 +782,111 @@ func TestBuildFollowsSwiftImportsToModules(t *testing.T) {
 	delete(bare, "Package.swift")
 	if l := linksOf(bare); !reflect.DeepEqual(l.Languages, swift(0, 10, 0, snapshot.PrefixAbsent)) || len(l.List) != 0 {
 		t.Errorf("no Package.swift: %+v, want every import outside and no link", l)
+	}
+}
+
+// includeTree holds includes found beside the file, in include folders by convention and by a CMake file's text,
+// in two folders, in none, outside, and through a macro.
+func includeTree() map[string]string {
+	header := "#pragma once\n"
+	return map[string]string{
+		"CMakeLists.txt": "project(app)\n# include_directories(private)\ninclude_directories(src \"${CMAKE_CURRENT_SOURCE_DIR}/third\" ${UNKNOWN_DIR}/x)\nadd_subdirectory(tools)\n",
+		"tools/CMakeLists.txt": "project(tools C)\ntarget_include_directories(tool SYSTEM PRIVATE ${CMAKE_SOURCE_DIR}/shared\n" +
+			"  $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/inc> $<INSTALL_INTERFACE:include>)\n",
+		"include/app/api.h": header, "include/dup.h": header, "libs/kit/include/kit/kit.h": header, "libs/kit/include/dup.h": header,
+		"src/core.h": "#include \"util/strings.h\"\n", "src/util/strings.h": header, "private/hidden/secret.h": header,
+		"shared/common.h": header, "third/lib.h": header, "tools/inc/gen.h": header,
+		"src/main.cc": "#include \"core.h\"\n#include <app/api.h>\n#include \"kit/kit.h\"\n#include \"util/strings.h\"\n#include <vector>\n" +
+			"#include \"dup.h\"\n#include \"hidden/secret.h\"\n#include \"gtest/gtest.h\"\n#include CONFIG_HEADER\n/*\n#include \"commented.h\"\n*/\n" +
+			"#include \"../shared/common.h\"\n#include <core.h>\n#include \"lib.h\"\n",
+		"tools/tool.c": "#include \"common.h\"\n#include \"gen.h\"\n#include <stdio.h>\n",
+	}
+}
+
+func TestBuildFollowsIncludesToFiles(t *testing.T) {
+	var notSeen string
+	for _, l := range conventions.Default().Languages {
+		if l.Name == "c" {
+			notSeen = l.Imports.NotSeen
+		}
+	}
+	entry := func(name string, units []string, resolved, outside, ambiguous, unreadable, notFound int) snapshot.LanguageImports {
+		return snapshot.LanguageImports{
+			Language: name, Resolved: resolved, Outside: outside, Ambiguous: ambiguous, Unreadable: unreadable, NotFound: notFound,
+			PrefixFile: "CMakeLists.txt", Prefix: snapshot.PrefixRead, Implicit: units, NotSeen: notSeen,
+		}
+	}
+	c := func(counts ...int) snapshot.LanguageImports {
+		return entry("c", []string{"*.c"}, counts[0], counts[1], counts[2], counts[3], counts[4])
+	}
+	cpp := func(counts ...int) snapshot.LanguageImports {
+		return entry("cpp", []string{"*.cc", "*.cpp", "*.cxx"}, counts[0], counts[1], counts[2], counts[3], counts[4])
+	}
+	store := "include/notes/store.hpp"
+	cases := []struct {
+		name      string
+		got       snapshot.Links
+		languages []snapshot.LanguageImports
+		list      []snapshot.Link
+	}{
+		{"the C sample", snapshot.Build(snapshottest.Load(t, "testdata/c"), conventions.Default()).Now.Links,
+			[]snapshot.LanguageImports{c(4, 2, 0, 0, 0)},
+			[]snapshot.Link{
+				link("src/buffer.c", 1, "src/buffer.h"), link("src/tally.c", 1, "include/tally.h"), link("src/tally.c", 5, "src/buffer.h"),
+				link("tests/test_tally.c", 3, "include/tally.h"),
+			}},
+		// The include inside the comment of src/store.cc is not read; fake_clock.h reaches src/clock.h through the
+		// folder that only the root CMakeLists.txt names, and store_test.cc its support folder through tests/CMakeLists.txt.
+		{"the C++ sample", snapshot.Build(snapshottest.Load(t, "testdata/cpp"), conventions.Default()).Now.Links,
+			[]snapshot.LanguageImports{cpp(7, 7, 0, 0, 0)},
+			[]snapshot.Link{
+				link(store, 5, "include/notes/note.h"), link("src/main.cpp", 3, store), link("src/store.cc", 5, store),
+				link("src/store.cc", 10, "src/clock.h"), link("tests/store_test.cc", 3, "tests/support/fake_clock.h"),
+				link("tests/store_test.cc", 4, store), link("tests/support/fake_clock.h", 3, "src/clock.h"),
+			}},
+		// One .c and one .cc file: the headers stay with the first entry that lists .h.
+		{"the tree", linksOf(includeTree()),
+			[]snapshot.LanguageImports{c(3, 1, 0, 0, 0), cpp(7, 2, 1, 1, 1)},
+			[]snapshot.Link{
+				link("src/core.h", 1, "src/util/strings.h"),
+				link("src/main.cc", 1, "src/core.h"), link("src/main.cc", 2, "include/app/api.h"), link("src/main.cc", 3, "libs/kit/include/kit/kit.h"),
+				link("src/main.cc", 4, "src/util/strings.h"), link("src/main.cc", 13, "shared/common.h"), link("src/main.cc", 14, "src/core.h"),
+				link("src/main.cc", 15, "third/lib.h"),
+				link("tools/tool.c", 1, "shared/common.h"), link("tools/tool.c", 2, "tools/inc/gen.h"),
+			}},
+	}
+	for _, tc := range cases {
+		if !reflect.DeepEqual(tc.got.Languages, tc.languages) {
+			t.Errorf("%s: Languages = %+v, want %+v", tc.name, tc.got.Languages, tc.languages)
+		}
+		if !reflect.DeepEqual(tc.got.List, tc.list) || len(tc.got.PassOn) != 0 {
+			t.Errorf("%s: List = %+v, PassOn %q; want %+v and none", tc.name, tc.got.List, tc.got.PassOn, tc.list)
+		}
+	}
+	want := linksOf(includeTree())
+	if crlf := linksOf(withCRLF(includeTree())); !reflect.DeepEqual(crlf, want) {
+		t.Errorf("CRLF line ends: Links = %+v, want %+v", crlf, want)
+	}
+	marked := includeTree()
+	for _, p := range []string{"CMakeLists.txt", "tools/CMakeLists.txt", "src/main.cc"} {
+		marked[p] = "\uFEFF" + marked[p]
+	}
+	if bom := linksOf(marked); !reflect.DeepEqual(bom, want) {
+		t.Errorf("a byte order mark: Links = %+v, want %+v", bom, want)
+	}
+	// A command in capitals and over lines with a comment inside it names the same folders; one that never closes
+	// is no failure.
+	shouted := includeTree()
+	shouted["CMakeLists.txt"] = "PROJECT(app)\nINCLUDE_DIRECTORIES(\n  src # the sources\n  \"${CMAKE_CURRENT_SOURCE_DIR}/third\"\n)\nadd_subdirectory(tools)\ninclude_directories(private"
+	if got := linksOf(shouted); !reflect.DeepEqual(got.Languages, want.Languages) {
+		t.Errorf("a command in capitals, over lines and unclosed: Languages = %+v, want %+v", got.Languages, want.Languages)
+	}
+	// Without the CMake files only the folders named include are known: what the declared folders led to is not
+	// found where a tracked file ends in the include's path, and outside in angle brackets.
+	bare := includeTree()
+	delete(bare, "CMakeLists.txt")
+	delete(bare, "tools/CMakeLists.txt")
+	if got := linksOf(bare).Languages; !reflect.DeepEqual(got, []snapshot.LanguageImports{c(1, 1, 0, 0, 2), cpp(5, 3, 1, 1, 2)}) {
+		t.Errorf("no CMake file: Languages = %+v, want %+v", got, []snapshot.LanguageImports{c(1, 1, 0, 0, 2), cpp(5, 3, 1, 1, 2)})
 	}
 }
