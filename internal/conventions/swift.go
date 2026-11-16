@@ -1,14 +1,11 @@
 package conventions
 
-import "regexp"
-
 // swiftLanguage is the entry for Swift. An import names a module: a target of Package.swift, whose folder holds every
 // file of it, at any depth.
 func swiftLanguage() Language {
 	return Language{
-		Name: "swift", Extensions: []string{".swift"}, DynamicRead: swiftDynamicRead, Literals: swiftLiterals,
+		Name: "swift", Extensions: []string{".swift"}, Grammar: "swift", Query: swiftQuery,
 		Imports: Imports{
-			Statements: []ImportForm{{Pattern: swiftImport}},
 			Relative:   NoRelative,
 			Prefix:     Prefix{File: "Package.swift", Format: SwiftTargets, Required: true},
 			Target:     FolderTarget,
@@ -20,16 +17,12 @@ func swiftLanguage() Language {
 	}
 }
 
-var (
-	// swiftDynamicRead is a settings read whose name is not a quoted literal.
-	swiftDynamicRead = regexp.MustCompile(`ProcessInfo\.processInfo\.environment\[[ \t]*[^" \t\]]`)
-	// swiftLiterals are a line comment, a block comment, a multi-line string, a raw string and a string.
-	// NOTE: a block comment that holds another ends at the inner end. Upgrade: a lexer.
-	swiftLiterals = regexp.MustCompile(`//[^\n]*|/\*(?:[^*]|\*+[^*/])*\*+/|#*"""(?s:.*?)"""#*|#+"[^\n]*?"#+|"(?:[^"\\\n]|\\.)*"`)
-	// swiftImport is an import of a module, with its attributes, an access level and a kind of the one symbol it
-	// imports: the target is the module, the first name.
-	// NOTE: an import under #if is read whatever its condition, so a platform's or a trait's imports count on every
-	// side. Upgrade: evaluate the conditions of the platforms and traits the package declares.
-	swiftImport = regexp.MustCompile(`(?m)^[ \t]*(?:@\w+(?:\([^)\n]*\))?[ \t]+)*(?:(?:public|package|internal|fileprivate|private)[ \t]+)?` +
-		`import[ \t]+(?:(?:typealias|struct|class|enum|protocol|let|var|func)[ \t]+)?(?P<spec>[A-Za-z_]\w*)`)
-)
+// swiftQuery reads an import of a module (its attributes, access level and the kind of one imported symbol are no
+// part of the target, which is the module, the first name) and a settings read whose name is not a quoted literal.
+// NOTE: an import under #if is read whatever its condition, so a platform's or a trait's imports count on every side.
+// Upgrade: evaluate the conditions of the platforms and traits the package declares.
+const swiftQuery = `
+(import_declaration (identifier . (simple_identifier) @spec)) @import
+((call_expression (navigation_expression) @n (call_suffix (value_arguments . (value_argument) @dynamic)) @s)
+  (#match? @n "ProcessInfo[.]processInfo[.]environment$") (#match? @s "^[[]") (#not-match? @dynamic "^\""))
+`

@@ -141,6 +141,7 @@ func importCases() map[string]map[string][]string {
 		"c":   includeCases(),
 		"cpp": includeCases(),
 		"swift": {
+			"let s = \"\"\"\nimport X\n\"\"\"\n": nil,
 			"import Foundation\nimport struct Foo.Bar\n@testable import App\n@_exported import Kit\n@_implementationOnly import Hidden\n": {
 				"App", "Foo", "Foundation", "Hidden", "Kit",
 			},
@@ -333,13 +334,6 @@ func TestLiteralsBlankCommentsStringsAndCharacters(t *testing.T) {
 		},
 		"c":   commentCases(),
 		"cpp": commentCases(),
-		"swift": {
-			"a // b\nc":                       "a     \nc",
-			"a /* b */ c":                     "a         c",
-			"s = \"\"\"\nimport X\n\"\"\"\nt": "s =    \n        \n   \nt",
-			`s = "a \" b"; t`:                 "s =         ; t",
-			`s = #"a "b" c"#; t`:              "s =            ; t",
-		},
 	}
 	blank := func(match string) string {
 		return strings.Map(func(r rune) rune {
