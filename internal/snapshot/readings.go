@@ -75,8 +75,9 @@ func (rs *Readings) side(rules conventions.Rules, content map[string][]byte, fil
 	return found
 }
 
-// read makes the reading of one file: by the entry's grammar when it names one, then every fact for which the entry
-// still has a pattern by that pattern. A file the parser cannot read is unread; its patterns still read it.
+// read makes the reading of one file: by the entry's grammar when it names one, and every fact for which the entry
+// has a pattern by that pattern (no entry reads one fact both ways). A file the parser cannot read is unread; its
+// patterns still read it.
 func (rs *Readings) read(language conventions.Language, grammar string, content []byte) reading {
 	if grammar == "" {
 		return readByText(language, content)
@@ -87,16 +88,7 @@ func (rs *Readings) read(language conventions.Language, grammar string, content 
 	} else {
 		r = decode(result, content)
 	}
-	byText := readByText(language, content)
-	if language.TestBlock != nil {
-		r.testLines = byText.testLines
-	}
-	if language.DynamicRead != nil {
-		r.dynamic = byText.dynamic
-	}
-	if language.SettingsPrefix != nil {
-		r.prefixes = byText.prefixes
-	}
+	readPatterns(language, content, &r)
 	return r
 }
 
@@ -106,7 +98,15 @@ func readByText(language conventions.Language, content []byte) reading {
 	if len(language.Imports.Statements) > 0 {
 		r = scan(language.Imports, masked(language.Literals, content))
 	}
-	r.testLines = testLines(language, content)
+	readPatterns(language, content, &r)
+	return r
+}
+
+// readPatterns reads the facts other than imports for which the entry has a pattern.
+func readPatterns(language conventions.Language, content []byte, r *reading) {
+	if language.TestBlock != nil {
+		r.testLines = testLines(language, content)
+	}
 	if language.DynamicRead != nil {
 		r.dynamic = len(language.DynamicRead.FindAllIndex(content, -1))
 	}
@@ -118,5 +118,4 @@ func readByText(language conventions.Language, content []byte) reading {
 			}
 		}
 	}
-	return r
 }

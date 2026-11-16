@@ -18,12 +18,12 @@ const (
 	topLevel      = 0xFFFFFFFF
 )
 
-// predicate is one predicate of a pattern: an operator, the capture it tests and the text it compares with.
+// predicate is one predicate of a pattern: the capture it applies to and either a test of the capture's text or, for
+// #strip-prefix!, the prefix to strip.
 type predicate struct {
-	op      string
 	capture string
-	text    string
-	re      *regexp.Regexp
+	test    func([]byte) bool // nil for #strip-prefix!
+	strip   string
 }
 
 // query is a query compiled in one instance.
@@ -44,7 +44,7 @@ func newInstance(ctx context.Context, mod api.Module) *instance {
 	return &instance{ctx: ctx, mod: mod, queries: map[string]*query{}}
 }
 
-func (in *instance) close(ctx context.Context) { _ = in.mod.Close(ctx) }
+func (in *instance) close() { _ = in.mod.Close(in.ctx) }
 
 var errMemory = errors.New("the content does not fit the grammar's memory")
 
@@ -70,7 +70,7 @@ func (in *instance) put(b []byte) (uint32, error) {
 		return 0, err
 	}
 	at := api.DecodeU32(r)
-	if at == 0 || !in.mod.Memory().Write(at, append(append([]byte{}, b...), 0)) {
+	if at == 0 || !in.mod.Memory().Write(at, b) || !in.mod.Memory().WriteByte(at+api.DecodeU32(uint64(len(b))), 0) {
 		return 0, errMemory
 	}
 	return at, nil
@@ -113,41 +113,33 @@ func (in *instance) read(source string, content []byte) (Result, error) {
 }
 
 // decode turns capture records into a result: the captures of each match whose predicates hold, and the top-level
-// nodes.
+// nodes. The shim writes the captures of one match together.
 func decode(q *query, raw, content []byte) Result {
 	var result Result
-	type match struct {
-		pattern  uint32
-		captures []Capture
-	}
-	var order []uint32
-	matches := map[uint32]*match{}
 	le := binary.LittleEndian
+	var captures []Capture
+	pattern, match := uint32(0), uint32(0)
+	flush := func() {
+		if len(captures) > 0 && holds(q.predicates[pattern], captures, content) {
+			stripPrefixes(q.predicates[pattern], captures, content)
+			result.Matches = append(result.Matches, captures)
+		}
+		captures = nil
+	}
 	for at := 0; at+captureRecord <= len(raw); at += captureRecord {
 		b := raw[at:]
 		start, end := int(le.Uint32(b[12:])), int(le.Uint32(b[16:]))
-		pattern := le.Uint32(b[4:])
-		if pattern == topLevel {
+		if le.Uint32(b[4:]) == topLevel {
 			result.Top = append(result.Top, Span{Start: start, End: end})
 			continue
 		}
-		c := Capture{Match: le.Uint32(b), Name: q.names[le.Uint32(b[8:])], Start: start, End: end,
-			Line: int(le.Uint32(b[20:])) + 1, Last: int(le.Uint32(b[24:])) + 1}
-		m, seen := matches[c.Match]
-		if !seen {
-			m = &match{pattern: pattern}
-			matches[c.Match] = m
-			order = append(order, c.Match)
+		if len(captures) > 0 && le.Uint32(b) != match {
+			flush()
 		}
-		m.captures = append(m.captures, c)
+		pattern, match = le.Uint32(b[4:]), le.Uint32(b)
+		captures = append(captures, Capture{Name: q.names[le.Uint32(b[8:])], Start: start, End: end, Line: int(le.Uint32(b[20:])) + 1})
 	}
-	for _, id := range order {
-		m := matches[id]
-		if holds(q.predicates[m.pattern], m.captures, content) {
-			stripPrefixes(q.predicates[m.pattern], m.captures, content)
-			result.Captures = append(result.Captures, m.captures...)
-		}
-	}
+	flush()
 	return result
 }
 
@@ -254,22 +246,28 @@ func (in *instance) predicates(q *query, length uint32, pattern uint64) ([]predi
 	return found, nil
 }
 
-// predicateOf checks one predicate's shape: an operator plimsoll knows, a capture, a text.
+// predicateOf checks one predicate's shape (an operator plimsoll knows, a capture, a text) and builds its test.
 func predicateOf(args []string) (predicate, error) {
 	if len(args) != 3 || len(args[1]) < 2 || args[1][0] != '@' {
 		return predicate{}, fmt.Errorf("a predicate of an unknown shape: %q", args)
 	}
-	p := predicate{op: args[0], capture: args[1][1:], text: args[2]}
-	switch p.op {
-	case "eq?", "not-eq?", "strip-prefix!":
+	p, text := predicate{capture: args[1][1:]}, args[2]
+	switch args[0] {
+	case "eq?":
+		p.test = func(b []byte) bool { return string(b) == text }
+	case "not-eq?":
+		p.test = func(b []byte) bool { return string(b) != text }
 	case "match?", "not-match?":
-		re, err := regexp.Compile(p.text)
+		re, err := regexp.Compile(text)
 		if err != nil {
-			return predicate{}, fmt.Errorf("the pattern of %s: %w", p.op, err)
+			return predicate{}, fmt.Errorf("the pattern of %s: %w", args[0], err)
 		}
-		p.re = re
+		want := args[0] == "match?"
+		p.test = func(b []byte) bool { return re.Match(b) == want }
+	case "strip-prefix!":
+		p.strip = text
 	default:
-		return predicate{}, fmt.Errorf("an unknown predicate: %s", p.op)
+		return predicate{}, fmt.Errorf("an unknown predicate: %s", args[0])
 	}
 	return p, nil
 }
@@ -278,27 +276,8 @@ func predicateOf(args []string) (predicate, error) {
 func holds(preds []predicate, captures []Capture, content []byte) bool {
 	for _, p := range preds {
 		for _, c := range captures {
-			if c.Name != p.capture {
-				continue
-			}
-			text := content[c.Start:c.End]
-			switch p.op {
-			case "eq?":
-				if !bytes.Equal(text, []byte(p.text)) {
-					return false
-				}
-			case "not-eq?":
-				if bytes.Equal(text, []byte(p.text)) {
-					return false
-				}
-			case "match?":
-				if !p.re.Match(text) {
-					return false
-				}
-			case "not-match?":
-				if p.re.Match(text) {
-					return false
-				}
+			if p.test != nil && c.Name == p.capture && !p.test(content[c.Start:c.End]) {
+				return false
 			}
 		}
 	}
@@ -308,12 +287,12 @@ func holds(preds []predicate, captures []Capture, content []byte) bool {
 // stripPrefixes applies #strip-prefix! @capture "text": a capture that starts with the text starts after it.
 func stripPrefixes(preds []predicate, captures []Capture, content []byte) {
 	for _, p := range preds {
-		if p.op != "strip-prefix!" {
+		if p.strip == "" {
 			continue
 		}
 		for i, c := range captures {
-			if c.Name == p.capture && bytes.HasPrefix(content[c.Start:c.End], []byte(p.text)) {
-				captures[i].Start += len(p.text)
+			if c.Name == p.capture && bytes.HasPrefix(content[c.Start:c.End], []byte(p.strip)) {
+				captures[i].Start += len(p.strip)
 			}
 		}
 	}

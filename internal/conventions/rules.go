@@ -155,7 +155,7 @@ type Language struct {
 	//   @import   an import statement
 	//   @spec     the target as written, one pair of quotes removed; several in one match are one target
 	//   @dynamic  a settings read whose name is computed at run time; each match counts once
-	// A pattern the entry still has for a fact reads that fact instead of the query.
+	// No fact is read both by a pattern and by the query.
 	Query string
 }
 
@@ -166,9 +166,6 @@ func (l Language) GrammarOf(filePath string) string {
 	}
 	return l.Grammar
 }
-
-// ReadsImports says whether the entry reads import statements, by patterns or by its grammar.
-func (l Language) ReadsImports() bool { return len(l.Imports.Statements) > 0 || l.Grammar != "" }
 
 // LayoutKind is what a declaration says about a project's layout.
 type LayoutKind int

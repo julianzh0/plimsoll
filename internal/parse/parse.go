@@ -32,12 +32,11 @@ const (
 	recyclePages = memoryCapPages / 2
 )
 
-// Capture is one captured node of one match.
+// Capture is one captured node of a match.
 type Capture struct {
-	Match      uint32 // the captures of one match share it
 	Name       string
 	Start, End int // byte offsets
-	Line, Last int // first and last line, from 1
+	Line       int // the line it starts on, from 1
 }
 
 // Span is a stretch of the content, in byte offsets.
@@ -45,8 +44,8 @@ type Span struct{ Start, End int }
 
 // Result is a query's answer on one file.
 type Result struct {
-	Captures []Capture // of the matches whose predicates hold, in match order
-	Top      []Span    // the file's top-level named nodes
+	Matches [][]Capture // the captures of each match whose predicates hold, in match order
+	Top     []Span      // the file's top-level named nodes
 }
 
 // Parser runs the embedded grammars. It belongs to whoever created it; Close frees every module's memory and leaves any
@@ -61,19 +60,22 @@ type Parser struct {
 	compiled  map[string]wazero.CompiledModule
 	instances map[string]*instance
 	closed    bool
+	// unmapped is set when the system refused an instance's memory (see start).
+	unmapped bool
 }
 
 var errClosed = errors.New("the parser is closed")
 
 // New returns a parser. It compiles nothing yet: a grammar is compiled on its first use.
 func New() (*Parser, error) {
-	ctx := experimental.WithMemoryAllocator(context.Background(), experimental.MemoryAllocatorFunc(mapMemory))
-	runtime := wazero.NewRuntimeWithConfig(ctx, wazero.NewRuntimeConfig().WithMemoryLimitPages(memoryCapPages))
-	if err := failingHost(ctx, runtime); err != nil {
-		_ = runtime.Close(ctx)
+	p := &Parser{compiled: map[string]wazero.CompiledModule{}, instances: map[string]*instance{}}
+	p.ctx = experimental.WithMemoryAllocator(context.Background(), experimental.MemoryAllocatorFunc(p.mapMemory))
+	p.runtime = wazero.NewRuntimeWithConfig(p.ctx, wazero.NewRuntimeConfig().WithMemoryLimitPages(memoryCapPages))
+	if err := failingHost(p.ctx, p.runtime); err != nil {
+		_ = p.runtime.Close(p.ctx)
 		return nil, fmt.Errorf("starting the parser: %w", err)
 	}
-	return &Parser{ctx: ctx, runtime: runtime, compiled: map[string]wazero.CompiledModule{}, instances: map[string]*instance{}}, nil
+	return p, nil
 }
 
 // Close ends the parser and frees the memory of all its grammars. A Read after Close returns an error.
@@ -101,7 +103,7 @@ func (p *Parser) Read(grammar, query string, content []byte) (Result, error) {
 	}
 	result, err := in.read(query, content)
 	if err != nil || in.mod.Memory().Size() > recyclePages*pageBytes {
-		in.close(p.ctx)
+		in.close()
 		delete(p.instances, grammar)
 	}
 	return result, err
@@ -133,12 +135,16 @@ func (p *Parser) instance(grammar string) (*instance, error) {
 }
 
 // start instantiates a compiled grammar. When the system refuses its memory mapping, wazero's allocator hook has no
-// way to say so and wazero panics inside the instantiation; that panic becomes the error of this one grammar, and the
-// process goes on (the file is unread, never fatal).
+// way to say so and wazero panics inside the instantiation; that panic, and only that one, becomes the error of this
+// one grammar, and the process goes on (the file is unread, never fatal).
 func (p *Parser) start(compiled wazero.CompiledModule) (mod api.Module, err error) {
+	p.unmapped = false
 	defer func() {
 		if r := recover(); r != nil {
-			mod, err = nil, fmt.Errorf("no memory for the grammar: %v", r)
+			if !p.unmapped {
+				panic(r)
+			}
+			mod, err = nil, fmt.Errorf("the system refused the grammar's memory: %v", r)
 		}
 	}()
 	return p.runtime.InstantiateModule(p.ctx, compiled, wazero.NewModuleConfig().WithName("").WithStartFunctions("_initialize"))

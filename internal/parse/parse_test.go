@@ -8,8 +8,10 @@ import (
 	"testing"
 
 	"github.com/juzhxng/plimsoll/internal/parse"
+	"github.com/juzhxng/plimsoll/internal/parse/parsetest"
 )
 
+// newParser is a parser of the test's own, for a test whose subject is one parser's state: its memory, its closing.
 func newParser(t *testing.T) *parse.Parser {
 	t.Helper()
 	parser, err := parse.New()
@@ -31,7 +33,7 @@ func goVars(n int) []byte {
 }
 
 func TestEveryGrammarAnswersAQuery(t *testing.T) {
-	parser := newParser(t)
+	parser := parsetest.Parser(t)
 	lines := map[string]string{
 		"go": "package a\n", "typescript": "const a = 1;\n", "tsx": "const a = 1;\n", "python": "a = 1\n",
 		"java": "class A {}\n", "csharp": "class A {}\n", "kotlin": "val a = 1\n", "rust": "fn f() {}\n",
@@ -42,15 +44,15 @@ func TestEveryGrammarAnswersAQuery(t *testing.T) {
 	}
 	for _, grammar := range parse.Grammars() {
 		result, err := parser.Read(grammar, "(_) @node", []byte(lines[grammar]))
-		if err != nil || len(result.Captures) == 0 || len(result.Top) == 0 {
-			t.Errorf("Read(%q, (_) @node, %q) = %d captures, %d top, %v; want some of both and no error",
-				grammar, lines[grammar], len(result.Captures), len(result.Top), err)
+		if err != nil || len(result.Matches) == 0 || len(result.Top) == 0 {
+			t.Errorf("Read(%q, (_) @node, %q) = %d matches, %d top, %v; want some of both and no error",
+				grammar, lines[grammar], len(result.Matches), len(result.Top), err)
 		}
 	}
 }
 
 func TestReadAppliesPredicates(t *testing.T) {
-	parser := newParser(t)
+	parser := parsetest.Parser(t)
 	content := []byte("a = 1\nb = 2\n")
 	cases := []struct {
 		query string
@@ -64,21 +66,21 @@ func TestReadAppliesPredicates(t *testing.T) {
 	for _, c := range cases {
 		result, err := parser.Read("python", c.query, content)
 		var lines []int
-		for _, capture := range result.Captures {
-			lines = append(lines, capture.Line)
+		for _, match := range result.Matches {
+			lines = append(lines, match[0].Line)
 		}
 		if err != nil || !reflect.DeepEqual(lines, c.lines) {
 			t.Errorf("Read(python, %s) = lines %v, %v; want %v", c.query, lines, err, c.lines)
 		}
 	}
 	result, err := parser.Read("python", `((identifier) @name (#eq? @name "b") (#strip-prefix! @name "b"))`, content)
-	if err != nil || len(result.Captures) != 1 || result.Captures[0].Start != result.Captures[0].End {
-		t.Errorf("Read(python, #strip-prefix!) = %+v, %v; want one capture with nothing left", result.Captures, err)
+	if err != nil || len(result.Matches) != 1 || result.Matches[0][0].Start != result.Matches[0][0].End {
+		t.Errorf("Read(python, #strip-prefix!) = %+v, %v; want one capture with nothing left", result.Matches, err)
 	}
 }
 
 func TestReadRefusesWhatItDoesNotKnow(t *testing.T) {
-	parser := newParser(t)
+	parser := parsetest.Parser(t)
 	cases := []struct{ grammar, query string }{
 		{"cobol", "(_) @node"},
 		{"python", "(no_such_node) @x"},
@@ -95,7 +97,7 @@ func TestReadRefusesWhatItDoesNotKnow(t *testing.T) {
 }
 
 func TestReadTakesAnyBytes(t *testing.T) {
-	parser := newParser(t)
+	parser := parsetest.Parser(t)
 	for _, content := range [][]byte{{}, []byte("# only\n"), {0xff, 0xfe, '\n'}} {
 		if _, err := parser.Read("python", "(identifier) @x", content); err != nil {
 			t.Errorf("Read(python, %q) error = %v, want none", content, err)
@@ -136,7 +138,7 @@ func TestAFileOverTheRecycleSizeIsReadAndTheNextCallWorks(t *testing.T) {
 }
 
 func TestReadsFromManyGoroutinesAllSucceed(t *testing.T) {
-	parser := newParser(t)
+	parser := parsetest.Parser(t)
 	inputs := []struct{ grammar, content string }{{"python", "a = 1\nb = 2\n"}, {"go", "package a\nvar b = 1\n"}}
 	want := make([]parse.Result, len(inputs))
 	for i, in := range inputs {

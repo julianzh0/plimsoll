@@ -44,7 +44,7 @@ func found(imports Imports, text string) []string {
 func TestEveryLanguageNamesItsImportForms(t *testing.T) {
 	for _, l := range Default().Languages {
 		imports := l.Imports
-		if !l.ReadsImports() || imports.Prefix.File == "" && len(imports.Prefix.Roots) == 0 && imports.PackageLine == nil {
+		if len(imports.Statements) == 0 && l.Grammar == "" || imports.Prefix.File == "" && len(imports.Prefix.Roots) == 0 && imports.PackageLine == nil {
 			t.Errorf("%s: Imports = %+v, want import forms or a grammar, and a prefix file, roots or a package declaration", l.Name, imports)
 		}
 		for _, form := range imports.Statements {
@@ -173,19 +173,11 @@ func targets(t *testing.T, l Language, fileName, text string) []string {
 	if err != nil {
 		t.Fatalf("%s: Read(%q) error = %v", l.Name, text, err)
 	}
-	matches := map[uint32][]parse.Capture{}
-	var order []uint32
-	for _, c := range result.Captures {
-		if _, seen := matches[c.Match]; !seen {
-			order = append(order, c.Match)
-		}
-		matches[c.Match] = append(matches[c.Match], c)
-	}
 	var all []string
-	for _, id := range order {
+	for _, match := range result.Matches {
 		var specs []parse.Capture
 		prefix, suffix := "", ""
-		for _, c := range matches[id] {
+		for _, c := range match {
 			switch c.Name {
 			case "spec", "spec.mod":
 				specs = append(specs, c)
@@ -231,6 +223,20 @@ func TestEveryEntryQueryCompiles(t *testing.T) {
 			if _, err := parsetest.Parser(t).Read(g, l.Query, nil); err != nil {
 				t.Errorf("%s: its query on the %s grammar: %v", l.Name, g, err)
 			}
+		}
+	}
+}
+
+func TestNoEntryReadsAFactBothWays(t *testing.T) {
+	for _, l := range Default().Languages {
+		if l.Grammar == "" {
+			continue
+		}
+		if len(l.Imports.Statements) > 0 && strings.Contains(l.Query, "@spec") {
+			t.Errorf("%s reads its imports by patterns and by its query", l.Name)
+		}
+		if l.DynamicRead != nil && strings.Contains(l.Query, "@dynamic") {
+			t.Errorf("%s reads its computed settings reads by a pattern and by its query", l.Name)
 		}
 	}
 }

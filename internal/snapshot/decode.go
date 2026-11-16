@@ -1,7 +1,6 @@
 package snapshot
 
 import (
-	"bytes"
 	"strings"
 	"unicode"
 
@@ -12,36 +11,22 @@ import (
 // with the queries, listed at conventions.Language.Query.
 func decode(result parse.Result, content []byte) reading {
 	var r reading
-	byMatch := map[uint32][]parse.Capture{}
-	var order []uint32
-	for _, c := range result.Captures {
-		if _, seen := byMatch[c.Match]; !seen {
-			order = append(order, c.Match)
-		}
-		byMatch[c.Match] = append(byMatch[c.Match], c)
-	}
-	for _, id := range order {
-		var first, last *parse.Capture
-		dynamic := false
-		for i, c := range byMatch[id] {
+	for _, match := range result.Matches {
+		var specs []parse.Capture
+		for _, c := range match {
 			switch c.Name {
 			case "spec":
-				if first == nil {
-					first = &byMatch[id][i]
-				}
-				last = &byMatch[id][i]
+				specs = append(specs, c)
 			case "dynamic":
-				dynamic = true
+				r.dynamic++
 			}
 		}
-		if dynamic {
-			r.dynamic++
-		}
-		if first == nil {
+		if len(specs) == 0 {
 			continue
 		}
+		first, last := specs[0], specs[len(specs)-1]
 		written := string(content[first.Start:last.End])
-		if first != last {
+		if len(specs) > 1 {
 			written = strings.Map(func(c rune) rune {
 				if unicode.IsSpace(c) {
 					return -1
@@ -49,7 +34,7 @@ func decode(result parse.Result, content []byte) reading {
 				return c
 			}, written)
 		}
-		r.statements = append(r.statements, statement{spec: unquoted(written), line: lineAt(content, first.Start)})
+		r.statements = append(r.statements, statement{spec: unquoted(written), line: first.Line})
 	}
 	return r
 }
@@ -61,6 +46,3 @@ func unquoted(s string) string {
 	}
 	return s
 }
-
-// lineAt is the line, from 1, of an offset.
-func lineAt(content []byte, at int) int { return 1 + bytes.Count(content[:at], []byte("\n")) }

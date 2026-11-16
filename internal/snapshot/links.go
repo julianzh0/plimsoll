@@ -230,9 +230,6 @@ func links(rules conventions.Rules, content map[string][]byte, tree Tree, readin
 	var found Links
 	for _, language := range rules.Languages {
 		imports := language.Imports
-		if !language.ReadsImports() {
-			continue
-		}
 		var files []File
 		for _, file := range tree.Files {
 			if file.Language == language.Name {

@@ -6,6 +6,8 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/juzhxng/plimsoll/internal/parse"
+
 	"github.com/juzhxng/plimsoll/internal/parse/parsetest"
 )
 
@@ -214,11 +216,11 @@ func dynamicMatches(t *testing.T, l Language, code string) int {
 	if err != nil {
 		t.Fatalf("%s: Read(%q) error = %v", l.Name, code, err)
 	}
-	matches := map[uint32]bool{}
-	for _, c := range result.Captures {
-		if c.Name == "dynamic" {
-			matches[c.Match] = true
+	n := 0
+	for _, match := range result.Matches {
+		if slices.ContainsFunc(match, func(c parse.Capture) bool { return c.Name == "dynamic" }) {
+			n++
 		}
 	}
-	return len(matches)
+	return n
 }

@@ -15,9 +15,11 @@ import (
 // hand. Way back: drop this allocator and let wazero grow memory by copying.
 type mapped struct{ bytes []byte }
 
-func mapMemory(_, _ uint64) experimental.LinearMemory {
+// mapMemory maps one instance's memory; a refused mapping is recorded for start, which runs under the parser's lock.
+func (p *Parser) mapMemory(_, _ uint64) experimental.LinearMemory {
 	bytes, err := syscall.Mmap(-1, 0, memoryCapPages*pageBytes, syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_ANON|syscall.MAP_PRIVATE)
 	if err != nil {
+		p.unmapped = true
 		return &mapped{}
 	}
 	return &mapped{bytes: bytes}
