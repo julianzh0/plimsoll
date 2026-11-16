@@ -333,3 +333,48 @@ func TestBuildCountsTestCodeInsideProductFiles(t *testing.T) {
 		t.Errorf("test code by its path, other code and another language: test lines %v, want none", got)
 	}
 }
+
+func TestBuildGivesASharedSuffixToTheEntryWithMoreFilesOfItsOwn(t *testing.T) {
+	// Two entries that both list .both: first also .one, second also .two and .too.
+	rules := conventions.Default()
+	rules.Languages = append(rules.Languages,
+		conventions.Language{Name: "first", Extensions: []string{".one", ".both"}},
+		conventions.Language{Name: "second", Extensions: []string{".two", ".too", ".both"}})
+	cases := []struct {
+		name  string
+		files []string
+		want  string // the language of a.both
+	}{
+		{"only the first has files of its own", []string{"a.both", "a.one", "b.one"}, "first"},
+		{"only the second has", []string{"a.both", "a.two"}, "second"},
+		{"each suffix of its own counts", []string{"a.both", "a.one", "a.two", "b.too"}, "second"},
+		{"more of the first", []string{"a.both", "a.one", "b.one", "a.two"}, "first"},
+		{"as many of each: the entry listed first", []string{"a.both", "a.one", "a.two"}, "first"},
+		{"shared files alone", []string{"a.both", "b.both"}, "first"},
+		{"files in a skipped folder count for nothing", []string{"a.both", "a.one", "vendor/x.two", "vendor/y.two"}, "first"},
+	}
+	for _, tc := range cases {
+		files := map[string]string{}
+		for _, p := range tc.files {
+			files[p] = "x\n"
+		}
+		s := snapshot.Build(snapshottest.Files(files, files), rules)
+		for _, side := range []snapshot.Tree{s.Now, s.Before} {
+			for _, file := range side.Files {
+				if file.Path == "a.both" && file.Language != tc.want {
+					t.Errorf("%s: the language of a.both = %q, want %q", tc.name, file.Language, tc.want)
+				}
+			}
+		}
+	}
+	// The other files keep their entries, and the rules a caller passes are not altered.
+	mixed := snapshot.Build(snapshottest.Files(nil, map[string]string{"a.both": "x\n", "a.two": "x\n", "b.one": "x\n", "c.go": "package c\n", "d.two": "x\n"}), rules)
+	want := []fileRow{{"a.both", "second", snapshot.Product, 1}, {"a.two", "second", snapshot.Product, 1}, {"b.one", "first", snapshot.Product, 1},
+		{"c.go", "go", snapshot.Product, 1}, {"d.two", "second", snapshot.Product, 1}}
+	if got := rows(mixed.Now.Files); !reflect.DeepEqual(got, want) {
+		t.Errorf("Build(mixed).Now.Files = %v, want %v", got, want)
+	}
+	if first, _ := rules.LanguageOf("a.both"); first.Name != "first" {
+		t.Errorf("the rules passed to Build name %q for a.both afterwards, want them unaltered", first.Name)
+	}
+}

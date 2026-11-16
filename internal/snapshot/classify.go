@@ -87,6 +87,49 @@ func manifestOf(rules conventions.Rules, filePath string) (conventions.Manifest,
 	return conventions.Manifest{}, false
 }
 
+// withSharedSuffixes is the rules of one question: each suffix that several entries list is left to one of them, the
+// entry with the most tracked files of the suffixes only it lists, the first such entry on a tie. The given value is
+// not altered.
+func withSharedSuffixes(rules conventions.Rules, entries []Entry) conventions.Rules {
+	listedBy := map[string][]int{} // a suffix to the entries that list it
+	for i, language := range rules.Languages {
+		for _, suffix := range language.Extensions {
+			listedBy[suffix] = append(listedBy[suffix], i)
+		}
+	}
+	own := make([]int, len(rules.Languages)) // per entry, the tracked files of the suffixes only it lists
+	shared := false
+	for _, entry := range entries {
+		switch listing := listedBy[conventions.Suffix(entry.Path)]; {
+		case len(listing) == 1 && !excluded(rules, entry.Path):
+			own[listing[0]]++
+		case len(listing) > 1:
+			shared = true
+		}
+	}
+	if !shared {
+		return rules
+	}
+	rules.Languages = slices.Clone(rules.Languages)
+	for suffix, listing := range listedBy {
+		if len(listing) < 2 {
+			continue
+		}
+		keeps := listing[0]
+		for _, i := range listing[1:] {
+			if own[i] > own[keeps] {
+				keeps = i
+			}
+		}
+		for _, i := range listing {
+			if i != keeps {
+				rules.Languages[i].Extensions = slices.DeleteFunc(slices.Clone(rules.Languages[i].Extensions), func(s string) bool { return s == suffix })
+			}
+		}
+	}
+	return rules
+}
+
 // testSourceSet says whether the name of a folder directly in a folder src makes it a test source set: a shared test
 // folder name, or one of the rules' patterns.
 func testSourceSet(rules conventions.Rules, name string) bool {
