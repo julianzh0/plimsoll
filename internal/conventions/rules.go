@@ -147,7 +147,28 @@ type Language struct {
 	SettingsPrefix *regexp.Regexp
 	Imports        Imports       // how its imports are written and what they name
 	Layout         []Declaration // the standard files and keys in which a project declares its layout; nil for none
+	// Grammar is the tree-sitter grammar that reads the entry's files; "" reads them by the text patterns above.
+	Grammar string
+	// GrammarBySuffix names another grammar for some of the entry's suffixes.
+	GrammarBySuffix map[string]string
+	// Query is the tree-sitter query that reads, in one parse, everything the entry takes from a file. Its captures:
+	//   @import   an import statement
+	//   @spec     the target as written, one pair of quotes removed; several in one match are one target
+	//   @dynamic  a settings read whose name is computed at run time; each match counts once
+	// A pattern the entry still has for a fact reads that fact instead of the query.
+	Query string
 }
+
+// GrammarOf names the grammar that reads a file of the entry, or "" when the entry reads by text.
+func (l Language) GrammarOf(filePath string) string {
+	if grammar, found := l.GrammarBySuffix[Suffix(filePath)]; found {
+		return grammar
+	}
+	return l.Grammar
+}
+
+// ReadsImports says whether the entry reads import statements, by patterns or by its grammar.
+func (l Language) ReadsImports() bool { return len(l.Imports.Statements) > 0 || l.Grammar != "" }
 
 // LayoutKind is what a declaration says about a project's layout.
 type LayoutKind int

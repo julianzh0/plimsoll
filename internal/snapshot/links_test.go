@@ -896,3 +896,15 @@ func TestBuildFollowsIncludesToFiles(t *testing.T) {
 		t.Errorf("no CMake file: Languages = %+v, want %+v", got, []snapshot.LanguageImports{c(1, 1, 0, 0, 2), cpp(5, 3, 1, 1, 2)})
 	}
 }
+
+func TestBuildReadsImportsAroundASyntaxError(t *testing.T) {
+	s := snapshot.Build(snapshottest.Files(nil, map[string]string{
+		"go.mod":  "module example.com/m\n",
+		"a/a.go":  "package a\n",
+		"b/b.go":  "package b\n",
+		"main.go": "package main\n\nimport \"example.com/m/a\"\n\nfunc f( {\n\nimport \"example.com/m/b\"\n",
+	}), conventions.Default(), snapshottest.Readings(t))
+	if !slices.ContainsFunc(s.Now.Links.List, func(l snapshot.Link) bool { return l.From == "main.go" && l.To == "a" }) || len(s.Unparsed) != 0 {
+		t.Errorf("Build(an unfinished edit) = links %+v, unparsed %v; want main.go -> a and nothing unparsed", s.Now.Links.List, s.Unparsed)
+	}
+}

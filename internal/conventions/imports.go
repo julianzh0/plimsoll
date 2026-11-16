@@ -5,7 +5,6 @@ import "regexp"
 // Imports says how a language writes imports and what an import of the project's own code names.
 type Imports struct {
 	Statements   []ImportForm   // the forms an import statement takes; every match is one import
-	Until        *regexp.Regexp // imports are read only before its first match; nil reads the whole file
 	Computed     ImportForm     // an import whose target is built at run time; its Pattern is nil when the language has none
 	PassesOn     *regexp.Regexp // matches the whole content of a file that only passes imports on; nil for none
 	Relative     RelativeForm   // how a relative import is written

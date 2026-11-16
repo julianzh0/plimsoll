@@ -6,24 +6,22 @@ import "regexp"
 
 // goLanguage is the entry of Go.
 func goLanguage() Language {
-	return Language{Name: "go", Extensions: []string{".go"}, DynamicRead: goDynamicRead, Imports: goImports()}
+	return Language{Name: "go", Extensions: []string{".go"}, Imports: goImports(), Grammar: "go", Query: goQuery}
 }
 
-// A settings read whose name is computed at run time: not a quoted name after the opening.
-var goDynamicRead = regexp.MustCompile(`os\.(?:Getenv|LookupEnv)\([ \t]*[^" \t)]`)
+// goQuery reads the import specs, and a settings read whose name is not a quoted string.
+const goQuery = `
+(import_spec path: (_) @spec) @import
+((call_expression
+   function: (selector_expression operand: (identifier) @o field: (field_identifier) @f)
+   arguments: (argument_list . (_) @dynamic))
+  (#eq? @o "os") (#match? @f "^(Getenv|LookupEnv)$") (#not-match? @dynamic "^\""))
+`
 
-var (
-	// Before the first declaration, a line that starts with a quoted string, with or without import and an alias, can
-	// only be an import: one pattern covers the single form and every line of a block.
-	goImportLine   = regexp.MustCompile("(?m)^[ \\t]*(?:import[ \\t]+)?(?:[\\w.]+[ \\t]+)?[\"`](?P<spec>[^\"`\\n]+)[\"`]")
-	goUntil        = regexp.MustCompile(`(?m)^(?:func|type|var|const)\b`)
-	goFolderExcept = regexp.MustCompile(`_test\.go$`)
-)
+var goFolderExcept = regexp.MustCompile(`_test\.go$`)
 
 func goImports() Imports {
 	return Imports{
-		Statements:   []ImportForm{{Pattern: goImportLine}},
-		Until:        goUntil,
 		Relative:     NoRelative,
 		Prefix:       Prefix{File: "go.mod", Format: GoModule, Required: true},
 		Target:       FolderTarget,

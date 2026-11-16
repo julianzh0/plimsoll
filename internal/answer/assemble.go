@@ -132,6 +132,11 @@ func repositoryNotAnalysed(s snapshot.Snapshot) []NotAnalysed {
 		add(fmt.Sprintf("content not in this partial clone, so its lines and history are not counted: %s (%s)",
 			Plural(len(s.Missing), "file"), strings.Join(Quoted(s.Missing), ", ")))
 	}
+	if len(s.Unparsed) > 0 {
+		add(fmt.Sprintf("the parser could not read %s, so their imports, test code and settings reads are not counted "+
+			"(a file may need at most %d MiB to parse): %s", Plural(len(s.Unparsed), "file"), snapshot.ParserCapMiB,
+			strings.Join(Quoted(s.Unparsed), ", ")))
+	}
 	return entries
 }
 

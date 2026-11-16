@@ -132,11 +132,6 @@ func tries(form conventions.ImportForm, text []byte) bool {
 // scan finds the import statements of one file's content, its literals blanked.
 func scan(imports conventions.Imports, text []byte) reading {
 	r := reading{passesOn: imports.PassesOn != nil && imports.PassesOn.Match(text)}
-	if imports.Until != nil {
-		if at := imports.Until.FindIndex(text); at != nil {
-			text = text[:at[0]]
-		}
-	}
 	if tries(imports.Computed, text) {
 		r.computed = len(imports.Computed.Pattern.FindAllIndex(text, -1))
 	}
@@ -235,7 +230,7 @@ func links(rules conventions.Rules, content map[string][]byte, tree Tree, readin
 	var found Links
 	for _, language := range rules.Languages {
 		imports := language.Imports
-		if len(imports.Statements) == 0 {
+		if !language.ReadsImports() {
 			continue
 		}
 		var files []File

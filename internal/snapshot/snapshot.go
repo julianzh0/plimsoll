@@ -2,7 +2,13 @@
 // them and the history, classified by the shared rules. It is pure: it knows nothing of git, MCP or any detector.
 package snapshot
 
-import "github.com/juzhxng/plimsoll/internal/conventions"
+import (
+	"github.com/juzhxng/plimsoll/internal/conventions"
+	"github.com/juzhxng/plimsoll/internal/parse"
+)
+
+// ParserCapMiB is the memory the parser may use to read one file; a file that needs more is listed in Unparsed.
+const ParserCapMiB = parse.MemoryCapMiB
 
 // Snapshot is the common model every detector reads.
 type Snapshot struct {
@@ -29,6 +35,7 @@ type Snapshot struct {
 	Submodules     []string
 	Unreadable     []string
 	Missing        []string // paths whose content a partial clone lacks; their lines and history are not counted
+	Unparsed       []string // code files, on either side, that the parser could not read; sorted, each once
 	Named          []string // the files the caller named, cleaned, sorted, each once; nil when none
 }
 

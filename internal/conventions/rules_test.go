@@ -2,8 +2,11 @@ package conventions
 
 import (
 	"bytes"
+	"fmt"
 	"slices"
 	"testing"
+
+	"github.com/juzhxng/plimsoll/internal/parse/parsetest"
 )
 
 func TestTestDefinitionMatchesOnlyStatementStarts(t *testing.T) {
@@ -143,7 +146,20 @@ func TestEveryLanguageNamesItsDynamicRead(t *testing.T) {
 		"c":   {[]string{"getenv(name)", "getenv( key )", "secure_getenv(buf)"}, []string{`getenv("X")`, `getenv( "X")`, "setenv(name, value, 1)", "getenv_r"}},
 		"cpp": {[]string{"std::getenv(name.c_str())", "getenv(key)", "::getenv(k)"}, []string{`std::getenv("X")`, `getenv( "X")`, "environ[i]"}},
 	}
+	// wraps make a row valid code for an entry that reads by its grammar.
+	wraps := map[string]string{"go": "package a\nfunc f() { _ = %s }\n"}
 	for _, language := range Default().Languages {
+		if language.Grammar != "" {
+			for i, lines := range [][]string{cases[language.Name].matches, cases[language.Name].misses} {
+				for _, line := range lines {
+					code := fmt.Sprintf(wraps[language.Name], line)
+					if got := dynamicMatches(t, language, code); (i == 0) != (got > 0) {
+						t.Errorf("%s: @dynamic matches in %q = %d, want %v", language.Name, code, got, i == 0)
+					}
+				}
+			}
+			continue
+		}
 		if language.DynamicRead == nil {
 			t.Errorf("language %s has no dynamic-read pattern", language.Name)
 			continue
@@ -189,4 +205,20 @@ func TestSettingsPrefixFindsADeclaredPrefix(t *testing.T) {
 			}
 		}
 	}
+}
+
+// dynamicMatches is the number of matches of an entry's query that hold @dynamic in code.
+func dynamicMatches(t *testing.T, l Language, code string) int {
+	t.Helper()
+	result, err := parsetest.Parser(t).Read(l.GrammarOf("a"+l.Extensions[0]), l.Query, []byte(code))
+	if err != nil {
+		t.Fatalf("%s: Read(%q) error = %v", l.Name, code, err)
+	}
+	matches := map[uint32]bool{}
+	for _, c := range result.Captures {
+		if c.Name == "dynamic" {
+			matches[c.Match] = true
+		}
+	}
+	return len(matches)
 }

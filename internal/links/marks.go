@@ -16,8 +16,8 @@ const (
 	cycleSource       = "files do not import each other in a ring"
 	testImportSource  = "product code imports no test code"
 	folderCycleSource = "the Acyclic Dependencies Principle (Robert C. Martin)"
-	hint              = "found by text patterns on import lines; `explain` names each import by file and line."
-	folderHint        = "found by text patterns on import lines; `explain` names the imports between the folders by file and line."
+	hint              = "found by reading the import statements; `explain` names each import by file and line."
+	folderHint        = "found by reading the import statements; `explain` names the imports between the folders by file and line."
 )
 
 // shapeOf is, per rule, the subject kind, the limit's source, the unit and the hint of its marks.

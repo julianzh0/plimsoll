@@ -66,7 +66,7 @@ func detect(t *testing.T, source snapshot.Source) answer.Findings {
 
 func same(files map[string]string) snapshot.Source { return snapshottest.Files(files, files) }
 
-const wantLinksNote = "links: imports read by text patterns; an import is a link only when it names exactly one tracked file " +
+const wantLinksNote = "links: imports read from the code; an import is a link only when it names exactly one tracked file " +
 	"of the repository, or the folders of one package where a language imports folders; outside packages are not compared with local names"
 
 const wantFolderNote = "an import of a folder reaches the folder's files, and a package that lies in several folders is reached in each; " +
@@ -306,7 +306,7 @@ func TestTestImportMarksInEachLanguage(t *testing.T) {
 			if m.ID != "links.test-import:"+a || m.Change != tc.change || m.Measured.Value != tc.value || !beforeOK ||
 				!slices.Equal(m.Subject.Paths, []string{a}) || m.Subject.Kind != "file" || m.Measured.Limit != nil ||
 				m.Measured.Unit != "imports of test code" || m.Measured.LimitSource != "product code imports no test code" ||
-				m.Hint != "found by text patterns on import lines; `explain` names each import by file and line." {
+				m.Hint != "found by reading the import statements; `explain` names each import by file and line." {
 				t.Errorf("%s: mark %+v %+v", tc.name, m, m.Measured)
 			}
 		}

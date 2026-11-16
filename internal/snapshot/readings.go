@@ -42,9 +42,9 @@ func NewReadings(parser *parse.Parser) *Readings {
 	return &Readings{parser: parser, kept: map[readingKey]*keptReading{}}
 }
 
-// of returns the reading of one file's content for its language entry, made once per content.
-func (rs *Readings) of(language conventions.Language, content []byte) reading {
-	key := readingKey{entry: language.Name, content: sha256.Sum256(content)}
+// of returns the reading of one file's content for its language entry and grammar, made once per content.
+func (rs *Readings) of(language conventions.Language, grammar string, content []byte) reading {
+	key := readingKey{entry: language.Name, grammar: grammar, content: sha256.Sum256(content)}
 	rs.mu.Lock()
 	if kept, found := rs.kept[key]; found {
 		rs.mu.Unlock()
@@ -57,7 +57,7 @@ func (rs *Readings) of(language conventions.Language, content []byte) reading {
 	kept := &keptReading{read: make(chan struct{})}
 	rs.kept[key] = kept
 	rs.mu.Unlock()
-	kept.r = readByText(language, content)
+	kept.r = rs.read(language, grammar, content)
 	close(kept.read)
 	return kept.r
 }
@@ -70,9 +70,34 @@ func (rs *Readings) side(rules conventions.Rules, content map[string][]byte, fil
 		if !known || content[file.Path] == nil {
 			continue
 		}
-		found[file.Path] = rs.of(language, content[file.Path])
+		found[file.Path] = rs.of(language, language.GrammarOf(file.Path), content[file.Path])
 	}
 	return found
+}
+
+// read makes the reading of one file: by the entry's grammar when it names one, then every fact for which the entry
+// still has a pattern by that pattern. A file the parser cannot read is unread; its patterns still read it.
+func (rs *Readings) read(language conventions.Language, grammar string, content []byte) reading {
+	if grammar == "" {
+		return readByText(language, content)
+	}
+	var r reading
+	if result, err := rs.parser.Read(grammar, language.Query, content); err != nil {
+		r.unread = true
+	} else {
+		r = decode(result, content)
+	}
+	byText := readByText(language, content)
+	if language.TestBlock != nil {
+		r.testLines = byText.testLines
+	}
+	if language.DynamicRead != nil {
+		r.dynamic = byText.dynamic
+	}
+	if language.SettingsPrefix != nil {
+		r.prefixes = byText.prefixes
+	}
+	return r
 }
 
 // readByText is the reading of one file by its entry's text patterns.

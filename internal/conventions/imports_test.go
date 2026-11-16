@@ -5,6 +5,9 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/juzhxng/plimsoll/internal/parse"
+	"github.com/juzhxng/plimsoll/internal/parse/parsetest"
 )
 
 func language(t *testing.T, name string) Language {
@@ -41,8 +44,8 @@ func found(imports Imports, text string) []string {
 func TestEveryLanguageNamesItsImportForms(t *testing.T) {
 	for _, l := range Default().Languages {
 		imports := l.Imports
-		if len(imports.Statements) == 0 || imports.Prefix.File == "" && len(imports.Prefix.Roots) == 0 && imports.PackageLine == nil {
-			t.Errorf("%s: Imports = %+v, want import forms and a prefix file, roots or a package declaration", l.Name, imports)
+		if !l.ReadsImports() || imports.Prefix.File == "" && len(imports.Prefix.Roots) == 0 && imports.PackageLine == nil {
+			t.Errorf("%s: Imports = %+v, want import forms or a grammar, and a prefix file, roots or a package declaration", l.Name, imports)
 		}
 		for _, form := range imports.Statements {
 			if form.Pattern.SubexpIndex("spec") < 0 {
@@ -162,6 +165,76 @@ func importCases() map[string]map[string][]string {
 	}
 }
 
+// targets renders the import statements an entry's query finds in a text: one item per match that holds a target,
+// written as the decoder reads it, with ":type" and ":everywhere" when the match marks them.
+func targets(t *testing.T, l Language, fileName, text string) []string {
+	t.Helper()
+	result, err := parsetest.Parser(t).Read(l.GrammarOf(fileName), l.Query, []byte(text))
+	if err != nil {
+		t.Fatalf("%s: Read(%q) error = %v", l.Name, text, err)
+	}
+	matches := map[uint32][]parse.Capture{}
+	var order []uint32
+	for _, c := range result.Captures {
+		if _, seen := matches[c.Match]; !seen {
+			order = append(order, c.Match)
+		}
+		matches[c.Match] = append(matches[c.Match], c)
+	}
+	var all []string
+	for _, id := range order {
+		var specs []parse.Capture
+		prefix, suffix := "", ""
+		for _, c := range matches[id] {
+			switch c.Name {
+			case "spec", "spec.mod":
+				specs = append(specs, c)
+				if c.Name == "spec.mod" {
+					prefix = "mod "
+				}
+			case "type":
+				suffix += ":type"
+			case "everywhere":
+				suffix += ":everywhere"
+			}
+		}
+		if len(specs) == 0 {
+			continue
+		}
+		item := text[specs[0].Start:specs[len(specs)-1].End]
+		if len(specs) > 1 {
+			item = strings.Join(strings.Fields(item), "")
+		}
+		if len(item) >= 2 && strings.ContainsRune("\"'`", rune(item[0])) && item[len(item)-1] == item[0] {
+			item = item[1 : len(item)-1]
+		}
+		all = append(all, prefix+item+suffix)
+	}
+	slices.Sort(all)
+	return all
+}
+
+func TestEveryEntryQueryCompiles(t *testing.T) {
+	for _, l := range Default().Languages {
+		if l.Grammar == "" {
+			continue
+		}
+		grammars := []string{l.Grammar}
+		for _, g := range l.GrammarBySuffix {
+			grammars = append(grammars, g)
+		}
+		for _, g := range grammars {
+			if !slices.Contains(parse.Grammars(), g) {
+				t.Errorf("%s names the grammar %q, which is not embedded", l.Name, g)
+				continue
+			}
+			if _, err := parsetest.Parser(t).Read(g, l.Query, nil); err != nil {
+				t.Errorf("%s: its query on the %s grammar: %v", l.Name, g, err)
+			}
+		}
+	}
+}
+
 func TestImportFormsFindEachStatement(t *testing.T) {
 	cases := importCases()
 	for _, l := range Default().Languages {
@@ -171,7 +244,11 @@ func TestImportFormsFindEachStatement(t *testing.T) {
 			continue
 		}
 		for text, want := range texts {
-			if got := found(l.Imports, text); !slices.Equal(got, want) {
+			got := found(l.Imports, text)
+			if l.Grammar != "" {
+				got = targets(t, l, "a"+l.Extensions[0], text)
+			}
+			if !slices.Equal(got, want) {
 				t.Errorf("%s: imports of %q = %q, want %q", l.Name, text, got, want)
 			}
 		}
@@ -196,13 +273,6 @@ func TestComputedAndWholeFilePatterns(t *testing.T) {
 		}
 	}
 	golang := language(t, "go").Imports
-	text := "package a\n\nimport \"fmt\"\n\nfunc f() {}\n"
-	if at := golang.Until.FindStringIndex(text); at == nil || !strings.HasPrefix(text[at[0]:], "func") {
-		t.Errorf("go Until in %q = %v, want the start of func", text, at)
-	}
-	if golang.Until.MatchString("package a\n\nimport \"fmt\"\n") {
-		t.Errorf("go Until matches a file without a declaration")
-	}
 	if golang.Computed.Pattern != nil || golang.PassesOn != nil || golang.NoRings != "the Go compiler rejects import cycles" {
 		t.Errorf("go: Computed %v, PassesOn %v, NoRings %q", golang.Computed, golang.PassesOn, golang.NoRings)
 	}

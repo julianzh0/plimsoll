@@ -23,7 +23,7 @@ func sample() snapshot.Snapshot {
 		},
 		History:    snapshot.History{Read: 12, Usable: 11},
 		Unverified: []snapshot.Extension{{Suffix: ".sh", Files: 2, Lines: 7}},
-		Untracked:  3, Missing: []string{"data/big.bin"},
+		Untracked:  3, Missing: []string{"data/big.bin"}, Unparsed: []string{"src/big.ts", "src/huge.ts"},
 	}
 }
 
@@ -65,7 +65,7 @@ func TestStatusWithMarksReadsWordForWord(t *testing.T) {
 		"Standing (already at the base, not grown): 1 standing.\n" +
 		"History: 12 commits read, 11 usable.\n" +
 		"Detectors run: shape.\n" +
-		"Not analysed: no `.env.example`, so no settings count; not verified for `.sh` (7 lines in 2 files); 3 untracked files; content not in this partial clone, so its lines and history are not counted: 1 file (`data/big.bin`).\n"
+		"Not analysed: no `.env.example`, so no settings count; not verified for `.sh` (7 lines in 2 files); 3 untracked files; content not in this partial clone, so its lines and history are not counted: 1 file (`data/big.bin`); the parser could not read 2 files, so their imports, test code and settings reads are not counted (a file may need at most 128 MiB to parse): `src/big.ts`, `src/huge.ts`.\n"
 	got := Render(Assemble(Status, "0.1.0", sample(), []Result{{"shape", findings()}}), wording())
 	if got != want {
 		t.Fatalf("Render(status) =\n%s\nwant\n%s", got, want)
@@ -127,7 +127,8 @@ func TestReportListsEverythingInAFixedLayout(t *testing.T) {
 		"- shape: no `.env.example`, so no settings count\n" +
 		"- repository: not verified for `.sh` (7 lines in 2 files)\n" +
 		"- repository: 3 untracked files\n" +
-		"- repository: content not in this partial clone, so its lines and history are not counted: 1 file (`data/big.bin`)\n"
+		"- repository: content not in this partial clone, so its lines and history are not counted: 1 file (`data/big.bin`)\n" +
+		"- repository: the parser could not read 2 files, so their imports, test code and settings reads are not counted (a file may need at most 128 MiB to parse): `src/big.ts`, `src/huge.ts`\n"
 	if !strings.HasSuffix(report, wantTail) {
 		t.Fatalf("Render(report) =\n%s\nwant it to end with\n%s", report, wantTail)
 	}
@@ -192,7 +193,7 @@ func TestStatusShowsFiveMarksAndStaysInsideFortyLines(t *testing.T) {
 	if lines := strings.Count(text, "\n"); lines > 40 {
 		t.Errorf("Render(status) has %d lines, want at most 40", lines)
 	}
-	for _, want := range []string{"7 more: `report` lists them.", "and 7 more in `report`", "and 28 more in `report`"} {
+	for _, want := range []string{"7 more: `report` lists them.", "and 7 more in `report`", "and 29 more in `report`"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("Render(status) lacks %q:\n%s", want, text)
 		}

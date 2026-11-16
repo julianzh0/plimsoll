@@ -79,7 +79,22 @@ func Build(source Source, rules conventions.Rules, readings *Readings) Snapshot 
 		Submodules:     source.Submodules,
 		Unreadable:     slices.Compact(unreadable),
 		Missing:        source.Missing,
+		Unparsed:       unparsed(nowReadings, beforeReadings),
 	}
+}
+
+// unparsed are the code files, on either side, that the parser could not read, sorted, each once.
+func unparsed(sides ...map[string]reading) []string {
+	var found []string
+	for _, readings := range sides {
+		for path, r := range readings {
+			if r.unread {
+				found = append(found, path)
+			}
+		}
+	}
+	slices.Sort(found)
+	return slices.Compact(found)
 }
 
 // planningFiles are the paths that lie under a planning or review path.

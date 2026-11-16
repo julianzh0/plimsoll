@@ -1,6 +1,7 @@
 package snapshot_test
 
 import (
+	"fmt"
 	"maps"
 	"os"
 	"reflect"
@@ -392,5 +393,28 @@ func TestBuildGivesASharedSuffixToTheEntryWithMoreFilesOfItsOwn(t *testing.T) {
 	}
 	if first, _ := rules.LanguageOf("a.both"); first.Name != "first" {
 		t.Errorf("the rules passed to Build name %q for a.both afterwards, want them unaltered", first.Name)
+	}
+}
+
+func TestBuildListsAFileTheParserCannotRead(t *testing.T) {
+	var big strings.Builder
+	big.WriteString("package main\n")
+	for i := range 150_000 { // measured: the Go grammar needs more than its 128 MiB for this shape from 100,000 lines
+		fmt.Fprintf(&big, "var v%d = %d\n", i, i)
+	}
+	s := snapshot.Build(snapshottest.Files(nil, map[string]string{
+		"go.mod":         "module example.com/m\n",
+		"store/store.go": "package store\n",
+		"main.go":        "package main\n\nimport \"example.com/m/store\"\n",
+		"big.go":         big.String(),
+	}), conventions.Default(), snapshottest.Readings(t))
+	if !slices.Equal(s.Unparsed, []string{"big.go"}) {
+		t.Errorf("Build(a file over the cap).Unparsed = %v, want [big.go]", s.Unparsed)
+	}
+	if !slices.ContainsFunc(s.Now.Links.List, func(l snapshot.Link) bool { return l.From == "main.go" && l.To == "store" }) {
+		t.Errorf("Build(a file over the cap) links = %+v, want main.go -> store", s.Now.Links.List)
+	}
+	if i := slices.IndexFunc(s.Now.Files, func(f snapshot.File) bool { return f.Path == "big.go" }); i < 0 || s.Now.Files[i].Lines != 150_001 {
+		t.Errorf("Build(a file over the cap) files = %d, want big.go counted with 150,001 lines", len(s.Now.Files))
 	}
 }
