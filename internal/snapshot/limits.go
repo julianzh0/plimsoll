@@ -35,7 +35,7 @@ func declaredLimits(rules conventions.Rules, nowContent, beforeContent map[strin
 		d := DeclaredLimit{LimitKey: key, Default: limit.Value}
 		if setNow {
 			d.Now = &nowValue
-			*limit = conventions.Limit{Value: nowValue, Step: limit.Step, Source: "set by `" + rules.LimitsFile + "`"}
+			*limit = conventions.Limit{Value: nowValue, Step: limit.Step, Source: "set by `" + rules.OwnFile + "`"}
 		}
 		if setBefore {
 			d.Before = &beforeValue
@@ -48,7 +48,7 @@ func declaredLimits(rules conventions.Rules, nowContent, beforeContent map[strin
 // readLimits reads the [limits] table of one side's limits file: a key and a number above 0 per line, a whole number
 // for a limit that counts, a comment allowed. Anything else is a problem, and the key it names keeps its default.
 func readLimits(rules conventions.Rules, content map[string][]byte) (map[string]float64, []string) {
-	file, tracked := content[rules.LimitsFile]
+	file, tracked := content[rules.OwnFile]
 	switch {
 	case !tracked:
 		return nil, nil

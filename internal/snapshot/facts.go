@@ -23,7 +23,7 @@ var settingLine = regexp.MustCompile(`(?m)^#?\s*([A-Z][A-Z0-9_]+)=`)
 func WantsOf(rules conventions.Rules) Wants {
 	return Wants{
 		Path: func(path string) bool {
-			if path == SettingsFile || path == rules.LimitsFile {
+			if path == SettingsFile || path == rules.OwnFile {
 				return true
 			}
 			if _, known := manifestOf(rules, path); known || slices.ContainsFunc(rules.Manifests, func(m conventions.Manifest) bool { return slices.Contains(m.Lockfiles, path) }) {

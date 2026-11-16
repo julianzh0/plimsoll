@@ -63,7 +63,7 @@ func Build(source Source, rules conventions.Rules, readings *Readings) Snapshot 
 		MergeBase:      source.MergeBase,
 		Modified:       source.Modified,
 		Limits:         rules.Limits,
-		LimitsFile:     rules.LimitsFile,
+		LimitsFile:     rules.OwnFile,
 		DeclaredLimits: declaredLimits,
 		LimitProblems:  limitProblems,
 		Before:         before,

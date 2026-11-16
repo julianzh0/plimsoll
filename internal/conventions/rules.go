@@ -48,10 +48,14 @@ type Rules struct {
 	GeneratedNames []string
 	Manifests      []Manifest // the known dependency manifests, read at the repository root
 	CommitPaths    int        // the most paths a commit may touch and still count for a history detector
-	// LimitsFile is the file at a repository's root in which it sets its own limits, and LimitKeys the keys of its
-	// [limits] table, in the order an answer names them.
-	LimitsFile       string
+	// OwnFile is the file at a repository's root in which it sets its own limits and declares its layout. LimitsTable
+	// is its table of limits and LimitKeys the keys of that table, in the order an answer names them; OwnKeys are the
+	// keys that declare the layout, in the same order.
+	OwnFile          string
+	LimitsTable      string
 	LimitKeys        []LimitKey
+	OwnKeys          []OwnKey
+	TestNames        []string   // file-name patterns of test code; empty in the shared rules
 	PlanningPaths    []string   // planning and review records: an entry ending in "/" is a folder, at the root when it is one name, at any depth when it is a chain; any other a file-name pattern
 	MeasurementPaths []string   // measurement records, in the syntax of PlanningPaths
 	ComposeFiles     []string   // file-name patterns of compose files, read for their environment keys
@@ -105,6 +109,68 @@ type Limits struct {
 	// numbers are not given. It gates the link numbers and is no mark, so it has no step.
 	ImportsNotFollowed Limit
 }
+
+// OwnKey is a key of a repository's own file that declares its layout: its table, its key, what an answer calls it
+// and what its values hold.
+type OwnKey struct {
+	Table, Key, Name string
+	Holds            OwnValue
+}
+
+// OwnValue is what the values of an own key hold.
+type OwnValue int
+
+const (
+	// TestFolderPaths are folders of test code, as paths from the repository root.
+	TestFolderPaths OwnValue = iota + 1
+	// TestFileNames are file-name patterns of test code.
+	TestFileNames
+)
+
+// OwnValueLength is the longest value an own key may hold: the longest tracked folder path of sixteen repositories is
+// 109 characters, the longest file name 72 (2026-11-16).
+const OwnValueLength = 200
+
+var (
+	// ownFolder is a folder path from the root: segments of letters, digits and ._+- joined by "/".
+	// NOTE: a folder whose name holds another character (a space, a letter outside ASCII) cannot be declared. Upgrade:
+	// widen the set once a field case needs it.
+	ownFolder = regexp.MustCompile(`^[A-Za-z0-9._+-]+(/[A-Za-z0-9._+-]+)*$`)
+	// ownName is a file-name pattern of path.Match: letters, digits, ._+- and the wildcards * and ?.
+	// NOTE: a pattern matches a file name, never a path across folders. Upgrade: match a folder path segment by
+	// segment.
+	ownName = regexp.MustCompile(`^[A-Za-z0-9._+*?-]+$`)
+)
+
+// Form brings a value as written to the form an answer may print, and says whether it has that form: a folder loses
+// one leading "./" and one trailing "/", and "." or "./" is the root.
+func (v OwnValue) Form(value string) (formed string, usable bool) {
+	if value == "" || len(value) > OwnValueLength {
+		return "", false
+	}
+	if v.Pattern() {
+		if !ownName.MatchString(value) {
+			return "", false
+		}
+		return value, true
+	}
+	if value == "." || value == "./" {
+		return ".", true
+	}
+	formed = strings.TrimSuffix(strings.TrimPrefix(value, "./"), "/")
+	if !ownFolder.MatchString(formed) {
+		return "", false
+	}
+	for _, segment := range strings.Split(formed, "/") {
+		if segment == "." || segment == ".." {
+			return "", false
+		}
+	}
+	return formed, true
+}
+
+// Pattern says whether the values are file-name patterns rather than folders.
+func (v OwnValue) Pattern() bool { return v == TestFileNames }
 
 // LimitKey is a key of a repository's limits file: the limit it sets, as an answer names it, and what the value
 // counts ("" for a ratio, printed with one decimal).
@@ -234,7 +300,12 @@ func Default() Rules {
 			{File: "Package.swift", Format: SwiftDependencies, Lockfiles: []string{"Package.resolved"}},
 			{File: "vcpkg.json", Format: VcpkgDependencies},
 		},
-		LimitsFile: ".plimsoll.toml",
+		OwnFile:     ".plimsoll.toml",
+		LimitsTable: "limits",
+		OwnKeys: []OwnKey{
+			{Table: "layout", Key: "test_folders", Name: "test folders", Holds: TestFolderPaths},
+			{Table: "layout", Key: "test_files", Name: "test files", Holds: TestFileNames},
+		},
 		LimitKeys: []LimitKey{
 			{Key: "file_lines", Name: "file-size limit", Unit: "lines"},
 			{Key: "test_ratio", Name: "test-ratio limit"},

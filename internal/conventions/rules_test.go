@@ -230,3 +230,52 @@ func dynamicMatches(t *testing.T, l Language, code string) int {
 	}
 	return n
 }
+
+func TestOwnValuesAreBroughtToTheirForm(t *testing.T) {
+	long := strings.Repeat("a", 200)
+	cases := []struct {
+		kind   OwnValue
+		value  string
+		formed string // "" is not usable
+	}{
+		{TestFolderPaths, "checks", "checks"}, {TestFolderPaths, "checks/", "checks"},
+		{TestFolderPaths, "./tools/harness/", "tools/harness"}, {TestFolderPaths, ".", "."},
+		{TestFolderPaths, "./", "."}, {TestFolderPaths, "c++/gen_1.x-y", "c++/gen_1.x-y"},
+		{TestFolderPaths, long, long}, {TestFolderPaths, long + "a", ""},
+		{TestFolderPaths, "", ""}, {TestFolderPaths, "a//b", ""}, {TestFolderPaths, "a/./b", ""},
+		{TestFolderPaths, "../x", ""}, {TestFolderPaths, "a/../b", ""}, {TestFolderPaths, "/abs", ""},
+		{TestFolderPaths, "a b", ""}, {TestFolderPaths, "a`b", ""}, {TestFolderPaths, "tests/**", ""},
+		{TestFolderPaths, "$(x)", ""}, {TestFolderPaths, `a\b`, ""}, {TestFolderPaths, "café", ""},
+		{TestFileNames, "*_spec.rb", "*_spec.rb"}, {TestFileNames, "*IT.java", "*IT.java"},
+		{TestFileNames, "test-?.js", "test-?.js"}, {TestFileNames, "a/b", ""},
+		{TestFileNames, "[ab].go", ""}, {TestFileNames, "x y", ""}, {TestFileNames, "", ""},
+		{TestFileNames, long + "a", ""},
+	}
+	for _, c := range cases {
+		if formed, usable := c.kind.Form(c.value); formed != c.formed || usable != (c.formed != "") {
+			t.Errorf("%v.Form(%q) = %q, %v; want %q, %v", c.kind, c.value, formed, usable, c.formed, c.formed != "")
+		}
+	}
+	rules := Default()
+	want := []OwnKey{
+		{Table: "layout", Key: "test_folders", Name: "test folders", Holds: TestFolderPaths},
+		{Table: "layout", Key: "test_files", Name: "test files", Holds: TestFileNames},
+	}
+	if rules.OwnFile != ".plimsoll.toml" || rules.LimitsTable != "limits" || !slices.Equal(rules.OwnKeys, want) || len(rules.TestNames) != 0 {
+		t.Errorf("Default() own file %q, table %q, keys %+v, test names %q; want .plimsoll.toml, limits, %+v and none",
+			rules.OwnFile, rules.LimitsTable, rules.OwnKeys, rules.TestNames, want)
+	}
+	if !TestFileNames.Pattern() || TestFolderPaths.Pattern() {
+		t.Errorf("Pattern() = %v for test files, %v for test folders; want true and false", TestFileNames.Pattern(), TestFolderPaths.Pattern())
+	}
+	seen := map[string]bool{}
+	for _, k := range rules.LimitKeys {
+		seen[k.Key] = true
+	}
+	for _, k := range rules.OwnKeys {
+		if seen[k.Key] {
+			t.Errorf("key %q names both a limit and a declaration", k.Key)
+		}
+		seen[k.Key] = true
+	}
+}
