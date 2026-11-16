@@ -871,13 +871,23 @@ func TestBuildFollowsIncludesToFiles(t *testing.T) {
 }
 
 func TestBuildReadsImportsAroundASyntaxError(t *testing.T) {
-	s := snapshot.Build(snapshottest.Files(nil, map[string]string{
-		"go.mod":  "module example.com/m\n",
-		"a/a.go":  "package a\n",
-		"b/b.go":  "package b\n",
+	// An unfinished edit is read up to its error and named, since an import after it may be missed; a file the change
+	// did not touch loses the same imports on both sides and is not named.
+	same := "import pkg.b\nx = f(\n"
+	base := map[string]string{"pkg/__init__.py": "", "pkg/b.py": "", "pkg/c.py": "", "pkg/same.py": same}
+	now := map[string]string{
+		"pkg/__init__.py": "", "pkg/b.py": "", "pkg/c.py": "", "pkg/same.py": same,
+		"pkg/a.py": "import pkg.b\n\nCONFIG = dict(\n    port=1,\n\ndef main():\n    from pkg import c\n    return c\n",
+		"go.mod":   "module example.com/m\n", "a/a.go": "package a\n", "b/b.go": "package b\n",
 		"main.go": "package main\n\nimport \"example.com/m/a\"\n\nfunc f( {\n\nimport \"example.com/m/b\"\n",
-	}), conventions.Default(), snapshottest.Readings(t))
-	if !slices.ContainsFunc(s.Now.Links.List, func(l snapshot.Link) bool { return l.From == "main.go" && l.To == "a" }) || len(s.Unparsed) != 0 {
-		t.Errorf("Build(an unfinished edit) = links %+v, unparsed %v; want main.go -> a and nothing unparsed", s.Now.Links.List, s.Unparsed)
+	}
+	s := snapshot.Build(snapshottest.Files(base, now), conventions.Default(), snapshottest.Readings(t))
+	for _, want := range []snapshot.Link{link("main.go", 3, "a"), link("pkg/a.py", 1, "pkg/b.py")} {
+		if !slices.ContainsFunc(s.Now.Links.List, func(l snapshot.Link) bool { return l.From == want.From && l.Line == want.Line && l.To == want.To }) {
+			t.Errorf("Build(an unfinished edit): Links = %+v, want %s:%d -> %s", s.Now.Links.List, want.From, want.Line, want.To)
+		}
+	}
+	if want := []string{"main.go", "pkg/a.py"}; !slices.Equal(s.SyntaxErrors, want) || len(s.Unparsed) != 0 {
+		t.Errorf("Build(an unfinished edit) = syntax errors %q, unparsed %q; want %q and nothing unparsed", s.SyntaxErrors, s.Unparsed, want)
 	}
 }

@@ -137,6 +137,14 @@ func repositoryNotAnalysed(s snapshot.Snapshot) []NotAnalysed {
 			"(a file may need at most %d MiB to parse): %s", Plural(len(s.Unparsed), "file"), snapshot.ParserCapMiB,
 			strings.Join(Quoted(s.Unparsed), ", ")))
 	}
+	if len(s.SyntaxErrors) > 0 {
+		verb := "hold"
+		if len(s.SyntaxErrors) == 1 {
+			verb = "holds"
+		}
+		add(fmt.Sprintf("%s %s a syntax error, so an import after the error may be missed: %s",
+			Plural(len(s.SyntaxErrors), "changed file"), verb, strings.Join(Quoted(s.SyntaxErrors), ", ")))
+	}
 	return entries
 }
 

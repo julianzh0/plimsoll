@@ -80,7 +80,23 @@ func Build(source Source, rules conventions.Rules, readings *Readings) Snapshot 
 		Unreadable:     slices.Compact(unreadable),
 		Missing:        source.Missing,
 		Unparsed:       unparsed(nowReadings, beforeReadings),
+		SyntaxErrors:   syntaxErrors(changed, nowReadings, beforeReadings),
 	}
+}
+
+// syntaxErrors are the changed code files whose reading on either side met a syntax error, sorted, each once. A file
+// the change did not touch loses the same statements on both sides, so its links compare alike and it is not named.
+func syntaxErrors(changed map[string]bool, sides ...map[string]reading) []string {
+	var found []string
+	for _, readings := range sides {
+		for path, r := range readings {
+			if r.syntaxError && changed[path] {
+				found = append(found, path)
+			}
+		}
+	}
+	slices.Sort(found)
+	return slices.Compact(found)
 }
 
 // unparsed are the code files, on either side, that the parser could not read, sorted, each once.

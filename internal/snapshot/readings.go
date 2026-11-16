@@ -84,6 +84,11 @@ func (rs *Readings) side(rules conventions.Rules, content map[string][]byte, fil
 	return found
 }
 
+// syntaxErrorPattern is added to every entry's query: a node the grammar could not fit into the language, as an
+// unfinished edit leaves. The grammar recovers after it, but a statement next to it may be lost, and nothing else
+// says so.
+const syntaxErrorPattern = "\n(ERROR) @error\n"
+
 // read makes the reading of one file: by the entry's grammar when it names one, and every fact for which the entry
 // has a pattern by that pattern (no entry reads one fact both ways), over the file with its comments and strings
 // blanked when it is parsed. A file the parser cannot read is unread; its patterns still read it.
@@ -94,7 +99,7 @@ func (rs *Readings) read(language conventions.Language, grammar string, content 
 	if grammar == "" {
 		return readByText(language, content), true
 	}
-	result, err := rs.parser.Read(grammar, language.Query, content)
+	result, err := rs.parser.Read(grammar, language.Query+syntaxErrorPattern, content)
 	if err != nil {
 		r = reading{unread: true}
 		readPatterns(language, content, &r)

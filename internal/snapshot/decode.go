@@ -59,6 +59,8 @@ func decode(language conventions.Language, result parse.Result, content []byte) 
 				texts = append(texts, c)
 			case "blank":
 				blanks = append(blanks, c)
+			case "error":
+				r.syntaxError = true
 			}
 		}
 		if moduleName.End > 0 {

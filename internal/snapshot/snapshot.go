@@ -36,6 +36,7 @@ type Snapshot struct {
 	Unreadable     []string
 	Missing        []string // paths whose content a partial clone lacks; their lines and history are not counted
 	Unparsed       []string // code files, on either side, that the parser could not read; sorted, each once
+	SyntaxErrors   []string // changed code files whose reading on either side met a syntax error; sorted, each once
 	Named          []string // the files the caller named, cleaned, sorted, each once; nil when none
 }
 
