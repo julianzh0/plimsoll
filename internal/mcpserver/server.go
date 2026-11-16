@@ -14,6 +14,13 @@ import (
 	"github.com/juzhxng/plimsoll/internal/answer"
 )
 
+// concurrentAnswers is how many questions are answered at the same time; the others wait for a free slot. One answer
+// on nlohmann/json (299,000 code lines, 4,686 commits) peaks at 781 MB, plimsoll and its git processes together, nearly
+// all of it git reading the history (measured 2026-11-16); two keep the worst case near 1.6 GB on any machine, and let a
+// client that asks two things together be answered without waiting. Without a limit, 634 questions sent at once
+// exhausted 32 GB.
+const concurrentAnswers = 2
+
 // listTTL is how long, in milliseconds, a client may keep the tool list: it changes only with a new version.
 const listTTL = 300000
 
@@ -31,8 +38,9 @@ func (s Server) Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 		Capabilities: &mcp.ServerCapabilities{Tools: &mcp.ToolCapabilities{}},
 		SetCacheable: func(_ context.Context, _ mcp.Request, c *mcp.Cacheable) { c.TTLMs = listTTL },
 	})
+	slots := make(chan struct{}, concurrentAnswers)
 	for _, q := range questions() {
-		server.AddTool(toolOf(q), s.handler(q))
+		server.AddTool(toolOf(q), s.handler(q, slots))
 	}
 	err := server.Run(ctx, &mcp.IOTransport{Reader: io.NopCloser(in), Writer: nopCloser{out}})
 	if err == nil || ctx.Err() != nil || errors.Is(err, io.EOF) || errors.Is(err, mcp.ErrConnectionClosed) {
@@ -45,9 +53,16 @@ type nopCloser struct{ io.Writer }
 
 func (nopCloser) Close() error { return nil }
 
-// handler answers one tool call; a refused question is a tool result, never a protocol error.
-func (s Server) handler(q question) mcp.ToolHandler {
+// handler answers one tool call when one of the slots is free; a refused question is a tool result, never a protocol
+// error.
+func (s Server) handler(q question, slots chan struct{}) mcp.ToolHandler {
 	return func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		select {
+		case slots <- struct{}{}:
+			defer func() { <-slots }()
+		case <-ctx.Done():
+			return refusal(&answer.Refusal{Sentence: "The question ended before plimsoll could start it."}), nil
+		}
 		given := map[string]json.RawMessage{}
 		if len(req.Params.Arguments) > 0 {
 			if err := json.Unmarshal(req.Params.Arguments, &given); err != nil {

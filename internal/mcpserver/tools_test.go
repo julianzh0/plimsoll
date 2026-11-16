@@ -219,7 +219,7 @@ func TestReportTakesAnOptionalListOfFiles(t *testing.T) {
 	call := func(tool, arguments string) *mcp.CallToolResult {
 		index := slices.IndexFunc(questions(), func(q question) bool { return q.name == tool })
 		request := &mcp.CallToolRequest{Params: &mcp.CallToolParamsRaw{Name: tool, Arguments: json.RawMessage(arguments)}}
-		result, err := s.handler(questions()[index])(context.Background(), request)
+		result, err := s.handler(questions()[index], make(chan struct{}, concurrentAnswers))(context.Background(), request)
 		if err != nil {
 			t.Fatalf("call(%s, %s) = %v", tool, arguments, err)
 		}
