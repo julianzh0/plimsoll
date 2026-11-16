@@ -137,16 +137,10 @@ func TestEveryLanguageNamesItsDynamicRead(t *testing.T) {
 			[]string{`env::var("X")`, `std::env::var_os( "X")`, "env::vars()", `env!("X")`, `option_env!("X")`}},
 		"csharp": {[]string{"Environment.GetEnvironmentVariable(name)", `Environment.GetEnvironmentVariable(prefix + "X")`, "configuration[key]", "_config[k]", `builder.Configuration[$"Db:{name}"]`},
 			[]string{`Environment.GetEnvironmentVariable("X")`, `Environment.GetEnvironmentVariable( "X")`, "Environment.GetEnvironmentVariables()", `configuration["X"]`, "config[0]", "reconfiguration[key]"}},
-	}
-	for name, c := range map[string]struct{ matches, misses []string }{
+		"swift": {[]string{"ProcessInfo.processInfo.environment[key]", `ProcessInfo.processInfo.environment[prefix + "X"]`},
+			[]string{`ProcessInfo.processInfo.environment["X"]`, `ProcessInfo.processInfo.environment[ "X"]`, "ProcessInfo.processInfo.environment.keys"}},
 		"c":   {[]string{"getenv(name)", "getenv( key )", "secure_getenv(buf)"}, []string{`getenv("X")`, `getenv( "X")`, "setenv(name, value, 1)", "getenv_r"}},
 		"cpp": {[]string{"std::getenv(name.c_str())", "getenv(key)", "::getenv(k)"}, []string{`std::getenv("X")`, `getenv( "X")`, "environ[i]"}},
-	} {
-		cases[name] = c
-	}
-	cases["swift"] = struct{ matches, misses []string }{
-		[]string{"ProcessInfo.processInfo.environment[key]", `ProcessInfo.processInfo.environment[prefix + "X"]`},
-		[]string{`ProcessInfo.processInfo.environment["X"]`, `ProcessInfo.processInfo.environment[ "X"]`, "ProcessInfo.processInfo.environment.keys"},
 	}
 	for _, language := range Default().Languages {
 		if language.DynamicRead == nil {
