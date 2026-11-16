@@ -138,8 +138,8 @@ func TestEveryLanguageNamesItsDynamicRead(t *testing.T) {
 			[]string{`os.environ["X"]`, `os.getenv('X')`, `os.environ.get("X", "d")`}},
 		"dart": {[]string{"Platform.environment[name]", "io.Platform.environment[name]", "String.fromEnvironment(key)", "bool.fromEnvironment(flag)", "dotenv.env[k]"},
 			[]string{"Platform.environment['X']", `String.fromEnvironment("X")`, "dotenv.env['X']", "const int.fromEnvironment('N')"}},
-		"java":   {[]string{"System.getenv(name)", `System.getenv(prefix + "X")`}, []string{`System.getenv("X")`, `System.getenv( "X")`, "System.getenv()"}},
-		"kotlin": {[]string{"System.getenv(name)", `System.getenv(prefix + "X")`}, []string{`System.getenv("X")`, `System.getenv( "X")`, "System.getenv()"}},
+		"java":   {[]string{"System.getenv(name)", `System.getenv(prefix + "X")`, "java.lang.System.getenv(name)"}, []string{`System.getenv("X")`, `System.getenv( "X")`, "System.getenv()"}},
+		"kotlin": {[]string{"System.getenv(name)", `System.getenv(prefix + "X")`, "java.lang.System.getenv(name)"}, []string{`System.getenv("X")`, `System.getenv( "X")`, "System.getenv()"}},
 		"rust": {[]string{"env::var(name)", "std::env::var_os(key)", `env::var(&format!("A_{x}"))`, "env::var(\n    name,\n)"},
 			[]string{`env::var("X")`, `std::env::var_os( "X")`, "env::vars()", `env!("X")`, `option_env!("X")`}},
 		"csharp": {[]string{"Environment.GetEnvironmentVariable(name)", `Environment.GetEnvironmentVariable(prefix + "X")`, "configuration[key]", "_config[k]", `builder.Configuration[$"Db:{name}"]`},
@@ -150,7 +150,7 @@ func TestEveryLanguageNamesItsDynamicRead(t *testing.T) {
 		"cpp": {[]string{"std::getenv(name.c_str())", "getenv(key)", "::getenv(k)"}, []string{`std::getenv("X")`, `getenv( "X")`, "environ[i]"}},
 	}
 	// wraps make a row valid code for an entry that reads by its grammar.
-	wraps := map[string]string{"go": "package a\nfunc f() { _ = %s }\n", "typescript": "const v = %s;\n", "python": "x = %s\n", "dart": "var v = %s;\n"}
+	wraps := map[string]string{"go": "package a\nfunc f() { _ = %s }\n", "typescript": "const v = %s;\n", "python": "x = %s\n", "dart": "var v = %s;\n", "java": "class A { void f() { var v = %s; } }\n", "kotlin": "val v = %s\n"}
 	for _, language := range Default().Languages {
 		if language.Grammar != "" {
 			for i, lines := range [][]string{cases[language.Name].matches, cases[language.Name].misses} {

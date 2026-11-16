@@ -18,7 +18,6 @@ import (
 // dependencies.
 // NOTE: a file under a test source set reaches the test source sets of every module. Upgrade: only its own module's,
 // once testFixtures can be told apart.
-// NOTE: an import line inside a multi-line string is read as an import. Upgrade: stop at the first declaration.
 func sourcePackages(rules conventions.Rules, language conventions.Language, content map[string][]byte, tracked map[string]bool) prefix {
 	imports := language.Imports
 	extensions := slices.Concat(language.Extensions, imports.FolderAlso)
