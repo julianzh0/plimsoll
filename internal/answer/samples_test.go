@@ -143,6 +143,11 @@ func detectorSamples() []snapshot.Source {
 			"src/Acme/Core/Guard.cs": "namespace Acme.Core;\n", "src/Acme/Billing/Invoice.cs": "using Acme.Core;\n\nnamespace Acme.Billing;\n",
 		}),
 		snapshottest.Files(nil, map[string]string{"src/A.cs": "using Acme.B;\n", "src/B.cs": "class B {}\n"}),
+		// c and cpp: an include found in a folder that a CMake file names, and a source file that no file includes
+		snapshottest.Files(nil, map[string]string{
+			"CMakeLists.txt": "project(app)\ninclude_directories(lib)\n", "lib/kit.h": "#pragma once\n",
+			"src/main.cc": "#include \"kit.h\"\n", "src/tool.c": "#include <kit.h>\n",
+		}),
 		// rust: a crate whose modules use each other, and a product file whose test code a change grows
 		snapshottest.Files(map[string]string{
 			"src/lib.rs": "mod a;\npub struct Root;\n",
@@ -191,7 +196,8 @@ func TestTheSamplesShowEveryRuleAndChange(t *testing.T) {
 		"a crate's modules use each other", "not seen: a path written in code",
 		"not seen: use of the same namespace", "declared by its files",
 		"not seen: use between the files of one module", "no `Package.swift` at the root",
-		"This change raised the file-size limit from 1,000 to 1,500", "limits set by `.plimsoll.toml`", "is no limit plimsoll knows",
+		"This change raised the file-size limit from 1,000 to 1,500",
+		"not seen: an include reached only through an include folder", "`*.cc`, `*.cpp` and `*.cxx` run without an import of them", "limits set by `.plimsoll.toml`", "is no limit plimsoll knows",
 	} {
 		if !strings.Contains(texts.String(), phrase) {
 			t.Errorf("no sample text holds %q", phrase)
