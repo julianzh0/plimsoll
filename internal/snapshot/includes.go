@@ -81,13 +81,14 @@ func includeFolders(imports conventions.Imports, content map[string][]byte, trac
 	}
 	return prefix{state: PrefixRead, own: func(from, spec string, _ []string) ([]string, bool) {
 		name, angled := strings.CutPrefix(spec, "<")
-		name = strings.TrimSuffix(name, ">")
+		name = strings.ReplaceAll(strings.TrimSuffix(name, ">"), `\`, "/") // a Windows separator names the same path
 		beside := path.Join(path.Dir(from), name)
 		if !angled && tracked[beside] {
 			return []string{beside}, false
 		}
 		var found []string
-		if written := path.Clean(name); leaves(written) {
+		written := path.Clean(name)
+		if leaves(written) {
 			for _, folder := range folders {
 				if file := path.Join(folder, name); tracked[file] {
 					found = append(found, file)
@@ -104,7 +105,6 @@ func includeFolders(imports conventions.Imports, content map[string][]byte, trac
 		if len(found) > 0 || angled {
 			return found, false
 		}
-		written := path.Clean(name)
 		for strings.HasPrefix(written, "../") {
 			written = written[len("../"):]
 		}

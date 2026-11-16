@@ -13,10 +13,11 @@ import (
 // The two shared patterns are compiled once; everything else is built by Default. Each language's own patterns live
 // in its file: typescript.go, golang.go, python.go, dart.go, java.go, kotlin.go, rust.go,
 // csharp.go, swift.go, c.go, cpp.go. A test is defined by a Go test function or an XCTest method, a Python test
-// function or test class, a JUnit-family annotation, a .NET test attribute, a Rust attribute whose last name is test, a test-runner call, or a test macro of GoogleTest, Catch2 or doctest (TEST,
-// TEST_F, TEST_CASE, SCENARIO) (test, testWidgets, describe, it).
+// function or test class, a JUnit-family annotation, a .NET test attribute, a Rust attribute whose last name is test,
+// a test-runner call (test, testWidgets, describe, it), or a test macro of GoogleTest, Catch2 or doctest (TEST, TEST_F,
+// TEST_CASE, SCENARIO, and their template forms).
 var (
-	testDefinition = regexp.MustCompile(`(?m)^[ \t]*(?:export[ \t]+)?(?:async[ \t]+)?(?:func[ \t]+(?:(?:Test|Benchmark|Fuzz|Example)\w*[ \t]*\(|test\w*[ \t]*\([ \t]*\))|def[ \t]+test_\w*[ \t]*\(|class[ \t]+Test\w*[ \t]*(?:\([^)]*\))?[ \t]*:[ \t\r]*(?:#[^\n]*)?$|@(?:\w+\.)*(?:Test|ParameterizedTest|RepeatedTest|TestFactory|TestTemplate)\b|\[(?:\w+\.)*(?:Fact|Theory|Test|TestMethod|TestCase)(?:Attribute)?[ \t]*[\](,]|#\[(?:\w+::)*test[(\]]|(?:await[ \t]+)?(?:t\.)?(?:(?:test|testWidgets|describe)(?:\.\w+)*|it(?:\.(?:only|skip|each|todo|concurrent|failing|fails|skipIf|runIf|sequential|for))*)[ \t]*\(|(?:TEST(?:_[FP])?|TYPED_TEST(?:_P)?|TEST_CASE(?:_METHOD|_FIXTURE|_TEMPLATE)?|TEMPLATE_TEST_CASE|SCENARIO)[ \t]*\()`)
+	testDefinition = regexp.MustCompile(`(?m)^[ \t]*(?:export[ \t]+)?(?:async[ \t]+)?(?:func[ \t]+(?:(?:Test|Benchmark|Fuzz|Example)\w*[ \t]*\(|test\w*[ \t]*\([ \t]*\))|def[ \t]+test_\w*[ \t]*\(|class[ \t]+Test\w*[ \t]*(?:\([^)]*\))?[ \t]*:[ \t\r]*(?:#[^\n]*)?$|@(?:\w+\.)*(?:Test|ParameterizedTest|RepeatedTest|TestFactory|TestTemplate)\b|\[(?:\w+\.)*(?:Fact|Theory|Test|TestMethod|TestCase)(?:Attribute)?[ \t]*[\](,]|#\[(?:\w+::)*test[(\]]|(?:await[ \t]+)?(?:t\.)?(?:(?:test|testWidgets|describe)(?:\.\w+)*|it(?:\.(?:only|skip|each|todo|concurrent|failing|fails|skipIf|runIf|sequential|for))*)[ \t]*\(|(?:TEST(?:_[FP])?|TYPED_TEST(?:_P)?|TEST_CASE(?:_METHOD|_FIXTURE|_TEMPLATE)?|TEMPLATE_(?:PRODUCT_|LIST_)?TEST_CASE(?:_SIG)?|SCENARIO(?:_TEMPLATE)?)[ \t]*\()`)
 	generated      = regexp.MustCompile(`(?i)generated.*do not (?:edit|modify)|<auto-?generated`)
 )
 

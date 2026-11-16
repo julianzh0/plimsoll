@@ -24,12 +24,14 @@ type Reader struct {
 	histories map[string]*keptHistory // by top folder
 }
 
-// keptHistory is the history of one head commit: read once, and ready when read is closed.
+// keptHistory is the history of one head commit: read once, and ready when read is closed. cancelled is a read that
+// failed because the question that ran it was cancelled.
 type keptHistory struct {
-	head    string
-	read    chan struct{}
-	commits []snapshot.Commit
-	err     error
+	head      string
+	read      chan struct{}
+	commits   []snapshot.Commit
+	err       error
+	cancelled bool
 }
 
 // NewReader returns a reader that starts git with the given process environment.
@@ -96,35 +98,44 @@ func (r *Reader) Read(ctx context.Context, repository, base string, wants snapsh
 		return snapshot.Source{}, gitFailed(err)
 	}
 	source.Since = strings.Fields(string(since))
-	if source.Commits, err = r.history(run, top, source.Head, exclude); err != nil {
+	if source.Commits, err = r.history(ctx, run, top, source.Head, exclude); err != nil {
 		return snapshot.Source{}, err
 	}
 	return source, nil
 }
 
 // history returns the whole non-merge history, newest first, read once per head commit, without the excluded paths. A
-// question that comes while that read runs waits for it. A read that fails is not kept.
-func (r *Reader) history(run runner, top, head string, exclude []string) ([]snapshot.Commit, error) {
-	r.mu.Lock()
-	kept, found := r.histories[top]
-	if found && kept.head == head {
-		r.mu.Unlock()
-		<-kept.read
-		return kept.commits, kept.err
-	}
-	kept = &keptHistory{head: head, read: make(chan struct{})}
-	r.histories[top] = kept
-	r.mu.Unlock()
-	kept.commits, kept.err = readHistory(run, exclude)
-	close(kept.read)
-	if kept.err != nil {
+// question that comes while that read runs waits for it, or until it is cancelled itself. A failed read is not kept;
+// when it failed only because the question that ran it was cancelled, a waiting question reads it again.
+func (r *Reader) history(ctx context.Context, run runner, top, head string, exclude []string) ([]snapshot.Commit, error) {
+	for {
 		r.mu.Lock()
-		if r.histories[top] == kept {
-			delete(r.histories, top)
+		kept, found := r.histories[top]
+		if found && kept.head == head {
+			r.mu.Unlock()
+			select {
+			case <-kept.read:
+			case <-ctx.Done():
+				return nil, gitFailed(ctx.Err())
+			}
+			if kept.cancelled && ctx.Err() == nil {
+				continue
+			}
+			return kept.commits, kept.err
+		}
+		kept = &keptHistory{head: head, read: make(chan struct{})}
+		r.histories[top] = kept
+		r.mu.Unlock()
+		commits, err := readHistory(run, exclude)
+		r.mu.Lock()
+		kept.commits, kept.err, kept.cancelled = commits, err, err != nil && ctx.Err() != nil
+		if err != nil && r.histories[top] == kept {
+			delete(r.histories, top) // before the waiters wake, so one that reads again starts a new read
 		}
 		r.mu.Unlock()
+		close(kept.read)
+		return commits, err
 	}
-	return kept.commits, kept.err
 }
 
 // readHistory runs git for the whole non-merge history, without the excluded paths.

@@ -886,6 +886,11 @@ func TestBuildFollowsIncludesToFiles(t *testing.T) {
 	bare := includeTree()
 	delete(bare, "CMakeLists.txt")
 	delete(bare, "tools/CMakeLists.txt")
+	// A path written with Windows separators names the same file.
+	windows := linksOf(map[string]string{"src/a.c": "#include \"sub\\x.h\"\n", "src/sub/x.h": "#pragma once\n"})
+	if !reflect.DeepEqual(windows.List, []snapshot.Link{link("src/a.c", 1, "src/sub/x.h")}) {
+		t.Errorf("an include with a backslash: List = %+v, want src/a.c to src/sub/x.h", windows.List)
+	}
 	if got := linksOf(bare).Languages; !reflect.DeepEqual(got, []snapshot.LanguageImports{c(1, 1, 0, 0, 2), cpp(5, 3, 1, 1, 2)}) {
 		t.Errorf("no CMake file: Languages = %+v, want %+v", got, []snapshot.LanguageImports{c(1, 1, 0, 0, 2), cpp(5, 3, 1, 1, 2)})
 	}

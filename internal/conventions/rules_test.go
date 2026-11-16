@@ -19,7 +19,8 @@ func TestTestDefinitionMatchesOnlyStatementStarts(t *testing.T) {
 		"    func testCount() {", "func testThrows() throws {",
 		`TEST(Store, Adds) {`, `TEST_F(StoreTest, Adds) {`, `  TEST_P(Suite, Works) {`, `TYPED_TEST(Suite, Works) {`, `TYPED_TEST_P(Suite, Works) {`,
 		`TEST_CASE("adds a note") {`, `TEST_CASE("adds", "[store]")`, `TEST_CASE_TEMPLATE("x", T, int, long) {`, `TEST_CASE_METHOD(Fixture, "x") {`,
-		`TEST_CASE_FIXTURE(Fixture, "x") {`, `TEMPLATE_TEST_CASE("x", "[t]", int) {`, `SCENARIO("a note is added") {`,
+		`TEST_CASE_FIXTURE(Fixture, "x") {`, `TEMPLATE_TEST_CASE("x", "[t]", int) {`, `TEMPLATE_TEST_CASE_SIG("x", "[t]", ((int V), V), 1) {`,
+		`TEMPLATE_PRODUCT_TEST_CASE("x", "", std::vector, int) {`, `TEMPLATE_LIST_TEST_CASE("x", "", Types) {`, `SCENARIO_TEMPLATE("x", T, int) {`, `SCENARIO("a note is added") {`,
 		`class TestStore(Base):  # the store`, "class TestStore(\n    Base,\n):", `it.each(rows)("%s", (row) => {`, `it.only("x", () => {`,
 	}
 	misses := []string{
