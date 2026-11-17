@@ -220,9 +220,11 @@ still run, interpreted and about 80 times slower.
 - **Functions:** functions and, in C++, lambdas; a `goto` counts 1. When a file holds a function the grammar cannot
   read, a copy with three kinds of macro rewritten is read for those functions only, with every line kept: an
   attribute-like name where a declaration starts (`FMT_CONSTEXPR`) and an annotation (`_In_`, `_In_reads_(n)`,
-  `__declspec(...)`) are blanked, and a loop macro (`LIST_FOREACH(...)`) is read as `while`. A function still
-  unreadable, as behind `#ifdef` branches that split its braces or a framework's own macros, is counted as holding a
-  syntax error and is not measured.
+  `__declspec(...)`) are blanked, a loop macro (`LIST_FOREACH(...)`) is read as `while`, and the macros of Qt
+  (`emit`, `Q_D`, `Q_OBJECT`, `foreach`, signal and slot sections) and GLib (`g_autofree`, `g_autoptr`,
+  `G_DEFINE_TYPE`, `G_GNUC_*`) are read as what they expand to. A function still unreadable, as behind `#ifdef`
+  branches that split its braces or another framework's macros, is counted as holding a syntax error and is not
+  measured.
 
 ### C#
 
