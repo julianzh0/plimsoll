@@ -72,7 +72,7 @@ func TestCompareLinesFindsWhatWasAddedAndRemoved(t *testing.T) {
 	b.WriteString("last\n")
 	past := compareLines(a.Bytes(), b.Bytes())
 	if !slices.Equal(past.removed, []LineRange{{2, 7999}}) || !slices.Equal(past.added, []LineRange{{2, 7999}}) {
-		t.Errorf("compareLines(a pair past %d cells) = added %v, removed %v; want [{2 7999}] both", compareCells, past.added, past.removed)
+		t.Errorf("compareLines(a pair past %d steps) = added %v, removed %v; want [{2 7999}] both", compareSteps, past.added, past.removed)
 	}
 }
 

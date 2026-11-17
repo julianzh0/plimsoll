@@ -173,8 +173,13 @@ func functionsNotAnalysed(fs snapshot.Functions) []string {
 		found = append(found, fmt.Sprintf("the parser could not read the functions of %s: %s", answer.Plural(len(fs.Unread), "changed file"), answer.QuotedList(fs.Unread)))
 	}
 	if fs.Uncompared > 0 {
-		found = append(found, fmt.Sprintf("%s over a function limit was not compared with existing code (at most %d per measure are), so it is not listed",
-			answer.Plural(fs.Uncompared, "function"), fs.Checks))
+		pronoun := "they are"
+		if fs.Uncompared == 1 {
+			pronoun = "it is"
+		}
+		found = append(found, fmt.Sprintf("%s compared with existing code (at most %d per measure are), so %s not listed",
+			answer.Agree(fs.Uncompared, "function over a function limit was not", "functions over a function limit were not"), fs.Checks,
+			pronoun))
 	}
 	return found
 }

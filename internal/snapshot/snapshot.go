@@ -298,6 +298,7 @@ func (r LeftOutReason) String() string {
 // LeftOutFunction is a function that crossed a limit and is left out as code that existed before.
 type LeftOutFunction struct {
 	Path, Name string
+	Occurrence int // its place among the functions of that name in the file, from 1
 	Reason     LeftOutReason
 	Source     string // for Copied, the file at the base that holds it
 }

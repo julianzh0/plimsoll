@@ -1,6 +1,7 @@
 package snapshot
 
 import (
+	"encoding/binary"
 	"hash/fnv"
 	"regexp"
 	"slices"
@@ -122,7 +123,7 @@ func blockKey(statements []statementRun) uint64 {
 	h := fnv.New64a()
 	for _, st := range statements {
 		writeUint64(h, st.hash)
-		writeUint64(h, uint64(st.tokens))
+		_, _ = h.Write(binary.AppendVarint(nil, int64(st.tokens))) // a hash's Write never fails
 	}
 	return h.Sum64()
 }

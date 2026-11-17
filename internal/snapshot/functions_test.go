@@ -3,6 +3,7 @@ package snapshot_test
 import (
 	"cmp"
 	"fmt"
+	"io/fs"
 	"maps"
 	"os"
 	"slices"
@@ -125,7 +126,7 @@ func TestBuildMeasuresFunctionsInEveryLanguage(t *testing.T) {
 		"src/O.cs":    {"M c=0 n=0", "operator c=0 n=0"},
 	}
 	for path, wanted := range want {
-		content, err := os.ReadFile("testdata/functions/now/" + path)
+		content, err := fs.ReadFile(os.DirFS("testdata/functions/now"), path)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -293,6 +294,11 @@ func TestBuildCountsFunctionsItCannotMeasure(t *testing.T) {
 	if len(got.Complex) != 0 || len(got.Deeper) != 0 || got.Broken != 1 {
 		t.Errorf("Build(a base version with a syntax error).Functions = %+v, want nothing listed and 1 broken", got)
 	}
+	renamedBroken := functionsIn(t, conventions.Default(), map[string]string{"src/a.ts": strings.Replace(snapshottest.Function("oldName", 7, 0), "  return a;", "  const = 1 +;\n  return a;", 1)},
+		map[string]string{"src/a.ts": snapshottest.Function("newName", 7, 0)})
+	if len(renamedBroken.Complex) != 0 || renamedBroken.Broken != 1 {
+		t.Errorf("Build(a renamed function whose base version had a syntax error).Functions = %+v, want nothing listed and 1 broken", renamedBroken)
+	}
 	small := functionsIn(t, conventions.Default(), map[string]string{"src/a.ts": "function a() { const = 1 +; }\n"}, map[string]string{"src/a.ts": "function a() { return 2; }\n"})
 	if small.Broken != 0 || small.Measured != 1 {
 		t.Errorf("Build(a small function whose base version had a syntax error).Functions = %+v, want 0 broken, 1 measured: it could never cross", small)
@@ -366,6 +372,7 @@ func TestBuildLeavesOutFilesFromAnotherProject(t *testing.T) {
 		return all
 	}
 	url := "// See https://github.com/acme/widgets for the format\n"
+	apache := "Copyright 2020 Acme Corp.\n\nSubject to the terms of this License, each Contributor grants a perpetual, worldwide, non-exclusive, no-charge, royalty-free, irrevocable copyright license\n"
 	notes := strings.Repeat("// note\n", 40)
 	cases := []struct {
 		name      string
@@ -383,6 +390,9 @@ func TestBuildLeavesOutFilesFromAnotherProject(t *testing.T) {
 		{"a header past the first 40 lines", nil, map[string]string{"src/x.ts": notes + h + f}, true},
 		{"a vendor folder with its own licence", nil, map[string]string{"src/external/zlib/inflate.ts": f, "src/external/LICENSE": "zlib\n"}, false},
 		{"a vendor folder without a licence", nil, map[string]string{"src/external/zlib/inflate.ts": f}, true},
+		{"a vendor folder whose project holds its licence", nil, map[string]string{"src/external/zlib/inflate.ts": f, "src/external/zlib/LICENSE": "zlib\n"}, false},
+		{"a licence's own wording is no holder", map[string]string{"LICENSE": apache},
+			map[string]string{"LICENSE": apache, "src/x.ts": "// Copyright (C) 2008 Free Software Foundation, Inc.\n" + f}, false},
 		{"a file that was there", map[string]string{"src/x.ts": h + snapshottest.Function("grow", 5, 4)},
 			map[string]string{"src/x.ts": h + snapshottest.Function("grow", 6, 6)}, true},
 	}
@@ -425,7 +435,7 @@ func TestBuildLeavesOutCopiesOfCodeAtTheBase(t *testing.T) {
 		names[fmt.Sprintf("src/m%02d.ts", i)] = "export const seven = 1;\n"
 	}
 	var ten, tenAndFresh strings.Builder
-	for i := 1; i <= 10; i++ {
+	for i := 1; i <= 20; i++ {
 		ten.WriteString(fn(fmt.Sprintf("c%02d", i), 8, 0))
 	}
 	tenAndFresh.WriteString(ten.String() + fn("fresh", 7, 0))
@@ -472,9 +482,10 @@ func TestBuildLeavesOutCopiesOfCodeAtTheBase(t *testing.T) {
 		t.Errorf("Build(the name in 25 nearer files).Functions = %+v, want seven listed after 20 files compared", far)
 	}
 	many := functionsIn(t, conventions.Default(), map[string]string{"src/lib.ts": ten.String()}, map[string]string{"src/lib.ts": ten.String(), "src/new.ts": tenAndFresh.String()})
-	if len(many.Complex) != 0 || len(many.LeftOut) != 10 || many.Uncompared != 1 || many.ComplexCrossed != 1 || !slices.Equal(shown(many.Deeper), []string{"src/new.ts fresh c=28 n=7@198"}) {
-		t.Errorf("Build(ten copies before one of its own).Functions = complex %q, %d left out, uncompared %d, crossed %d, deeper %q; want none, 10, 1, 1, fresh",
-			shown(many.Complex), len(many.LeftOut), many.Uncompared, many.ComplexCrossed, shown(many.Deeper))
+	// twenty copies spend the ten checks of each measure; fresh, ranked last in both, is never compared
+	if len(many.Complex) != 0 || len(many.LeftOut) != 20 || many.Uncompared != 1 || many.ComplexCrossed != 1 || many.DeeperCrossed != 1 || len(many.Deeper) != 0 {
+		t.Errorf("Build(twenty copies before one of its own).Functions = complex %q, %d left out, uncompared %d, crossed %d and %d, deeper %q; want none, 20, 1, 1, 1, none",
+			shown(many.Complex), len(many.LeftOut), many.Uncompared, many.ComplexCrossed, many.DeeperCrossed, shown(many.Deeper))
 	}
 }
 

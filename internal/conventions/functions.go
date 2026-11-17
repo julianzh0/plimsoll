@@ -85,4 +85,4 @@ var pythonTokens = regexp.MustCompile(`(?P<ws>\s+)|(?P<com>#[^\n]*)|(?P<lit>(?i:
 
 // NOTE: Rust raw strings are matched with up to three `#`, since Go's regexp has no back-reference; a raw string with
 // four or more is split into ordinary tokens. Upgrade: a small scanner for Rust literals.
-var rustLiterals = `b?r###"[\s\S]*?"###|b?r##"[\s\S]*?"##|b?r#"[\s\S]*?"#|b?r"[\s\S]*?"|b?` + doubleQuoted + `|b?` + character
+const rustLiterals = `b?r###"[\s\S]*?"###|b?r##"[\s\S]*?"##|b?r#"[\s\S]*?"#|b?r"[\s\S]*?"|b?` + doubleQuoted + `|b?` + character

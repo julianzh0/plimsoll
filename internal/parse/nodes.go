@@ -57,8 +57,9 @@ func (p *Parser) Nodes(grammar string, content []byte) (Tree, error) {
 // kindTable is a grammar's kind names, with errorKind last, and for each symbol the index of the first kind of its name:
 // a grammar may give several symbols one name.
 type kindTable struct {
-	names []string
-	index []uint16
+	names      []string
+	index      []uint16
+	errorIndex uint16 // the index of errorKind's name
 }
 
 // walk parses content, copies the shim's node records and releases them in the module.
@@ -89,7 +90,7 @@ func (in *instance) walk(content []byte, kinds kindTable) ([]Node, error) {
 		var kind uint16
 		switch {
 		case symbol == errorSymbol:
-			kind = uint16(len(kinds.names) - 1)
+			kind = kinds.errorIndex
 		case int(symbol) < len(kinds.index):
 			kind = kinds.index[symbol]
 		default:
@@ -137,12 +138,12 @@ func (p *Parser) kindNames(grammar string, in *instance) (kindTable, error) {
 // newKindTable gives every symbol the index of the first kind of its name.
 func newKindTable(names []string) kindTable {
 	first := map[string]uint16{}
-	index := make([]uint16, len(names)-1)
-	for id, name := range names[:len(names)-1] {
+	index := make([]uint16, len(names))
+	for id, name := range names {
 		if _, seen := first[name]; !seen {
 			first[name] = uint16(id)
 		}
 		index[id] = first[name]
 	}
-	return kindTable{names: names, index: index}
+	return kindTable{names: names, index: index[:len(names)-1], errorIndex: index[len(names)-1]}
 }

@@ -62,6 +62,10 @@ linters:
         text: G204
       - linters:
           - gosec
+        path: _test\.go$
+        text: G404 # a test's random cases come from a fixed seed, so a failure repeats
+      - linters:
+          - gosec
         path: ^internal/gitrepo/
         text: G204 # starting git with computed arguments is this package's purpose
       - linters:

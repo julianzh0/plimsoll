@@ -65,8 +65,10 @@ type shape struct {
 func shapeOf(nodes []parse.Node) shape {
 	s := shape{nodes: nodes, parent: make([]int32, len(nodes)), prev: make([]int32, len(nodes)), end: make([]int32, len(nodes))}
 	var stack []int32
+	var after int32                        // the index past the last node seen
 	lastChild := make([]int32, len(nodes)) // by parent: its last child seen, -1 for none
 	for i, n := range nodes {
+		after = int32(i) + 1
 		lastChild[i] = -1
 		for len(stack) > 0 && nodes[stack[len(stack)-1]].Depth >= n.Depth {
 			s.end[stack[len(stack)-1]] = int32(i)
@@ -81,7 +83,7 @@ func shapeOf(nodes []parse.Node) shape {
 		stack = append(stack, int32(i))
 	}
 	for _, i := range stack {
-		s.end[i] = int32(len(nodes))
+		s.end[i] = after
 	}
 	return s
 }

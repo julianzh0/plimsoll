@@ -1,12 +1,20 @@
 package snapshot
 
-import "bytes"
+import (
+	"bytes"
+	"math"
+	"slices"
+)
 
-// compareCells is the most cells one comparison may keep for reading its path back: past it the lines between the two
-// contents' common first and last lines count as replaced.
+// compareSteps is the most steps (lines added or removed) one comparison may take for reading its path back: past it
+// the lines between the two contents' common first and last lines count as replaced. The reaches it keeps for step d
+// are 2d+1 cells, so compareSteps steps keep compareCells cells.
 // NOTE: provisional; it bounds memory at 16 MiB (4-byte cells) per comparison. Task 15 derives it from the largest
 // changed file pairs of the field repositories; a pair over it is compared only by its common ends.
-const compareCells = 4_000_000
+const (
+	compareSteps = 2000
+	compareCells = compareSteps * compareSteps
+)
 
 // lineChange is what differs between two versions of a file, as line ranges from 1.
 type lineChange struct {
@@ -53,13 +61,15 @@ func splitLines(content []byte) [][]byte {
 // interned gives each distinct line of both lists one number.
 func interned(a, b [][]byte) ([]int32, []int32) {
 	ids := map[string]int32{}
+	var next int32
 	number := func(lines [][]byte) []int32 {
 		out := make([]int32, len(lines))
 		for i, l := range lines {
 			id, found := ids[string(l)]
 			if !found {
-				id = int32(len(ids))
+				id = next
 				ids[string(l)] = id
+				next++
 			}
 			out[i] = id
 		}
@@ -88,39 +98,38 @@ func common(a, b []int32) (keptA, keptB []bool) {
 }
 
 // myers marks the lines of a and b on a shortest edit script's diagonals. It keeps, for each step d, the furthest
-// reach of each diagonal before the step, and reads the path back from them; it gives up, marking nothing, when those
-// would pass compareCells.
+// reach of each diagonal before the step, and reads the path back from them; it gives up, marking nothing, past
+// compareSteps steps, and for a side whose line count an int32 reach cannot hold twice.
 func myers(a, b []int32, keptA, keptB []bool) {
-	n, m := len(a), len(b)
-	if n == 0 || m == 0 {
+	la, lb := len(a), len(b)
+	if la == 0 || lb == 0 || la > math.MaxInt32/2 || lb > math.MaxInt32/2 {
 		return
 	}
-	limit := n + m
+	n, m := int32(la), int32(lb)
+	limit := min(n+m, compareSteps)
 	v := make([]int32, 2*limit+3) // v[k+limit+1]: the furthest x on diagonal k
-	at := func(k int) *int32 { return &v[k+limit+1] }
+	at := func(k int32) *int32 { return &v[k+limit+1] }
 	var trace [][]int32 // trace[d]: the reach of diagonals -(d-1)..d-1 before step d
-	cells := 0
-	for d := 0; d <= limit; d++ {
-		cells += 2*d + 1
-		if cells > compareCells {
+	for d := int32(0); d <= limit; d++ {
+		if d == compareSteps {
 			return
 		}
 		trace = append(trace, append([]int32(nil), v[limit+1-max(d-1, 0):limit+1+max(d-1, 0)+1]...))
 		for k := -d; k <= d; k += 2 {
-			var x int
+			var x int32
 			if k == -d || k != d && *at(k - 1) < *at(k + 1) {
-				x = int(*at(k + 1))
+				x = *at(k + 1)
 			} else {
-				x = int(*at(k - 1)) + 1
+				x = *at(k - 1) + 1
 			}
 			y := x - k
 			for x < n && y < m && a[x] == b[y] {
 				x++
 				y++
 			}
-			*at(k) = int32(x)
+			*at(k) = x
 			if x >= n && y >= m {
-				walkBack(trace, n, m, keptA, keptB)
+				walkBack(trace, la, lb, keptA, keptB)
 				return
 			}
 		}
@@ -130,10 +139,10 @@ func myers(a, b []int32, keptA, keptB []bool) {
 // walkBack follows the path from (n, m) to (0, 0) through the kept reaches, marking the lines of its diagonal moves.
 func walkBack(trace [][]int32, n, m int, keptA, keptB []bool) {
 	x, y := n, m
-	for d := len(trace) - 1; d >= 0; d-- {
+	for d, before := range slices.Backward(trace) {
 		prevX, prevY := 0, 0
 		if d > 0 {
-			before := trace[d]
+
 			reach := func(k int) int { return int(before[k+d-1]) }
 			k := x - y
 			prevK := k - 1

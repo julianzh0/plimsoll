@@ -100,7 +100,7 @@ func TestDetectMarksFunctionsAChangeMadeComplexOrDeeper(t *testing.T) {
 	broken := fn("grow", 5, 4)
 	first := strings.Index(broken, "\n") + 1
 	var ten strings.Builder
-	for i := 1; i <= 10; i++ {
+	for i := 1; i <= 20; i++ {
 		ten.WriteString(fn(fmt.Sprintf("c%02d", i), 8, 0))
 	}
 	notAnalysed := []struct {
