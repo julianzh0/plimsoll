@@ -4,7 +4,15 @@ import "regexp"
 
 // csharpLanguage is the entry for C#. A using names a namespace: the folders whose files declare it.
 func csharpLanguage() Language {
-	return Language{Name: "csharp", Extensions: []string{".cs"}, Imports: csharpImports(), Grammar: "csharp", Query: csharpQuery}
+	return Language{
+		Name: "csharp", Extensions: []string{".cs"}, Imports: csharpImports(), Grammar: "csharp", Query: csharpQuery,
+		// ASP.NET loads the application class of Global.asax.
+		Loaded: []Convention{{File: "Global.asax.cs"}},
+		// A project is a published library unless it says it is not packable, builds a program, or uses an
+		// application SDK.
+		Library: &Library{Manifest: "*.csproj", Not: regexp.MustCompile(
+			`(?i)<IsPackable>\s*false|<OutputType>\s*(?:Exe|WinExe)\s*<|Sdk="Microsoft\.NET\.Sdk\.(?:Web|Worker|BlazorWebAssembly)"`)},
+	}
 }
 
 // csharpQuery reads using directives: one that names a namespace, and a using static or a using alias, which names a
@@ -25,6 +33,12 @@ const csharpQuery = `
   (enum_declaration name: (identifier) @declared.type) (record_declaration name: (identifier) @declared.type)
   (struct_declaration name: (identifier) @declared.type)]))
 (class_declaration name: (identifier) @implicit body: (declaration_list (method_declaration parameters: (parameter_list (parameter (modifier) @_m (#eq? @_m "this"))))))
+((compilation_unit [(class_declaration (modifier) @_p name: (identifier) @exported) (interface_declaration (modifier) @_p name: (identifier) @exported)
+  (enum_declaration (modifier) @_p name: (identifier) @exported) (record_declaration (modifier) @_p name: (identifier) @exported)
+  (struct_declaration (modifier) @_p name: (identifier) @exported)]) (#eq? @_p "public"))
+((namespace_declaration body: (declaration_list [(class_declaration (modifier) @_p name: (identifier) @exported) (interface_declaration (modifier) @_p name: (identifier) @exported)
+  (enum_declaration (modifier) @_p name: (identifier) @exported) (record_declaration (modifier) @_p name: (identifier) @exported)
+  (struct_declaration (modifier) @_p name: (identifier) @exported)])) (#eq? @_p "public"))
 `
 
 // dotnetProject is the file-name pattern of a .NET project file: a manifest of dependencies, and a name of the

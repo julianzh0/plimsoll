@@ -7,6 +7,8 @@ func pythonLanguage() Language {
 	return Language{
 		Name: "python", Extensions: []string{".py", ".pyi"},
 		Imports: pythonImports(), Layout: pytestLayout(), Grammar: "python", Query: pythonQuery,
+		// MkDocs hooks: scripts named under hooks: in mkdocs.yml hold event handlers named on_… (MkDocs 1.4.0).
+		Loaded: []Convention{{Beside: []string{"mkdocs.yml", "mkdocs.yaml"}, Names: "on_*"}},
 	}
 }
 

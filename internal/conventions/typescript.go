@@ -1,5 +1,7 @@
 package conventions
 
+import "regexp"
+
 // The TypeScript and JavaScript entry: what the shared rules cannot know for these files.
 
 // typescriptLanguage is the entry of TypeScript, and of JavaScript, whose files it also speaks for. .ts files are read
@@ -9,6 +11,15 @@ func typescriptLanguage() Language {
 		Name: "typescript", Extensions: []string{".ts", ".tsx", ".js", ".mjs", ".cjs"},
 		Imports: typescriptImports(), Grammar: "tsx", GrammarBySuffix: map[string]string{".ts": "typescript"},
 		Query: typescriptQuery,
+		// trigger.dev finds tasks in folders named trigger when its config sets no dirs
+		// (https://trigger.dev/docs/config/config-file, read 2026-11-17).
+		// NOTE: a dirs entry of trigger.config that names another folder is not read. Upgrade: read dirs from the
+		// config.
+		Loaded: []Convention{{
+			Beside: []string{"trigger.config.ts", "trigger.config.js", "trigger.config.mjs", "trigger.config.cjs", "trigger.config.mts"},
+			Folder: "trigger",
+		}},
+		Library: &Library{Manifest: "package.json", Is: regexp.MustCompile(`"exports"\s*:`), Not: regexp.MustCompile(`"private"\s*:\s*true`)},
 	}
 }
 
@@ -44,6 +55,12 @@ const typescriptQuery = `
   (variable_declaration (variable_declarator name: (identifier) @declared.function value: [(arrow_function) (function_expression)]))]))
 (program (export_statement declaration: [(lexical_declaration (variable_declarator name: (identifier) @declared.value))
   (variable_declaration (variable_declarator name: (identifier) @declared.value))]))
+(program (export_statement declaration: [(function_declaration name: (identifier) @exported)
+  (generator_function_declaration name: (identifier) @exported) (class_declaration name: (type_identifier) @exported)
+  (abstract_class_declaration name: (type_identifier) @exported) (interface_declaration name: (type_identifier) @exported)
+  (type_alias_declaration name: (type_identifier) @exported) (enum_declaration name: (identifier) @exported)
+  (lexical_declaration (variable_declarator name: (identifier) @exported))
+  (variable_declaration (variable_declarator name: (identifier) @exported))]))
 `
 
 func typescriptImports() Imports {

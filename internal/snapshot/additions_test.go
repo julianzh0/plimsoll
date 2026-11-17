@@ -196,3 +196,51 @@ func TestBuildSaysWhereAnAddedNameIsUsed(t *testing.T) {
 		t.Errorf("a modified file whose base content is missing: additions = %+v, want none", got)
 	}
 }
+
+func TestBuildLeavesOutWhatAFrameworkLoadsAndWhatALibraryExports(t *testing.T) {
+	names := func(files map[string]string) []string {
+		var got []string
+		for _, line := range additionsOf(t, nil, files) {
+			got = append(got, strings.Fields(line)[1])
+		}
+		slices.Sort(got)
+		return got
+	}
+	jobs := "export const sendMail = task({});\n"
+	hooks := "def on_post_build(config): pass\ndef helper(): pass\n"
+	sdk := "export function isEvent() {}\nfunction internalOnly() {}\n"
+	api := "namespace Lib;\npublic class Handler {}\ninternal class Helper {}\n"
+	swift := "public struct Info {}\nstruct Hidden {}\n"
+	cases := []struct {
+		name  string
+		files map[string]string
+		want  []string
+	}{
+		{"a trigger.dev task", map[string]string{"trigger.config.ts": "export default {};\n", "src/trigger/jobs.ts": jobs}, nil},
+		{"no trigger.dev config", map[string]string{"src/trigger/jobs.ts": jobs}, []string{"sendMail"}},
+		{"another folder", map[string]string{"trigger.config.ts": "export default {};\n", "src/other/jobs.ts": jobs}, []string{"sendMail"}},
+		{"an MkDocs hook", map[string]string{"mkdocs.yml": "hooks:\n  - hooks/copy.py\n", "hooks/copy.py": hooks}, []string{"helper"}},
+		{"no MkDocs", map[string]string{"hooks/copy.py": hooks}, []string{"helper", "on_post_build"}},
+		{"ASP.NET's application class", map[string]string{"src/Web/Global.asax.cs": "namespace Web;\npublic class WebApiApplication {}\n"}, nil},
+		{"another C# file", map[string]string{"src/Web/Other.cs": "namespace Web;\npublic class WebApiApplication {}\n"}, []string{"WebApiApplication"}},
+		{"a TypeScript library", map[string]string{"packages/sdk/package.json": `{"name":"sdk","exports":{".":"./dist/index.js"}}`, "packages/sdk/src/events.ts": sdk},
+			[]string{"internalOnly"}},
+		{"a private package", map[string]string{"packages/sdk/package.json": `{"name":"sdk","private":true,"exports":{".":"./dist/index.js"}}`, "packages/sdk/src/events.ts": sdk},
+			[]string{"internalOnly", "isEvent"}},
+		{"a package without exports", map[string]string{"packages/sdk/package.json": `{"name":"app","main":"dist/index.js","types":"dist/index.d.ts"}`, "packages/sdk/src/events.ts": sdk},
+			[]string{"internalOnly", "isEvent"}},
+		{"a C# library", map[string]string{"src/Lib/Lib.csproj": `<Project Sdk="Microsoft.NET.Sdk"></Project>`, "src/Lib/Api.cs": api}, []string{"Helper"}},
+		{"a C# program", map[string]string{"src/Lib/Lib.csproj": `<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType></PropertyGroup></Project>`, "src/Lib/Api.cs": api},
+			[]string{"Handler", "Helper"}},
+		{"a web application", map[string]string{"src/Lib/Lib.csproj": `<Project Sdk="Microsoft.NET.Sdk.Web"></Project>`, "src/Lib/Api.cs": api}, []string{"Handler", "Helper"}},
+		{"a Swift library", map[string]string{"Package.swift": "let p = Package(name: \"Lib\", products: [.library(name: \"Lib\", targets: [\"Lib\"])])\n", "Sources/Lib/Api.swift": swift},
+			[]string{"Hidden"}},
+		{"a Swift program", map[string]string{"Package.swift": "let p = Package(name: \"Lib\", targets: [.executableTarget(name: \"Lib\")])\n", "Sources/Lib/Api.swift": swift},
+			[]string{"Hidden", "Info"}},
+	}
+	for _, tc := range cases {
+		if got := names(tc.files); !slices.Equal(got, tc.want) {
+			t.Errorf("%s: listed %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}

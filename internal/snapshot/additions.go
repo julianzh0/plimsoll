@@ -46,6 +46,7 @@ type topName struct {
 	name     string
 	kind     AdditionKind
 	implicit bool // a runtime or framework calls it without its being written
+	exported bool // public to code outside the file
 }
 
 // additions are the names the changes declared in product files that the base did not declare, each with its uses.
@@ -66,6 +67,15 @@ func additions(rules conventions.Rules, changes []Change, now, before Tree, entr
 		}
 	}
 	roles := rolesOf(now.Files)
+	tracked, byFolder := map[string]bool{}, map[string][]string{}
+	for _, p := range now.Paths {
+		tracked[p] = true
+		byFolder[path.Dir(p)] = append(byFolder[path.Dir(p)], p)
+	}
+	content := map[string][]byte{}
+	for _, entry := range entries {
+		content[entry.Path] = entry.Content
+	}
 	var found []Addition
 	for _, change := range changes {
 		r, read := nowReadings[change.Path]
@@ -74,10 +84,14 @@ func additions(rules conventions.Rules, changes []Change, now, before Tree, entr
 			basePath != "" && !beforeReadings[basePath].parsed {
 			continue
 		}
+		language, _ := rules.LanguageOf(change.Path)
+		library := inLibrary(language.Library, byFolder, content, change.Path)
 		for _, d := range r.declarations {
-			if !d.implicit && !atBase[d.name] && listable(rules.Additions, d.name) {
-				found = append(found, Addition{Path: change.Path, Name: d.name, Kind: d.kind})
+			if d.kind == 0 || d.implicit || atBase[d.name] || !listable(rules.Additions, d.name) ||
+				loadedByConvention(language, tracked, change.Path, d.name) || d.exported && library {
+				continue
 			}
+			found = append(found, Addition{Path: change.Path, Name: d.name, Kind: d.kind})
 		}
 	}
 	if len(found) == 0 {
@@ -200,4 +214,55 @@ func wordsFile(rules conventions.Rules, filePath string) bool {
 	suffix := conventions.Suffix(filePath)
 	return slices.Contains(rules.Additions.Docs, suffix) || slices.Contains(rules.Additions.Config, suffix) ||
 		slices.Contains(rules.Additions.ConfigNames, path.Base(filePath))
+}
+
+// loadedByConvention says whether a framework of the language loads a declaration by where its file lies or what it is
+// called.
+func loadedByConvention(language conventions.Language, tracked map[string]bool, filePath, name string) bool {
+	return slices.ContainsFunc(language.Loaded, func(c conventions.Convention) bool {
+		if c.File != "" && !nameMatches(c.File, filePath) {
+			return false
+		}
+		if c.Names != "" {
+			if matched, _ := path.Match(c.Names, name); !matched {
+				return false
+			}
+		}
+		if c.Beside == nil {
+			return true
+		}
+		for folder := path.Dir(filePath); ; folder = path.Dir(folder) {
+			if slices.ContainsFunc(c.Beside, func(file string) bool { return tracked[path.Join(folder, file)] }) {
+				below := strings.TrimPrefix(path.Dir(filePath), folder)
+				return c.Folder == "" || slices.Contains(strings.Split(below, "/"), c.Folder)
+			}
+			if folder == "." || folder == "/" {
+				return false
+			}
+		}
+	})
+}
+
+// inLibrary says whether a file belongs to a published library: the nearest folder above it that holds a manifest of
+// the language decides, by the manifest's content; a manifest that was not read makes no library. byFolder lists the
+// tracked paths of each folder.
+func inLibrary(library *conventions.Library, byFolder map[string][]string, content map[string][]byte, filePath string) bool {
+	if library == nil {
+		return false
+	}
+	for folder := path.Dir(filePath); ; folder = path.Dir(folder) {
+		for _, p := range byFolder[folder] {
+			if !nameMatches(library.Manifest, p) {
+				continue
+			}
+			text := content[p]
+			if text == nil {
+				return false
+			}
+			return (library.Is == nil || library.Is.Match(text)) && (library.Not == nil || !library.Not.Match(text))
+		}
+		if folder == "." || folder == "/" {
+			return false
+		}
+	}
 }

@@ -1,5 +1,7 @@
 package conventions
 
+import "regexp"
+
 // Additions are the shared rules of the list of code a change added that nothing uses: what never counts as an
 // addition, and which files are no use of a name.
 type Additions struct {
@@ -35,4 +37,21 @@ func defaultAdditions() Additions {
 		},
 		ConfigNames: []string{"Dockerfile", "Makefile", "Procfile", "Justfile", "justfile", "BUILD", "WORKSPACE", "Taskfile", "Containerfile"},
 	}
+}
+
+// Convention is a rule for files a framework loads by where they lie or what they are called: their declarations run
+// without being named.
+type Convention struct {
+	File   string   // a file-name pattern; "" for every file of the entry
+	Beside []string // file names: one is tracked in a folder above the file; nil for no such condition
+	Folder string   // the name of a folder between that folder and the file; "" for any place below it
+	Names  string   // a pattern of the names the framework calls; "" for every name
+}
+
+// Library says when a file belongs to a package published for outside users, whose exported names code outside the
+// repository may use.
+type Library struct {
+	Manifest string         // a file-name pattern: the nearest folder above the file that holds one is its package
+	Is       *regexp.Regexp // the manifest declares a published library; nil when every such package is one
+	Not      *regexp.Regexp // unless it matches this; nil for none
 }

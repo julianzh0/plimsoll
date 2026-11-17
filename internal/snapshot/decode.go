@@ -56,7 +56,7 @@ func decode(language conventions.Language, result parse.Result, content []byte) 
 				blanks = append(blanks, c)
 			case "error":
 				r.syntaxError = true
-			case "declared.function", "declared.type", "declared.value", "implicit":
+			case "declared.function", "declared.type", "declared.value", "implicit", "exported":
 				r.declarations = declared(r.declarations, c.Name, string(content[c.Start:c.End]))
 				declaredAt[string(content[c.Start:c.End])] = append(declaredAt[string(content[c.Start:c.End])], c.Start)
 			}
@@ -101,7 +101,8 @@ func decode(language conventions.Language, result parse.Result, content []byte) 
 }
 
 // declared adds one captured name to a file's declarations: a name is declared once, of the strongest kind captured
-// (a function before a type before a value), and implicit once any capture says so.
+// (a function before a type before a value), and implicit or exported once any capture says so; a name captured only
+// as exported has no kind and is no declaration.
 func declared(found []topName, capture, name string) []topName {
 	i := slices.IndexFunc(found, func(d topName) bool { return d.name == name })
 	if i < 0 {
@@ -111,6 +112,8 @@ func declared(found []topName, capture, name string) []topName {
 	switch {
 	case capture == "implicit":
 		found[i].implicit = true
+	case capture == "exported":
+		found[i].exported = true
 	case found[i].kind == 0 || kind < found[i].kind:
 		found[i].kind = kind
 	}

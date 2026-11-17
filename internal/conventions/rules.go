@@ -253,6 +253,7 @@ type Language struct {
 	//   @type_block  a block whose statements import types only
 	//   @declared.function, @declared.type, @declared.value  the name of a top-level function, type or value the file
 	//             declares, for the list of code a change added that nothing uses
+	//   @exported a declared name the file exports: public to code outside it
 	//   @implicit a declared name a runtime or framework calls without its being written (a default export, a
 	//             decorated class); its declaration is never listed
 	// No fact is read both by a pattern and by the query, except under LineReadWhenBroken.
@@ -260,6 +261,11 @@ type Language struct {
 	// LineReadWhenBroken reads a file the grammar cannot read without an error by the entry's text patterns instead:
 	// for a language whose files the grammar often misreads (macros), the patterns read every line on its own.
 	LineReadWhenBroken bool
+	// Loaded are the files a framework of the language loads by convention: their declarations are no added code.
+	Loaded []Convention
+	// Library says when a file is part of a published library, whose exported declarations are no added code; nil
+	// when the language has none.
+	Library *Library
 }
 
 // GrammarOf names the grammar that reads a file of the entry, or "" when the entry reads by text.
