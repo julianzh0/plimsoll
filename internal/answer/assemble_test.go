@@ -406,3 +406,20 @@ func TestReportOnlyMarksAreCountedInStatusAndListedInReport(t *testing.T) {
 		t.Errorf("Render(status without a report-only kind) =\n%s\nwant no report-only line", text)
 	}
 }
+
+func TestStatusPrintsEachSummaryBeforeTheStandingLine(t *testing.T) {
+	f := findings()
+	f.Marks = append(f.Marks, fileMark("src/t.ts", Touched), fileMark("src/u.ts", Touched))
+	f.Summaries = []string{"A count; `report` lists them."}
+	status := Render(Assemble(Status, "0.1.0", sample(), []Result{{"shape", f}}), wording())
+	if want := "2 standing.\nA count; `report` lists them.\nStanding (already"; !strings.Contains(status, want) {
+		t.Errorf("Render(status) =\n%s\nwant it to hold %q", status, want)
+	}
+	if report := Render(Assemble(Report, "0.1.0", sample(), []Result{{"shape", f}}), wording()); strings.Contains(report, "A count") {
+		t.Errorf("Render(report) =\n%s\nwant no summary", report)
+	}
+	data, _ := json.Marshal(Assemble(Status, "0.1.0", sample(), []Result{{"shape", findings()}}))
+	if !strings.Contains(string(data), `"summaries":[]`) {
+		t.Errorf("an answer without a summary marshals as %s, want summaries []", data)
+	}
+}

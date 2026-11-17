@@ -48,12 +48,11 @@ Six detectors look at a change from different sides:
 - **Size** (`shape`): how much product and test code there is, the largest files, new dependencies and new settings.
 - **Working habits** (`process`): planning or review notes committed into the repository, and more churn in
   documentation than in code.
-- **Settings** (`settings`): settings that no code reads, names defined twice, and variables only the container
-  setup knows.
+- **Settings** (`settings`): names defined twice, and variables only the container setup knows.
 - **Hotspots** (`hotspots`): the files changed most often, weighed by their size.
 - **Hidden coupling** (`co-change`): files that keep changing together in the same commits.
 - **Wiring** (`links`): who imports whom, import rings, folders that depend on each other in a circle, product code
-  that imports test code, and how far a change reaches.
+  that imports test code, how far a change reaches, and the code a change added that nothing uses.
 
 Each detector compares now with a base you choose, such as `main`, so old debt stays quiet and new growth stands out.
 
@@ -146,7 +145,7 @@ Not analysed: no `.env.example`, so no settings count; no `.env.example`, so no 
 
 | Tool | Returns |
 |---|---|
-| `status(repository, base?)` | at most five new or grown marks, one line that counts the marks shown in `report` only, one that counts what the change touched but did not create, the standing line, the footprint and what was not analysed |
+| `status(repository, base?)` | at most five new or grown marks, one line that counts the marks shown in `report` only, one that counts what the change touched but did not create, one that counts added code without a use, the standing line, the footprint and what was not analysed |
 | `report(repository, base?, files?)` | everything measured, in a fixed layout, the touched items included. Standing items of one kind past five are counted by folder in the text, and `structuredContent` holds them all. With `files`, also the files that import each named file |
 | `explain(repository, base?, mark)` | the evidence of one mark, computed again and capped |
 
@@ -171,6 +170,7 @@ Every number is measured at the base and now, from the tracked files only:
 - changed together: pairs of code files that share usable commits, at least one product code, neither a file that defines tests, and not two files that the language treats as one unit
 - test folders and package roots that a project declares in its own configuration or in `.plimsoll.toml`, added to the defaults and named with their source
 - import links, read from the code: the files that import the changed files and that the change did not touch, the three files that import the most others, import rings, cycles between sibling folders, and each new product file that no file imports. With `files`, also the files that import each named file.
+- added code without a use: the functions, types and values a change added at the top level of a product file whose name no code or configuration file holds outside its own declaration. A name that only test code holds, or only documentation names, says so. A list in `report` and one count in `status`, never a mark.
 
 What it could not see is always named under "not analysed".
 
@@ -304,6 +304,8 @@ still run, interpreted and about 80 times slower.
 - **Type-only imports:** none.
 - **Import rings** are looked for.
 - **Changed together:** each file is one unit.
+- **Added code:** top-level functions, types and exported values; a decorated or annotated declaration, a default
+  export, generated code and example projects are left out.
 
 ## Rules
 
@@ -383,7 +385,7 @@ base whose repository declares no usable default base is refused with one senten
 ## Guarantees
 
 - **trust**: plimsoll never changes a repository it reads. It runs only read-only git commands, takes no lock, starts no file monitor, runs no filter and fetches nothing from a remote. Tests: `internal/gitrepo/history_integration_test.go::TestIntegrationReadLeavesTheRepositoryUnchanged`, `internal/gitrepo/history_integration_test.go::TestIntegrationReadFetchesNothingFromARemote`, `cmd/plimsoll/tools_integration_test.go::TestIntegrationAnswersAreRepeatableAndLeaveNoTrace`
-- **trust**: no answer shows the content of a file or the value of a setting: only names, paths, line numbers and counts, and, from the repository's own `.plimsoll.toml`, its limits, the declared values that are plain paths, file-name patterns or branch names, and key and table names that are plain names. Documentation and configuration files are read for their words alone, to see whether they name code a change added. Content plimsoll does not need is never read. Tests: `internal/snapshot/facts_test.go::TestBuildReadsSettingNamesNeverValues`, `internal/snapshot/links_test.go::TestBuildKeepsNoImportText`, `internal/links/links_test.go::TestNoLinksLineHoldsImportText`, `internal/snapshot/settings_test.go::TestBuildReadsComposeEnvironmentKeys`, `internal/shape/explain_test.go::TestExplainHoldsNoFileContentOrSettingValue`, `internal/gitrepo/reader_integration_test.go::TestIntegrationReadLeavesUnwantedAndBinaryContentUnread`, `internal/answer/layout_test.go::TestLayoutLinesHoldNoValueFromOutsideTheRepository`, `internal/answer/samples_test.go::TestNoAnswerPrintsADeclaredValueOutsideItsForm`
+- **trust**: no answer shows the content of a file or the value of a setting: only names, paths, line numbers and counts, and, from the repository's own `.plimsoll.toml`, its limits, the declared values that are plain paths, file-name patterns or branch names, and key and table names that are plain names. Documentation and configuration files are read for their words alone, to see whether they name code a change added. Content plimsoll does not need is never read. Tests: `internal/snapshot/facts_test.go::TestBuildReadsSettingNamesNeverValues`, `internal/snapshot/links_test.go::TestBuildKeepsNoImportText`, `internal/links/links_test.go::TestNoLinksLineHoldsImportText`, `internal/snapshot/settings_test.go::TestBuildReadsComposeEnvironmentKeys`, `internal/shape/explain_test.go::TestExplainHoldsNoFileContentOrSettingValue`, `internal/gitrepo/reader_integration_test.go::TestIntegrationReadLeavesUnwantedAndBinaryContentUnread`, `internal/answer/layout_test.go::TestLayoutLinesHoldNoValueFromOutsideTheRepository`, `internal/answer/samples_test.go::TestNoAnswerPrintsADeclaredValueOutsideItsForm`, `internal/links/additions_test.go::TestAddedCodeRowsGroupNamesByFileAndReason`
 - **idempotency**: the same question about the same repository state gives the same answer, in the same process or a new one, whatever the user's git configuration. The history and the file readings kept between questions answer as a fresh read does, also for questions answered at the same time. Tests: `cmd/plimsoll/tools_integration_test.go::TestIntegrationAnswersAreRepeatableAndLeaveNoTrace`, `internal/snapshot/readings_test.go::TestKeptReadingsEqualFreshOnes`, `internal/gitrepo/history_integration_test.go::TestIntegrationKeptHistoryEqualsAFreshRead`, `internal/gitrepo/history_integration_test.go::TestIntegrationReadsAtTheSameTimeShareOneReader`, `internal/gitrepo/history_test.go::TestQuestionsAtTheSameTimeShareOneHistoryRead`, `internal/gitrepo/history_integration_test.go::TestIntegrationReadIsTheSameEverywhere`
 - **ordering**: new and grown marks come in one order (new before grown, exact before candidate, the farthest past its limit first, then by identifier, at most two of one detector before the others). `status` shows at most five, and the report's sections follow the detector list. Tests: `internal/answer/mark_test.go::TestOrderPutsNewExactAndFarthestFirstWithTwoPerDetector`, `internal/answer/assemble_test.go::TestStatusShowsFiveMarksAndStaysInsideFortyLines`, `cmd/plimsoll/detectors_test.go::TestDetectorsAreListedInReportOrder`
 - **cleanup**: a SIGTERM or the end of its input ends the server with exit status 0. Tests: `cmd/plimsoll/main_e2e_test.go::TestE2EProgramAnswersAndEndsOnASignal`, `cmd/plimsoll/main_e2e_test.go::TestE2EEndOfInputEndsTheProcess`

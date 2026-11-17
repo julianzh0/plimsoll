@@ -46,6 +46,7 @@ type Answer struct {
 	More        int           `json:"more"`                // marks not shown
 	Resolved    []Mark        `json:"resolved"`
 	Touched     []Mark        `json:"touched"`    // in no count and no numbered mark
+	Summaries   []string      `json:"summaries"`  // one sentence per list of report rows that status only counts
 	ReportOnly  []Mark        `json:"reportOnly"` // new and grown marks of a kind status only counts
 	Standing    []Mark        `json:"standing"`
 	History     History       `json:"history"`

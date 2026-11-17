@@ -22,6 +22,7 @@ type Findings struct {
 	Statistics  []Statistic
 	Notes       []string
 	NotAnalysed []string
+	Summaries   []string // one sentence per list of report rows that status only counts
 }
 
 // Result is one detector's findings, under its name.

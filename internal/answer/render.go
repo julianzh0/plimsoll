@@ -109,6 +109,9 @@ func status(text *strings.Builder, a Answer, w Wording) {
 	if len(a.Touched) > 0 {
 		fmt.Fprintf(text, "Touched but not created by this change (`report` lists them): %s.\n", byDetector(a.Touched, a, w, "; "))
 	}
+	for _, summary := range a.Summaries {
+		text.WriteString(summary + "\n")
+	}
 	fmt.Fprintf(text, "Standing (already at the base, not grown): %s.\n", standingLine(a, w))
 	trailer(text, a)
 	whats := make([]string, 0, len(a.NotAnalysed))

@@ -36,6 +36,7 @@ func Assemble(q Question, version string, s snapshot.Snapshot, results []Result)
 		Marks:       []Mark{},
 		Resolved:    []Mark{},
 		Touched:     []Mark{},
+		Summaries:   []string{},
 		ReportOnly:  []Mark{},
 		Standing:    []Mark{},
 		History:     History{Read: s.History.Read, Usable: s.History.Usable},
@@ -65,6 +66,7 @@ func Assemble(q Question, version string, s snapshot.Snapshot, results []Result)
 				standing = append(standing, m)
 			}
 		}
+		a.Summaries = append(a.Summaries, result.Findings.Summaries...)
 		for _, what := range result.Findings.NotAnalysed {
 			a.NotAnalysed = append(a.NotAnalysed, NotAnalysed{Detector: result.Detector, What: what})
 		}

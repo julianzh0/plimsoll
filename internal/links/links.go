@@ -41,6 +41,12 @@ func (Detector) Detect(s snapshot.Snapshot) answer.Findings {
 	if len(languages) > 0 {
 		f = withLinks(f, s, languages, now, before)
 	}
+	if rows, summary := additionRows(s.Additions); len(rows) > 0 {
+		f.Statistics = append(f.Statistics, rows...)
+		f.Summaries = append(f.Summaries, summary)
+		at := slices.Index(f.Notes, linksNote) + 1
+		f.Notes = slices.Insert(f.Notes, at, additionsNote)
+	}
 	f.Statistics = append(f.Statistics, namedRows(s, now, before)...)
 	f.NotAnalysed = append(f.NotAnalysed, answer.RootsNotUsed(s.Layout)...)
 	return f
