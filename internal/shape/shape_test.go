@@ -249,11 +249,12 @@ func TestAdditionMarks(t *testing.T) {
 		map[string]string{"package.json": manifest("a", "c"), ".env.example": "ALPHA=1\nBETA=2\nGAMMA=3\n"},
 	), conventions.Default())
 	dependencies, settings := marksOf(findings, "dependencies"), marksOf(findings, "settings")
-	if len(dependencies) != 1 || !slices.Equal(dependencies[0].Subject.Names, []string{"c"}) || dependencies[0].Measured.Value != 2 || *dependencies[0].Measured.Before != 2 || dependencies[0].Change != answer.Grown {
-		t.Errorf("dependency marks = %+v, want one grown mark naming c, 2 now and 2 before", dependencies)
+	if len(dependencies) != 1 || !slices.Equal(dependencies[0].Subject.Names, []string{"c"}) || dependencies[0].Measured.Value != 2 || *dependencies[0].Measured.Before != 2 || dependencies[0].Change != answer.New ||
+		dependencies[0].Hint != "compare the runtime dependencies in `package.json` at the base and now. Gone since the base: `b`." {
+		t.Errorf("dependency marks = %+v, want one new mark naming c, 2 now and 2 before, b gone", dependencies)
 	}
-	if len(settings) != 1 || !slices.Equal(settings[0].Subject.Names, []string{"BETA", "GAMMA"}) || settings[0].Measured.Value != 3 || *settings[0].Measured.Before != 1 {
-		t.Errorf("settings marks = %+v, want one grown mark naming BETA and GAMMA, 3 now and 1 before", settings)
+	if len(settings) != 1 || !slices.Equal(settings[0].Subject.Names, []string{"BETA", "GAMMA"}) || settings[0].Measured.Value != 3 || *settings[0].Measured.Before != 1 || settings[0].Change != answer.New {
+		t.Errorf("settings marks = %+v, want one new mark naming BETA and GAMMA, 3 now and 1 before", settings)
 	}
 	if hint := dependencies[0].Hint; strings.Contains(hint, "lockfile") {
 		t.Errorf("no lockfile tracked: hint %q, want no lockfile remark", hint)
@@ -270,7 +271,7 @@ func TestAdditionMarks(t *testing.T) {
 			map[string]string{"package.json": manifest("a", "c"), "package-lock.json": tc.lock},
 		), conventions.Default())
 		marks := marksOf(locked, "dependencies")
-		if len(marks) != 1 || !strings.HasSuffix(marks[0].Hint, "at the base and now."+tc.want) {
+		if len(marks) != 1 || !strings.HasSuffix(marks[0].Hint, "at the base and now. Gone since the base: `b`."+tc.want) {
 			t.Errorf("%s: dependency marks %+v, want the hint to end with %q", tc.name, marks, tc.want)
 		}
 	}

@@ -330,7 +330,7 @@ func dependencyMark(manifest, previous snapshot.Manifest, existed bool) []answer
 	if len(added) == 0 {
 		return nil
 	}
-	hint := fmt.Sprintf("compare the runtime dependencies in `%s` at the base and now.", manifest.Path)
+	hint := fmt.Sprintf("compare the runtime dependencies in `%s` at the base and now.", manifest.Path) + gone(previous.Dependencies, manifest.Dependencies)
 	if unlocked := slices.DeleteFunc(slices.Clone(added), func(name string) bool { return !slices.Contains(manifest.Unlocked, name) }); len(unlocked) > 0 {
 		hint += fmt.Sprintf(" Not in the lockfile %s: %s.", strings.Join(answer.Quoted(manifest.Lockfiles), " or "), strings.Join(answer.Quoted(unlocked), ", "))
 	}
@@ -348,13 +348,29 @@ func settingsMark(s snapshot.Snapshot) []answer.Mark {
 		return nil
 	}
 	return []answer.Mark{additionMark(ruleSettings, s.Now.Settings.Path, added, len(s.Now.Settings.Names), len(previous), s.Before.Settings != nil,
-		"settings", fmt.Sprintf("compare the names in `%s` at the base and now.", s.Now.Settings.Path))}
+		"settings", fmt.Sprintf("compare the names in `%s` at the base and now.", s.Now.Settings.Path)+gone(previous, s.Now.Settings.Names))}
 }
+
+// gone names what the base held and now does not, as a sentence that follows a hint, or is "" when nothing went.
+func gone(before, now []string) string {
+	removed := addedNames(now, before)
+	if len(removed) == 0 {
+		return ""
+	}
+	shown := answer.QuotedList(removed[:min(len(removed), goneShown)])
+	if len(removed) > goneShown {
+		shown += fmt.Sprintf(" and %d more", len(removed)-goneShown)
+	}
+	return " Gone since the base: " + shown + "."
+}
+
+// goneShown is how many removed names an addition names before it counts the rest.
+const goneShown = 5
 
 func additionMark(rule, path string, added []string, now, before int, existed bool, unit, hint string) answer.Mark {
 	m := answer.Mark{
 		ID:         answer.ID(name, rule, path),
-		Change:     answer.Grown,
+		Change:     answer.New,
 		Subject:    answer.Subject{Kind: "file", Paths: []string{path}, Names: added},
 		Confidence: answer.Exact,
 		Measured:   answer.Measured{Value: float64(now), LimitSource: additionSource, Unit: unit},
