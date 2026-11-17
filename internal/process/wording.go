@@ -47,7 +47,24 @@ func (Detector) Wording(m answer.Mark) string {
 
 // Standing is the detector's part of the standing line.
 func (Detector) Standing(items []answer.Mark) string {
-	return answer.Plural(len(items), "tracked planning or review file")
+	counts := map[string]int{}
+	for _, m := range items {
+		counts[answer.RuleOf(m.ID)]++
+	}
+	var fragments []string
+	if n := counts[rulePlanning]; n > 0 {
+		fragments = append(fragments, answer.Plural(n, "tracked planning or review file"))
+	}
+	if counts[ruleDocChurn] > 0 {
+		fragments = append(fragments, "documentation churn above code churn")
+	}
+	if n := counts[ruleLimitChange]; n > 0 {
+		fragments = append(fragments, answer.Plural(n, "limit")+" changed in the limits file")
+	}
+	if n := counts[ruleDeclarationChange]; n > 0 {
+		fragments = append(fragments, answer.Plural(n, "declaration")+" changed in the limits file")
+	}
+	return strings.Join(fragments, "; ")
 }
 
 // withUnit is a limit's value as an answer prints it, with what it counts.

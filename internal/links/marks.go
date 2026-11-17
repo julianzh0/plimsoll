@@ -130,7 +130,8 @@ func added(links []snapshot.Link) bool {
 // closingShown is how many imports the change added a ring mark names before it counts the rest.
 const closingShown = 2
 
-// withClosingImports starts the hint of each new or grown ring with the imports between its members the change added.
+// withClosingImports starts the hint of each new or grown ring with the imports between its members the change added:
+// those that closed a new ring, or those it grew through.
 func withClosingImports(marks []answer.Mark, now graph) []answer.Mark {
 	for i, m := range marks {
 		if m.Change != answer.New && m.Change != answer.Grown {
@@ -149,7 +150,11 @@ func withClosingImports(marks []answer.Mark, now graph) []answer.Mark {
 		if len(closing) > closingShown {
 			named += fmt.Sprintf(" and %d more", len(closing)-closingShown)
 		}
-		marks[i].Hint = "closed by " + named + ", added by this change; " + m.Hint
+		verb := "closed by "
+		if m.Change == answer.Grown {
+			verb = "grown through "
+		}
+		marks[i].Hint = verb + named + ", added by this change; " + m.Hint
 	}
 	return marks
 }

@@ -93,12 +93,17 @@ func additionSentence(m answer.Mark, singular, plural string) string {
 func (Detector) Standing(items []answer.Mark) string {
 	var fragments []string
 	files := map[float64]int{}
+	manifests, settings := 0, 0
 	for _, m := range items {
 		switch answer.RuleOf(m.ID) {
 		case ruleRatio:
 			fragments = append(fragments, fmt.Sprintf("test ratio %s (limit %s)", answer.Decimal(m.Measured.Value), answer.Decimal(*m.Measured.Limit)))
 		case ruleSize:
 			files[*m.Measured.Limit]++
+		case ruleDependencies:
+			manifests++
+		case ruleSettings:
+			settings += len(m.Subject.Names)
 		}
 	}
 	limits := make([]float64, 0, len(files))
@@ -112,6 +117,12 @@ func (Detector) Standing(items []answer.Mark) string {
 			noun = "file"
 		}
 		fragments = append(fragments, fmt.Sprintf("%d %s over %s lines", files[limit], noun, answer.Count(limit)))
+	}
+	if manifests > 0 {
+		fragments = append(fragments, "runtime dependencies added in "+answer.Plural(manifests, "manifest"))
+	}
+	if settings > 0 {
+		fragments = append(fragments, answer.Plural(settings, "setting")+" added")
 	}
 	return strings.Join(fragments, "; ")
 }

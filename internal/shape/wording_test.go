@@ -64,6 +64,9 @@ func TestStandingNamesTheRatioAndCountsFilesPerLimit(t *testing.T) {
 			"test ratio 3.7 (limit 2.0); 2 files over 1,500 lines"},
 		{[]answer.Mark{size(answer.Standing, 1600, new(float64(1600)), 1500), size(answer.Standing, 900, new(float64(900)), 800)},
 			"1 file over 800 lines; 1 file over 1,500 lines"},
+		{[]answer.Mark{size(answer.Grown, 1700, new(float64(1600)), 1500), addition("dependencies", "package.json", []string{"a"}, 3, new(float64(2))),
+			addition("dependencies", "web/package.json", []string{"b"}, 3, new(float64(2))), addition("settings", ".env.example", []string{"X", "Y"}, 4, new(float64(2)))},
+			"1 file over 1,500 lines; runtime dependencies added in 2 manifests; 2 settings added"},
 	}
 	for _, tc := range cases {
 		if got := (Detector{}).Standing(tc.items); got != tc.want {

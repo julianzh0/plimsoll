@@ -148,6 +148,9 @@ func TestProcessWordingStandingAndEvidence(t *testing.T) {
 	if got := (Detector{}).Standing(items[:1]); got != "1 tracked planning or review file" {
 		t.Errorf("Standing(1) = %q", got)
 	}
+	if got := (Detector{}).Standing([]answer.Mark{doc}); got != "documentation churn above code churn" {
+		t.Errorf("Standing(doc churn) = %q", got)
+	}
 	source := snapshottest.Files(map[string]string{"docs/stories/c.md": "x\n"}, map[string]string{"docs/stories/d.md": "x\n"})
 	source.Changes = []snapshot.Change{{Path: "docs/stories/d.md", From: "docs/stories/c.md"}}
 	s, f := detect(t, source)
