@@ -10,7 +10,9 @@ import (
 )
 
 // functionChecks is how many functions of one measure are compared with the code at the base in one question.
-// NOTE: provisional, derived in Task 15 from the functions per change that cross a rule in the field repositories.
+// Each comparison reads up to CopyFiles base files: in localsend (396 Dart files), twelve new functions named
+// by words 100 to 180 of its files hold took six searches of 20 files each, 0.06 s more than the same functions under
+// names no file holds, so ten searches add about 0.1 s to an answer.
 const functionChecks = 10
 
 // copyCheck is the result of comparing one function with the code at the base.

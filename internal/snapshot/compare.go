@@ -9,8 +9,10 @@ import (
 // compareSteps is the most steps (lines added or removed) one comparison may take for reading its path back: past it
 // the lines between the two contents' common first and last lines count as replaced. The reaches it keeps for step d
 // are 2d+1 cells, so compareSteps steps keep compareCells cells.
-// NOTE: provisional; it bounds memory at 16 MiB (4-byte cells) per comparison. Task 15 derives it from the largest
-// changed file pairs of the field repositories; a pair over it is compared only by its common ends.
+// The largest code file the five largest field repositories changed in their last 200 commits (8,235 lines), against a
+// copy with 999 lines changed (1,998 steps), took 8.6 ms; against a full rewrite it gave up at the bound after 13 ms.
+// Time would allow about 15 times more cells within 0.2 s a pair, but the cells grow with the square of the steps:
+// memory binds, at 16 MiB (4-byte cells) a comparison. A pair over it is compared only by its common ends.
 const (
 	compareSteps = 2000
 	compareCells = compareSteps * compareSteps

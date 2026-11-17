@@ -281,12 +281,13 @@ func functionChanges(rules conventions.Rules, changes []Change, m measured, miss
 	}
 	checks := map[place]copyCheck{}
 	copied := map[place]bool{}
+	starved := map[place]bool{} // reached by a measure after its checks were spent
 	// measure keeps, in rank order, the candidates no copy at the base explains, until PerMeasure are kept or its
 	// functionChecks comparisons are spent; a function compared once is not compared again.
 	measure := func(list []candidate, rank func(a, b FunctionChange) int) (kept []FunctionChange) {
 		slices.SortFunc(list, func(a, b candidate) int { return rank(a.change, b.change) })
 		spent := 0
-		for _, c := range list {
+		for i, c := range list {
 			key := placeOf(c.change)
 			if len(kept) == fr.PerMeasure {
 				break
@@ -297,6 +298,9 @@ func functionChanges(rules conventions.Rules, changes []Change, m measured, miss
 			check, done := checks[key]
 			if !done {
 				if spent == functionChecks {
+					for _, rest := range list[i:] {
+						starved[placeOf(rest.change)] = true
+					}
 					break
 				}
 				check = copyAtBase(rules, c, before.Files, beforeContent, nowContent[c.change.Path])
@@ -335,13 +339,11 @@ func functionChanges(rules conventions.Rules, changes []Change, m measured, miss
 	standing := func(c candidate) bool { return !copied[placeOf(c.change)] }
 	result.ComplexCrossed = countFunc(complexCandidates, standing)
 	result.DeeperCrossed = countFunc(deeperCandidates, standing)
-	uncompared := map[place]bool{}
-	for _, c := range slices.Concat(complexCandidates, deeperCandidates) {
-		if _, done := checks[placeOf(c.change)]; !done {
-			uncompared[placeOf(c.change)] = true
+	for key := range starved {
+		if _, done := checks[key]; !done && !copied[key] {
+			result.Uncompared++
 		}
 	}
-	result.Uncompared = len(uncompared)
 	result.Checks = functionChecks
 	slices.SortFunc(result.LeftOut, func(a, b LeftOutFunction) int {
 		return cmp.Or(cmp.Compare(a.Path, b.Path), cmp.Compare(a.Name, b.Name), cmp.Compare(a.Occurrence, b.Occurrence))

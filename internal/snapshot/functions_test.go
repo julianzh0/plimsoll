@@ -487,6 +487,16 @@ func TestBuildLeavesOutCopiesOfCodeAtTheBase(t *testing.T) {
 		t.Errorf("Build(twenty copies before one of its own).Functions = complex %q, %d left out, uncompared %d, crossed %d and %d, deeper %q; want none, 20, 1, 1, 1, none",
 			shown(many.Complex), len(many.LeftOut), many.Uncompared, many.ComplexCrossed, many.DeeperCrossed, shown(many.Deeper))
 	}
+	var nine strings.Builder
+	for _, name := range []string{"one", "two", "three", "four", "five", "six", "seven", "eight", "nine"} {
+		nine.WriteString(fn(name, 7, 0))
+	}
+	// past the three listed per measure, a function counts as crossing, not as not compared: the checks were not spent
+	full := functionsIn(t, conventions.Default(), nil, map[string]string{"src/new.ts": nine.String()})
+	if len(full.Complex) != 3 || len(full.Deeper) != 3 || full.ComplexCrossed != 9 || full.Uncompared != 0 {
+		t.Errorf("Build(nine new functions).Functions = complex %q, deeper %q, crossed %d, uncompared %d; want 3 and 3 listed, 9 crossed, 0 uncompared",
+			shown(full.Complex), shown(full.Deeper), full.ComplexCrossed, full.Uncompared)
+	}
 }
 
 func TestBuildKeepsNoFunctionText(t *testing.T) {
