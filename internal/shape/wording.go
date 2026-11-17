@@ -47,19 +47,33 @@ func sizeSentence(change answer.Change, path string, measured answer.Measured) s
 	if measured.Before != nil {
 		before = fmt.Sprintf("it had %s at the base", answer.Count(*measured.Before))
 	}
+	source := "Limit: " + measured.LimitSource + "."
+	switch {
+	case change == answer.New && measured.Before == nil:
+		return fmt.Sprintf("`%s` is new in this change with %s lines, over the limit of %s. %s",
+			path, answer.Count(measured.Value), answer.Count(*measured.Limit), source)
+	case change == answer.New:
+		return fmt.Sprintf("`%s` crossed the limit of %s lines in this change: %s. %s",
+			path, answer.Count(*measured.Limit), growth(*measured.Before, measured.Value), source)
+	case change == answer.Grown:
+		return fmt.Sprintf("`%s` grew in this change: %s lines, already over the limit of %s at the base. %s",
+			path, growth(*measured.Before, measured.Value), answer.Count(*measured.Limit), source)
+	}
 	switch change {
-	case answer.Grown:
-		return fmt.Sprintf("`%s` grew from %s to %s lines; it was already over %s.",
-			path, answer.Count(*measured.Before), answer.Count(measured.Value), limit)
 	case answer.Resolved:
 		if measured.Value == 0 {
 			return fmt.Sprintf("`%s` is no longer tracked; it had %s lines at the base, over %s.", path, answer.Count(*measured.Before), limit)
 		}
 		return fmt.Sprintf("`%s` has %s lines, no longer over %s; %s.", path, answer.Count(measured.Value), limit, before)
-	case answer.New, answer.Standing:
+	case answer.Standing:
 		return fmt.Sprintf("`%s` has %s lines, over %s; %s.", path, answer.Count(measured.Value), limit, before)
 	}
 	return ""
+}
+
+// growth is a change of a count: "1,480 → 1,620 (+140)".
+func growth(before, now float64) string {
+	return fmt.Sprintf("%s → %s (%+d)", answer.Count(before), answer.Count(now), int(now-before))
 }
 
 func additionSentence(m answer.Mark, singular, plural string) string {

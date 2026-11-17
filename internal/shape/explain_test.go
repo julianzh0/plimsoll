@@ -44,12 +44,12 @@ func TestExplainGivesTheEvidenceOfEachRule(t *testing.T) {
 	}{
 		{"file size", sizeSource, "file-size", []string{
 			"lines now: 1,620", "lines at the base: 1,480", "counted as: product code (typescript)",
-			"limit: 1,000 lines (the default of Pylint and SonarQube)",
+			"limit: 1,000 lines (plimsoll's default, taken from Pylint and SonarQube)",
 			"a code file by the shared rules: not documentation or data by suffix, not in a skipped folder, not binary, not generated",
 		}},
 		{"a renamed file", renamed, "file-size", []string{
 			"lines now: 1,600", "lines at the base: 1,600, as `old/a.ts`", "counted as: product code (typescript)",
-			"limit: 1,000 lines (the default of Pylint and SonarQube)",
+			"limit: 1,000 lines (plimsoll's default, taken from Pylint and SonarQube)",
 			"a code file by the shared rules: not documentation or data by suffix, not in a skipped folder, not binary, not generated",
 		}},
 		{"test ratio with a declared folder", declaredRatioSource(), "test-ratio", []string{

@@ -82,7 +82,7 @@ func TestRuleNamesHowTestCodeIsRecognized(t *testing.T) {
 
 func TestDefaultLimitsNameTheirSource(t *testing.T) {
 	rules := Default()
-	if want := (Limit{1000, 1, "the default of Pylint and SonarQube"}); rules.Limits.FileLines != want {
+	if want := (Limit{1000, 1, "plimsoll's default, taken from Pylint and SonarQube"}); rules.Limits.FileLines != want {
 		t.Errorf("Limits.FileLines = %+v, want %+v", rules.Limits.FileLines, want)
 	}
 	if want := (Limit{2.0, 0.1, "plimsoll's rule: test code at most twice the product code"}); rules.Limits.TestRatio != want {

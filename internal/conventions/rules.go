@@ -348,7 +348,7 @@ func Default() Rules {
 			"co-change.pair", "links.test-import", "links.folder-cycle",
 		},
 		Limits: Limits{
-			FileLines: Limit{Value: 1000, Step: 1, Source: "the default of Pylint and SonarQube"},
+			FileLines: Limit{Value: 1000, Step: 1, Source: "plimsoll's default, taken from Pylint and SonarQube"},
 			TestRatio: Limit{Value: 2.0, Step: 0.1, Source: "plimsoll's rule: test code at most twice the product code"},
 			// The requirements set the floor for a pair of files that changed together (R-16).
 			SharedCommits: Limit{Value: 5, Step: 1, Source: "plimsoll's rule"},

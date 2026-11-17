@@ -310,7 +310,7 @@ still run, interpreted and about 80 times slower.
 | Identifier | Fires when | Limit and source |
 |---|---|---|
 | `shape.test-ratio:repository` | the test ratio is over its limit now and was not at the base (new), or rose by 0.1 or more while over it (grown) | 2.0, plimsoll's rule: test code at most twice the product code |
-| `shape.file-size:<path>` | a code file is over its line limit now and was not at the base (new), or grew while over it (grown) | 1,000 lines, the default of Pylint and SonarQube |
+| `shape.file-size:<path>` | a code file is over its line limit now and was not at the base (new), or grew while over it (grown) | 1,000 lines, plimsoll's default, taken from Pylint and SonarQube |
 | `shape.dependencies:<manifest>` | a runtime dependency was added since the base. Its verify line names the new ones that no tracked lockfile holds (never installed, or not a real package) | any addition |
 | `shape.settings:.env.example` | a setting was added since the base | any addition |
 | `process.planning-file:<path>` | a file under a planning or review path is tracked now and was not at the base | repositories hold no planning records |
