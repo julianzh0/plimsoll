@@ -26,7 +26,7 @@ export GOFLAGS := -mod=readonly
 .NOTPARALLEL:
 .PHONY: fix qa unit integration e2e cover cover-clean cover-report flake lint build run hooks check-tools fmt-check vet tidy-check fix-check vuln agent-files install-golangci-lint grammars grammars-check zig-check
 
-qa: check-tools fmt-check vet lint tidy-check fix-check agent-files cover vuln
+qa: check-tools fmt-check vet vet-windows lint tidy-check fix-check agent-files cover vuln
 
 fix:
 	golangci-lint fmt
@@ -97,6 +97,11 @@ fmt-check:
 
 vet:
 	go vet $(TAGS) ./...
+
+# vet-windows checks the Windows build from any machine: no Windows runner tests it.
+vet-windows:
+	GOOS=windows GOARCH=amd64 go vet $(TAGS) ./...
+	GOOS=windows GOARCH=arm64 go build -o /dev/null ./cmd/plimsoll
 
 tidy-check:
 	go mod tidy -diff
