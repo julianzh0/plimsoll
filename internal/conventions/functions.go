@@ -54,7 +54,8 @@ func defaultFunctionRules() FunctionRules {
 		VendorLicence:  regexp.MustCompile(`(?i)^(?:license|licence|copying)`),
 		RootLicence:    regexp.MustCompile(`(?i)^(?:license|licence|copying|notice)`),
 		HeaderLines:    40, NearFiles: 300, NearAgree: 3,
-		Copyright:  regexp.MustCompile(`(?i)copyright|©|\(c\)\s*\d{4}`),
+		// a notice starts its comment line: prose that speaks of copyright is no notice
+		Copyright:  regexp.MustCompile(`(?i)^[\s/*#!;\-'"]*@?(?:copyright\b|©|\(c\)\s*\d{4}|spdx-filecopyrighttext)`),
 		LicensedTo: regexp.MustCompile(`(?i)licensed to (.+?) under`),
 		PartOf:     regexp.MustCompile(`(?i)this file is part of (.+)`),
 		CodeHost:   regexp.MustCompile(`https?://(?:www\.)?(?:github\.com|gitlab\.com|bitbucket\.org|gist\.github\.com|raw\.githubusercontent\.com|codeberg\.org|sourceforge\.net|[^/\s]*googlesource\.com)/([^/\s)"'>]+)/([^/\s#?)"'>]+)`),

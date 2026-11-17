@@ -3,7 +3,6 @@ package snapshot
 import (
 	"bytes"
 	"cmp"
-	"regexp"
 	"slices"
 	"strings"
 	"unicode"
@@ -95,10 +94,6 @@ func (o *origins) holderOf(line string) (string, bool) {
 	return "", false
 }
 
-// noticeLine is a licence file's line that names a holder: it starts with a copyright sign or word. A licence's own
-// wording ("grants a ... copyright license") names none.
-var noticeLine = regexp.MustCompile(`(?i)^\s*(?:copyright\b|©|\(c\))`)
-
 // ownHolder says whether a holder is the repository's own: no words, a word of a root licence file's holders, or a set
 // the nearest base product files share.
 func (o *origins) ownHolder(words, path string) bool {
@@ -112,7 +107,7 @@ func (o *origins) ownHolder(words, path string) bool {
 				continue
 			}
 			for line := range strings.SplitSeq(string(o.nowContent[p]), "\n") {
-				if noticeLine.MatchString(line) {
+				if o.rules.Copyright.MatchString(line) { // a notice line, not the licence's own wording
 					for w := range strings.SplitSeq(holderWords(o.rules, line), " ") {
 						o.own[w] = true
 					}

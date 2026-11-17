@@ -388,6 +388,8 @@ func TestBuildLeavesOutFilesFromAnotherProject(t *testing.T) {
 			map[string]string{"LICENSE": "Copyright (c) Meta Platforms, Inc.\n", "src/x.ts": h + f}, true},
 		{"the holder its neighbours share", neighbours(h), with(neighbours(h), map[string]string{"src/x.ts": h + f}), true},
 		{"a copyright without a holder", nil, map[string]string{"src/x.ts": "// Copyright (c) 2026\n" + f}, true},
+		{"a comment that speaks of copyright", nil, map[string]string{"src/x.ts": "// the copyright holders of the root licence files are the own ones\n" + f}, true},
+		{"an SPDX notice", nil, map[string]string{"src/x.ts": "// SPDX-FileCopyrightText: 2024 Other Holder GmbH\n" + f}, false},
 		{"a note that it was ported", nil, map[string]string{"src/x.ts": "// Ported from an older tool\n" + f}, false},
 		{"an upstream address", nil, map[string]string{"src/x.ts": url + f}, false},
 		{"an address its neighbours share", neighbours(url), with(neighbours(url), map[string]string{"src/x.ts": url + f}), true},
