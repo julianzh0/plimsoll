@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path"
 	"slices"
 	"strings"
 	"sync"
@@ -89,7 +90,15 @@ func (r *Reader) Read(ctx context.Context, repository, base string, wants snapsh
 	if err != nil {
 		return snapshot.Source{}, err
 	}
-	exclude := excluding(missing)
+	var tracked []string
+	if len(missing) > 0 {
+		listed, err := run(nil, "ls-files", "-z")
+		if err != nil {
+			return snapshot.Source{}, gitFailed(err)
+		}
+		tracked = fields(listed)
+	}
+	exclude := excluding(missing, tracked)
 	if source.Changes, err = changes(run, source.Base, exclude); err != nil {
 		return snapshot.Source{}, err
 	}
@@ -403,16 +412,42 @@ func withEveryCommit(ids []string, read []snapshot.Commit) []snapshot.Commit {
 	return all
 }
 
-// excluding is the pathspec that leaves the paths out, or nil when there are none. A path's glob characters are
-// escaped: the exclude magic cannot be combined with the literal one.
-func excluding(paths []string) []string {
-	if len(paths) == 0 {
+// excluding is the pathspec that leaves the missing paths out, or nil when there are none: a folder in which no
+// tracked file has content is one entry, so a partial clone that lacks thousands of files still fits a command line;
+// every other missing path is its own. A path's glob characters are escaped: the exclude magic cannot be combined with
+// the literal one.
+func excluding(missing, tracked []string) []string {
+	if len(missing) == 0 {
 		return nil
 	}
+	isMissing := map[string]bool{}
+	for _, p := range missing {
+		isMissing[p] = true
+	}
+	holdsContent := map[string]bool{} // folders with a tracked file that has content, at any depth
+	for _, p := range tracked {
+		if isMissing[p] {
+			continue
+		}
+		for dir := path.Dir(p); dir != "."; dir = path.Dir(dir) {
+			holdsContent[dir] = true
+		}
+	}
+	var entries []string
+	for _, p := range missing {
+		entry := p
+		for dir := path.Dir(p); dir != "."; dir = path.Dir(dir) {
+			if !holdsContent[dir] {
+				entry = dir // the highest such folder wins, as the walk goes up
+			}
+		}
+		entries = append(entries, entry)
+	}
+	slices.Sort(entries)
 	spec := []string{"--", "."}
 	escape := strings.NewReplacer(`\`, `\\`, "*", `\*`, "?", `\?`, "[", `\[`)
-	for _, p := range paths {
-		spec = append(spec, ":(exclude)"+escape.Replace(p))
+	for _, e := range slices.Compact(entries) {
+		spec = append(spec, ":(exclude)"+escape.Replace(e))
 	}
 	return spec
 }
