@@ -121,7 +121,8 @@ func TestBuildMeasuresFunctionsInEveryLanguage(t *testing.T) {
 		"src/a.cpp":   {"chain c=2 n=0", "Store::route c=5 n=3"},
 		"src/n.c":     {"pointer c=0 n=0", "plain c=0 n=0"},
 		"src/n.cpp":   {"get c=0 n=0", "~Foo c=0 n=0", "operator+ c=0 n=0", "ns::Baz<T>::qux c=0 n=0"},
-		"src/m.cpp":   {"pick c=1 n=1"}, // a macro outside the function makes the file hold a syntax error
+		"src/m.cpp":   {"pick c=1 n=1"},                                  // a macro outside the function makes the file hold a syntax error
+		"src/k.cpp":   {"pick c=1 n=1", "keep c=0 n=0", "clean c=1 n=1"}, // attribute macros before two declarations
 		"src/n.go":    {"Method c=0 n=0", "Plain c=0 n=0"},
 		"src/n.py":    {"save c=0 n=0", "inner c=0 n=0", "fetch c=0 n=0"},
 		"src/n.ts":    {"plain c=0 n=0", "arrow c=0 n=0", "constructor c=0 n=0", "save c=0 n=0", "field c=0 n=0", "size c=0 n=0", "method_definition c=0 n=0", "method_definition c=0 n=0"},

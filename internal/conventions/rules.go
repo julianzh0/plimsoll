@@ -273,6 +273,10 @@ type Language struct {
 	// LineReadWhenBroken reads a file the grammar cannot read without an error by the entry's text patterns instead:
 	// for a language whose files the grammar often misreads (macros), the patterns read every line on its own.
 	LineReadWhenBroken bool
+	// AttributeMacros finds, in its group "macro", a name that a macro expands to an attribute or to nothing where a
+	// declaration starts (FMT_CONSTEXPR void f()). For a file whose tree holds an error, the function walk reads a
+	// copy with such names blanked, for the functions it could not read as written; nil for a language without them.
+	AttributeMacros *regexp.Regexp
 	// Declarations is the query that reads the top-level names a file declares, run only on the files a change names,
 	// with these captures:
 	//   @declared.function, @declared.type, @declared.value  the name of a top-level function, type or value

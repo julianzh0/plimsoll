@@ -3,6 +3,7 @@ package snapshot
 import (
 	"crypto/sha256"
 	"errors"
+	"slices"
 	"sync"
 
 	"github.com/julianzh0/plimsoll/internal/conventions"
@@ -164,7 +165,9 @@ func (rs *Readings) read(language conventions.Language, grammar string, content 
 			r.functionsUnread = true
 			return r, !errors.Is(err, parse.ErrUnavailable)
 		}
-		for _, f := range functionsOf(*language.Functions, language.Tokens, *w.functionRules, tree, content) {
+		functions := functionsOf(*language.Functions, language.Tokens, *w.functionRules, tree, content)
+		functions = rs.readBlanked(language, grammar, content, *w.functionRules, functions)
+		for _, f := range functions {
 			if !inSpans(r.testSpans, f.start) {
 				r.functions = append(r.functions, f)
 			}
@@ -180,4 +183,23 @@ func readByText(language conventions.Language, content []byte) reading {
 		r = scan(language.Imports, masked(language.Literals, content))
 	}
 	return r
+}
+
+// readBlanked reads, for a language with attribute macros and a file with functions it could not read as written, a
+// copy with those macros blanked, and takes its functions where the written file gave none it could read. A copy the
+// parser cannot read leaves the functions as they were.
+func (rs *Readings) readBlanked(language conventions.Language, grammar string, content []byte, rules conventions.FunctionRules,
+	functions []function) []function {
+	if language.AttributeMacros == nil || !slices.ContainsFunc(functions, func(f function) bool { return f.broken }) {
+		return functions
+	}
+	blanked, changed := blankMacros(language.AttributeMacros, content)
+	if !changed {
+		return functions
+	}
+	tree, err := rs.parser.Nodes(grammar, blanked)
+	if err != nil {
+		return functions
+	}
+	return withBlanked(functions, functionsOf(*language.Functions, language.Tokens, rules, tree, blanked))
 }

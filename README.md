@@ -217,8 +217,10 @@ still run, interpreted and about 80 times slower.
   in `include_directories` or `target_include_directories`. Such a file under several folders is ambiguous, and an
   include that a macro names is not readable. Every `#if` branch is read.
 - **Runtime dependencies:** `vcpkg.json`, the top-level `dependencies` without host tools.
-- **Functions:** functions and, in C++, lambdas; a `goto` counts 1. A function a macro bends into code the grammar
-  cannot read is counted as holding a syntax error and is not measured.
+- **Functions:** functions and, in C++, lambdas; a `goto` counts 1. When a file holds a function the grammar cannot
+  read, a copy with attribute-like macros blanked (a bare `NAME_IN_CAPITALS` where a declaration starts, such as
+  `FMT_CONSTEXPR`) is read for those functions only. A function still unreadable, as behind `#ifdef` branches that
+  split its braces, is counted as holding a syntax error and is not measured.
 
 ### C#
 

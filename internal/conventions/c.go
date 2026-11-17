@@ -33,7 +33,7 @@ func cFamily(name string, extensions, units []string) Language {
 		functions, literals = cppFunctions(), cppRawString+"|"+literals
 	}
 	return Language{
-		Name: name, Extensions: extensions, Literals: cComments, Functions: functions, Tokens: cLikeTokens(`(?:u8|[uUL])?(?:` + literals + `)`),
+		Name: name, Extensions: extensions, Literals: cComments, Functions: functions, AttributeMacros: cAttributeMacros, Tokens: cLikeTokens(`(?:u8|[uUL])?(?:` + literals + `)`),
 		Grammar: name, Query: cQuery, Declarations: declarations, LineReadWhenBroken: true,
 		Imports: Imports{
 			Statements: []ImportForm{{Pattern: cIncludeQuoted}, {Pattern: cIncludeAngled}},
@@ -114,3 +114,10 @@ func cppFunctions() *FunctionKinds {
 // NOTE: C++ raw strings are matched with an empty delimiter only (R"(...)"), since Go's regexp has no back-reference;
 // one with a delimiter is split into ordinary tokens. Upgrade: a small scanner for C++ literals.
 const cppRawString = `R"\([\s\S]*?\)"`
+
+// cAttributeMacros is a bare name in capitals with an underscore, before another word, where a declaration starts: at
+// a line's start, after a specifier, or after a template's closing bracket.
+// NOTE: a convention, not a rule of the language; a capitalised type or constant written there is blanked as well,
+// which only the functions that could not be read as written ever see. Upgrade: learn the names from the
+// repository's own #define lines.
+var cAttributeMacros = regexp.MustCompile(`(?m)(?:^[ \t]*|\b(?:static|inline|constexpr|virtual|explicit|const|extern|friend)[ \t]+|>[ \t]*)(?P<macro>[A-Z][A-Z0-9]*_[A-Z0-9_]+)[ \t]*\n?[ \t]*[A-Za-z_~]`)
