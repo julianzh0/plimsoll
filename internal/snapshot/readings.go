@@ -67,8 +67,13 @@ func (rs *Readings) dropOlder(question uint64) {
 }
 
 // of returns the reading of one file's content for its language entry and grammar, made once per content.
-// wanted is what a reading holds beside the entry's query: the file's declarations, its functions.
-type wanted struct{ declarations, functions bool }
+// wanted is what a reading holds beside the entry's query: the file's declarations, its functions, and the rules that
+// find a function's repeated blocks. Those rules are the binary's own (no repository sets them), so they are not part of
+// a reading's key.
+type wanted struct {
+	declarations, functions bool
+	functionRules           *conventions.FunctionRules
+}
 
 func (rs *Readings) of(language conventions.Language, grammar string, content []byte, question uint64, w wanted) reading {
 	key := readingKey{entry: language.Name, grammar: grammar, declarations: w.declarations, functions: w.functions, content: sha256.Sum256(content)}
@@ -109,7 +114,7 @@ func (rs *Readings) side(rules conventions.Rules, content map[string][]byte, fil
 		if !known || content[file.Path] == nil {
 			continue
 		}
-		w := wanted{declarations: declares[file.Path], functions: measures[file.Path]}
+		w := wanted{declarations: declares[file.Path], functions: measures[file.Path], functionRules: &rules.FunctionRules}
 		found[file.Path] = rs.of(language, language.GrammarOf(file.Path), content[file.Path], question, w)
 	}
 	return found
@@ -154,7 +159,7 @@ func (rs *Readings) read(language conventions.Language, grammar string, content 
 			r.functionsUnread = true
 			return r, !errors.Is(err, parse.ErrUnavailable)
 		}
-		for _, f := range functionsOf(*language.Functions, tree, content) {
+		for _, f := range functionsOf(*language.Functions, language.Tokens, *w.functionRules, tree, content) {
 			if !inSpans(r.testSpans, f.start) {
 				r.functions = append(r.functions, f)
 			}

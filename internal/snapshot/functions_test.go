@@ -141,3 +141,41 @@ func TestBuildMeasuresFunctionsInEveryLanguage(t *testing.T) {
 		t.Errorf("Build(src/a.go) deep = %+v, want lines 13 to 32 and nesting 4 reached at line 19", deep)
 	}
 }
+
+func TestBuildListsAFunctionThatRepeatsABlock(t *testing.T) {
+	rules := conventions.Default()
+	rules.Limits.FunctionComplexity.Value = -1
+	rules.FunctionRules.ReasonNesting = 99 // only a repeated block can be the reason
+	// block is n statements "    const <name> = load(<arguments>);", NAME in the arguments standing for the name.
+	block := func(n int, arguments string) string {
+		lines := ""
+		for _, name := range []string{"first", "second", "third", "fourth"}[:n] {
+			lines += "    const " + name + " = load(" + strings.ReplaceAll(arguments, "NAME", name) + ");\n"
+		}
+		return lines
+	}
+	sync := func(body string) string {
+		return "export function sync(source: string, options: object, fast: boolean) {\n  if (fast) {\n" + body +
+			"    return 1;\n  } else {\n" + body + "    return 2;\n  }\n}\n"
+	}
+	both := []snapshot.LineRange{{Start: 3, End: 6}, {Start: 9, End: 12}}
+	cases := []struct {
+		name, content string
+		want          []snapshot.LineRange // nil: not listed
+	}{
+		{"four statements of 12 tokens, twice", sync(block(4, `source, "NAME", options`)), both},
+		{"three statements of 12 tokens, twice", sync(block(3, `source, "NAME", options`)), nil},
+		{"four statements of 8 tokens, twice", sync(block(4, `"NAME"`)), nil},
+		{"bytes that are no UTF-8", sync(block(4, "source, \"NAME\", \"\xff\xfe\"")), both},
+	}
+	for _, tc := range cases {
+		got := functionsIn(t, rules, nil, map[string]string{"src/r.ts": tc.content}).Complex
+		if (tc.want == nil) != (len(got) == 0) || len(got) == 1 && !slices.Equal(got[0].Repeated, tc.want) {
+			t.Errorf("Build(%s).Functions.Complex = %+v, want the block at %v", tc.name, got, tc.want)
+		}
+	}
+	once := "export function sync(source: string, options: object) {\n" + block(4, `source, "NAME", options`) + "  return 1;\n}\n"
+	if got := functionsIn(t, rules, nil, map[string]string{"src/r.ts": once}).Complex; len(got) != 0 {
+		t.Errorf("Build(a block written once).Functions.Complex = %+v, want none", got)
+	}
+}

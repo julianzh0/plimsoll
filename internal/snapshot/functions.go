@@ -1,6 +1,7 @@
 package snapshot
 
 import (
+	"regexp"
 	"slices"
 	"strings"
 
@@ -17,14 +18,6 @@ type function struct {
 	nesting, nestingLine int  // nestingLine is 0 when nesting is 0
 	broken               bool // its subtree holds an ERROR node: not measured
 	repeats              []repeat
-}
-
-// repeat is a block of statements repeated inside a function: a hash of its tokens and the line and byte ranges of its
-// copies.
-type repeat struct {
-	hash   uint64
-	copies []span
-	lines  []LineRange
 }
 
 // kindSet holds, by kind index, the kinds one field of a function table names.
@@ -114,7 +107,7 @@ func (l lineIndex) line(offset int) int {
 // functionsOf measures the functions of one file, in text order: every declared function with a body however deep it
 // is declared, and the closures a name binds outside every function. Closures, nested functions and markup add
 // nothing to the function around them.
-func functionsOf(kinds conventions.FunctionKinds, tree parse.Tree, content []byte) []function {
+func functionsOf(kinds conventions.FunctionKinds, tokens *regexp.Regexp, rules conventions.FunctionRules, tree parse.Tree, content []byte) []function {
 	t := tableOf(kinds, tree)
 	s := shapeOf(tree.Nodes)
 	lines := linesOf(content)
@@ -129,13 +122,17 @@ func functionsOf(kinds conventions.FunctionKinds, tree parse.Tree, content []byt
 			if !ok {
 				continue
 			}
-			found = append(found, t.measure(s, i, to, functionName(tree, s, i, content), content, lines))
+			f := t.measure(s, i, to, functionName(tree, s, i, content), content, lines)
+			f.repeats = repeatsOf(kinds, tokens, rules, tree, s, t, i, to, content, lines)
+			found = append(found, f)
 			inside = max(inside, to)
 			continue
 		}
 		if i >= inside && t.namedClosures.has(n) && s.parent[i] >= 0 && t.namedBy.has(tree.Nodes[s.parent[i]]) {
 			if name := bindingName(tree, s, i, content); name != "" {
-				found = append(found, t.measure(s, i, s.end[i], name, content, lines))
+				f := t.measure(s, i, s.end[i], name, content, lines)
+				f.repeats = repeatsOf(kinds, tokens, rules, tree, s, t, i, s.end[i], content, lines)
+				found = append(found, f)
 				inside = s.end[i]
 			}
 		}

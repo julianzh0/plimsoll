@@ -85,7 +85,12 @@ func functionChanges(rules conventions.Rules, changes []Change, nowPaths map[str
 			crossed := float64(c.Complexity) > limit.Value &&
 				(c.New || float64(c.ComplexityBefore) <= limit.Value && float64(complexRise) >= limit.Step)
 			deeper := float64(c.Nesting) >= nest.Value && (c.New || c.Nesting > c.NestingBefore)
-			reason := c.Nesting >= fr.ReasonNesting
+			_, tracked := beforeReadings[basePath]
+			if c.New && !tracked && len(f.repeats) > 0 {
+				first := f.repeats[0].copies
+				c.Repeated = []LineRange{{first[0].startLine, first[0].endLine}, {first[1].startLine, first[1].endLine}}
+			}
+			reason := c.Nesting >= fr.ReasonNesting || c.Repeated != nil
 			if crossed && reason || deeper {
 				candidates = append(candidates, candidate{change: c, complex: crossed && reason, deeper: deeper})
 			}
