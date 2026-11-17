@@ -10,19 +10,20 @@ import (
 // import of now, or the import was there before and perhaps only became readable.
 type baseImports struct {
 	paths      map[string]string          // a path a change names now -> its path at the base, "" when it is not there
+	unread     map[string]bool            // a path at the base whose content was not read: its imports are unknown
 	statements map[string]map[string]bool // a path at the base -> the keys of the import statements its content holds
 	targets    map[string]map[string]bool // a path at the base -> the keys of the targets its links reach
 }
 
 // baseImportsOf collects, for every path a change names, its path at the base, the import statements its content held
 // there and the targets its links reached there.
-func baseImportsOf(changes []Change, before Tree, beforeReadings map[string]reading) *baseImports {
-	base := &baseImports{paths: map[string]string{}, statements: map[string]map[string]bool{}, targets: map[string]map[string]bool{}}
+func baseImportsOf(changes []Change, before Tree, atBase map[string]bool, beforeReadings map[string]reading) *baseImports {
+	base := &baseImports{paths: map[string]string{}, unread: map[string]bool{}, statements: map[string]map[string]bool{}, targets: map[string]map[string]bool{}}
 	for _, change := range changes {
 		switch {
 		case change.From != "":
 			base.paths[change.Path] = change.From
-		case slices.Contains(before.Paths, change.Path):
+		case atBase[change.Path]:
 			base.paths[change.Path] = change.Path
 		default:
 			base.paths[change.Path] = ""
@@ -32,8 +33,10 @@ func baseImportsOf(changes []Change, before Tree, beforeReadings map[string]read
 		if basePath == "" || base.statements[basePath] != nil {
 			continue
 		}
+		r, read := beforeReadings[basePath]
+		base.unread[basePath] = !read || r.unread
 		keys := map[string]bool{}
-		for _, st := range beforeReadings[basePath].statements {
+		for _, st := range r.statements {
 			keys[statementKey(st)] = true
 		}
 		base.statements[basePath] = keys
@@ -56,7 +59,7 @@ func (base *baseImports) added(from, to string, st statement) bool {
 	}
 	basePath, named := base.paths[from]
 	switch {
-	case !named:
+	case !named, base.unread[basePath]:
 		return false
 	case basePath == "":
 		return true

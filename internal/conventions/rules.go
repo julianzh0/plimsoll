@@ -354,9 +354,9 @@ func Default() Rules {
 		ComposeFiles:     []string{"compose*.yml", "compose*.yaml", "docker-compose*.yml", "docker-compose*.yaml"},
 		// A commit that touches more files says little about which files belong together (requirements, R-16).
 		CommitPaths: 20,
+		Additions:   defaultAdditions(),
 		// Seven outside reviewers judged real answers per kind of mark (2026-11-17); these they judged too noisy for
 		// status and worth keeping in report.
-		Additions: defaultAdditions(),
 		ReportOnly: []string{
 			"shape.file-size grown", "shape.dependencies", "shape.settings", "process.doc-churn", "settings.compose-only",
 			"co-change.pair", "links.test-import", "links.folder-cycle",

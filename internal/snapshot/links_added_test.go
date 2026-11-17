@@ -106,3 +106,19 @@ func TestBuildMarksTheImportsAChangeWrote(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildAddsNoImportWhoseBaseContentIsMissing(t *testing.T) {
+	base := map[string]string{"src/a.ts": "import \"./b.ts\";\nexport const a = 1;\n", "src/b.ts": "import \"./a.ts\";\n"}
+	now := map[string]string{"src/a.ts": "import \"./b.ts\";\nexport const a = 2;\n", "src/b.ts": base["src/b.ts"]}
+	source := snapshottest.Files(base, now)
+	for i := range source.Before {
+		if source.Before[i].Path == "src/a.ts" {
+			source.Before[i].Content = nil
+		}
+	}
+	for _, link := range snapshot.Build(source, conventions.Default(), snapshottest.Readings(t)).Now.Links.List {
+		if link.Added {
+			t.Errorf("Build(base content of src/a.ts missing): %s > %s is Added, want no import of a file read on one side only", link.From, link.To)
+		}
+	}
+}

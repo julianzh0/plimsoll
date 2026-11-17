@@ -106,8 +106,8 @@ func detectorSamples() []snapshot.Source {
 			map[string]string{"src/a.ts": "x\n", "projects/a.md": "x\n", "projects/b.md": "x\n"},
 			map[string]string{"src/a.ts": "y\n", "projects/a.md": "x\n", "docs/stories/US-1.md": "x\n"},
 		), 1, []string{"src/a.ts", "README.md", "docs/a.md"}),
-		// settings: no reader, with a test file and resolved; a name defined twice, grown and resolved; a not-decided
-		// name; compose-only standing and resolved; an unreadable compose line
+		// settings: a name defined twice, grown and resolved; compose-only standing and resolved; an unreadable
+		// compose line
 		snapshottest.Files(map[string]string{
 			".env.example": "DONE_LATER=1\nTWICE=1\nTWICE=2\nONCE_TWICE=1\nONCE_TWICE=2\n",
 			"compose.yml":  "services:\n  app:\n    environment:\n      - KEPT_ONLY\n      - GONE_ONLY=${GONE}\n",
@@ -117,8 +117,6 @@ func detectorSamples() []snapshot.Source {
 			"tests/a.ts":   "test(\"x\", () => TESTED_ONLY);\n",
 			"compose.yml":  "services:\n  app:\n    environment:\n      - KEPT_ONLY\n      <<: *shared\n",
 		}),
-		// a dynamic read
-		snapshottest.Files(nil, map[string]string{".env.example": "ANY=1\n", "src/a.ts": "const v = process.env[name];\n"}),
 		// folder cycles: new, grown, standing and resolved
 		snapshottest.Files(folderTree("a/x>b/y", "b/z", "a/w"), folderTree("a/x>b/y", "b/z>a/w")),
 		snapshottest.Files(folderTree("a/x>b/y", "b/z>a/w", "c/u"), folderTree("a/x>b/y", "b/z>a/w", "b/y>c/u", "c/u>a/w")),

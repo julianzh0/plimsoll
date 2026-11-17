@@ -17,8 +17,8 @@
 A ship's Plimsoll line shows at a glance whether it is loaded past what is safe. plimsoll does that for a git
 repository. You, or your coding agent, ask it what a branch or a change did, and it answers with a few findings
 called marks. Each mark says what was measured, the limit it crossed, and how to check it yourself. For example:
-a file grew past 1,000 lines, product code started importing test code, two files keep changing together, or a
-new setting has no code that reads it. It is built for coding agents and speaks the Model Context Protocol (MCP).
+a file crossed 1,000 lines, a planning document got committed, a setting is defined twice, or the change's own
+import closed a ring of files that import each other. It is built for coding agents and speaks the Model Context Protocol (MCP).
 
 It is not a score or a grade, not a dashboard, and not a linter: it writes nothing into the repositories it reads,
 stores nothing, and never says what to do.

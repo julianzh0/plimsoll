@@ -53,7 +53,11 @@ func Build(source Source, rules conventions.Rules, readings *Readings) Snapshot 
 	now.Planning, before.Planning = planningFiles(rules, now.Paths), planningFiles(rules, before.Paths)
 	now.Compose, before.Compose = composeFiles(rules, source.Now), composeFiles(rules, beforeEntries)
 	before.Links = links(rules, beforeContent, before, beforeReadings, nil)
-	now.Links = links(rules, nowContent, now, nowReadings, baseImportsOf(source.Changes, before, beforeReadings))
+	atBase := map[string]bool{}
+	for _, p := range before.Paths {
+		atBase[p] = true
+	}
+	now.Links = links(rules, nowContent, now, nowReadings, baseImportsOf(source.Changes, before, atBase, beforeReadings))
 	unreadable = append(unreadable, unreadableNow...)
 	slices.Sort(unreadable)
 	return Snapshot{
@@ -84,7 +88,7 @@ func Build(source Source, rules conventions.Rules, readings *Readings) Snapshot 
 		Unreadable:          slices.Compact(unreadable),
 		Missing:             source.Missing,
 		Unparsed:            unparsed(nowReadings, beforeReadings),
-		Additions:           additions(rules, source.Changes, now, before, source.Now, nowReadings, beforeReadings),
+		Additions:           additions(rules, source.Changes, now, atBase, source.Now, nowReadings, beforeReadings),
 		SyntaxErrors:        syntaxErrors(changed, nowReadings, beforeReadings),
 	}
 }

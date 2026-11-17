@@ -51,12 +51,14 @@ type topName struct {
 
 // additions are the names the changes declared in product files that the base did not declare, each with its uses.
 // A file the grammar could not read on either side declares nothing for the list.
-func additions(rules conventions.Rules, changes []Change, now, before Tree, entries []Entry, nowReadings, beforeReadings map[string]reading) []Addition {
+func additions(rules conventions.Rules, changes []Change, now Tree, atBasePath map[string]bool, entries []Entry, nowReadings, beforeReadings map[string]reading) []Addition {
+	// NOTE: one set of names for every changed file, so code moved between files is no addition; a new name that
+	// another changed file declared at the base is not listed either. Upgrade: match names per moved body.
 	atBase := map[string]bool{}
 	basePaths := map[string]string{}
 	for _, change := range changes {
 		basePath := change.From
-		if basePath == "" && slices.Contains(before.Paths, change.Path) {
+		if basePath == "" && atBasePath[change.Path] {
 			basePath = change.Path
 		}
 		basePaths[change.Path] = basePath
@@ -158,14 +160,17 @@ func withUses(rules conventions.Rules, found []Addition, entries []Entry, roles 
 			}
 		}
 		for name, n := range counts {
-			declared := 1 // a file declares a top-level name once
+			declared := 0 // a declaration of an added name is no use of it, in its own file or a copy's
+			if slices.ContainsFunc(byName[name], func(i int) bool { return found[i].Path == entry.Path }) {
+				declared = 1
+			}
 			for _, i := range byName[name] {
 				switch {
 				case mention:
 					found[i].Docs = append(found[i].Docs, entry.Path)
 				case role.IsTest():
 					found[i].Tests = true
-				case entry.Path != found[i].Path || n > declared:
+				case n > declared:
 					found[i].Used = true
 				}
 			}
