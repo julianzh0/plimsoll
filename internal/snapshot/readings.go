@@ -9,21 +9,23 @@ import (
 	"github.com/julianzh0/plimsoll/internal/parse"
 )
 
-// KeptReadings is how many file readings are kept between questions: more than 25 times the code files of the largest
-// field repository (json, 634). A kept reading with its key takes about 1.4 KB of heap (4,078 readings of the sixteen
-// field repositories took 5.8 MB), so the bound holds about 23 MB.
-//
-// NOTE: when a new reading would exceed the bound, every kept reading is dropped first, so a repository with more code
-// files than the bound is read again on every question. Upgrade: drop the least recently used.
+// KeptReadings is how many file readings may be kept between questions before readings no later question used are
+// dropped: more than 25 times the code files of the largest field repository (json, 634). A kept reading with its key
+// takes about 1.4 KB of heap (4,078 readings of the sixteen field repositories took 5.8 MB), so the bound holds about
+// 23 MB. A question never loses the readings it made itself: one larger than the bound keeps all of them, so the next
+// question about the same repository reads only what changed (swc, 43,434 code files: about 60 MB).
 const KeptReadings = 16384
 
 // Readings keeps what each file's content says, by content, between questions: a second question about unchanged
 // files does not read them again. It may be used from any number of goroutines; questions that need the same content
 // at the same time share one reading.
 type Readings struct {
-	parser *parse.Parser
-	mu     sync.Mutex
-	kept   map[readingKey]*keptReading
+	parser    *parse.Parser
+	bound     int
+	mu        sync.Mutex
+	kept      map[readingKey]*keptReading
+	questions uint64 // questions begun
+	dropped   uint64 // the latest question that dropped older readings: at most once per question
 }
 
 // readingKey names a reading: a reading depends only on the content, the entry, the grammar and the binary.
@@ -33,30 +35,51 @@ type readingKey struct {
 	content        [sha256.Size]byte
 }
 
-// keptReading is a reading, or the promise of one: read is closed once r is made.
+// keptReading is a reading, or the promise of one: read is closed once r is made. question is the latest question
+// that used it.
 type keptReading struct {
-	read chan struct{}
-	r    reading
+	read     chan struct{}
+	r        reading
+	question uint64
 }
 
 // NewReadings returns empty readings that read with the parser.
 func NewReadings(parser *parse.Parser) *Readings {
-	return &Readings{parser: parser, kept: map[readingKey]*keptReading{}}
+	return &Readings{parser: parser, bound: KeptReadings, kept: map[readingKey]*keptReading{}}
+}
+
+// begin numbers a new question; the readings it uses are kept until a later question needs the room.
+func (rs *Readings) begin() uint64 {
+	rs.mu.Lock()
+	defer rs.mu.Unlock()
+	rs.questions++
+	return rs.questions
+}
+
+// dropOlder drops the readings that no question from this one on has used. It runs with mu held.
+func (rs *Readings) dropOlder(question uint64) {
+	for key, kept := range rs.kept {
+		if kept.question < question {
+			delete(rs.kept, key)
+		}
+	}
 }
 
 // of returns the reading of one file's content for its language entry and grammar, made once per content.
-func (rs *Readings) of(language conventions.Language, grammar string, content []byte, declarations bool) reading {
+func (rs *Readings) of(language conventions.Language, grammar string, content []byte, question uint64, declarations bool) reading {
 	key := readingKey{entry: language.Name, grammar: grammar, declarations: declarations, content: sha256.Sum256(content)}
 	rs.mu.Lock()
 	if kept, found := rs.kept[key]; found {
+		kept.question = max(kept.question, question)
 		rs.mu.Unlock()
 		<-kept.read
 		return kept.r
 	}
-	if len(rs.kept) >= KeptReadings {
-		rs.kept = map[readingKey]*keptReading{}
+	if len(rs.kept) >= rs.bound && rs.dropped < question {
+		rs.dropOlder(question)
+		rs.dropped = question
 	}
-	kept := &keptReading{read: make(chan struct{})}
+	kept := &keptReading{read: make(chan struct{}), question: question}
 	rs.kept[key] = kept
 	rs.mu.Unlock()
 	r, lasting := rs.read(language, grammar, content, declarations)
@@ -72,16 +95,16 @@ func (rs *Readings) of(language conventions.Language, grammar string, content []
 	return r
 }
 
-// side reads the code files of one side that have a language entry, from content with its byte order mark dropped.
-// A file declares names is read with its entry's declarations query too: the files a change names.
-func (rs *Readings) side(rules conventions.Rules, content map[string][]byte, files []File, declares map[string]bool) map[string]reading {
+// side reads, for one question, the code files of one side that have a language entry, from content with its byte
+// order mark dropped. A file declares names is read with its entry's declarations query too: the files a change names.
+func (rs *Readings) side(rules conventions.Rules, content map[string][]byte, files []File, question uint64, declares map[string]bool) map[string]reading {
 	found := map[string]reading{}
 	for _, file := range files {
 		language, known := rules.LanguageOf(file.Path)
 		if !known || content[file.Path] == nil {
 			continue
 		}
-		found[file.Path] = rs.of(language, language.GrammarOf(file.Path), content[file.Path], declares[file.Path])
+		found[file.Path] = rs.of(language, language.GrammarOf(file.Path), content[file.Path], question, declares[file.Path])
 	}
 	return found
 }
