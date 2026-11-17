@@ -325,7 +325,7 @@ still run, interpreted and about 80 times slower.
 | `process.planning-file:<path>` | a file under a planning or review path is tracked now and was not at the base | repositories hold no planning records |
 | `process.doc-churn:repository` | over the commits since the base, documentation churn is above product plus test churn | documentation above code |
 | `process.limit-change:<key>` | `.plimsoll.toml` sets a limit to another value now than at the base, so a change that raised a limit to clear a mark says so | any change |
-| `process.declaration-change:<key>` | `.plimsoll.toml` declares other values under a key of `[layout]` or `[defaults]` now than at the base | any change |
+| `process.declaration-change:<key>` | `.plimsoll.toml` declares other values under a key of `[layout]`, `[ignore]` or `[defaults]` now than at the base | any change |
 | `settings.defined-twice:<NAME>` | a name on two or more lines of `.env.example` that are not commented out (candidate) | plimsoll's rule: one name, one setting |
 | `settings.compose-only:<NAME>` | a compose `environment` key that takes its value from the host (no value, or `$`) and that `.env.example` does not name (candidate) | the three lists agree |
 | `co-change.pair:<a>+<b>` | two code files changed together in at least 5 usable commits and did not at the base (new), or their share of the commits that touched either rose by at least 0.1 (grown). The mark shows that share and comes after every other mark | 5 shared commits, plimsoll's rule |
@@ -363,6 +363,10 @@ hotspot_files = 5                           # files the report lists as hotspots
 test_folders = ["checks", "tools/harness"]  # folders whose code is test code
 test_files = ["*_spec.rb", "*IT.java"]      # names of test files
 
+[ignore]
+folders = ["src/test/resources/fixtures"]   # folders whose files plimsoll leaves out
+files = ["SPEC.md", "*.generated.go"]       # names of files plimsoll leaves out
+
 [defaults]
 base = "main"                               # the base of a question that names none
 ```
@@ -373,12 +377,14 @@ base = "main"                               # the base of a question that names 
 | `hotspot_files` | How many files the report lists as hotspots |
 | `test_folders` | Folders, as paths from the root, whose code files count as test code, beside the defaults |
 | `test_files` | File names of code files that count as test code wherever they lie: `*` is any run of characters, `?` one |
+| `folders` under `[ignore]` | Folders, as paths from the root, whose files plimsoll leaves out: no code, no planning record, no documentation it reads |
+| `files` under `[ignore]` | File names, with the same patterns as `test_files`, of files plimsoll leaves out wherever they lie |
 | `base` | The branch, remote branch or tag a question without a base compares with. A remote branch is named with its remote (`origin/main`): `main` alone finds no remote branch. A branch of the name comes before a remote branch, and a remote branch before a tag |
 
 A declaration adds to the defaults and takes none away, and now's file applies to both sides of a question. Every
 mark names its limit's source, for example "1,500 lines, set by `.plimsoll.toml`", every report names what the file
-declares, and a limit or a declaration that changed since the base is itself a mark. The file switches no rule off
-and leaves no file out of the count: test code declared here counts as test code. A folder is a plain path, and a
+declares, and a limit or a declaration that changed since the base is itself a mark. The file switches no rule off,
+and `[ignore]` is the one way to leave files out of the count: test code declared here counts as test code. A folder is a plain path, and a
 bare name is a folder at the root. A test folder that is the root or a package root, and a file name that is only
 `*`, are not applied.
 

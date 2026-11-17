@@ -98,3 +98,29 @@ func TestBuildReadsTheTextKeysOfTheOwnFile(t *testing.T) {
 		t.Errorf("the file not read at the base: Declarations %+v, unread at the base %v; want %+v, true", s.Declarations, s.OwnFileUnreadAtBase, want)
 	}
 }
+
+func TestTheOwnFileIgnoresFoldersAndFiles(t *testing.T) {
+	big := snapshottest.Lines(4142)
+	files := map[string]string{
+		".plimsoll.toml":                         "[ignore]\nfolders = [\"src/test/resources/fixtures\"]\nfiles = [\"SPEC.md\"]\n",
+		"SPEC.md":                                "# the product's specification\n",
+		"src/test/resources/fixtures/big.groovy": big,
+		"src/app.groovy":                         big,
+		"docs/SPEC.md":                           "# another\n",
+	}
+	s := snapshot.Build(snapshottest.Files(nil, files), conventions.Default(), snapshottest.Readings(t))
+	var code []string
+	for _, f := range s.Now.Files {
+		code = append(code, f.Path)
+	}
+	if !slices.Equal(code, []string{"src/app.groovy"}) {
+		t.Errorf("Build(an ignored folder).Now.Files = %q, want src/app.groovy alone", code)
+	}
+	if len(s.Now.Planning) != 0 {
+		t.Errorf("Build(SPEC.md ignored).Now.Planning = %q, want none", s.Now.Planning)
+	}
+	plain := snapshot.Build(snapshottest.Files(nil, map[string]string{"SPEC.md": "x\n", "src/app.groovy": "x\n"}), conventions.Default(), snapshottest.Readings(t))
+	if !slices.Equal(plain.Now.Planning, []string{"SPEC.md"}) {
+		t.Errorf("Build(no own file).Now.Planning = %q, want SPEC.md by the defaults", plain.Now.Planning)
+	}
+}

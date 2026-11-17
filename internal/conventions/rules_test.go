@@ -162,6 +162,8 @@ func TestOwnValuesAreBroughtToTheirForm(t *testing.T) {
 		{Table: "layout", Key: "test_folders", Name: "test folders", Holds: TestFolderPaths},
 		{Table: "layout", Key: "test_files", Name: "test files", Holds: TestFileNames},
 		{Table: "defaults", Key: "base", Name: "default base", Holds: BaseName},
+		{Table: "ignore", Key: "folders", Name: "ignored folders", Holds: IgnoredFolderPaths},
+		{Table: "ignore", Key: "files", Name: "ignored files", Holds: IgnoredFileNames},
 	}
 	if rules.OwnFile != ".plimsoll.toml" || rules.LimitsTable != "limits" || !slices.Equal(rules.OwnKeys, want) || len(rules.TestNames) != 0 {
 		t.Errorf("Default() own file %q, table %q, keys %+v, test names %q; want .plimsoll.toml, limits, %+v and none",
@@ -170,8 +172,9 @@ func TestOwnValuesAreBroughtToTheirForm(t *testing.T) {
 	if !BaseName.Single() || TestFileNames.Single() || TestFolderPaths.Single() {
 		t.Errorf("Single() = %v for the base, %v for test files, %v for test folders; want true, false, false", BaseName.Single(), TestFileNames.Single(), TestFolderPaths.Single())
 	}
-	if !TestFileNames.Pattern() || TestFolderPaths.Pattern() {
-		t.Errorf("Pattern() = %v for test files, %v for test folders; want true and false", TestFileNames.Pattern(), TestFolderPaths.Pattern())
+	if !TestFileNames.Pattern() || TestFolderPaths.Pattern() || !IgnoredFileNames.Pattern() || IgnoredFolderPaths.Pattern() {
+		t.Errorf("Pattern() = %v for test files, %v for test folders, %v for ignored files, %v for ignored folders; want true, false, true, false",
+			TestFileNames.Pattern(), TestFolderPaths.Pattern(), IgnoredFileNames.Pattern(), IgnoredFolderPaths.Pattern())
 	}
 	seen := map[string]bool{}
 	for _, k := range rules.LimitKeys {

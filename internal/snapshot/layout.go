@@ -263,10 +263,16 @@ func readDeclared(content []byte, d conventions.Declaration) ([]string, KeyState
 // is not altered.
 func withLayout(rules conventions.Rules, layout Layout) conventions.Rules {
 	rules.TestPaths, rules.TestNames = slices.Clone(rules.TestPaths), slices.Clone(rules.TestNames)
+	rules.IgnoredPaths, rules.IgnoredNames = slices.Clone(rules.IgnoredPaths), slices.Clone(rules.IgnoredNames)
 	for _, d := range slices.Concat(layout.TestFolders, layout.Own) {
 		list := &rules.TestPaths
 		if d.AsWritten {
 			list = &rules.TestNames
+		}
+		if held := ownValueOf(rules, d); held == conventions.IgnoredFolderPaths {
+			list = &rules.IgnoredPaths
+		} else if held == conventions.IgnoredFileNames {
+			list = &rules.IgnoredNames
 		}
 		for _, value := range d.InUse {
 			*list = appendNew(*list, value.Path)
@@ -285,4 +291,17 @@ func withLayout(rules conventions.Rules, layout Layout) conventions.Rules {
 		}
 	}
 	return rules
+}
+
+// ownValueOf is what a key of the repository's own file holds, or 0 for a declaration of another file.
+func ownValueOf(rules conventions.Rules, d Declared) conventions.OwnValue {
+	if d.File != rules.OwnFile {
+		return 0
+	}
+	for _, k := range rules.OwnKeys {
+		if k.Table == d.Table && k.Key == d.Key {
+			return k.Holds
+		}
+	}
+	return 0
 }

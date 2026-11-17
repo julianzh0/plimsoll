@@ -56,6 +56,8 @@ type Rules struct {
 	LimitKeys        []LimitKey
 	OwnKeys          []OwnKey
 	TestNames        []string // file-name patterns of test code; empty in the shared rules
+	IgnoredPaths     []string // folders, as paths from the repository root, whose files are left out; empty in the shared rules
+	IgnoredNames     []string // file-name patterns of files left out; empty in the shared rules
 	PlanningPaths    []string // planning and review records: an entry ending in "/" is a folder, at the root when it is one name, at any depth when it is a chain; any other a file-name pattern
 	MeasurementPaths []string // measurement records, in the syntax of PlanningPaths
 	ComposeFiles     []string // file-name patterns of compose files, read for their environment keys
@@ -135,6 +137,10 @@ const (
 	TestFileNames
 	// BaseName is one name of a branch, a remote branch or a tag: the base of a question that names none.
 	BaseName
+	// IgnoredFolderPaths are folders, as paths from the repository root, whose files plimsoll leaves out.
+	IgnoredFolderPaths
+	// IgnoredFileNames are file-name patterns of files plimsoll leaves out.
+	IgnoredFileNames
 )
 
 // OwnValueLength is the longest value an own key may hold: the longest tracked folder path of sixteen repositories is
@@ -189,7 +195,7 @@ func (v OwnValue) Form(value string) (formed string, usable bool) {
 }
 
 // Pattern says whether the values are file-name patterns rather than folders.
-func (v OwnValue) Pattern() bool { return v == TestFileNames }
+func (v OwnValue) Pattern() bool { return v == TestFileNames || v == IgnoredFileNames }
 
 // Single says whether the key holds one string rather than a list.
 func (v OwnValue) Single() bool { return v == BaseName }
@@ -339,6 +345,8 @@ func Default() Rules {
 			{Table: "layout", Key: "test_folders", Name: "test folders", Holds: TestFolderPaths},
 			{Table: "layout", Key: "test_files", Name: "test files", Holds: TestFileNames},
 			{Table: "defaults", Key: "base", Name: "default base", Holds: BaseName},
+			{Table: "ignore", Key: "folders", Name: "ignored folders", Holds: IgnoredFolderPaths},
+			{Table: "ignore", Key: "files", Name: "ignored files", Holds: IgnoredFileNames},
 		},
 		LimitKeys: []LimitKey{
 			{Key: "file_lines", Name: "file-size limit", Unit: "lines"},

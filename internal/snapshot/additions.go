@@ -207,7 +207,7 @@ func wordByte(r rune) bool {
 // wordsFile says whether a file is read for its words alone: documentation or configuration outside skipped folders,
 // and no data file.
 func wordsFile(rules conventions.Rules, filePath string) bool {
-	if inFolders(filePath, rules.SkippedFolders) || inFoldersMatching(filePath, rules.Additions.SkippedFolders) ||
+	if inFolders(filePath, rules.SkippedFolders) || ignored(rules, filePath) || inFoldersMatching(filePath, rules.Additions.SkippedFolders) ||
 		isDataFile(rules.Additions, filePath) {
 		return false
 	}

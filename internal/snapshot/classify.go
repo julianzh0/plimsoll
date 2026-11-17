@@ -11,10 +11,16 @@ import (
 
 // excluded says whether a path can never be a code file: its suffix is not code or a folder of it is skipped.
 func excluded(rules conventions.Rules, filePath string) bool {
-	if slices.Contains(rules.NotCode, conventions.Suffix(filePath)) {
+	if slices.Contains(rules.NotCode, conventions.Suffix(filePath)) || ignored(rules, filePath) {
 		return true
 	}
 	return inFolders(filePath, rules.SkippedFolders)
+}
+
+// ignored says whether the repository's own file leaves a path out: under an ignored folder, or of an ignored name.
+func ignored(rules conventions.Rules, filePath string) bool {
+	return slices.ContainsFunc(rules.IgnoredPaths, func(folder string) bool { return strings.HasPrefix(filePath, folder+"/") }) ||
+		slices.ContainsFunc(rules.IgnoredNames, func(pattern string) bool { return nameMatches(pattern, filePath) })
 }
 
 // inFolders says whether any folder of a path has one of the names.
@@ -197,7 +203,7 @@ func area(rules conventions.Rules, filePath string) Area {
 // a chain of two or more folders matches at any depth. Any other entry is a pattern for the file name. A path in a
 // skipped folder never matches.
 func onPaths(rules conventions.Rules, filePath string, entries []string) bool {
-	if inFolders(filePath, rules.SkippedFolders) {
+	if inFolders(filePath, rules.SkippedFolders) || ignored(rules, filePath) {
 		return false
 	}
 	for _, entry := range entries {
