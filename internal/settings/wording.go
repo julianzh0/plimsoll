@@ -21,7 +21,7 @@ func (Detector) Wording(m answer.Mark) string {
 		if m.Measured.Before != nil {
 			before = fmt.Sprintf("it was on %s at the base", answer.Count(*m.Measured.Before))
 		}
-		return fmt.Sprintf("`%s` is defined on %s of `%s`; %s.", settingName, answer.Plural(int(m.Measured.Value), "line"), file, before)
+		return fmt.Sprintf("`%s` is defined on %s of `%s`; %s. Keep one of them.", settingName, answer.Plural(int(m.Measured.Value), "line"), file, before)
 	case ruleComposeOnly:
 		if m.Change == answer.Resolved {
 			return fmt.Sprintf("`%s` no longer stands as a compose variable without a setting.", settingName)

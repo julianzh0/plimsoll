@@ -15,11 +15,11 @@ func setting(rule, name string, change answer.Change, value float64, before, tot
 
 func TestSettingsWordingStandingAndEvidence(t *testing.T) {
 	cases := map[string]answer.Mark{
-		"`XX` is defined on 2 lines of `.env.example`; it was on 1 at the base.":                            setting(ruleDefinedTwice, "XX", answer.New, 2, new(1.0), nil),
-		"`XX` is defined on 2 lines of `.env.example`; `.env.example` did not exist at the base.":           setting(ruleDefinedTwice, "XX", answer.New, 2, nil, nil),
-		"`XX` is defined on 1 line of `.env.example`, no longer on more than one; it was on 2 at the base.": setting(ruleDefinedTwice, "XX", answer.Resolved, 1, new(2.0), nil),
-		"`REDIS_URL` is set in the `environment` of 2 compose files; `.env.example` has no line for it.":    setting(ruleComposeOnly, "REDIS_URL", answer.Standing, 2, nil, nil),
-		"`REDIS_URL` no longer stands as a compose variable without a setting.":                             setting(ruleComposeOnly, "REDIS_URL", answer.Resolved, 0, new(1.0), nil),
+		"`XX` is defined on 2 lines of `.env.example`; it was on 1 at the base. Keep one of them.":                  setting(ruleDefinedTwice, "XX", answer.New, 2, new(1.0), nil),
+		"`XX` is defined on 2 lines of `.env.example`; `.env.example` did not exist at the base. Keep one of them.": setting(ruleDefinedTwice, "XX", answer.New, 2, nil, nil),
+		"`XX` is defined on 1 line of `.env.example`, no longer on more than one; it was on 2 at the base.":         setting(ruleDefinedTwice, "XX", answer.Resolved, 1, new(2.0), nil),
+		"`REDIS_URL` is set in the `environment` of 2 compose files; `.env.example` has no line for it.":            setting(ruleComposeOnly, "REDIS_URL", answer.Standing, 2, nil, nil),
+		"`REDIS_URL` no longer stands as a compose variable without a setting.":                                     setting(ruleComposeOnly, "REDIS_URL", answer.Resolved, 0, new(1.0), nil),
 	}
 	for want, m := range cases {
 		if got := (Detector{}).Wording(m); got != want {
