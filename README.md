@@ -131,24 +131,21 @@ Then ask your agent, for example: *"Use plimsoll to check what this branch did t
 
 ## Example
 
-`status` on plimsoll's own repository, 30 commits back:
+`status` on [fd](https://github.com/sharkdp/fd), its last 20 commits:
 
 ```text
-plimsoll 0.3.0 status: base `HEAD~30` 422ce612e0, head 42a374430f
-3 new, 0 grown, 0 resolved
-Footprint of the change since the base: 30 commits, 72 files; product +1,645 -323, test +1,263 -75, documentation +16 -9; 0.8 test lines added per product line added.
+plimsoll 0.4.0 status: base `HEAD~20` d76b4e3e5b, head 6cf330283c
+1 new, 0 grown, 0 resolved; 1 more in `report` only
+Footprint of the change since the base: 50 commits, 16 files; product +492 -141, test +118 -1, documentation +42 -5; 0.2 test lines added per product line added.
 
-1. [new, exact] `internal/conventions/rules.go` and `internal/snapshot/snapshot.go` changed together in 6 of the 25 commits that touched either (24%); 4 at the base; limit 5 shared commits (plimsoll's rule).
-   verify: `explain` lists the shared commits by name. id: co-change.pair:internal/conventions/rules.go+internal/snapshot/snapshot.go
-2. [new, exact] `internal/conventions/imports.go` and `internal/snapshot/links.go` changed together in 5 of the 12 commits that touched either (42%); 1 at the base; limit 5 shared commits (plimsoll's rule).
-   verify: `explain` lists the shared commits by name. id: co-change.pair:internal/conventions/imports.go+internal/snapshot/links.go
-3. [new, exact] `internal/conventions/rules.go` and `internal/snapshot/facts.go` changed together in 5 of the 32 commits that touched either (16%); 2 at the base; limit 5 shared commits (plimsoll's rule).
-   verify: `explain` lists the shared commits by name. id: co-change.pair:internal/conventions/rules.go+internal/snapshot/facts.go
+1. [new, exact] `Cargo.toml` names 1 runtime dependency that was not there at the base: `memchr` (21 now, 20 at the base).
+   verify: compare the runtime dependencies in `Cargo.toml` at the base and now. id: shape.dependencies:Cargo.toml
 
-Standing (already at the base, not grown): 1 pair of files that changed together in at least 5 commits.
-History: 105 commits read, 100 usable.
+In `report` only (not counted here): 1 file over 1,000 lines grew, `tests/tests.rs` the most (+117).
+Standing (already at the base, not grown): 47 pairs of files that changed together in at least 5 commits.
+History: 1,650 commits read, 1,649 usable.
 Detectors run: shape, process, settings, hotspots, co-change, links.
-Not analysed: no `.env.example`, so no settings count; no `.env.example`, so no settings were compared; 2 changed files hold a syntax error, so an import after the error may be missed: `internal/links/links_test.go`, `internal/links/wording_test.go`.
+Not analysed: the footprint counts, in 2 changed product files that hold test code, only the growth of that test code as test lines and every other changed line as a product line; no `.env.example`, so no settings were counted or compared; not verified for `.1` (595 lines in 1 file); not verified for `.awk` (41 lines in 1 file); not verified for `.bash` (8 lines in 1 file) and 2 more in `report`.
 ```
 
 ## Tools
