@@ -425,6 +425,9 @@ func TestBuildListsAFileTheParserCannotRead(t *testing.T) {
 	if !slices.Equal(s.Unparsed, []string{"big.go"}) {
 		t.Errorf("Build(a file over the cap).Unparsed = %v, want [big.go]", s.Unparsed)
 	}
+	if !slices.Equal(s.Functions.Unread, []string{"big.go"}) {
+		t.Errorf("Build(a file over the cap).Functions.Unread = %v, want [big.go]", s.Functions.Unread)
+	}
 	if !slices.ContainsFunc(s.Now.Links.List, func(l snapshot.Link) bool { return l.From == "main.go" && l.To == "store" }) {
 		t.Errorf("Build(a file over the cap) links = %+v, want main.go -> store", s.Now.Links.List)
 	}
