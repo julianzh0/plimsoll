@@ -21,12 +21,12 @@ func testImport(change answer.Change, value float64, before *float64) answer.Mar
 func TestLinksWordingStandingAndEvidence(t *testing.T) {
 	zero, two := 0.0, 2.0
 	for m, want := range map[*answer.Mark]string{
-		new(testImport(answer.New, 1, &zero)):     "`src/a.ts` is product code and has 1 import of test code; it had none at the base.",
-		new(testImport(answer.New, 2, nil)):       "`src/a.ts` is product code and has 2 imports of test code; it did not exist at the base.",
-		new(testImport(answer.Grown, 3, &two)):    "`src/a.ts` is product code and has 3 imports of test code, 2 at the base.",
-		new(testImport(answer.Standing, 3, &two)): "`src/a.ts` is product code and has 3 imports of test code, 2 at the base.",
+		new(testImport(answer.New, 1, &zero)):     "`src/a.ts` is product code and imports 1 file or package of test code; it imported none at the base.",
+		new(testImport(answer.New, 2, nil)):       "`src/a.ts` is product code and imports 2 files or packages of test code; it did not exist at the base.",
+		new(testImport(answer.Grown, 3, &two)):    "`src/a.ts` is product code and imports 3 files or packages of test code, 2 at the base.",
+		new(testImport(answer.Standing, 3, &two)): "`src/a.ts` is product code and imports 3 files or packages of test code, 2 at the base.",
 		new(testImport(answer.Resolved, 0, &two)): "No import of test code found in `src/a.ts` now; it had 2 at the base.",
-		new(testImport(answer.Touched, 2, &zero)): "`src/a.ts` is product code and has 2 imports of test code, 0 at the base; this change added none of them.",
+		new(testImport(answer.Touched, 2, &zero)): "`src/a.ts` is product code and imports 2 files or packages of test code, 0 at the base; this change added none of their imports.",
 	} {
 		if got := (Detector{}).Wording(*m); got != want {
 			t.Errorf("Wording(%s, %v) = %q, want %q", m.Change, m.Measured.Value, got, want)
@@ -68,11 +68,11 @@ func TestLinksWordingStandingAndEvidence(t *testing.T) {
 	for m, want := range map[*answer.Mark]string{
 		new(folder(answer.New, 2, nil, "src/a", "src/b")):                "2 folders under `src/` depend on each other in a cycle, the first `src/a/`; none of them was in a folder cycle at the base.",
 		new(folder(answer.New, 2, nil, "a", "b")):                        "2 folders at the root depend on each other in a cycle, the first `a/`; none of them was in a folder cycle at the base.",
-		new(folder(answer.Grown, 3, &two, "src/a", "src/b", "src/c")):    "The folder cycle of `src/a/` has 3 folders, 2 at the base.",
-		new(folder(answer.Standing, 3, &two, "src/a", "src/b", "src/c")): "The folder cycle of `src/a/` has 3 folders, 2 at the base.",
+		new(folder(answer.Grown, 3, &two, "src/a", "src/b", "src/c")):    "The folder cycle under `src/` of `src/a/` has 3 folders, 2 at the base.",
+		new(folder(answer.Standing, 3, &two, "src/a", "src/b", "src/c")): "The folder cycle under `src/` of `src/a/` has 3 folders, 2 at the base.",
 		new(folder(answer.Resolved, 0, &two, "src/a", "src/b")):          "The folder cycle of `src/a/` had 2 folders at the base; no cycle found among them now.",
 		new(folder(answer.Touched, 2, nil, "a", "b")):                    "2 folders at the root depend on each other in a cycle, the first `a/`; no cycle was read among them at the base, and this change added none of the imports between them.",
-		new(folder(answer.Touched, 3, &two, "src/a", "src/b", "src/c")):  "The folder cycle of `src/a/` has 3 folders, 2 at the base; this change added none of the imports between them.",
+		new(folder(answer.Touched, 3, &two, "src/a", "src/b", "src/c")):  "The folder cycle under `src/` of `src/a/` has 3 folders, 2 at the base; this change added none of the imports between them.",
 	} {
 		if got := (Detector{}).Wording(*m); got != want {
 			t.Errorf("Wording(folder cycle %s, %v) = %q, want %q", m.Change, m.Measured.Value, got, want)

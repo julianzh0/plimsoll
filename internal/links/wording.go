@@ -33,7 +33,8 @@ func folderCycleWording(m answer.Mark) string {
 		return fmt.Sprintf("%s %s depend on each other in a cycle, the first %s; none of them was in a folder cycle at the base.",
 			answer.Plural(int(m.Measured.Value), "folder"), parentShown(m.Subject.Paths[0]), first)
 	}
-	grew := fmt.Sprintf("The folder cycle of %s has %s, %s at the base", first, answer.Plural(int(m.Measured.Value), "folder"), answer.Count(*m.Measured.Before))
+	grew := fmt.Sprintf("The folder cycle %s of %s has %s, %s at the base", parentShown(m.Subject.Paths[0]), first,
+		answer.Plural(int(m.Measured.Value), "folder"), answer.Count(*m.Measured.Before))
 	return touchedEnding(m, grew, noneOfTheImportsBetween)
 }
 
@@ -59,14 +60,18 @@ func testImportWording(m answer.Mark) string {
 	if m.Change == answer.Resolved {
 		return fmt.Sprintf("No import of test code found in `%s` now; it had %s at the base.", path, answer.Count(*m.Measured.Before))
 	}
-	has := fmt.Sprintf("`%s` is product code and has %s of test code", path, answer.Plural(int(m.Measured.Value), "import"))
+	targets := "1 file or package"
+	if m.Measured.Value != 1 {
+		targets = answer.Count(m.Measured.Value) + " files or packages"
+	}
+	has := fmt.Sprintf("`%s` is product code and imports %s of test code", path, targets)
 	switch {
 	case m.Change == answer.Touched && m.Measured.Before != nil:
-		return has + ", " + answer.Count(*m.Measured.Before) + " at the base; this change added none of them."
+		return has + ", " + answer.Count(*m.Measured.Before) + " at the base; this change added none of their imports."
 	case m.Measured.Before == nil:
 		return has + "; it did not exist at the base."
 	case *m.Measured.Before == 0:
-		return has + "; it had none at the base."
+		return has + "; it imported none at the base."
 	}
 	return has + ", " + answer.Count(*m.Measured.Before) + " at the base."
 }
