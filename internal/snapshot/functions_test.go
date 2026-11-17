@@ -126,6 +126,7 @@ func TestBuildMeasuresFunctionsInEveryLanguage(t *testing.T) {
 		"src/w.c":     {"open_session c=1 n=1", "count_streams c=3 n=2"}, // annotations in the parameters; a loop macro
 		"src/q.cpp":   {"Panel::size c=3 n=2"},                           // Qt: Q_OBJECT, Q_PROPERTY, slots, signals, Q_D, foreach, emit
 		"src/g.c":     {"fu_plugin_load c=1 n=1"},                        // GLib: G_DEFINE_TYPE, G_GNUC_*, g_autofree, g_autoptr, g_assert_cmpint
+		"src/f.cpp":   {"count c=3 n=2"},                                 // a Qt foreach the grammar reads as a function inside the body
 		"src/n.go":    {"Method c=0 n=0", "Plain c=0 n=0"},
 		"src/n.py":    {"save c=0 n=0", "inner c=0 n=0", "fetch c=0 n=0"},
 		"src/n.ts":    {"plain c=0 n=0", "arrow c=0 n=0", "constructor c=0 n=0", "save c=0 n=0", "field c=0 n=0", "size c=0 n=0", "method_definition c=0 n=0", "method_definition c=0 n=0"},
@@ -518,6 +519,14 @@ func TestBuildKeepsNoFunctionText(t *testing.T) {
 	got := functionsIn(t, conventions.Default(), map[string]string{"src/old.ts": snapshottest.Function("other", 1, 0)}, map[string]string{"src/a.ts": secret})
 	if text := fmt.Sprintf("%+v", got); strings.Contains(text, "zzsecret") || len(got.Complex) != 1 {
 		t.Errorf("Build(a function with a secret local).Functions = %s, want the function listed and none of its text", text)
+	}
+	// a name keeps no comment or literal written inside it
+	for _, inside := range []string{"int Store:: /* zzsecret */ route(int a) {\n  return a;\n}\n", "int Store<\"zzsecret\">::route(int a) {\n  return a;\n}\n"} {
+		for _, f := range functionsIn(t, everyFunction(), nil, map[string]string{"src/store.cpp": inside}).Complex {
+			if strings.Contains(f.Name, "zzsecret") {
+				t.Errorf("Build(%q).Functions names %q, want no text of a comment or literal", inside, f.Name)
+			}
+		}
 	}
 	// a qualified name may be split over lines; a name shows on one line
 	split := "int Store::\n    route(int a) {\n  return a;\n}\n"

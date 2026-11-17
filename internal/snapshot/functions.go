@@ -38,7 +38,7 @@ type table struct {
 	declared, bodies, closures, namedClosures, namedBy          kindSet
 	ifs, elseClauses, flatBranches, nesting, logic, parentheses kindSet
 	markup, depthIfs, depth, blocks, switches                   kindSet
-	declarators, names                                          kindSet
+	declarators, names, misreadIn                               kindSet
 	bodyAfter                                                   bool
 	bodyNames                                                   map[string]bool
 	elseKind                                                    int // the index of the kind "else", or -1
@@ -52,7 +52,7 @@ func tableOf(k conventions.FunctionKinds, tree parse.Tree) table {
 		logic: kindsOf(tree, k.Logic), parentheses: kindsOf(tree, k.Parentheses), markup: kindsOf(tree, k.Markup),
 		depthIfs: kindsOf(tree, k.DepthIfs), depth: kindsOf(tree, k.Depth), bodyAfter: k.BodyAfter,
 		blocks: kindsOf(tree, k.Blocks), switches: kindsOf(tree, k.SwitchBlocks), bodyNames: namesOf(k.Bodies),
-		declarators: kindsOf(tree, k.Declarators), names: kindsOf(tree, k.Names),
+		declarators: kindsOf(tree, k.Declarators), names: kindsOf(tree, k.Names), misreadIn: kindsOf(tree, k.MisreadIn),
 		elseKind: slices.Index(tree.Kinds, "else"),
 	}
 }
@@ -137,6 +137,17 @@ func functionsOf(kinds conventions.FunctionKinds, tokens *regexp.Regexp, rules c
 		if !n.Named {
 			continue
 		}
+		if t.declared.has(n) && s.parentOf(i) >= 0 && t.misreadIn.has(s.nodes[s.parentOf(i)]) {
+			// a macro read as a function inside a body (C++: Q_FOREACH (const T &x, l) { ... }): the function around
+			// it is not what it seems, so it counts as unreadable and the copy with macros rewritten reads it
+			for k := len(found) - 1; k >= 0; k-- {
+				if found[k].start <= int(n.Start) && int(n.End) <= found[k].end {
+					found[k].broken = true
+					break
+				}
+			}
+			continue
+		}
 		if t.declared.has(n) {
 			to, ok := t.functionEnd(s, i)
 			if !ok || within != nil && !within(int(n.Start), t.extent(s, i, to)) {
@@ -188,15 +199,20 @@ func (t table) functionEnd(s shape, i int) (int, bool) {
 // without "_declaration".
 func functionName(tree parse.Tree, s shape, t table, i int, content []byte) string {
 	text := func(k int) string {
-		name := string(content[s.nodes[k].Start:s.nodes[k].End])
-		if strings.Contains(name, "\n") { // a name split over lines (C++: Store::\n route) shows on one line
-			lines := strings.Split(name, "\n")
-			for i := range lines {
-				lines[i] = strings.TrimSpace(lines[i])
+		// a name node with parts (Store::route, ~Foo) is its tokens, without a comment or literal written inside it; a
+		// name split over lines shows on one line
+		var name strings.Builder
+		for j := k; j < s.endOf(k); j++ {
+			kind := tree.Kinds[s.nodes[j].Kind]
+			if j > k && (strings.Contains(kind, "comment") || strings.HasSuffix(kind, "literal")) {
+				j = s.endOf(j) - 1
+				continue
 			}
-			name = strings.Join(lines, "")
+			if s.endOf(j) == j+1 {
+				name.WriteString(strings.TrimSpace(string(content[s.nodes[j].Start:s.nodes[j].End])))
+			}
 		}
-		return strings.Trim(name, "`")
+		return strings.Trim(name.String(), "`")
 	}
 	// a type's name (type_identifier) is not the function's: Dart writes the return type before the name
 	identifier := func(k int) bool {

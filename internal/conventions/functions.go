@@ -23,6 +23,7 @@ type FunctionKinds struct {
 	SwitchBlocks  []string // of Blocks, those whose children count only when their kind ends in "statement" or "declaration"
 	Declarators   []string // kinds the name search descends through to the innermost one (C, C++: int *f(), T& A::f())
 	Names         []string // kinds that name a function besides identifiers (C++: ~Foo, operator+)
+	MisreadIn     []string // kinds a declared function never stands in directly: one there is a macro the grammar misread (C, C++)
 }
 
 // FunctionRules are the shared rules of the function marks: what is left out, and every number but the two limits.

@@ -95,6 +95,7 @@ func cFunctions() FunctionKinds {
 		Blocks:       []string{"compound_statement", "case_statement"},
 		SwitchBlocks: []string{"case_statement"},
 		Declarators:  []string{"function_declarator", "pointer_declarator"},
+		MisreadIn:    []string{"compound_statement"},
 	}
 }
 
@@ -117,8 +118,8 @@ const cppRawString = `R"\([\s\S]*?\)"`
 
 // cMacros is the macro uses the C and C++ grammars cannot read, in the order they are rewritten:
 //
-//   - an attribute-like name in capitals with an underscore, whole, before another word, where a declaration starts:
-//     at a line's start, after a specifier, or after a template's closing bracket (FMT_CONSTEXPR void f());
+//   - a run of attribute-like names in capitals with an underscore, whole, before another word, where a declaration
+//     starts: at a line's start, after a specifier, or after a template's closing bracket (FMT_CONSTEXPR void f());
 //
 //   - an annotation with underscores around its name, and its arguments (_In_, _Out_opt_, _In_reads_(n)), and
 //     __declspec(...);
@@ -132,17 +133,18 @@ const cppRawString = `R"\([\s\S]*?\)"`
 // not rewritten. Upgrade: learn the names from the repository's own #define lines.
 func cMacros() []MacroRule {
 	return []MacroRule{
-		{Pattern: regexp.MustCompile(`(?m)(?:^[ \t]*|\b(?:static|inline|constexpr|virtual|explicit|const|extern|friend)[ \t]+|>[ \t]*)(?P<macro>[A-Z][A-Z0-9]*_[A-Z0-9_]+)\b[ \t]*\n?[ \t]*[A-Za-z_~]`)},
-		{Pattern: regexp.MustCompile(`(?:^|[^\w])(?P<macro>(?:__declspec|_[A-Z][A-Za-z0-9]*_(?:[A-Za-z0-9]+_)*)(?:\s*\((?:[^()]|\([^()]*\))*\))?)`)},
+		{Pattern: regexp.MustCompile(`(?m)(?:^[ \t]*|\b(?:static|inline|constexpr|virtual|explicit|const|extern|friend)[ \t]+|>[ \t]*)(?P<macro>(?:[A-Z][A-Z0-9]*_[A-Z0-9_]+\b[ \t]*\n?[ \t]*)+)[A-Za-z_~]`)},
+		{Pattern: regexp.MustCompile(`(?:^|[^\w])(?P<macro>(?:__declspec|_[A-Z][A-Za-z0-9]*_(?:[A-Za-z0-9]+_)*\b)(?:\s*\((?:[^()]|\([^()]*\))*\))?)`)},
+		// Qt and Boost: foreach (decl, list) read as a range for; before the loop macros, which would take Q_FOREACH
+		{Pattern: regexp.MustCompile(`\b(?:foreach|Q_FOREACH|BOOST_FOREACH)\s*\((?:[^,()<>]|\([^()]*\)|<(?:[^<>]|<[^<>]*>)*>)*(?P<macro>,)`), As: ":"},
+		{Pattern: regexp.MustCompile(`\b(?P<macro>foreach|Q_FOREACH|BOOST_FOREACH)\s*\(`), As: "for"},
 		{Pattern: regexp.MustCompile(`\b(?P<macro>[A-Z][A-Z0-9_]*FOR_?EACH[A-Z0-9_]*)\s*\(`), As: "while"},
-		// Qt: emit before a call, the d-pointer and class macros, signal and slot sections, foreach (decl, list)
+		// Qt: emit before a call, the d-pointer and class macros, signal and slot sections
 		{Pattern: regexp.MustCompile(`\b(?P<macro>emit|Q_EMIT)\s+[A-Za-z_]`)},
 		{Pattern: regexp.MustCompile(`(?m)^[ \t]*(?P<macro>Q_[DQ]\s*\([^()]*\)\s*;)`)},
 		{Pattern: regexp.MustCompile(`(?m)^[ \t]*(?P<macro>Q_(?:OBJECT|GADGET|[A-Z_]+\s*\((?:[^()]|\([^()]*\))*\))\s*;?)[ \t]*$`)},
 		{Pattern: regexp.MustCompile(`\b(?:public|protected|private)[ \t]+(?P<macro>slots|Q_SLOTS)[ \t]*:`)},
 		{Pattern: regexp.MustCompile(`(?m)^[ \t]*(?P<macro>signals|Q_SIGNALS)[ \t]*:`), As: "public"},
-		{Pattern: regexp.MustCompile(`\b(?:foreach|Q_FOREACH)\s*\((?:[^,()]|\([^()]*\))*(?P<macro>,)`), As: ":"},
-		{Pattern: regexp.MustCompile(`\b(?P<macro>foreach|Q_FOREACH)\s*\(`), As: "for"},
 		// GLib: cleanup attributes and types, type-definition and attribute macros, assertions that take an operator
 		{Pattern: regexp.MustCompile(`\b(?P<macro>g_autofree)\b`)},
 		{Pattern: regexp.MustCompile(`\b(?P<macro>g_auto(?:ptr|list|slist)?\s*\([^()]*\))`), As: "void*"},

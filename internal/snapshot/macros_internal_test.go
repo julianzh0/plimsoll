@@ -4,6 +4,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/julianzh0/plimsoll/internal/conventions"
 )
@@ -39,5 +40,36 @@ func TestRewriteMacrosKeepsOffsetsAndRewritesWholeNames(t *testing.T) {
 	want := "             \n          int f(" + strings.Repeat(" ", 13) + "\n    int a) {\n  while       (x, &list, link)\n    a++;\n  return a;\n}\n"
 	if got := string(rewriteMacros(cpp.Macros, []byte(content))); got != want {
 		t.Errorf("rewriteMacros(%q) = %q, want %q", content, got, want)
+	}
+	// a name that only starts like an annotation stays; a foreach's template arguments keep their commas
+	for content, want := range map[string]string{
+		"int _Internal_init(_In_ int a);\n":        "int _Internal_init(     int a);\n",
+		"  foreach (QPair<int, int> p, pairs) {\n": "  for     (QPair<int, int> p: pairs) {\n",
+		"  Q_FOREACH (const QString &s, l) {\n":    "  for       (const QString &s: l) {\n",
+	} {
+		if got := string(rewriteMacros(cpp.Macros, []byte(content))); got != want {
+			t.Errorf("rewriteMacros(%q) = %q, want %q", content, got, want)
+		}
+	}
+}
+
+func TestRewriteMacrosTakesTimeThatGrowsWithTheFile(t *testing.T) {
+	var cpp conventions.Language
+	for _, l := range conventions.Default().Languages {
+		if l.Name == "cpp" {
+			cpp = l
+		}
+	}
+	// a long run of macro names is rewritten in passes that do not grow with the run
+	content := []byte(strings.Repeat("A_B ", 16000) + "int f(int a) {\n  return a;\n}\n")
+	done := make(chan []byte, 1)
+	go func() { done <- rewriteMacros(cpp.Macros, content) }()
+	select {
+	case got := <-done:
+		if !strings.HasPrefix(string(got), strings.Repeat(" ", 64000)+"int f") {
+			t.Errorf("rewriteMacros(16,000 macro names) = %.40q…, want them blanked", got)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatalf("rewriteMacros(16,000 macro names) did not finish within 10 s")
 	}
 }

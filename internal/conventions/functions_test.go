@@ -32,7 +32,7 @@ func TestEveryKindAFunctionTableNamesIsInItsGrammar(t *testing.T) {
 		}
 		k := l.Functions
 		for _, kind := range slices.Concat(k.Declared, k.Bodies, k.Closures, k.NamedClosures, k.NamedBy, k.Ifs, k.ElseClauses, k.FlatBranches,
-			k.Nesting, k.Logic, k.Parentheses, k.Markup, k.DepthIfs, k.Depth, k.Blocks, k.SwitchBlocks, k.Declarators, k.Names) {
+			k.Nesting, k.Logic, k.Parentheses, k.Markup, k.DepthIfs, k.Depth, k.Blocks, k.SwitchBlocks, k.Declarators, k.Names, k.MisreadIn) {
 			if !known[kind] {
 				t.Errorf("%s: its function table names the kind %q, which none of its grammars has", l.Name, kind)
 			}
