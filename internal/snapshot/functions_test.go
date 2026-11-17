@@ -180,6 +180,56 @@ func TestBuildListsAFunctionThatRepeatsABlock(t *testing.T) {
 	if got := functionsIn(t, rules, nil, map[string]string{"src/r.ts": once}).Complex; len(got) != 0 {
 		t.Errorf("Build(a block written once).Functions.Complex = %+v, want none", got)
 	}
+	fn := snapshottest.Function
+	// twice writes the flat ifs of a function (the lines "  if (a === N) { a += 1; }") a second time right after them.
+	twice := func(text string) string {
+		var out, run []string
+		for _, line := range strings.SplitAfter(text, "\n") {
+			if strings.HasPrefix(line, "  if (a === ") && strings.HasSuffix(line, "}\n") {
+				run = append(run, line)
+				continue
+			}
+			out = append(out, run...)
+			out = append(out, run...)
+			run = nil
+			out = append(out, line)
+		}
+		return strings.Join(out, "")
+	}
+	var loads strings.Builder
+	for n := 1; n <= 40; n++ {
+		fmt.Fprintf(&loads, "  const v%d = load(a, \"n%d\", %d);\n", n, n, n)
+	}
+	grown := fn("grow", 5, 0)
+	end := strings.LastIndex(grown, "  return a;\n")
+	flat := strings.Join(slices.Collect(func(yield func(string) bool) {
+		for line := range strings.SplitAfterSeq(fn("x", 0, 8), "\n") {
+			if strings.HasPrefix(line, "  if (a === ") && !yield(line) {
+				return
+			}
+		}
+	}), "")
+	movedIn := grown[:end] + loads.String() + flat + flat + grown[end:]
+	existed := []struct {
+		name      string
+		base, now map[string]string
+		complex   []string
+		repeated  []snapshot.LineRange
+	}{
+		{"pasted from its own body", map[string]string{"src/a.ts": fn("grow", 5, 8)}, map[string]string{"src/a.ts": twice(fn("grow", 5, 8))},
+			[]string{"src/a.ts grow c=23→31 n=5→5@6"}, []snapshot.LineRange{{Start: 12, End: 15}, {Start: 20, End: 23}}},
+		{"twice at the base already", map[string]string{"src/a.ts": twice(fn("grow", 3, 8))}, map[string]string{"src/a.ts": twice(fn("grow", 5, 8))}, nil, nil},
+		{"both copies moved in", map[string]string{"src/a.ts": fn("grow", 5, 0), "src/b.ts": twice(fn("old", 0, 8))},
+			map[string]string{"src/a.ts": movedIn, "src/b.ts": fn("old", 0, 0)}, nil, nil},
+	}
+	defaults := conventions.Default()
+	defaults.FunctionRules.ReasonNesting = 99
+	for _, tc := range existed {
+		got := functionsIn(t, defaults, tc.base, tc.now)
+		if !slices.Equal(shown(got.Complex), tc.complex) || len(got.Complex) == 1 && !slices.Equal(got.Complex[0].Repeated, tc.repeated) || len(got.LeftOut) != 0 {
+			t.Errorf("Build(%s).Functions = complex %q, left out %q; want %q with the block at %v", tc.name, shown(got.Complex), leftOut(got.LeftOut), tc.complex, tc.repeated)
+		}
+	}
 }
 
 func TestBuildMeasuresOnlyProductCodeItCanRead(t *testing.T) {

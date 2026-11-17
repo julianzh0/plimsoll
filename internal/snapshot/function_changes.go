@@ -122,10 +122,11 @@ func benchmark(words []string, filePath string) bool {
 type candidate struct {
 	change   FunctionChange
 	fn       function
-	tracked  bool // its file is at the base
-	complex  bool // crossed the complexity rule
-	deeper   bool // crossed the nesting rule
-	reasonOK bool // a reason to mark it: deep nesting or a repeated block the change introduced
+	base     *function // its partner at the base
+	tracked  bool      // its file is at the base
+	complex  bool      // crossed the complexity rule
+	deeper   bool      // crossed the nesting rule
+	reasonOK bool      // a reason to mark it: deep nesting or a repeated block the change introduced
 }
 
 // gone is a base function no function now has by name: it may have moved or been renamed.
@@ -230,6 +231,8 @@ func functionChanges(rules conventions.Rules, changes []Change, m measured, miss
 			result.LeftOut = append(result.LeftOut, LeftOutFunction{Path: c.change.Path, Name: c.change.Name, Reason: Moved})
 			continue
 		}
+		c.change.Repeated = introducedBlock(rules, c, added, &lines)
+		c.reasonOK = c.change.Nesting >= fr.ReasonNesting || c.change.Repeated != nil
 		kept = append(kept, c)
 	}
 	slices.SortFunc(result.LeftOut, func(a, b LeftOutFunction) int {
@@ -267,6 +270,7 @@ func functionChanges(rules conventions.Rules, changes []Change, m measured, miss
 func (c *candidate) partner(basePath string, b function) {
 	c.change.New, c.change.BasePath, c.change.BaseStart, c.change.BaseEnd = false, basePath, b.startLine, b.endLine
 	c.change.ComplexityBefore, c.change.NestingBefore = b.complexity, b.nesting
+	c.base = &b
 }
 
 // cross applies the two rules to the candidate as it now stands, and finds its reason.
@@ -276,12 +280,6 @@ func (c *candidate) cross(rules conventions.Rules) {
 	c.complex = float64(f.Complexity) > limit.Value &&
 		(f.New || float64(f.ComplexityBefore) <= limit.Value && float64(f.Complexity-f.ComplexityBefore) >= limit.Step)
 	c.deeper = float64(f.Nesting) >= nest.Value && (f.New || f.Nesting > f.NestingBefore)
-	f.Repeated = nil
-	if f.New && !c.tracked && len(c.fn.repeats) > 0 {
-		first := c.fn.repeats[0].copies
-		f.Repeated = []LineRange{{first[0].startLine, first[0].endLine}, {first[1].startLine, first[1].endLine}}
-	}
-	c.reasonOK = f.Nesting >= rules.FunctionRules.ReasonNesting || f.Repeated != nil
 }
 
 // sortByRise orders candidates as the complexity measure ranks them: the largest rise first.
@@ -329,4 +327,33 @@ func byName(functions []function) map[string][]function {
 		found[f.name] = append(found[f.name], f)
 	}
 	return found
+}
+
+// introducedBlock is the first two copies of the first block the change introduced into the function: one of its
+// copies lies at least half on added lines, its partner at the base held no such block, and its tokens do not stand
+// twice in the lines the change removed. nil when there is none.
+func introducedBlock(rules conventions.Rules, c candidate, added []LineRange, lines *lineChanges) []LineRange {
+	onAdded := func(b blockSpan) bool {
+		n := 0
+		for line := b.startLine; line <= b.endLine; line++ {
+			if slices.ContainsFunc(added, func(r LineRange) bool { return r.Start <= line && line <= r.End }) {
+				n++
+			}
+		}
+		return 2*n >= b.endLine-b.startLine+1
+	}
+	for _, r := range c.fn.repeats {
+		if !slices.ContainsFunc(r.copies, onAdded) {
+			continue
+		}
+		if c.base != nil && slices.ContainsFunc(c.base.repeats, func(b repeat) bool { return b.key == r.key }) {
+			continue
+		}
+		if removedTwice(rules, c.change.Path, r.copies[0], lines) {
+			continue
+		}
+		first, second := r.copies[0], r.copies[1]
+		return []LineRange{{first.startLine, first.endLine}, {second.startLine, second.endLine}}
+	}
+	return nil
 }

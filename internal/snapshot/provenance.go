@@ -332,3 +332,38 @@ func commentLines(content []byte, n int) []string {
 func hasAnyPrefix(s string, prefixes ...string) bool {
 	return slices.ContainsFunc(prefixes, func(p string) bool { return strings.HasPrefix(s, p) })
 }
+
+// removedTwice says whether the tokens of a block of the file at the path stand at least twice in the lines the change
+// removed from its code files, each removed range read as one stream of tokens.
+func removedTwice(rules conventions.Rules, path string, block blockSpan, lines *lineChanges) bool {
+	language, known := rules.LanguageOf(path)
+	if !known || language.Tokens == nil {
+		return false
+	}
+	want := tokensOf(language.Tokens, lines.now[path][block.start:block.end], 0)
+	if len(want) == 0 {
+		return false
+	}
+	found := 0
+	for _, change := range lines.changes {
+		other, readable := rules.LanguageOf(cmp.Or(change.From, change.Path))
+		base := lines.before[cmp.Or(change.From, change.Path)]
+		if !readable || other.Tokens == nil || base == nil {
+			continue
+		}
+		baseLines := linesOf(base)
+		for _, r := range lines.of(change).removed {
+			removed := tokensOf(other.Tokens, base[lineOffset(baseLines, r.Start):lineOffset(baseLines, r.End+1)], r.Start)
+			for i := 0; i+len(want) <= len(removed); i++ {
+				if slices.EqualFunc(removed[i:i+len(want)], want, func(a, b token) bool { return a.hash == b.hash }) {
+					found++
+					i += len(want) - 1
+				}
+			}
+			if found >= 2 {
+				return true
+			}
+		}
+	}
+	return false
+}
