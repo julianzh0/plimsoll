@@ -6,7 +6,7 @@ import "regexp"
 // the mod lines declare.
 func rustLanguage() Language {
 	return Language{
-		Name: "rust", Extensions: []string{".rs"}, Grammar: "rust", Query: rustQuery,
+		Name: "rust", Extensions: []string{".rs"}, Grammar: "rust", Query: rustQuery, Declarations: rustDeclarations,
 		Imports: Imports{
 			Statements: []ImportForm{{Pattern: rustMod}, {Pattern: rustUse}, {Pattern: rustExtern}},
 			Grouped:    true,
@@ -42,14 +42,6 @@ const rustQuery = `
 (source_file (mod_item !body) @pass)
 (source_file (use_declaration (visibility_modifier)) @pass)
 (source_file (extern_crate_declaration (visibility_modifier)) @pass)
-(source_file (function_item name: (identifier) @declared.function))
-(source_file [(struct_item name: (type_identifier) @declared.type) (enum_item name: (type_identifier) @declared.type)
-  (trait_item name: (type_identifier) @declared.type) (type_item name: (type_identifier) @declared.type)
-  (union_item name: (type_identifier) @declared.type)])
-(source_file [(const_item (visibility_modifier) name: (identifier) @declared.value)
-  (static_item (visibility_modifier) name: (identifier) @declared.value)])
-((source_file (attribute_item (attribute (identifier) @_frb)) . [(struct_item name: (type_identifier) @implicit)
-  (enum_item name: (type_identifier) @implicit)]) (#eq? @_frb "frb"))
 `
 
 // rustAttributes are the attributes before an item on its line, rustVisibility an item's visibility.
@@ -66,3 +58,16 @@ var (
 	// rustExtern is an extern crate declaration.
 	rustExtern = regexp.MustCompile(`(?m)^[ \t]*` + rustAttributes + rustVisibility + `extern[ \t]+crate[ \t]+(?P<spec>[A-Za-z_]\w*)`)
 )
+
+// rustDeclarations reads the top-level names a file declares, for the list of code a change added that nothing uses: run
+// only on the files a change names.
+const rustDeclarations = `
+(source_file (function_item name: (identifier) @declared.function))
+(source_file [(struct_item name: (type_identifier) @declared.type) (enum_item name: (type_identifier) @declared.type)
+  (trait_item name: (type_identifier) @declared.type) (type_item name: (type_identifier) @declared.type)
+  (union_item name: (type_identifier) @declared.type)])
+(source_file [(const_item (visibility_modifier) name: (identifier) @declared.value)
+  (static_item (visibility_modifier) name: (identifier) @declared.value)])
+((source_file (attribute_item (attribute (identifier) @_frb)) . [(struct_item name: (type_identifier) @implicit)
+  (enum_item name: (type_identifier) @implicit)]) (#eq? @_frb "frb"))
+`

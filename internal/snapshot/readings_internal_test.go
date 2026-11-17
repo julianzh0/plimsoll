@@ -15,7 +15,7 @@ func TestAReadingTheParserCouldNotStartIsNotKept(t *testing.T) {
 	parser.Close() // a closed parser fails for the moment, not for the file
 	readings := NewReadings(parser)
 	language, _ := conventions.Default().LanguageOf("a.go")
-	if r := readings.of(language, "go", []byte("package a\n")); !r.unread {
+	if r := readings.of(language, "go", []byte("package a\n"), false); !r.unread {
 		t.Fatalf("of(a closed parser) = %+v, want unread", r)
 	}
 	if len(readings.kept) != 0 {

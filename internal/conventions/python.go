@@ -6,7 +6,7 @@ package conventions
 func pythonLanguage() Language {
 	return Language{
 		Name: "python", Extensions: []string{".py", ".pyi"},
-		Imports: pythonImports(), Layout: pytestLayout(), Grammar: "python", Query: pythonQuery,
+		Imports: pythonImports(), Layout: pytestLayout(), Grammar: "python", Query: pythonQuery, Declarations: pythonDeclarations,
 		// MkDocs hooks: scripts named under hooks: in mkdocs.yml hold event handlers named on_… (MkDocs 1.4.0).
 		Loaded: []Convention{{Beside: []string{"mkdocs.yml", "mkdocs.yaml"}, Names: "on_*"}},
 	}
@@ -32,8 +32,6 @@ const pythonQuery = `
 (module [(comment) (import_from_statement) (future_import_statement)] @pass)
 (module (expression_statement (string)) @pass)
 ((module (expression_statement (assignment left: (identifier) @n)) @pass) (#eq? @n "__all__"))
-(module (function_definition name: (identifier) @declared.function))
-(module (class_definition name: (identifier) @declared.type))
 `
 
 func pythonImports() Imports {
@@ -59,3 +57,10 @@ func pytestLayout() []Declaration {
 	}
 	return rows
 }
+
+// pythonDeclarations reads the top-level names a file declares, for the list of code a change added that nothing uses: run
+// only on the files a change names.
+const pythonDeclarations = `
+(module (function_definition name: (identifier) @declared.function))
+(module (class_definition name: (identifier) @declared.type))
+`

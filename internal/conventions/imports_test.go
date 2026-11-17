@@ -223,6 +223,11 @@ func TestEveryEntryQueryCompiles(t *testing.T) {
 			if _, err := parsetest.Parser(t).Read(g, l.Query, nil); err != nil {
 				t.Errorf("%s: its query on the %s grammar: %v", l.Name, g, err)
 			}
+			if l.Declarations == "" {
+				t.Errorf("%s has no declarations query", l.Name)
+			} else if _, err := parsetest.Parser(t).Read(g, l.Declarations, nil); err != nil {
+				t.Errorf("%s: its declarations query on the %s grammar: %v", l.Name, g, err)
+			}
 		}
 	}
 }

@@ -10,7 +10,7 @@ func typescriptLanguage() Language {
 	return Language{
 		Name: "typescript", Extensions: []string{".ts", ".tsx", ".js", ".mjs", ".cjs"},
 		Imports: typescriptImports(), Grammar: "tsx", GrammarBySuffix: map[string]string{".ts": "typescript"},
-		Query: typescriptQuery,
+		Query: typescriptQuery, Declarations: typescriptDeclarations,
 		// trigger.dev finds tasks in folders named trigger when its config sets no dirs
 		// (https://trigger.dev/docs/config/config-file, read 2026-11-17).
 		// NOTE: a dirs entry of trigger.config that names another folder is not read. Upgrade: read dirs from the
@@ -35,6 +35,28 @@ const typescriptQuery = `
 ((call_expression function: [(import) (identifier) @f] arguments: (arguments . (_) @computed)) (#eq? @f "require"))
 (program (export_statement source: (string)) @pass)
 (program (comment) @pass)
+`
+
+func typescriptImports() Imports {
+	extensions := []string{".ts", ".tsx", ".d.ts", ".js", ".jsx"}
+	return Imports{
+		Relative: DotSlash,
+		Prefix:   Prefix{File: "tsconfig.json", Format: TSConfigPaths},
+		Target:   FileTarget,
+		Candidates: Candidates{
+			Swap: []Swap{
+				{From: ".js", To: []string{".ts", ".tsx", ".d.ts"}}, {From: ".jsx", To: []string{".tsx"}},
+				{From: ".mjs", To: []string{".mts", ".d.mts"}}, {From: ".cjs", To: []string{".cts", ".d.cts"}},
+			},
+			Add:      extensions,
+			InFolder: []string{"index.ts", "index.tsx", "index.d.ts", "index.js", "index.jsx"},
+		},
+	}
+}
+
+// typescriptDeclarations reads the top-level names a file declares, for the list of code a change added that nothing uses: run
+// only on the files a change names.
+const typescriptDeclarations = `
 (program (function_declaration name: (identifier) @declared.function))
 (program (generator_function_declaration name: (identifier) @declared.function))
 (program (export_statement declaration: [(function_declaration name: (identifier) @declared.function)
@@ -62,20 +84,3 @@ const typescriptQuery = `
   (lexical_declaration (variable_declarator name: (identifier) @exported))
   (variable_declaration (variable_declarator name: (identifier) @exported))]))
 `
-
-func typescriptImports() Imports {
-	extensions := []string{".ts", ".tsx", ".d.ts", ".js", ".jsx"}
-	return Imports{
-		Relative: DotSlash,
-		Prefix:   Prefix{File: "tsconfig.json", Format: TSConfigPaths},
-		Target:   FileTarget,
-		Candidates: Candidates{
-			Swap: []Swap{
-				{From: ".js", To: []string{".ts", ".tsx", ".d.ts"}}, {From: ".jsx", To: []string{".tsx"}},
-				{From: ".mjs", To: []string{".mts", ".d.mts"}}, {From: ".cjs", To: []string{".cts", ".d.cts"}},
-			},
-			Add:      extensions,
-			InFolder: []string{"index.ts", "index.tsx", "index.d.ts", "index.js", "index.jsx"},
-		},
-	}
-}

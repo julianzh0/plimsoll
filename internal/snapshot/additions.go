@@ -158,12 +158,7 @@ func withUses(rules conventions.Rules, found []Addition, entries []Entry, roles 
 			}
 		}
 		for name, n := range counts {
-			declared := 0
-			for _, d := range readings[entry.Path].declarations {
-				if d.name == name {
-					declared++
-				}
-			}
+			declared := 1 // a file declares a top-level name once
 			for _, i := range byName[name] {
 				switch {
 				case mention:

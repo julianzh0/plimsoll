@@ -6,7 +6,7 @@ import "regexp"
 // file of it, at any depth.
 func swiftLanguage() Language {
 	return Language{
-		Name: "swift", Extensions: []string{".swift"}, Grammar: "swift", Query: swiftQuery,
+		Name: "swift", Extensions: []string{".swift"}, Grammar: "swift", Query: swiftQuery, Declarations: swiftDeclarations,
 		Library: &Library{Manifest: "Package.swift", Is: regexp.MustCompile(`\.library\(`)},
 		Imports: Imports{
 			Relative:   NoRelative,
@@ -26,6 +26,11 @@ func swiftLanguage() Language {
 // Upgrade: evaluate the conditions of the platforms and traits the package declares.
 const swiftQuery = `
 (import_declaration (identifier . (simple_identifier) @spec)) @import
+`
+
+// swiftDeclarations reads the top-level names a file declares, for the list of code a change added that nothing uses: run
+// only on the files a change names.
+const swiftDeclarations = `
 (source_file (function_declaration name: (simple_identifier) @declared.function))
 (source_file (class_declaration declaration_kind: ["class" "struct" "enum" "actor"] name: (type_identifier) @declared.type))
 (source_file [(protocol_declaration name: (type_identifier) @declared.type) (typealias_declaration name: (type_identifier) @declared.type)])

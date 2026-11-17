@@ -29,6 +29,7 @@ type Readings struct {
 // readingKey names a reading: a reading depends only on the content, the entry, the grammar and the binary.
 type readingKey struct {
 	entry, grammar string
+	declarations   bool // the reading holds the file's declarations too
 	content        [sha256.Size]byte
 }
 
@@ -44,8 +45,8 @@ func NewReadings(parser *parse.Parser) *Readings {
 }
 
 // of returns the reading of one file's content for its language entry and grammar, made once per content.
-func (rs *Readings) of(language conventions.Language, grammar string, content []byte) reading {
-	key := readingKey{entry: language.Name, grammar: grammar, content: sha256.Sum256(content)}
+func (rs *Readings) of(language conventions.Language, grammar string, content []byte, declarations bool) reading {
+	key := readingKey{entry: language.Name, grammar: grammar, declarations: declarations, content: sha256.Sum256(content)}
 	rs.mu.Lock()
 	if kept, found := rs.kept[key]; found {
 		rs.mu.Unlock()
@@ -58,7 +59,7 @@ func (rs *Readings) of(language conventions.Language, grammar string, content []
 	kept := &keptReading{read: make(chan struct{})}
 	rs.kept[key] = kept
 	rs.mu.Unlock()
-	r, lasting := rs.read(language, grammar, content)
+	r, lasting := rs.read(language, grammar, content, declarations)
 	kept.r = r
 	close(kept.read)
 	if !lasting {
@@ -72,14 +73,15 @@ func (rs *Readings) of(language conventions.Language, grammar string, content []
 }
 
 // side reads the code files of one side that have a language entry, from content with its byte order mark dropped.
-func (rs *Readings) side(rules conventions.Rules, content map[string][]byte, files []File) map[string]reading {
+// A file declares names is read with its entry's declarations query too: the files a change names.
+func (rs *Readings) side(rules conventions.Rules, content map[string][]byte, files []File, declares map[string]bool) map[string]reading {
 	found := map[string]reading{}
 	for _, file := range files {
 		language, known := rules.LanguageOf(file.Path)
 		if !known || content[file.Path] == nil {
 			continue
 		}
-		found[file.Path] = rs.of(language, language.GrammarOf(file.Path), content[file.Path])
+		found[file.Path] = rs.of(language, language.GrammarOf(file.Path), content[file.Path], declares[file.Path])
 	}
 	return found
 }
@@ -97,11 +99,15 @@ const syntaxErrorPattern = "\n(ERROR) @error\n"
 //
 // lasting is false for a failure of the moment (parse.ErrUnavailable): such a reading answers this question and is not
 // kept, so a later question reads the file again.
-func (rs *Readings) read(language conventions.Language, grammar string, content []byte) (r reading, lasting bool) {
+func (rs *Readings) read(language conventions.Language, grammar string, content []byte, declarations bool) (r reading, lasting bool) {
 	if grammar == "" {
 		return readByText(language, content), true
 	}
-	result, err := rs.parser.Read(grammar, language.Query+syntaxErrorPattern, content)
+	query := language.Query
+	if declarations {
+		query += language.Declarations
+	}
+	result, err := rs.parser.Read(grammar, query+syntaxErrorPattern, content)
 	if err != nil && language.LineReadWhenBroken {
 		return readByText(language, content), !errors.Is(err, parse.ErrUnavailable)
 	}

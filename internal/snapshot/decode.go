@@ -19,7 +19,6 @@ func decode(language conventions.Language, result parse.Result, content []byte) 
 	var modules, tests []span
 	var imports []importCapture
 	passes := map[parse.Span]bool{}
-	declaredAt := map[string][]int{} // a declared name -> where the query found it
 	for _, match := range result.Matches {
 		var im importCapture
 		var module, moduleName, test, testEnd parse.Capture
@@ -56,9 +55,6 @@ func decode(language conventions.Language, result parse.Result, content []byte) 
 				blanks = append(blanks, c)
 			case "error":
 				r.syntaxError = true
-			case "declared.function", "declared.type", "declared.value", "implicit", "exported":
-				r.declarations = declared(r.declarations, c.Name, string(content[c.Start:c.End]))
-				declaredAt[string(content[c.Start:c.End])] = append(declaredAt[string(content[c.Start:c.End])], c.Start)
 			}
 		}
 		if moduleName.End > 0 {
@@ -93,9 +89,7 @@ func decode(language conventions.Language, result parse.Result, content []byte) 
 	r.passesOn = len(passes) > 0 && !slices.ContainsFunc(result.Top, func(top parse.Span) bool { return !passes[top] })
 	r.testLines = spanLines(content, tests)
 	r.testSpans = tests
-	r.declarations = slices.DeleteFunc(r.declarations, func(d topName) bool {
-		return slices.ContainsFunc(declaredAt[d.name], func(at int) bool { return inSpans(tests, at) })
-	})
+	r.declarations = decodeDeclarations(result, content, tests)
 	r.parsed = true
 	return r
 }
@@ -236,4 +230,24 @@ func unquoted(s string) string {
 // inSpans says whether an offset lies in one of the spans.
 func inSpans(spans []span, at int) bool {
 	return slices.ContainsFunc(spans, func(s span) bool { return s.start <= at && at <= s.end })
+}
+
+// decodeDeclarations turns the captures of an entry's declarations query into the top-level names a file declares,
+// leaving out those inside its test code.
+func decodeDeclarations(result parse.Result, content []byte, tests []span) []topName {
+	var found []topName
+	declaredAt := map[string][]int{} // a declared name -> where the query found it
+	for _, match := range result.Matches {
+		for _, c := range match {
+			switch c.Name {
+			case "declared.function", "declared.type", "declared.value", "implicit", "exported":
+				name := string(content[c.Start:c.End])
+				found = declared(found, c.Name, name)
+				declaredAt[name] = append(declaredAt[name], c.Start)
+			}
+		}
+	}
+	return slices.DeleteFunc(found, func(d topName) bool {
+		return slices.ContainsFunc(declaredAt[d.name], func(at int) bool { return inSpans(tests, at) })
+	})
 }

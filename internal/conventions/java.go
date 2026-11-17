@@ -6,7 +6,7 @@ import "regexp"
 // declare it.
 func javaLanguage() Language {
 	return Language{
-		Name: "java", Extensions: []string{".java"}, Grammar: "java", Query: javaQuery,
+		Name: "java", Extensions: []string{".java"}, Grammar: "java", Query: javaQuery, Declarations: javaDeclarations,
 		Imports: jvmImports([]string{".kt", ".kts"}, []string{"package-info.java", "module-info.java"}),
 	}
 }
@@ -16,12 +16,6 @@ func javaLanguage() Language {
 const javaQuery = `
 ((import_declaration [(identifier) (scoped_identifier)] @spec (asterisk)? @spec) @import
   (#not-match? @import "^import[ \t]+module[ \t]"))
-(program [(class_declaration name: (identifier) @declared.type) (interface_declaration name: (identifier) @declared.type)
-  (enum_declaration name: (identifier) @declared.type) (record_declaration name: (identifier) @declared.type)
-  (annotation_type_declaration name: (identifier) @declared.type)])
-(program [(class_declaration (modifiers [(marker_annotation) (annotation)]) name: (identifier) @implicit)
-  (interface_declaration (modifiers [(marker_annotation) (annotation)]) name: (identifier) @implicit)
-  (record_declaration (modifiers [(marker_annotation) (annotation)]) name: (identifier) @implicit)])
 `
 
 // jvmPackage is the package a file declares, its first statement. It stays a pattern: it is also read from generated
@@ -41,3 +35,14 @@ func jvmImports(also, implicit []string) Imports {
 		Implicit:    implicit,
 	}
 }
+
+// javaDeclarations reads the top-level names a file declares, for the list of code a change added that nothing uses: run
+// only on the files a change names.
+const javaDeclarations = `
+(program [(class_declaration name: (identifier) @declared.type) (interface_declaration name: (identifier) @declared.type)
+  (enum_declaration name: (identifier) @declared.type) (record_declaration name: (identifier) @declared.type)
+  (annotation_type_declaration name: (identifier) @declared.type)])
+(program [(class_declaration (modifiers [(marker_annotation) (annotation)]) name: (identifier) @implicit)
+  (interface_declaration (modifiers [(marker_annotation) (annotation)]) name: (identifier) @implicit)
+  (record_declaration (modifiers [(marker_annotation) (annotation)]) name: (identifier) @implicit)])
+`

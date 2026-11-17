@@ -5,7 +5,7 @@ import "regexp"
 // csharpLanguage is the entry for C#. A using names a namespace: the folders whose files declare it.
 func csharpLanguage() Language {
 	return Language{
-		Name: "csharp", Extensions: []string{".cs"}, Imports: csharpImports(), Grammar: "csharp", Query: csharpQuery,
+		Name: "csharp", Extensions: []string{".cs"}, Imports: csharpImports(), Grammar: "csharp", Query: csharpQuery, Declarations: csharpDeclarations,
 		// ASP.NET loads the application class of Global.asax.
 		Loaded: []Convention{{File: "Global.asax.cs"}},
 		// A project is a published library unless it says it is not packable, builds a program, or uses an
@@ -26,19 +26,6 @@ const csharpQuery = `
   (#strip-prefix! @spec "global::"))
 ((using_directive "global"? @everywhere name: (identifier) (qualified_name qualifier: (_) @spec)) @import
   (#strip-prefix! @spec "global::"))
-(compilation_unit [(class_declaration name: (identifier) @declared.type) (interface_declaration name: (identifier) @declared.type)
-  (enum_declaration name: (identifier) @declared.type) (record_declaration name: (identifier) @declared.type)
-  (struct_declaration name: (identifier) @declared.type)])
-(namespace_declaration body: (declaration_list [(class_declaration name: (identifier) @declared.type) (interface_declaration name: (identifier) @declared.type)
-  (enum_declaration name: (identifier) @declared.type) (record_declaration name: (identifier) @declared.type)
-  (struct_declaration name: (identifier) @declared.type)]))
-(class_declaration name: (identifier) @implicit body: (declaration_list (method_declaration parameters: (parameter_list (parameter (modifier) @_m (#eq? @_m "this"))))))
-((compilation_unit [(class_declaration (modifier) @_p name: (identifier) @exported) (interface_declaration (modifier) @_p name: (identifier) @exported)
-  (enum_declaration (modifier) @_p name: (identifier) @exported) (record_declaration (modifier) @_p name: (identifier) @exported)
-  (struct_declaration (modifier) @_p name: (identifier) @exported)]) (#eq? @_p "public"))
-((namespace_declaration body: (declaration_list [(class_declaration (modifier) @_p name: (identifier) @exported) (interface_declaration (modifier) @_p name: (identifier) @exported)
-  (enum_declaration (modifier) @_p name: (identifier) @exported) (record_declaration (modifier) @_p name: (identifier) @exported)
-  (struct_declaration (modifier) @_p name: (identifier) @exported)])) (#eq? @_p "public"))
 `
 
 // dotnetProject is the file-name pattern of a .NET project file: a manifest of dependencies, and a name of the
@@ -68,3 +55,21 @@ func csharpImports() Imports {
 		Implicit: []string{"Program.cs"},
 	}
 }
+
+// csharpDeclarations reads the top-level names a file declares, for the list of code a change added that nothing uses: run
+// only on the files a change names.
+const csharpDeclarations = `
+(compilation_unit [(class_declaration name: (identifier) @declared.type) (interface_declaration name: (identifier) @declared.type)
+  (enum_declaration name: (identifier) @declared.type) (record_declaration name: (identifier) @declared.type)
+  (struct_declaration name: (identifier) @declared.type)])
+(namespace_declaration body: (declaration_list [(class_declaration name: (identifier) @declared.type) (interface_declaration name: (identifier) @declared.type)
+  (enum_declaration name: (identifier) @declared.type) (record_declaration name: (identifier) @declared.type)
+  (struct_declaration name: (identifier) @declared.type)]))
+(class_declaration name: (identifier) @implicit body: (declaration_list (method_declaration parameters: (parameter_list (parameter (modifier) @_m (#eq? @_m "this"))))))
+((compilation_unit [(class_declaration (modifier) @_p name: (identifier) @exported) (interface_declaration (modifier) @_p name: (identifier) @exported)
+  (enum_declaration (modifier) @_p name: (identifier) @exported) (record_declaration (modifier) @_p name: (identifier) @exported)
+  (struct_declaration (modifier) @_p name: (identifier) @exported)]) (#eq? @_p "public"))
+((namespace_declaration body: (declaration_list [(class_declaration (modifier) @_p name: (identifier) @exported) (interface_declaration (modifier) @_p name: (identifier) @exported)
+  (enum_declaration (modifier) @_p name: (identifier) @exported) (record_declaration (modifier) @_p name: (identifier) @exported)
+  (struct_declaration (modifier) @_p name: (identifier) @exported)])) (#eq? @_p "public"))
+`
