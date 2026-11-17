@@ -2,6 +2,8 @@ package snapshot
 
 import (
 	"bytes"
+	"encoding/binary"
+	"hash"
 	"hash/fnv"
 	"regexp"
 )
@@ -38,12 +40,13 @@ func tokensOf(pattern *regexp.Regexp, text []byte, firstLine int) []token {
 // runHash is the hash of n tokens in a row.
 func runHash(tokens []token) uint64 {
 	h := fnv.New64a()
-	var b [8]byte
 	for _, t := range tokens {
-		for i := range b {
-			b[i] = byte(t.hash >> (8 * i))
-		}
-		h.Write(b[:])
+		writeUint64(h, t.hash)
 	}
 	return h.Sum64()
+}
+
+// writeUint64 writes v to a hash in eight little-endian bytes.
+func writeUint64(h hash.Hash64, v uint64) {
+	h.Write(binary.LittleEndian.AppendUint64(nil, v))
 }

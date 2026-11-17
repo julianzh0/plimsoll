@@ -32,32 +32,41 @@ type statementRun struct {
 // same statements with the same tokens stand at least twice without overlap. The statements are the named children of
 // the function's Blocks nodes that are no comments (in a SwitchBlocks node, only statements and declarations); a declared
 // function inside is not entered, a closure is.
-func repeatsOf(kinds conventions.FunctionKinds, pattern *regexp.Regexp, rules conventions.FunctionRules, tree parse.Tree, s shape, t table,
+func repeatsOf(pattern *regexp.Regexp, rules conventions.FunctionRules, tree parse.Tree, s shape, t table,
 	from, to int, content []byte, lines lineIndex) []repeat {
-	blocks, switches := kindsOf(tree, kinds.Blocks), kindsOf(tree, kinds.SwitchBlocks)
+	start, end := int(s.nodes[from].Start), int(s.nodes[to-1].End)
+	for k := from; k < to; k++ {
+		end = max(end, int(s.nodes[k].End))
+	}
+	toks := tokensOf(pattern, content[start:end], 0) // the function's tokens, once; a statement takes its slice of them
+	tokensIn := func(a, b int) []token {
+		lo, _ := slices.BinarySearchFunc(toks, a-start, func(t token, at int) int { return t.start - at })
+		hi, _ := slices.BinarySearchFunc(toks, b-start, func(t token, at int) int { return t.start - at })
+		return toks[lo:hi]
+	}
 	var sequences [][]statementRun
 	for k := from + 1; k < to; k++ {
 		n := s.nodes[k]
 		if n.Named && t.declared.has(n) {
-			k = s.end[k] - 1
+			k = t.skipEnd(s, k) - 1
 			continue
 		}
-		if !n.Named || !blocks.has(n) {
+		if !n.Named || !t.blocks.has(n) {
 			continue
 		}
 		var seq []statementRun
-		for c := k + 1; c < s.end[k]; c = s.end[c] {
+		for c := k + 1; c < s.endOf(k); c = s.endOf(c) {
 			child := s.nodes[c]
 			kind := tree.Kinds[child.Kind]
 			if !child.Named || strings.Contains(kind, "comment") {
 				continue
 			}
-			if switches.has(n) && !strings.HasSuffix(kind, "statement") && !strings.HasSuffix(kind, "declaration") {
+			if t.switches.has(n) && !strings.HasSuffix(kind, "statement") && !strings.HasSuffix(kind, "declaration") {
 				continue
 			}
 			start, end := int(child.Start), int(child.End)
-			toks := tokensOf(pattern, content[start:end], 0)
-			seq = append(seq, statementRun{hash: runHash(toks), tokens: len(toks),
+			own := tokensIn(start, end)
+			seq = append(seq, statementRun{hash: runHash(own), tokens: len(own),
 				span: blockSpan{startLine: lines.line(start), endLine: lines.line(max(start, end-1)), start: start, end: end}})
 		}
 		sequences = append(sequences, seq)
@@ -97,20 +106,36 @@ func repeatsOf(kinds conventions.FunctionKinds, pattern *regexp.Regexp, rules co
 		}
 	}
 	slices.SortStableFunc(found, func(a, b repeat) int { return a.copies[0].start - b.copies[0].start })
-	return found
+	// a run pasted twice gives one repeat for every window that starts inside it: keep the first window of each run
+	var kept []repeat
+	for i, r := range found {
+		if i > 0 && shifted(found[i-1], r) {
+			continue
+		}
+		kept = append(kept, r)
+	}
+	return kept
 }
 
 // blockKey is the hash of a block's statements, each with its token count, in order.
 func blockKey(statements []statementRun) uint64 {
 	h := fnv.New64a()
-	var b [8]byte
 	for _, st := range statements {
-		for _, v := range []uint64{st.hash, uint64(st.tokens)} {
-			for i := range b {
-				b[i] = byte(v >> (8 * i))
-			}
-			h.Write(b[:])
-		}
+		writeUint64(h, st.hash)
+		writeUint64(h, uint64(st.tokens))
 	}
 	return h.Sum64()
+}
+
+// shifted says whether each copy of b starts inside the matching copy of a: b is a later window of the same run.
+func shifted(a, b repeat) bool {
+	if len(a.copies) != len(b.copies) {
+		return false
+	}
+	for i := range a.copies {
+		if b.copies[i].start < a.copies[i].start || b.copies[i].start >= a.copies[i].end {
+			return false
+		}
+	}
+	return true
 }

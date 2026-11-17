@@ -83,7 +83,11 @@ func measuredFile(rules conventions.Rules, f File, content []byte) fileVerdict {
 	if len(content) > fr.MinifiedLineBytes*max(f.Lines, 1) {
 		return fileMinified
 	}
-	if language, known := rules.LanguageOf(f.Path); !known || language.Functions == nil {
+	language, known := rules.LanguageOf(f.Path)
+	if !known {
+		return fileNotProduct
+	}
+	if language.Functions == nil {
 		return fileWithoutTables
 	}
 	return fileMeasured
@@ -139,6 +143,11 @@ type gone struct {
 // leaves out those whose code existed before.
 func functionChanges(rules conventions.Rules, changes []Change, m measured, missing []string, now, before Tree,
 	nowContent, beforeContent map[string][]byte, nowReadings, beforeReadings map[string]reading) Functions {
+	atBase := map[string]bool{}
+	for _, p := range before.Paths {
+		atBase[p] = true
+	}
+	limit, nest := rules.Limits.FunctionComplexity, rules.Limits.FunctionNesting
 	fr := rules.FunctionRules
 	result := Functions{PerMeasure: fr.PerMeasure, MovedShare: fr.MovedShare, CopyShare: fr.CopyShare, MinifiedLineBytes: fr.MinifiedLineBytes,
 		Minified: m.minified, Unmeasured: m.unmeasured}
@@ -154,9 +163,10 @@ func functionChanges(rules conventions.Rules, changes []Change, m measured, miss
 			}
 			continue
 		}
-		r := nowReadings[change.Path]
-		b, tracked := beforeReadings[basePath]
-		if r.unread || r.functionsUnread || tracked && (b.unread || b.functionsUnread) || slices.Contains(missing, basePath) {
+		r, readNow := nowReadings[change.Path]
+		b, readAtBase := beforeReadings[basePath]
+		tracked := atBase[basePath]
+		if !readNow || r.unread || r.functionsUnread || tracked && (!readAtBase || b.unread || b.functionsUnread) || slices.Contains(missing, basePath) {
 			result.Unread = append(result.Unread, change.Path)
 			continue
 		}
@@ -169,18 +179,23 @@ func functionChanges(rules conventions.Rules, changes []Change, m measured, miss
 				result.Broken++
 				continue
 			}
-			result.Measured++
 			c := candidate{fn: f, tracked: tracked, change: FunctionChange{Path: change.Path, Name: f.name, Occurrence: seen[f.name],
 				Start: f.startLine, End: f.endLine, Complexity: f.complexity, Nesting: f.nesting, NestingLine: f.nestingLine, New: true,
 				AddedWhole: !tracked && change.From == ""}}
 			if partners := base[f.name]; len(partners) >= seen[f.name] {
 				partner := partners[seen[f.name]-1]
 				if partner.broken {
-					result.Broken++
+					// it cannot be compared; it is counted only when it could have crossed
+					if float64(f.complexity) > limit.Value || float64(f.nesting) >= nest.Value {
+						result.Broken++
+					} else {
+						result.Measured++
+					}
 					continue
 				}
 				c.partner(basePath, partner)
 			}
+			result.Measured++
 			c.cross(rules)
 			if c.complex || c.deeper {
 				candidates = append(candidates, c)
@@ -232,7 +247,7 @@ func functionChanges(rules conventions.Rules, changes []Change, m measured, miss
 			continue
 		}
 		c.change.Repeated = introducedBlock(rules, c, added, &lines)
-		c.reasonOK = c.change.Nesting >= fr.ReasonNesting || c.change.Repeated != nil
+		c.reasonOK = float64(c.change.Nesting) >= nest.Value || c.change.Repeated != nil
 		kept = append(kept, c)
 	}
 	slices.SortFunc(result.LeftOut, func(a, b LeftOutFunction) int {
@@ -249,12 +264,12 @@ func functionChanges(rules conventions.Rules, changes []Change, m measured, miss
 	})
 	result.ComplexCrossed = len(complexList)
 	result.Complex = complexList[:min(len(complexList), fr.PerMeasure)]
-	listed := map[[2]string]bool{}
+	listed := map[place]bool{}
 	for _, c := range result.Complex {
-		listed[[2]string{c.Path, c.Name}] = true
+		listed[placeOf(c)] = true
 	}
 	for _, c := range kept {
-		if c.deeper && !listed[[2]string{c.change.Path, c.change.Name}] {
+		if c.deeper && !listed[placeOf(c.change)] {
 			deeperList = append(deeperList, c.change)
 		}
 	}
@@ -273,7 +288,7 @@ func (c *candidate) partner(basePath string, b function) {
 	c.base = &b
 }
 
-// cross applies the two rules to the candidate as it now stands, and finds its reason.
+// cross applies the two rules to the candidate as it now stands.
 func (c *candidate) cross(rules conventions.Rules) {
 	limit, nest := rules.Limits.FunctionComplexity, rules.Limits.FunctionNesting
 	f := &c.change
@@ -315,10 +330,18 @@ func bodyLines(content []byte, f function) [][]byte {
 	return body
 }
 
-// byPlace orders two functions by path, name and line.
+// byPlace orders two functions by path, name, place among functions of that name and line.
 func byPlace(a, b FunctionChange) int {
-	return cmp.Or(cmp.Compare(a.Path, b.Path), cmp.Compare(a.Name, b.Name), cmp.Compare(a.Start, b.Start))
+	return cmp.Or(cmp.Compare(a.Path, b.Path), cmp.Compare(a.Name, b.Name), cmp.Compare(a.Occurrence, b.Occurrence), cmp.Compare(a.Start, b.Start))
 }
+
+// place names one function of the files now: its path, name and place among functions of that name.
+type place struct {
+	path, name string
+	occurrence int
+}
+
+func placeOf(c FunctionChange) place { return place{c.Path, c.Name, c.Occurrence} }
 
 // byName groups a file's functions by name, in text order.
 func byName(functions []function) map[string][]function {

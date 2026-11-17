@@ -25,7 +25,6 @@ type FunctionKinds struct {
 
 // FunctionRules are the shared rules of the function marks: what is left out, and every number but the two limits.
 type FunctionRules struct {
-	ReasonNesting                     int     // the nesting that is a reason to mark a complex function
 	BlockStatements, BlockTokens      int     // a repeated block: at least this many sibling statements and tokens
 	Run                               int     // tokens in one compared run
 	MovedShare, CopyShare             float64 // the share of a function's tokens found moved, or copied, that leaves it out
@@ -46,7 +45,7 @@ type FunctionRules struct {
 
 func defaultFunctionRules() FunctionRules {
 	return FunctionRules{
-		ReasonNesting: 4, BlockStatements: 4, BlockTokens: 40, Run: 10,
+		BlockStatements: 4, BlockTokens: 40, Run: 10,
 		MovedShare: 0.70, CopyShare: 0.70, ExtractedShare: 0.5, LikeBody: 0.6,
 		CopyFiles: 20, LongNames: 4, LongNameLength: 8, NameLength: 3, PerMeasure: 3, MinifiedLineBytes: 110,
 		BenchmarkWords: []string{"bench", "benches", "benchmark", "benchmarks"},

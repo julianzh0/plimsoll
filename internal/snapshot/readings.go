@@ -66,7 +66,6 @@ func (rs *Readings) dropOlder(question uint64) {
 	}
 }
 
-// of returns the reading of one file's content for its language entry and grammar, made once per content.
 // wanted is what a reading holds beside the entry's query: the file's declarations, its functions, and the rules that
 // find a function's repeated blocks. Those rules are the binary's own (no repository sets them), so they are not part of
 // a reading's key.
@@ -75,6 +74,7 @@ type wanted struct {
 	functionRules           *conventions.FunctionRules
 }
 
+// of returns the reading of one file's content for its language entry and grammar, made once per content.
 func (rs *Readings) of(language conventions.Language, grammar string, content []byte, question uint64, w wanted) reading {
 	key := readingKey{entry: language.Name, grammar: grammar, declarations: w.declarations, functions: w.functions, content: sha256.Sum256(content)}
 	rs.mu.Lock()
