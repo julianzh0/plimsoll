@@ -295,7 +295,7 @@ func Default() Rules {
 			"", ".mod", ".sum", ".example", ".crt", ".pem", ".key", ".diff", ".patch", ".sha256",
 			".resolved", ".natvis", ".csproj", ".props", ".targets", ".sln", ".slnx", ".config", ".Config", ".DotSettings", ".resx",
 		},
-		SkippedFolders:     []string{"node_modules", "dist", "build", "vendor", "migrations", ".venv", "coverage", "testdata", "__pycache__", ".dart_tool", "META-INF"},
+		SkippedFolders:     []string{"node_modules", "dist", "build", "vendor", "migrations", ".venv", "coverage", "testdata", "__pycache__", ".dart_tool", "META-INF", "single_include"},
 		OtherFolders:       []string{"scripts", "examples", ".github", "docs"},
 		DocFolders:         []string{"docs"},
 		DocSuffixes:        []string{".md", ".mdx"},

@@ -194,6 +194,12 @@ func TestBuildLeavesOutWhatIsNotCode(t *testing.T) {
 			t.Errorf("Build(typescript).Now.Paths lacks %s, want every tracked path", p)
 		}
 	}
+	amalgamated := snapshot.Build(snapshottest.Files(nil, map[string]string{
+		"include/lib/lib.hpp": "int f();\n", "single_include/lib/lib.hpp": "int f();\n",
+	}), conventions.Default(), snapshottest.Readings(t))
+	if len(amalgamated.Now.Files) != 1 || amalgamated.Now.Files[0].Path != "include/lib/lib.hpp" {
+		t.Errorf("Build(an amalgamated copy) counts %v as code, want include/lib/lib.hpp alone", rows(amalgamated.Now.Files))
+	}
 }
 
 func TestBuildNamesExtensionsWithoutAnEntry(t *testing.T) {
