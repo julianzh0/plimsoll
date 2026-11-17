@@ -17,7 +17,7 @@ func (Detector) Wording(m answer.Mark) string {
 			return fmt.Sprintf("`%s` is a planning or review record this change added to the repository (plimsoll's rule: repositories hold no planning records); keep it outside the repository.", path)
 		case answer.Resolved:
 			return fmt.Sprintf("`%s` is no longer tracked; it lay under a planning or review path at the base.", path)
-		case answer.Grown, answer.Standing:
+		case answer.Grown, answer.Standing, answer.Touched:
 			return fmt.Sprintf("`%s` is tracked and lies under a planning or review path; it was tracked at the base too.", path)
 		}
 	case ruleLimitChange:

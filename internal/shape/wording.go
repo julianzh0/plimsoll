@@ -35,7 +35,7 @@ func ratioSentence(change answer.Change, measured answer.Measured) string {
 			answer.Decimal(*measured.Before), answer.Decimal(measured.Value), answer.Decimal(*measured.Limit), measured.LimitSource)
 	case answer.Resolved:
 		return fmt.Sprintf("The test ratio is %s, no longer over %s; %s.", answer.Decimal(measured.Value), limit, before)
-	case answer.New, answer.Standing:
+	case answer.New, answer.Standing, answer.Touched:
 		return fmt.Sprintf("The test ratio is %s, over %s; %s.", answer.Decimal(measured.Value), limit, before)
 	}
 	return ""
@@ -58,17 +58,13 @@ func sizeSentence(change answer.Change, path string, measured answer.Measured) s
 	case change == answer.Grown:
 		return fmt.Sprintf("`%s` grew in this change: %s lines, already over the limit of %s at the base. %s",
 			path, growth(*measured.Before, measured.Value), answer.Count(*measured.Limit), source)
-	}
-	switch change {
-	case answer.Resolved:
+	case change == answer.Resolved:
 		if measured.Value == 0 {
 			return fmt.Sprintf("`%s` is no longer tracked; it had %s lines at the base, over %s.", path, answer.Count(*measured.Before), limit)
 		}
 		return fmt.Sprintf("`%s` has %s lines, no longer over %s; %s.", path, answer.Count(measured.Value), limit, before)
-	case answer.Standing:
-		return fmt.Sprintf("`%s` has %s lines, over %s; %s.", path, answer.Count(measured.Value), limit, before)
 	}
-	return ""
+	return fmt.Sprintf("`%s` has %s lines, over %s; %s.", path, answer.Count(measured.Value), limit, before)
 }
 
 // growth is a change of a count: "1,480 → 1,620 (+140)".

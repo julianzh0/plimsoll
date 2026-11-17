@@ -2,6 +2,7 @@ package snapshot_test
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"testing"
@@ -127,12 +128,8 @@ func TestBuildSaysWhereAnAddedNameIsUsed(t *testing.T) {
 	lonely := map[string]string{"src/a.ts": "export function lonely() {}\n"}
 	with := func(files map[string]string, more map[string]string) map[string]string {
 		tree := map[string]string{}
-		for p, c := range files {
-			tree[p] = c
-		}
-		for p, c := range more {
-			tree[p] = c
-		}
+		maps.Copy(tree, files)
+		maps.Copy(tree, more)
 		return tree
 	}
 	unused := []string{"src/a.ts lonely function used=false tests=false"}

@@ -353,14 +353,6 @@ func TestStatusCountsTheMarksItDoesNotShow(t *testing.T) {
 	}
 }
 
-func ids(marks []Mark) []string {
-	var found []string
-	for _, m := range marks {
-		found = append(found, m.ID)
-	}
-	return found
-}
-
 func TestTouchedItemsAreCountedInStatusAndListedInReport(t *testing.T) {
 	f := findings()
 	f.Marks = append(f.Marks, fileMark("src/t.ts", Touched), fileMark("src/u.ts", Touched))
