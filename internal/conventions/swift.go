@@ -23,4 +23,8 @@ func swiftLanguage() Language {
 // Upgrade: evaluate the conditions of the platforms and traits the package declares.
 const swiftQuery = `
 (import_declaration (identifier . (simple_identifier) @spec)) @import
+(source_file (function_declaration name: (simple_identifier) @declared.function))
+(source_file (class_declaration declaration_kind: ["class" "struct" "enum" "actor"] name: (type_identifier) @declared.type))
+(source_file [(protocol_declaration name: (type_identifier) @declared.type) (typealias_declaration name: (type_identifier) @declared.type)])
+(source_file (class_declaration (modifiers (attribute)) name: (type_identifier) @implicit))
 `

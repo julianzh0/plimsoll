@@ -14,6 +14,10 @@ const dartQuery = `
 (part_of_directive (uri (string_literal) @spec)) @import
 (program (import_or_export (library_export)) @pass)
 (program [(library_name) (comment) (documentation_comment)] @pass)
+(program [(class_definition name: (identifier) @declared.type) (mixin_declaration (identifier) @declared.type)
+  (enum_declaration name: (identifier) @declared.type) (type_alias (type_identifier) @declared.type)])
+(program (function_signature name: (identifier) @declared.function))
+(program (annotation) . (function_signature name: (identifier) @implicit))
 `
 
 func dartImports() Imports {

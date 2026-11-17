@@ -42,6 +42,14 @@ const rustQuery = `
 (source_file (mod_item !body) @pass)
 (source_file (use_declaration (visibility_modifier)) @pass)
 (source_file (extern_crate_declaration (visibility_modifier)) @pass)
+(source_file (function_item name: (identifier) @declared.function))
+(source_file [(struct_item name: (type_identifier) @declared.type) (enum_item name: (type_identifier) @declared.type)
+  (trait_item name: (type_identifier) @declared.type) (type_item name: (type_identifier) @declared.type)
+  (union_item name: (type_identifier) @declared.type)])
+(source_file [(const_item (visibility_modifier) name: (identifier) @declared.value)
+  (static_item (visibility_modifier) name: (identifier) @declared.value)])
+((source_file (attribute_item (attribute (identifier) @_frb)) . [(struct_item name: (type_identifier) @implicit)
+  (enum_item name: (type_identifier) @implicit)]) (#eq? @_frb "frb"))
 `
 
 // rustAttributes are the attributes before an item on its line, rustVisibility an item's visibility.

@@ -120,12 +120,23 @@ func withUses(rules conventions.Rules, found []Addition, entries []Entry, roles 
 		if !isCode && excluded(rules, entry.Path) {
 			continue
 		}
-		counts := map[string]int{}
-		eachWord(entry.Content, func(word []byte) {
-			if _, wanted := byName[string(word)]; wanted {
-				counts[string(word)]++
+		counts, inTests := map[string]int{}, map[string]bool{}
+		testSpans := readings[entry.Path].testSpans
+		eachWord(entry.Content, func(word []byte, at int) {
+			if _, wanted := byName[string(word)]; !wanted {
+				return
 			}
+			if inSpans(testSpans, at) {
+				inTests[string(word)] = true
+				return
+			}
+			counts[string(word)]++
 		})
+		for name := range inTests {
+			for _, i := range byName[name] {
+				found[i].Tests = true
+			}
+		}
 		for name, n := range counts {
 			declared := 0
 			for _, d := range readings[entry.Path].declarations {
@@ -150,8 +161,8 @@ func isDataFile(rules conventions.Additions, filePath string) bool {
 	return slices.ContainsFunc(rules.DataFiles, func(pattern string) bool { return nameMatches(pattern, filePath) })
 }
 
-// eachWord calls found with every run of ASCII letters, digits and underscores in content.
-func eachWord(content []byte, found func(word []byte)) {
+// eachWord calls found with every run of ASCII letters, digits and underscores in content, and its offset.
+func eachWord(content []byte, found func(word []byte, at int)) {
 	start := -1
 	for i := 0; i <= len(content); i++ {
 		if i < len(content) && wordByte(rune(content[i])) {
@@ -161,7 +172,7 @@ func eachWord(content []byte, found func(word []byte)) {
 			continue
 		}
 		if start >= 0 {
-			found(content[start:i])
+			found(content[start:i], start)
 			start = -1
 		}
 	}

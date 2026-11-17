@@ -27,9 +27,13 @@ var (
 // cFamily is what the C and C++ entries share: units are the file names the compiler takes as a unit of their own,
 // which no file includes.
 func cFamily(name string, extensions, units []string) Language {
+	query := cQuery + cDeclarations
+	if name == "cpp" {
+		query += cppDeclarations
+	}
 	return Language{
 		Name: name, Extensions: extensions, Literals: cComments,
-		Grammar: name, Query: cQuery, LineReadWhenBroken: true,
+		Grammar: name, Query: query, LineReadWhenBroken: true,
 		Imports: Imports{
 			Statements: []ImportForm{{Pattern: cIncludeQuoted}, {Pattern: cIncludeAngled}},
 			Computed:   ImportForm{Pattern: cIncludeComputed},
@@ -51,4 +55,24 @@ const cQuery = `
 (preproc_include path: (identifier) @computed)
 (comment) @blank
 ((preproc_def value: (preproc_arg) @error) (#match? @error "^#[ \t]*[a-z]"))
+`
+
+// cDeclarations reads the functions a file defines and the structs, enums and unions it declares with a body, at
+// the top level; a type that only a typedef names is no declaration of its own, and a method defined outside its
+// class has a qualified name.
+const cDeclarations = `
+(translation_unit (function_definition declarator: [(function_declarator declarator: (identifier) @declared.function)
+  (pointer_declarator declarator: (function_declarator declarator: (identifier) @declared.function))]))
+(translation_unit [(struct_specifier name: (type_identifier) @declared.type body: (_))
+  (enum_specifier name: (type_identifier) @declared.type body: (_)) (union_specifier name: (type_identifier) @declared.type body: (_))])
+(translation_unit (declaration type: [(struct_specifier name: (type_identifier) @declared.type body: (_))
+  (enum_specifier name: (type_identifier) @declared.type body: (_)) (union_specifier name: (type_identifier) @declared.type body: (_))]))
+`
+
+// cppDeclarations reads, besides, the classes, and what a namespace holds.
+const cppDeclarations = `
+(translation_unit (class_specifier name: (type_identifier) @declared.type body: (_)))
+(namespace_definition body: (declaration_list (function_definition declarator: (function_declarator declarator: (identifier) @declared.function))))
+(namespace_definition body: (declaration_list [(struct_specifier name: (type_identifier) @declared.type body: (_))
+  (class_specifier name: (type_identifier) @declared.type body: (_)) (enum_specifier name: (type_identifier) @declared.type body: (_))]))
 `

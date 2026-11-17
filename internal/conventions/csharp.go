@@ -18,6 +18,13 @@ const csharpQuery = `
   (#strip-prefix! @spec "global::"))
 ((using_directive "global"? @everywhere name: (identifier) (qualified_name qualifier: (_) @spec)) @import
   (#strip-prefix! @spec "global::"))
+(compilation_unit [(class_declaration name: (identifier) @declared.type) (interface_declaration name: (identifier) @declared.type)
+  (enum_declaration name: (identifier) @declared.type) (record_declaration name: (identifier) @declared.type)
+  (struct_declaration name: (identifier) @declared.type)])
+(namespace_declaration body: (declaration_list [(class_declaration name: (identifier) @declared.type) (interface_declaration name: (identifier) @declared.type)
+  (enum_declaration name: (identifier) @declared.type) (record_declaration name: (identifier) @declared.type)
+  (struct_declaration name: (identifier) @declared.type)]))
+(class_declaration name: (identifier) @implicit body: (declaration_list (method_declaration parameters: (parameter_list (parameter (modifier) @_m (#eq? @_m "this"))))))
 `
 
 // dotnetProject is the file-name pattern of a .NET project file: a manifest of dependencies, and a name of the

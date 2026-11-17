@@ -19,6 +19,7 @@ func decode(language conventions.Language, result parse.Result, content []byte) 
 	var modules, tests []span
 	var imports []importCapture
 	passes := map[parse.Span]bool{}
+	declaredAt := map[string][]int{} // a declared name -> where the query found it
 	for _, match := range result.Matches {
 		var im importCapture
 		var module, moduleName, test, testEnd parse.Capture
@@ -57,6 +58,7 @@ func decode(language conventions.Language, result parse.Result, content []byte) 
 				r.syntaxError = true
 			case "declared.function", "declared.type", "declared.value", "implicit":
 				r.declarations = declared(r.declarations, c.Name, string(content[c.Start:c.End]))
+				declaredAt[string(content[c.Start:c.End])] = append(declaredAt[string(content[c.Start:c.End])], c.Start)
 			}
 		}
 		if moduleName.End > 0 {
@@ -90,6 +92,10 @@ func decode(language conventions.Language, result parse.Result, content []byte) 
 	}
 	r.passesOn = len(passes) > 0 && !slices.ContainsFunc(result.Top, func(top parse.Span) bool { return !passes[top] })
 	r.testLines = spanLines(content, tests)
+	r.testSpans = tests
+	r.declarations = slices.DeleteFunc(r.declarations, func(d topName) bool {
+		return slices.ContainsFunc(declaredAt[d.name], func(at int) bool { return inSpans(tests, at) })
+	})
 	r.parsed = true
 	return r
 }
@@ -222,4 +228,9 @@ func unquoted(s string) string {
 		return s[1 : len(s)-1]
 	}
 	return s
+}
+
+// inSpans says whether an offset lies in one of the spans.
+func inSpans(spans []span, at int) bool {
+	return slices.ContainsFunc(spans, func(s span) bool { return s.start <= at && at <= s.end })
 }

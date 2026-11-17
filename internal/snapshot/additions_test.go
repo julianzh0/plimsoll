@@ -50,6 +50,54 @@ func TestBuildListsWhatAChangeDeclaredInEachLanguage(t *testing.T) {
 			"package a", "func Run() {}", "func (t T) Method() {}", "type T struct{}", "type (", "\tGrouped int", ")",
 			"var Exported = 1", "var unexported = 1", "const Limit = 2", "func init() {}",
 		}, "\n") + "\n", map[string]string{"Run": "function", "Grouped": "type", "Exported": "value", "Limit": "value"}},
+		{"rust", "src/a.rs", strings.Join([]string{
+			"pub fn run() {}", "fn helper() {}", "pub struct Config;", "enum Mode { A }", "trait Store {}", "type Alias = u8;",
+			"pub const LIMIT: u8 = 1;", "const PRIVATE: u8 = 1;", "pub static NAME: &str = \"x\";", "#[derive(Debug)]", "pub struct Derived;",
+			"#[frb(mirror(Other))]", "pub struct _Mirror;", "#[cfg(test)]", "fn only_in_tests() {}", "mod inner { pub fn nested() {} }",
+		}, "\n") + "\n", map[string]string{"helper": "function", "run": "function", "Alias": "type", "Config": "type", "Derived": "type",
+			"Mode": "type", "Store": "type", "LIMIT": "value", "NAME": "value"}},
+		{"java", "src/main/java/app/a/A.java", strings.Join([]string{
+			"package app.a;", "public class A { void method() {} class Inner {} }", "interface Port {}", "enum Mode { X }",
+			"record Point(int x) {}", "@interface Marker {}", "@Entity", "class Row {}",
+		}, "\n") + "\n", map[string]string{"Marker": "type", "Mode": "type", "Point": "type", "Port": "type"}},
+		{"kotlin", "src/main/kotlin/app/a/A.kt", strings.Join([]string{
+			"package app.a", "class Screen", "interface Port", "object Registry", "fun topLevel() {}", "fun String.shout() = uppercase()",
+			"val LIMIT = 3", "var counter = 0", "@Composable", "fun Annotated() {}",
+		}, "\n") + "\n", map[string]string{"Port": "type", "Registry": "type", "Screen": "type", "shout": "function", "topLevel": "function",
+			"LIMIT": "value"}},
+		{"csharp", "src/App/A.cs", strings.Join([]string{
+			"namespace App;", "public class Service { void Method() {} class Inner {} }", "internal interface IPort {}", "public enum Mode { X }",
+			"public record Point(int X);", "public struct Size {}",
+			"public static class StringExtensions { public static string Shout(this string s) => s; }",
+		}, "\n") + "\n", map[string]string{"IPort": "type", "Mode": "type", "Point": "type", "Service": "type", "Size": "type"}},
+		{"swift", "Sources/App/A.swift", strings.Join([]string{
+			"func topLevel() {}", "class Screen {}", "struct Point {}", "enum Mode { case x }", "protocol Port {}", "actor Worker {}",
+			"typealias Alias = Int", "extension Point { func helper() {} }", "@main", "struct Entry { static func main() {} }",
+		}, "\n") + "\n", map[string]string{"topLevel": "function", "Alias": "type", "Mode": "type", "Point": "type", "Port": "type",
+			"Screen": "type", "Worker": "type"}},
+		{"dart", "lib/src/a.dart", strings.Join([]string{
+			"class Screen {}", "mixin Logging {}", "enum Mode { x }", "typedef Callback = void Function();",
+			"extension StringShout on String { String shout() => toUpperCase(); }", "void topLevel() {}", "String _private() => '';",
+			"@pragma('vm:entry-point')", "void entry() {}",
+		}, "\n") + "\n", map[string]string{"Callback": "type", "Logging": "type", "Mode": "type", "Screen": "type", "_private": "function",
+			"topLevel": "function"}},
+		{"c", "src/a.c", strings.Join([]string{
+			"int run(void) { return 0; }", "static int helper(int x) { return x; }", "int declared_only(void);", "struct config { int x; };",
+			"enum mode { MODE_A };", "typedef struct _tagged { int x; } tagged_t;", "typedef enum _kind { KIND_A } kind_t;",
+		}, "\n") + "\n", map[string]string{"helper": "function", "run": "function", "config": "type", "mode": "type"}},
+		{"cpp", "src/a.cpp", strings.Join([]string{
+			"int run() { return 0; }", "class Widget { public: void method() {} void other(); };", "void Widget::other() {}", "namespace app {",
+			"struct Point { int x; };", "int inside() { return 1; }", "}",
+		}, "\n") + "\n", map[string]string{"inside": "function", "run": "function", "Point": "type", "Widget": "type"}},
+	}
+	covered := map[string]bool{}
+	for _, tc := range cases {
+		covered[tc.entry] = true
+	}
+	for _, language := range conventions.Default().Languages {
+		if !covered[language.Name] {
+			t.Errorf("language %s has no declarations case", language.Name)
+		}
 	}
 	for _, tc := range cases {
 		for form, content := range map[string]string{
@@ -115,6 +163,8 @@ func TestBuildSaysWhereAnAddedNameIsUsed(t *testing.T) {
 			"src/generated/a.ts": "export function a1() {}\n", "samples/a.ts": "export function a2() {}\n",
 			"src/Acme.Examples.Web/a.ts": "export function a3() {}\n", "src/OrderUnitTests/a.ts": "export function a4() {}\n",
 		}, nil, nil},
+		{"test code inside a product file", nil, map[string]string{"src/a.rs": "pub fn probe() {}\n#[cfg(test)]\nmod tests {\n    #[test]\n    fn t() { super::probe(); }\n}\n"}, nil,
+			[]string{"src/a.rs probe function used=false tests=true"}},
 		{"skipped files", nil, map[string]string{"src/types.d.ts": "export function a1(): void;\n", "src/api.gen.ts": "export function a2() {}\n"}, nil, nil},
 		{"not product", nil, map[string]string{"tests/helper.ts": "export function a1() {}\n", "scripts/tool.ts": "export function a2() {}\n"}, nil, nil},
 	}
