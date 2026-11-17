@@ -166,7 +166,11 @@ func functionName(tree parse.Tree, s shape, i int, content []byte) string {
 	text := func(k int) string {
 		return strings.Trim(string(content[s.nodes[k].Start:s.nodes[k].End]), "`")
 	}
-	identifier := func(k int) bool { return strings.HasSuffix(tree.Kinds[s.nodes[k].Kind], "identifier") }
+	// a type's name (type_identifier) is not the function's: Dart writes the return type before the name
+	identifier := func(k int) bool {
+		kind := tree.Kinds[s.nodes[k].Kind]
+		return strings.HasSuffix(kind, "identifier") && kind != "type_identifier"
+	}
 	children := func(k int) []int {
 		var c []int
 		for j := k + 1; j < s.end[k]; j = s.end[j] {

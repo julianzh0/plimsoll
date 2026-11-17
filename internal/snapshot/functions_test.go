@@ -1,8 +1,11 @@
 package snapshot_test
 
 import (
+	"cmp"
 	"fmt"
+	"os"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/julianzh0/plimsoll/internal/conventions"
@@ -73,5 +76,68 @@ func TestBuildListsFunctionsAChangeMadeComplexOrDeeper(t *testing.T) {
 	if len(renamed.Complex) != 1 || renamed.Complex[0].BasePath != "old/a.ts" || renamed.Complex[0].BaseStart != 1 || renamed.Complex[0].BaseEnd != 17 ||
 		renamed.Complex[0].Start != 1 || renamed.Complex[0].End != 21 || renamed.Files != 1 || renamed.Measured != 1 {
 		t.Errorf("Build(a renamed file).Functions = %+v, want grow at lines 1 to 21, from lines 1 to 17 of old/a.ts, 1 file and 1 function measured", renamed)
+	}
+}
+
+// everyFunction are rules under which every function a change made new is listed, whatever its measures.
+func everyFunction() conventions.Rules {
+	rules := conventions.Default()
+	rules.Limits.FunctionComplexity.Value = -1
+	rules.FunctionRules.ReasonNesting = 0
+	rules.FunctionRules.PerMeasure = 100
+	return rules
+}
+
+func must(b []byte, err error) []byte {
+	if err != nil {
+		panic(err)
+	}
+	return b
+}
+
+func TestBuildMeasuresFunctionsInEveryLanguage(t *testing.T) {
+	want := map[string][]string{ // "<name> c=<complexity> n=<nesting>", in text order
+		"src/a.go":    {"flat c=5 n=1", "deep c=10 n=4"},
+		"src/a.py":    {"branches c=5 n=1", "loops c=5 n=3", "inner c=1 n=1"},
+		"src/a.ts":    {"pick c=5 n=1", "arrow c=3 n=2", "save c=1 n=1", "load c=1 n=1"},
+		"src/a.tsx":   {"Panel c=1 n=1"},
+		"src/a.rs":    {"route c=6 n=3", "chain c=4 n=1"},
+		"src/a.dart":  {"resolve c=10 n=4", "chain c=4 n=1"},
+		"src/A.java":  {"pick c=6 n=1"},
+		"src/a.kt":    {"pick c=4 n=1", "chain c=4 n=1"},
+		"src/A.cs":    {"Pick c=7 n=3", "Chain c=4 n=1"},
+		"src/a.swift": {"pick c=3 n=1", "chain c=5 n=1"},
+		"src/n.go":    {"Method c=0 n=0", "Plain c=0 n=0"},
+		"src/n.py":    {"save c=0 n=0", "inner c=0 n=0", "fetch c=0 n=0"},
+		"src/n.ts":    {"plain c=0 n=0", "arrow c=0 n=0", "constructor c=0 n=0", "save c=0 n=0", "field c=0 n=0", "size c=0 n=0"},
+		"src/N.java":  {"N c=0 n=0", "size c=0 n=0"},
+		"src/n.dart":  {"Store c=0 n=0", "size c=0 n=0", "save c=0 n=0", "top c=0 n=0"},
+		"src/n.kt":    {"save c=0 n=0", "getter c=0 n=0", "top c=0 n=0", "weird name c=0 n=0"},
+		"src/N.cs":    {"N c=0 n=0", "get c=0 n=0", "Save c=0 n=0", "Local c=0 n=0"},
+		"src/n.swift": {"init c=0 n=0", "save c=0 n=0", "deinit c=0 n=0", "top c=0 n=0"},
+		"src/n.rs":    {"save c=0 n=0", "top c=0 n=0", "inner c=0 n=0"},
+	}
+	for path, wanted := range want {
+		content, err := os.ReadFile("testdata/functions/now/" + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		listed := functionsIn(t, everyFunction(), nil, map[string]string{path: string(content)}).Complex
+		// text order; two functions on one line keep the order the want list gives them
+		slices.SortFunc(listed, func(a, b snapshot.FunctionChange) int {
+			return cmp.Or(a.Start-b.Start, slices.IndexFunc(wanted, func(w string) bool { return strings.HasPrefix(w, a.Name+" ") })-
+				slices.IndexFunc(wanted, func(w string) bool { return strings.HasPrefix(w, b.Name+" ") }))
+		})
+		var got []string
+		for _, f := range listed {
+			got = append(got, fmt.Sprintf("%s c=%d n=%d", f.Name, f.Complexity, f.Nesting))
+		}
+		if !slices.Equal(got, wanted) {
+			t.Errorf("Build(%s) measures %q, want %q", path, got, wanted)
+		}
+	}
+	deep := functionsIn(t, everyFunction(), nil, map[string]string{"src/a.go": string(must(os.ReadFile("testdata/functions/now/src/a.go")))}).Complex
+	if i := slices.IndexFunc(deep, func(f snapshot.FunctionChange) bool { return f.Name == "deep" }); i < 0 || deep[i].NestingLine != 19 || deep[i].Start != 13 || deep[i].End != 32 {
+		t.Errorf("Build(src/a.go) deep = %+v, want lines 13 to 32 and nesting 4 reached at line 19", deep)
 	}
 }
