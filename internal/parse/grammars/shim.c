@@ -83,36 +83,29 @@ EXPORT("shim_query_run") uint32_t shim_query_run(TSQuery *q, const char *src, ui
 }
 EXPORT("shim_query_captures") Capture *shim_query_captures(void) { return captures; }
 
-// The walk: every node of the tree in text order, a parent before its children.
-// flags: 1 named, 2 an ERROR node, 4 the name field of its parent.
+// The walk: every node of the tree in text order, a parent before its children, into one array sized for the tree.
+// flags: 1 named, 2 an ERROR or a MISSING node, 4 the name field of its parent. The host copies the array and releases
+// it with shim_walk_release, so a walk keeps no memory between files.
 typedef struct { uint16_t kind, flags; uint32_t depth, start_byte, end_byte; } NodeRecord;
 static NodeRecord *nodes;
-static uint32_t node_count, node_capacity;
-
-static void add_node(NodeRecord r) {
-  if (node_count == node_capacity) {
-    node_capacity = node_capacity ? node_capacity * 2 : 4096;
-    NodeRecord *grown = realloc(nodes, node_capacity * sizeof(NodeRecord));
-    if (!grown) abort(); // address 0 is valid memory in WebAssembly
-    nodes = grown;
-  }
-  nodes[node_count++] = r;
-}
 
 EXPORT("shim_walk") uint32_t shim_walk(const char *src, uint32_t len) {
   if (!parser) {
     parser = ts_parser_new();
     ts_parser_set_language(parser, LANGUAGE());
   }
-  node_count = 0;
   TSTree *tree = ts_parser_parse_string(parser, NULL, src, len);
-  TSTreeCursor c = ts_tree_cursor_new(ts_tree_root_node(tree));
-  uint32_t depth = 0;
+  TSNode root = ts_tree_root_node(tree);
+  nodes = malloc((size_t)ts_node_descendant_count(root) * sizeof(NodeRecord));
+  if (!nodes) abort(); // address 0 is valid memory in WebAssembly
+  TSFieldId name_field = ts_language_field_id_for_name(LANGUAGE(), "name", 4);
+  uint32_t count = 0, depth = 0;
+  TSTreeCursor c = ts_tree_cursor_new(root);
   for (;;) {
     TSNode n = ts_tree_cursor_current_node(&c);
-    const char *field = ts_tree_cursor_current_field_name(&c);
-    uint16_t flags = (ts_node_is_named(n) ? 1 : 0) | (ts_node_is_error(n) ? 2 : 0) | (field && !strcmp(field, "name") ? 4 : 0);
-    add_node((NodeRecord){ts_node_symbol(n), flags, depth, ts_node_start_byte(n), ts_node_end_byte(n)});
+    uint16_t flags = (ts_node_is_named(n) ? 1 : 0) | (ts_node_is_error(n) || ts_node_is_missing(n) ? 2 : 0) |
+                     (name_field && ts_tree_cursor_current_field_id(&c) == name_field ? 4 : 0);
+    nodes[count++] = (NodeRecord){ts_node_symbol(n), flags, depth, ts_node_start_byte(n), ts_node_end_byte(n)};
     if (ts_tree_cursor_goto_first_child(&c)) { depth++; continue; }
     while (!ts_tree_cursor_goto_next_sibling(&c)) {
       if (!ts_tree_cursor_goto_parent(&c)) goto done;
@@ -122,9 +115,13 @@ EXPORT("shim_walk") uint32_t shim_walk(const char *src, uint32_t len) {
 done:
   ts_tree_cursor_delete(&c);
   ts_tree_delete(tree);
-  return node_count;
+  return count;
 }
 EXPORT("shim_nodes") NodeRecord *shim_nodes(void) { return nodes; }
+EXPORT("shim_walk_release") void shim_walk_release(void) {
+  free(nodes);
+  nodes = NULL;
+}
 EXPORT("shim_kind_count") uint32_t shim_kind_count(void) { return ts_language_symbol_count(LANGUAGE()); }
 EXPORT("shim_kind_name") const char *shim_kind_name(uint32_t id, uint32_t *len) {
   const char *name = ts_language_symbol_name(LANGUAGE(), id);

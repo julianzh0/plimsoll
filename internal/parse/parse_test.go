@@ -149,6 +149,12 @@ func TestAFileOverTheRecycleSizeIsReadAndTheNextCallWorks(t *testing.T) {
 	if _, err := parser.Read("go", "(package_identifier) @x", []byte("package a\n")); err != nil {
 		t.Errorf("Read(go, package a) after a large file error = %v, want none", err)
 	}
+	if _, err := parser.Nodes("go", goVars(overTheRecycleSize)); err != nil {
+		t.Errorf("Nodes(go, %d var lines) error = %v, want none: a file Read reads is walked too", overTheRecycleSize, err)
+	}
+	if _, err := parser.Read("go", "(identifier) @x", goVars(wellUnderTheCap)); err != nil {
+		t.Errorf("Read(go, %d var lines) after a large walk error = %v, want none: a walk keeps no memory", wellUnderTheCap, err)
+	}
 }
 
 func TestReadsFromManyGoroutinesAllSucceed(t *testing.T) {

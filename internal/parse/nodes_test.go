@@ -39,3 +39,39 @@ func TestNodesFlagWhatTheGrammarCouldNotRead(t *testing.T) {
 		t.Errorf("Nodes(go, broken text) = %d nodes, %v; want a node flagged as an error", len(tree.Nodes), err)
 	}
 }
+
+func TestNodesFlagAMissingToken(t *testing.T) {
+	tree, err := parsetest.Parser(t).Nodes("go", []byte("package a\nfunc f() { x := 1\n"))
+	if err != nil || !slices.ContainsFunc(tree.Nodes, func(n parse.Node) bool { return n.Error }) {
+		t.Errorf("Nodes(go, a function without its closing brace) = %d nodes, %v; want a node flagged as an error", len(tree.Nodes), err)
+	}
+}
+
+func TestEveryKindHasOneIndex(t *testing.T) {
+	content := []byte("package a\nfunc f(x int) { g(x)\nfor { break }\n}\n")
+	tree, err := parsetest.Parser(t).Nodes("go", content)
+	if err != nil {
+		t.Fatalf("Nodes(go) error = %v", err)
+	}
+	for _, n := range tree.Nodes {
+		if first := slices.Index(tree.Kinds, tree.Kinds[n.Kind]); int(n.Kind) != first {
+			t.Errorf("Nodes(go) node of kind %q has index %d, want %d, the first of that name", tree.Kinds[n.Kind], n.Kind, first)
+		}
+	}
+}
+
+func TestAWalkReadsWhatReadReadsAndKeepsNoMemory(t *testing.T) {
+	parser := newParser(t)
+	if _, err := parser.Read("go", "(identifier) @x", goVars(nearTheCap)); err != nil {
+		t.Fatalf("Read(go, %d var lines) error = %v, want none", nearTheCap, err)
+	}
+	if _, err := parser.Nodes("go", goVars(nearTheCap)); err != nil {
+		t.Errorf("Nodes(go, %d var lines) error = %v, want none: a file Read reads is walked too", nearTheCap, err)
+	}
+	if _, err := parser.Nodes("go", goVars(aLargeWalk)); err != nil {
+		t.Fatalf("Nodes(go, %d var lines) error = %v, want none", aLargeWalk, err)
+	}
+	if _, err := parser.Read("go", "(identifier) @x", goVars(nearTheCap)); err != nil {
+		t.Errorf("Read(go, %d var lines) after a walk of %d error = %v, want none: a walk keeps no memory", nearTheCap, aLargeWalk, err)
+	}
+}

@@ -9,15 +9,16 @@ import (
 
 // Node is one node of a file's syntax tree.
 type Node struct {
-	Kind       uint16 // index into Tree.Kinds
+	Kind       uint16 // index into Tree.Kinds; one index per name
 	Named      bool   // false for a token such as "else" or "&&"
-	Error      bool   // an ERROR node: the grammar could not fit the text here
+	Error      bool   // an ERROR node, or a token the grammar had to assume (a missing closing brace)
 	Name       bool   // the node is the name field of its parent
 	Depth      uint32 // 0 for the root
 	Start, End uint32 // byte offsets into the content
 }
 
-// Tree is the nodes of one file in text order, a parent before its children, and the grammar's kind names.
+// Tree is the nodes of one file in text order, a parent before its children, and the grammar's kind names. Kinds is
+// shared by every tree of the grammar: read it, never change it.
 type Tree struct {
 	Kinds []string
 	Nodes []Node
@@ -34,95 +35,114 @@ const (
 	flagName  = 4
 )
 
-// errorKind is the last kind name: tree-sitter's error symbol lies outside the grammar's symbol table.
-const errorKind = "ERROR"
+// The kind tree-sitter gives an ERROR node, outside the grammar's symbol table, and the name it gets as the last kind.
+const (
+	errorSymbol = 0xFFFF
+	errorKind   = "ERROR"
+)
 
 // Nodes parses content with the named grammar and returns its tree. Any failure (an unknown grammar, a file the grammar
 // cannot read within its memory cap) is an error; the parser stays usable.
 func (p *Parser) Nodes(grammar string, content []byte) (Tree, error) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if p.closed {
-		return Tree{}, errClosed
-	}
-	in, err := p.instance(grammar)
-	if err != nil {
-		return Tree{}, err
-	}
-	tree, err := in.walk(content)
-	if err != nil || in.mod.Memory().Size() > recyclePages*pageBytes {
-		in.close()
-		delete(p.instances, grammar)
-	}
-	return tree, err
+	return use(p, grammar, func(in *instance) (Tree, error) {
+		kinds, err := p.kindNames(grammar, in)
+		if err != nil {
+			return Tree{}, err
+		}
+		nodes, err := in.walk(content, kinds)
+		return Tree{Kinds: kinds.names, Nodes: nodes}, err
+	})
 }
 
-// walk parses content and decodes the shim's node records.
-func (in *instance) walk(content []byte) (Tree, error) {
-	kinds, err := in.kindNames()
-	if err != nil {
-		return Tree{}, err
-	}
+// kindTable is a grammar's kind names, with errorKind last, and for each symbol the index of the first kind of its name:
+// a grammar may give several symbols one name.
+type kindTable struct {
+	names []string
+	index []uint16
+}
+
+// walk parses content, copies the shim's node records and releases them in the module.
+func (in *instance) walk(content []byte, kinds kindTable) ([]Node, error) {
 	at, err := in.put(content)
 	if err != nil {
-		return Tree{}, err
+		return nil, err
 	}
 	defer in.free(at)
 	count, err := in.call("shim_walk", uint64(at), uint64(len(content)))
 	if err != nil {
-		return Tree{}, err
+		return nil, err
 	}
+	defer func() { _, _ = in.call("shim_walk_release") }()
 	records, err := in.call("shim_nodes")
 	if err != nil {
-		return Tree{}, err
+		return nil, err
 	}
 	raw, ok := in.mod.Memory().Read(api.DecodeU32(records), api.DecodeU32(count)*nodeRecord)
 	if !ok {
-		return Tree{}, errMemory
+		return nil, errMemory
 	}
 	le := binary.LittleEndian
 	nodes := make([]Node, 0, len(raw)/nodeRecord)
 	for b := raw; len(b) >= nodeRecord; b = b[nodeRecord:] {
-		kind, flags := le.Uint16(b), le.Uint16(b[2:])
+		symbol, flags := le.Uint16(b), le.Uint16(b[2:])
 		start, end := le.Uint32(b[8:]), le.Uint32(b[12:])
-		if start > end || int(end) > len(content) {
-			return Tree{}, errRecord
+		var kind uint16
+		switch {
+		case symbol == errorSymbol:
+			kind = uint16(len(kinds.names) - 1)
+		case int(symbol) < len(kinds.index):
+			kind = kinds.index[symbol]
+		default:
+			return nil, errRecord
 		}
-		if int(kind) >= len(kinds)-1 {
-			kind = uint16(len(kinds) - 1)
+		if start > end || int(end) > len(content) {
+			return nil, errRecord
 		}
 		nodes = append(nodes, Node{Kind: kind, Named: flags&flagNamed != 0, Error: flags&flagError != 0,
 			Name: flags&flagName != 0, Depth: le.Uint32(b[4:]), Start: start, End: end})
 	}
-	return Tree{Kinds: kinds, Nodes: nodes}, nil
+	return nodes, nil
 }
 
-// kindNames reads the grammar's kind names once per instance, with errorKind last.
-func (in *instance) kindNames() ([]string, error) {
-	if in.kinds != nil {
-		return in.kinds, nil
+// kindNames returns the grammar's kind table, read from the instance once per parser.
+func (p *Parser) kindNames(grammar string, in *instance) (kindTable, error) {
+	if table, found := p.kinds[grammar]; found {
+		return table, nil
 	}
 	count, err := in.call("shim_kind_count")
 	if err != nil {
-		return nil, err
+		return kindTable{}, err
+	}
+	n := api.DecodeU32(count)
+	if n >= errorSymbol {
+		return kindTable{}, fmt.Errorf("%d kinds do not fit a node record", n)
 	}
 	length, err := in.put([]byte{0, 0, 0, 0})
 	if err != nil {
-		return nil, err
+		return kindTable{}, err
 	}
 	defer in.free(length)
-	n := api.DecodeU32(count)
-	if n >= 0xFFFF {
-		return nil, fmt.Errorf("%d kinds do not fit a node record", n)
-	}
-	kinds := make([]string, 0, n+1)
+	names := make([]string, 0, n+1)
 	for id := range n {
 		name, err := in.lengthString("shim_kind_name", length, uint64(id))
 		if err != nil {
-			return nil, err
+			return kindTable{}, err
 		}
-		kinds = append(kinds, name)
+		names = append(names, name)
 	}
-	in.kinds = append(kinds, errorKind)
-	return in.kinds, nil
+	p.kinds[grammar] = newKindTable(append(names, errorKind))
+	return p.kinds[grammar], nil
+}
+
+// newKindTable gives every symbol the index of the first kind of its name.
+func newKindTable(names []string) kindTable {
+	first := map[string]uint16{}
+	index := make([]uint16, len(names)-1)
+	for id, name := range names[:len(names)-1] {
+		if _, seen := first[name]; !seen {
+			first[name] = uint16(id)
+		}
+		index[id] = first[name]
+	}
+	return kindTable{names: names, index: index}
 }

@@ -7,4 +7,8 @@ const (
 	wellUnderTheCap    = 10_000
 	overTheRecycleSize = 60_000
 	overTheCap         = 150_000
+	// nearTheCap is a file Read still reads: a walk must read it too, and a walk before it must leave room for it.
+	nearTheCap = 85_000
+	// aLargeWalk is a file whose walk once left its node buffer pinned, under the recycle size.
+	aLargeWalk = 30_000
 )

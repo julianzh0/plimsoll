@@ -60,6 +60,7 @@ type Parser struct {
 	runtime   wazero.Runtime
 	compiled  map[string]wazero.CompiledModule
 	instances map[string]*instance
+	kinds     map[string]kindTable // per grammar: its kind names, read once
 	closed    bool
 	// unmapped is set when the system refused an instance's memory (see start).
 	unmapped bool
@@ -73,7 +74,7 @@ var errClosed = fmt.Errorf("closed: %w", ErrUnavailable)
 
 // New returns a parser. It compiles nothing yet: a grammar is compiled on its first use.
 func New() (*Parser, error) {
-	p := &Parser{compiled: map[string]wazero.CompiledModule{}, instances: map[string]*instance{}}
+	p := &Parser{compiled: map[string]wazero.CompiledModule{}, instances: map[string]*instance{}, kinds: map[string]kindTable{}}
 	p.ctx = experimental.WithMemoryAllocator(context.Background(), experimental.MemoryAllocatorFunc(p.mapMemory))
 	p.runtime = wazero.NewRuntimeWithConfig(p.ctx, wazero.NewRuntimeConfig().WithMemoryLimitPages(memoryCapPages))
 	if err := failingHost(p.ctx, p.runtime); err != nil {
@@ -97,16 +98,23 @@ func (p *Parser) Close() {
 // Read parses content with the named grammar and runs the query on it. Any failure (an unknown grammar, a query that
 // does not compile, a file the grammar cannot read within its memory cap) is an error; the parser stays usable.
 func (p *Parser) Read(grammar, query string, content []byte) (Result, error) {
+	return use(p, grammar, func(in *instance) (Result, error) { return in.read(query, content) })
+}
+
+// use runs one call on the grammar's instance under the parser's lock. After an error, or when the call left the
+// instance's memory above recyclePages, the instance is closed and the grammar starts afresh on its next file.
+func use[T any](p *Parser, grammar string, run func(*instance) (T, error)) (T, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	var none T
 	if p.closed {
-		return Result{}, errClosed
+		return none, errClosed
 	}
 	in, err := p.instance(grammar)
 	if err != nil {
-		return Result{}, err
+		return none, err
 	}
-	result, err := in.read(query, content)
+	result, err := run(in)
 	if err != nil || in.mod.Memory().Size() > recyclePages*pageBytes {
 		in.close()
 		delete(p.instances, grammar)
