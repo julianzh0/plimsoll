@@ -35,7 +35,7 @@ func TestAddedCodeRowsGroupNamesByFileAndReason(t *testing.T) {
 	if !slices.Contains(f.Notes, additionsNote) {
 		t.Errorf("Notes = %q, want the added code note", f.Notes)
 	}
-	if summary := "Added code without a non-test use: 5 names in 1 file; `report` lists them."; !slices.Equal(f.Summaries, []string{summary}) {
+	if summary := "Added code without a non-test use found: 5 names in 1 file; `report` lists them."; !slices.Equal(f.Summaries, []string{summary}) {
 		t.Errorf("Summaries = %q, want %q", f.Summaries, summary)
 	}
 	for _, s := range f.Statistics {
@@ -54,7 +54,7 @@ func TestAddedCodeRowsGroupNamesByFileAndReason(t *testing.T) {
 		t.Errorf("an unchanged tree: rows, note or summary %+v, want none", unchanged)
 	}
 	one := detect(t, snapshottest.Files(nil, map[string]string{"src/lonely.ts": "export function lonelyHelper() {}\n"}))
-	if summary := "Added code without a non-test use: 1 name in 1 file; `report` lists it."; !slices.Equal(one.Summaries, []string{summary}) {
+	if summary := "Added code without a non-test use found: 1 name in 1 file; `report` lists it."; !slices.Equal(one.Summaries, []string{summary}) {
 		t.Errorf("one name: Summaries = %q, want %q", one.Summaries, summary)
 	}
 }

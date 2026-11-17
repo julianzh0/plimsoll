@@ -105,7 +105,7 @@ func TestBrokenSettingsFileStopsTheAudit(t *testing.T) {
 
 func TestNoSettingsFileStopsTheAudit(t *testing.T) {
 	_, f := detect(t, snapshottest.Files(nil, map[string]string{"src/a.ts": "export const a = 1;\n"}))
-	if len(f.Marks) != 0 || len(f.Statistics) != 0 || !slices.Contains(f.NotAnalysed, "no `.env.example`, so no settings were compared") {
+	if len(f.Marks) != 0 || len(f.Statistics) != 0 || len(f.NotAnalysed) != 0 {
 		t.Errorf("no .env.example: %+v", f)
 	}
 }

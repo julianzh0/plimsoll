@@ -74,7 +74,7 @@ func (Detector) Detect(s snapshot.Snapshot) answer.Findings {
 	case slices.Contains(s.Now.Broken, snapshot.SettingsFile):
 		f.NotAnalysed = append(f.NotAnalysed, fmt.Sprintf("`%s` could not be read, so no settings count", snapshot.SettingsFile))
 	case s.Now.Settings == nil:
-		f.NotAnalysed = append(f.NotAnalysed, fmt.Sprintf("no `%s`, so no settings count", snapshot.SettingsFile))
+		f.NotAnalysed = append(f.NotAnalysed, fmt.Sprintf("no `%s`, so no settings were counted or compared", snapshot.SettingsFile))
 	case slices.Contains(s.Before.Broken, snapshot.SettingsFile):
 		f.Statistics = append(f.Statistics, stat("settings", "", float64(len(s.Now.Settings.Names)), 0, false, ""))
 		f.NotAnalysed = append(f.NotAnalysed, fmt.Sprintf("`%s` could not be read at the base, so no settings were compared", snapshot.SettingsFile))

@@ -90,14 +90,20 @@ func (Detector) Standing(items []answer.Mark) string {
 	var fragments []string
 	files := map[float64]int{}
 	manifests, settings := 0, 0
+	var dependencies []string
+	grownMost, grownPath := 0.0, ""
 	for _, m := range items {
 		switch answer.RuleOf(m.ID) {
 		case ruleRatio:
 			fragments = append(fragments, fmt.Sprintf("test ratio %s (limit %s)", answer.Decimal(m.Measured.Value), answer.Decimal(*m.Measured.Limit)))
 		case ruleSize:
 			files[*m.Measured.Limit]++
+			if m.Change == answer.Grown && m.Measured.Before != nil && m.Measured.Value-*m.Measured.Before > grownMost {
+				grownMost, grownPath = m.Measured.Value-*m.Measured.Before, m.Subject.Paths[0]
+			}
 		case ruleDependencies:
 			manifests++
+			dependencies = append(dependencies, m.Subject.Names...)
 		case ruleSettings:
 			settings += len(m.Subject.Names)
 		}
@@ -114,11 +120,21 @@ func (Detector) Standing(items []answer.Mark) string {
 		}
 		fragments = append(fragments, fmt.Sprintf("%d %s over %s lines", files[limit], noun, answer.Count(limit)))
 	}
+	if grownPath != "" && len(fragments) > 0 {
+		fragments[len(fragments)-1] += fmt.Sprintf(", the most grown `%s` (+%s)", grownPath, answer.Count(grownMost))
+	}
 	if manifests > 0 {
-		fragments = append(fragments, "runtime dependencies added in "+answer.Plural(manifests, "manifest"))
+		named := answer.QuotedList(dependencies[:min(len(dependencies), namesShown)])
+		if len(dependencies) > namesShown {
+			named += fmt.Sprintf(" and %d more", len(dependencies)-namesShown)
+		}
+		fragments = append(fragments, fmt.Sprintf("runtime dependencies added in %s (%s)", answer.Plural(manifests, "manifest"), named))
 	}
 	if settings > 0 {
 		fragments = append(fragments, answer.Plural(settings, "setting")+" added")
 	}
 	return strings.Join(fragments, "; ")
 }
+
+// namesShown is how many added dependencies the summary names before it counts the rest.
+const namesShown = 5

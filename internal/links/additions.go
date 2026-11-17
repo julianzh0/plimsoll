@@ -70,7 +70,7 @@ func additionRows(additions []snapshot.Addition) (rows []answer.Statistic, summa
 	if names == 1 {
 		them = "it"
 	}
-	return rows, fmt.Sprintf("Added code without a non-test use: %s in %s; `report` lists %s.",
+	return rows, fmt.Sprintf("Added code without a non-test use found: %s in %s; `report` lists %s.",
 		answer.Plural(names, "name"), answer.Plural(len(files), "file"), them)
 }
 

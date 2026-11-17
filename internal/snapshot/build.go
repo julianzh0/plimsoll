@@ -1,6 +1,8 @@
 package snapshot
 
 import (
+	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
@@ -88,6 +90,7 @@ func Build(source Source, rules conventions.Rules, readings *Readings) Snapshot 
 		Unreadable:          slices.Compact(unreadable),
 		Missing:             source.Missing,
 		Unparsed:            unparsed(nowReadings, beforeReadings),
+		SkippedChanges:      skippedChanges(rules, source.Changes),
 		Additions:           additions(rules, source.Changes, now, atBase, source.Now, nowReadings, beforeReadings),
 		SyntaxErrors:        syntaxErrors(changed, nowReadings, beforeReadings),
 	}
@@ -208,4 +211,28 @@ func unverified(files []File) []Extension {
 	}
 	slices.SortFunc(extensions, func(a, b Extension) int { return strings.Compare(a.Suffix, b.Suffix) })
 	return extensions
+}
+
+// skippedChanges names the skipped folders that hold changed files, by the first skipped folder of each path, with
+// how many changed files each holds.
+func skippedChanges(rules conventions.Rules, changes []Change) []string {
+	counts := map[string]int{}
+	for _, change := range changes {
+		parts := strings.Split(change.Path, "/")
+		for i, folder := range parts[:len(parts)-1] {
+			if slices.Contains(rules.SkippedFolders, folder) {
+				counts[strings.Join(parts[:i+1], "/")+"/"]++
+				break
+			}
+		}
+	}
+	var found []string
+	for _, folder := range slices.Sorted(maps.Keys(counts)) {
+		noun := "files"
+		if counts[folder] == 1 {
+			noun = "file"
+		}
+		found = append(found, fmt.Sprintf("`%s` (%d %s)", folder, counts[folder], noun))
+	}
+	return found
 }

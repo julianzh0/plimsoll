@@ -66,33 +66,33 @@ func TestDetectOnEachLanguageSample(t *testing.T) {
 		{"typescript", 10, 17, 3, 1.7, []string{"tests/store.test.ts", "src/store.ts", "src/util.spec.ts"},
 			map[string]string{"package.json": "express, pg"}, nil},
 		{"go", 11, 12, 0, 1.1, []string{"internal/store/store_test.go", "internal/store/store.go", "cmd/app/main.go"},
-			map[string]string{"go.mod": "github.com/a/b"}, []string{"no `.env.example`, so no settings count"}},
+			map[string]string{"go.mod": "github.com/a/b"}, []string{"no `.env.example`, so no settings were counted or compared"}},
 		{"python", 13, 10, 3, 0.8, []string{"src/app/store.py", "tests/test_store.py", "src/app/config.py"},
 			map[string]string{"pyproject.toml": "httpx, pydantic-settings"}, nil},
 		{"dart", 33, 19, 0, 0.6, []string{"integration_test/app_test.dart", "lib/src/app.dart", "test/store_test.dart"}, map[string]string{"pubspec.yaml": "flutter, http, provider"}, nil},
 		{"java", 43, 31, 0, 0.7, []string{"src/main/java/com/acme/notes/store/NoteStore.java", "src/main/java/com/acme/notes/App.java", "src/test/java/com/acme/notes/AppTest.java"},
-			map[string]string{"pom.xml": "com.fasterxml.jackson.core:jackson-databind, org.postgresql:postgresql"}, []string{"no `.env.example`, so no settings count"}},
+			map[string]string{"pom.xml": "com.fasterxml.jackson.core:jackson-databind, org.postgresql:postgresql"}, []string{"no `.env.example`, so no settings were counted or compared"}},
 		{"kotlin", 57, 32, 0, 0.6, []string{"build.gradle.kts", "src/androidTest/kotlin/com/acme/tasks/MainScreenTest.kt", "src/main/kotlin/com/acme/tasks/Main.kt"},
 			map[string]string{"build.gradle.kts": ":shared, io.ktor:ktor-bom, io.ktor:ktor-client-core, libs.kotlinx.coroutines.core, org.slf4j:slf4j-simple"},
-			[]string{"no `.env.example`, so no settings count"}},
+			[]string{"no `.env.example`, so no settings were counted or compared"}},
 		{"csharp", 48, 26, 0, 0.5, []string{"Acme.Notes/Store/NoteStore.cs", "Acme.Notes.Tests/NoteStoreTests.cs", "Acme.Notes.Tests/Support/FixedClock.cs"},
 			map[string]string{"Acme.Notes/Acme.Notes.csproj": "Microsoft.Extensions.Configuration, Npgsql, System.Text.Json"},
-			[]string{"no `.env.example`, so no settings count"}},
+			[]string{"no `.env.example`, so no settings were counted or compared"}},
 		{"c", 45, 9, 0, 0.2, []string{"src/tally.c", "src/buffer.c", "tests/test_tally.c"}, nil, []string{
-			"no `.env.example`, so no settings count", "no known dependency manifest, at the root or as a project file outside test and other code, so no dependency count",
+			"no `.env.example`, so no settings were counted or compared", "no known dependency manifest, at the root or as a project file outside test and other code, so no dependency count",
 		}},
 		{"cpp", 66, 15, 0, 0.2, []string{"src/store.cc", "include/notes/store.hpp", "src/main.cpp"},
-			map[string]string{"vcpkg.json": "fmt, sqlite3"}, []string{"no `.env.example`, so no settings count"}},
+			map[string]string{"vcpkg.json": "fmt, sqlite3"}, []string{"no `.env.example`, so no settings were counted or compared"}},
 		{"swift", 56, 11, 0, 0.2, []string{"Package.swift", "Sources/NotesCore/Store.swift", "Sources/notes/main.swift"},
-			map[string]string{"Package.swift": "swift-argument-parser, swift-log"}, []string{"no `.env.example`, so no settings count"}},
+			map[string]string{"Package.swift": "swift-argument-parser, swift-log"}, []string{"no `.env.example`, so no settings were counted or compared"}},
 		{"rust", 86, 41, 0, 0.5, []string{"src/store/memory.rs", "src/model.rs", "src/lib.rs"},
-			map[string]string{"Cargo.toml": "anyhow, clap, libc, log, notes-store, serde"}, []string{"no `.env.example`, so no settings count"}},
+			map[string]string{"Cargo.toml": "anyhow, clap, libc, log, notes-store, serde"}, []string{"no `.env.example`, so no settings were counted or compared"}},
 		{"mixed", 8, 10, 0, 1.3, []string{"service/main_test.go", "service/main.go", "web/src/app.test.ts"},
-			map[string]string{"go.mod": "", "package.json": ""}, []string{"no `.env.example`, so no settings count"}},
+			map[string]string{"go.mod": "", "package.json": ""}, []string{"no `.env.example`, so no settings were counted or compared"}},
 		{"python-declared", 9, 12, 0, 1.3, []string{"checks/test_flow.py", "src/app/service.py", "tests/test_service.py"},
-			map[string]string{"pyproject.toml": ""}, []string{"no `.env.example`, so no settings count"}},
+			map[string]string{"pyproject.toml": ""}, []string{"no `.env.example`, so no settings were counted or compared"}},
 		{"unproven", 4, 3, 0, 0.8, []string{"bin/run.sh", "tests/check.sh"}, nil, []string{
-			"no `.env.example`, so no settings count", "no known dependency manifest, at the root or as a project file outside test and other code, so no dependency count",
+			"no `.env.example`, so no settings were counted or compared", "no known dependency manifest, at the root or as a project file outside test and other code, so no dependency count",
 		}},
 	}
 	for _, tc := range cases {
@@ -286,7 +286,7 @@ func TestAdditionMarks(t *testing.T) {
 	unreadableNow := snapshottest.Files(nil, map[string]string{".env.example": "ALPHA=1\n"})
 	unreadableNow.Now[0].Content, unreadableNow.Now[0].Binary = nil, true
 	if f := detect(t, unreadableNow, conventions.Default()); !slices.Contains(f.NotAnalysed, "`.env.example` could not be read, so no settings count") ||
-		slices.Contains(f.NotAnalysed, "no `.env.example`, so no settings count") {
+		slices.Contains(f.NotAnalysed, "no `.env.example`, so no settings were counted or compared") {
 		t.Errorf("an unreadable .env.example: not analysed %q, want it named as not read", f.NotAnalysed)
 	} else if _, found := statistic(f, "settings", ""); found {
 		t.Errorf("an unreadable .env.example: a settings row exists, want none")

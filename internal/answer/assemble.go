@@ -123,6 +123,9 @@ func repositoryNotAnalysed(s snapshot.Snapshot) []NotAnalysed {
 	for _, extension := range s.Unverified {
 		add(fmt.Sprintf("not verified for `%s` (%s in %s)", extension.Suffix, Plural(extension.Lines, "line"), Plural(extension.Files, "file")))
 	}
+	if len(s.SkippedChanges) > 0 {
+		add("changed files in folders plimsoll skips (generated, vendored or built), not counted: " + strings.Join(s.SkippedChanges, ", "))
+	}
 	if s.Untracked > 0 {
 		add(Plural(s.Untracked, "untracked file"))
 	}

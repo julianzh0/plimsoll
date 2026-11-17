@@ -415,3 +415,14 @@ func TestStatusPrintsEachSummaryBeforeTheStandingLine(t *testing.T) {
 		t.Errorf("an answer without a summary marshals as %s, want summaries []", data)
 	}
 }
+
+func TestAStatusWithoutMarksSaysWhatItLeftToTheLinesBelow(t *testing.T) {
+	s := sample()
+	s.ReportOnly = []string{"shape.test-ratio grown"}
+	f := findings()
+	f.Marks = f.Marks[1:2] // the grown ratio alone
+	text := Render(Assemble(Status, "0.1.0", s, []Result{{"shape", f}}), wording())
+	if want := "No mark to act on since `main`"; !strings.Contains(text, want) || strings.Contains(text, "No new or grown marks") {
+		t.Errorf("Render(status with only a report-only mark) =\n%s\nwant %q and no all-clear", text, want)
+	}
+}

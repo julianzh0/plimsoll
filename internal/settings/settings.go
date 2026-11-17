@@ -39,7 +39,7 @@ func (Detector) Detect(s snapshot.Snapshot) answer.Findings {
 		return answer.Findings{NotAnalysed: []string{fmt.Sprintf("`%s` could not be read, so no settings were compared", file)}}
 	}
 	if s.Now.Settings == nil {
-		return answer.Findings{NotAnalysed: []string{fmt.Sprintf("no `%s`, so no settings were compared", file)}}
+		return answer.Findings{} // shape says there is no settings file
 	}
 	f := answer.Findings{}
 	existed := s.Before.Settings != nil

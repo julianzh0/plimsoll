@@ -194,6 +194,12 @@ func TestBuildLeavesOutWhatIsNotCode(t *testing.T) {
 			t.Errorf("Build(typescript).Now.Paths lacks %s, want every tracked path", p)
 		}
 	}
+	skipped := snapshot.Build(snapshottest.Files(map[string]string{"single_include/lib/lib.hpp": "int f();\n"},
+		map[string]string{"single_include/lib/lib.hpp": "int f();\nint g();\n", "node_modules/x/a.js": "x\n", "src/a.ts": "x\n"}),
+		conventions.Default(), snapshottest.Readings(t))
+	if want := []string{"`node_modules/` (1 file)", "`single_include/` (1 file)"}; !slices.Equal(skipped.SkippedChanges, want) {
+		t.Errorf("Build(changes in skipped folders).SkippedChanges = %q, want %q", skipped.SkippedChanges, want)
+	}
 	amalgamated := snapshot.Build(snapshottest.Files(nil, map[string]string{
 		"include/lib/lib.hpp": "int f();\n", "single_include/lib/lib.hpp": "int f();\n",
 	}), conventions.Default(), snapshottest.Readings(t))
