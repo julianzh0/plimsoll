@@ -127,10 +127,10 @@ func TestProcessWordingStandingAndEvidence(t *testing.T) {
 	doc := answer.Mark{ID: answer.ID(name, ruleDocChurn, "repository"), Change: answer.New, Subject: answer.Subject{Kind: "repository"},
 		Measured: answer.Measured{Value: 4120, Limit: &limit}}
 	cases := map[string]answer.Mark{
-		"`docs/x.md` is tracked and lies under a planning or review path; it was not tracked at the base.":                                                                      planning("docs/x.md", answer.New),
-		"`docs/x.md` is tracked and lies under a planning or review path; it was tracked at the base too.":                                                                      planning("docs/x.md", answer.Standing),
-		"`docs/x.md` is no longer tracked; it lay under a planning or review path at the base.":                                                                                 planning("docs/x.md", answer.Resolved),
-		"Documentation churn since the base, summed over its commits, is 4,120 lines, above product plus test churn of 310 lines; the footprint counts the net change instead.": doc,
+		"`docs/x.md` is a planning or review record this change added to the repository (plimsoll's rule: repositories hold no planning records); keep it outside the repository.": planning("docs/x.md", answer.New),
+		"`docs/x.md` is tracked and lies under a planning or review path; it was tracked at the base too.":                                                                         planning("docs/x.md", answer.Standing),
+		"`docs/x.md` is no longer tracked; it lay under a planning or review path at the base.":                                                                                    planning("docs/x.md", answer.Resolved),
+		"Documentation churn since the base, summed over its commits, is 4,120 lines, above product plus test churn of 310 lines; the footprint counts the net change instead.":    doc,
 	}
 	one := 1.0
 	small := doc
