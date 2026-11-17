@@ -334,8 +334,8 @@ func Default() Rules {
 			{Key: "hotspot_files", Name: "hotspot count", Unit: "files"},
 		},
 		PlanningPaths: []string{
-			"docs/superpowers/", "docs/stories/", "docs/plans/", "docs/specs/", "projects/", ".review-work/",
-			"*review-packet*", "REQUIREMENTS.md", "SPEC.md",
+			"docs/superpowers/", "docs/stories/", "docs/plans/", "docs/specs/", ".claude/plans/", "projects/", ".review-work/",
+			"*review-packet*", "REQUIREMENTS.md", "SPEC.md", "PLAN.md", "*_PLAN.md",
 		},
 		MeasurementPaths: []string{"docs/qualification/", "evidence/"},
 		ComposeFiles:     []string{"compose*.yml", "compose*.yaml", "docker-compose*.yml", "docker-compose*.yaml"},

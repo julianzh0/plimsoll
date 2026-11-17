@@ -118,8 +118,8 @@ func TestIsBinaryLooksForANulByteInTheFirstBytes(t *testing.T) {
 }
 
 func TestPlanningRuleIsPrintedFromTheData(t *testing.T) {
-	want := "`docs/superpowers/`, `docs/stories/`, `docs/plans/`, `docs/specs/`, `projects/`, `.review-work/`, " +
-		"`*review-packet*`, `REQUIREMENTS.md`, `SPEC.md`"
+	want := "`docs/superpowers/`, `docs/stories/`, `docs/plans/`, `docs/specs/`, `.claude/plans/`, `projects/`, `.review-work/`, " +
+		"`*review-packet*`, `REQUIREMENTS.md`, `SPEC.md`, `PLAN.md`, `*_PLAN.md`"
 	if got := Default().PlanningRule(); got != want {
 		t.Errorf("PlanningRule() = %q, want %q", got, want)
 	}

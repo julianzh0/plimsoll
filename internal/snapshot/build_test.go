@@ -277,11 +277,11 @@ func TestBuildLeavesOutGeneratedFiles(t *testing.T) {
 
 func TestBuildListsPlanningAndReviewFiles(t *testing.T) {
 	planning := []string{
-		".review-work/a/packet.md", "REQUIREMENTS.md", "docs/SPEC.md", "docs/api-review-packet-2.md", "docs/stories/US-1.md",
-		"packages/api/docs/specs/x.md", "projects/notes.txt",
+		".claude/plans/a-design.md", ".context/CODEBASE_AUDIT_PLAN.md", ".review-work/a/packet.md", "PLAN.md", "REQUIREMENTS.md",
+		"docs/SPEC.md", "docs/api-review-packet-2.md", "docs/stories/US-1.md", "packages/api/docs/specs/x.md", "projects/notes.txt",
 	}
 	other := []string{
-		"docs/guide.md", "docs/stories.md", "mydocs/stories/a.md", "docs/qualification/run.json", "evidence/a.txt",
+		"docs/guide.md", "docs/stories.md", "docs/planner.md", "mydocs/stories/a.md", "docs/qualification/run.json", "evidence/a.txt",
 		"node_modules/x/SPEC.md", "internal/x/testdata/s/REQUIREMENTS.md", "src/spec.md", "src/features/projects/list.md",
 	}
 	files := map[string]string{}
