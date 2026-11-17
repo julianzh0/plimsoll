@@ -39,7 +39,7 @@ func (Detector) Wording(m answer.Mark) string {
 		return fmt.Sprintf("This change altered the %s declared in `%s`: %s; %d declared now, %d at the base.", m.Measured.Unit, m.Subject.Paths[0],
 			strings.Join(parts, ", "), now, before)
 	case ruleDocChurn:
-		return fmt.Sprintf("Documentation churn since the base is %s, above product plus test churn of %s.",
+		return fmt.Sprintf("Documentation churn since the base, summed over its commits, is %s, above product plus test churn of %s; the footprint counts the net change instead.",
 			answer.Plural(int(m.Measured.Value), "line"), answer.Plural(int(*m.Measured.Limit), "line"))
 	}
 	return m.ID

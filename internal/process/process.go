@@ -57,8 +57,8 @@ func (Detector) Detect(s snapshot.Snapshot) answer.Findings {
 	docs, code := float64(churn.Total(snapshot.AreaDocs)), float64(churn.Total(snapshot.AreaProduct)+churn.Total(snapshot.AreaTests))
 	zero := 0.0
 	f.Statistics = append(f.Statistics,
-		answer.Statistic{Name: "documentation churn since the base", Value: &docs, Before: &zero, Unit: "lines"},
-		answer.Statistic{Name: "product and test churn since the base", Value: &code, Before: &zero, Unit: "lines"},
+		answer.Statistic{Name: "documentation churn since the base, summed over its commits", Value: &docs, Before: &zero, Unit: "lines"},
+		answer.Statistic{Name: "product and test churn since the base, summed over its commits", Value: &code, Before: &zero, Unit: "lines"},
 	)
 	switch {
 	case code == 0 && docs > 0:

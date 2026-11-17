@@ -107,7 +107,7 @@ func TestDocChurnMark(t *testing.T) {
 		t.Errorf("planning-record churn above code churn: a doc-churn mark, want none: records are no documentation")
 	}
 	_, f = detect(t, churn(400, 60, 40, false))
-	if _, found := row(f, "documentation churn since the base"); found || len(marksOf(f, ruleDocChurn)) != 0 || len(f.NotAnalysed) != 0 {
+	if _, found := row(f, "documentation churn since the base, summed over its commits"); found || len(marksOf(f, ruleDocChurn)) != 0 || len(f.NotAnalysed) != 0 {
 		t.Errorf("no commit since the base: rows %v, not analysed %q; want neither", f.Statistics, f.NotAnalysed)
 	}
 }
@@ -127,15 +127,15 @@ func TestProcessWordingStandingAndEvidence(t *testing.T) {
 	doc := answer.Mark{ID: answer.ID(name, ruleDocChurn, "repository"), Change: answer.New, Subject: answer.Subject{Kind: "repository"},
 		Measured: answer.Measured{Value: 4120, Limit: &limit}}
 	cases := map[string]answer.Mark{
-		"`docs/x.md` is tracked and lies under a planning or review path; it was not tracked at the base.": planning("docs/x.md", answer.New),
-		"`docs/x.md` is tracked and lies under a planning or review path; it was tracked at the base too.": planning("docs/x.md", answer.Standing),
-		"`docs/x.md` is no longer tracked; it lay under a planning or review path at the base.":            planning("docs/x.md", answer.Resolved),
-		"Documentation churn since the base is 4,120 lines, above product plus test churn of 310 lines.":   doc,
+		"`docs/x.md` is tracked and lies under a planning or review path; it was not tracked at the base.":                                                                      planning("docs/x.md", answer.New),
+		"`docs/x.md` is tracked and lies under a planning or review path; it was tracked at the base too.":                                                                      planning("docs/x.md", answer.Standing),
+		"`docs/x.md` is no longer tracked; it lay under a planning or review path at the base.":                                                                                 planning("docs/x.md", answer.Resolved),
+		"Documentation churn since the base, summed over its commits, is 4,120 lines, above product plus test churn of 310 lines; the footprint counts the net change instead.": doc,
 	}
 	one := 1.0
 	small := doc
 	small.Measured = answer.Measured{Value: 2, Limit: &one}
-	cases["Documentation churn since the base is 2 lines, above product plus test churn of 1 line."] = small
+	cases["Documentation churn since the base, summed over its commits, is 2 lines, above product plus test churn of 1 line; the footprint counts the net change instead."] = small
 	for want, m := range cases {
 		if got := (Detector{}).Wording(m); got != want {
 			t.Errorf("Wording(%s %s) = %q, want %q", m.ID, m.Change, got, want)
