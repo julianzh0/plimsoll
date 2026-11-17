@@ -16,7 +16,7 @@ func TestDetectMarksFunctionsAChangeMadeComplexOrDeeper(t *testing.T) {
 	rules := conventions.Default()
 	one := detect(t, snapshottest.Files(nil, map[string]string{"src/sync.ts": fn("syncAll", 7, 0)}), rules)
 	got := marksOf(one, ruleComplexity)
-	wantHint := "read lines 1–17: it nests 7 levels deep at line 8; a branch or loop counts 1 plus 1 per level it is nested in, an `else` and a run of one boolean operator count 1."
+	wantHint := "read lines 1–17 (17 of them added by this change): it nests 7 levels deep at line 8; counted: 1 for each if, loop, switch, catch and conditional expression plus 1 per level it is nested in; 1 for each else, else-if and run of one boolean operator; functions written inside it and markup are not counted."
 	if len(got) != 1 || got[0].ID != "shape.function-complexity:src/sync.ts:syncAll" || got[0].Change != answer.New || got[0].Confidence != answer.Candidate ||
 		got[0].Subject.Kind != "function" || !slices.Equal(got[0].Subject.Paths, []string{"src/sync.ts"}) || !slices.Equal(got[0].Subject.Names, []string{"syncAll"}) ||
 		got[0].Measured.Value != 28 || got[0].Measured.Before != nil || *got[0].Measured.Limit != 25 || got[0].Measured.Unit != "cognitive complexity" || got[0].Hint != wantHint {
@@ -41,7 +41,7 @@ func TestDetectMarksFunctionsAChangeMadeComplexOrDeeper(t *testing.T) {
 		return strings.Join(out, "")
 	}
 	repeated := marksOf(detect(t, snapshottest.Files(map[string]string{"src/a.ts": fn("grow", 5, 8)}, map[string]string{"src/a.ts": twice(fn("grow", 5, 8))}), rules), ruleComplexity)
-	if want := "read lines 1–29: it nests 5 levels deep at line 6, and lines 12–15 are repeated at lines 20–23; "; len(repeated) != 1 || !strings.HasPrefix(repeated[0].Hint, want) {
+	if want := "read lines 1–29 (8 of them added by this change): it nests 5 levels deep at line 6, and lines 12–15 are repeated at lines 20–23; "; len(repeated) != 1 || !strings.HasPrefix(repeated[0].Hint, want) {
 		t.Errorf("Detect(a pasted block) complexity marks = %+v, want a hint starting %q", repeated, want)
 	}
 
@@ -69,13 +69,17 @@ func TestDetectMarksFunctionsAChangeMadeComplexOrDeeper(t *testing.T) {
 	four := detect(t, snapshottest.Files(nil, map[string]string{"src/four.ts": fn("a", 7, 0) + "\n" + fn("b", 8, 0) + "\n" + fn("c", 9, 0) + "\n" + fn("d", 7, 1)}), rules)
 	rows := map[string]string{
 		"functions measured":                  "in 1 changed product file",
-		"functions over the complexity limit": "3 listed of 4 that crossed it (at most three per measure, the largest rise first)",
+		"functions over the complexity limit": "3 listed (at most three per measure, the largest rise first)",
 		"functions nested deeper":             "1 listed",
 	}
 	for row, note := range rows {
 		if s, found := statistic(four, row, ""); !found || s.Note != note {
 			t.Errorf("Detect(four over the limit) row %q = %+v, want note %q", row, s, note)
 		}
+	}
+	// the value is what crossed; the note says how many are listed
+	if s, found := statistic(four, "functions over the complexity limit", ""); !found || s.Value == nil || *s.Value != 4 {
+		t.Errorf("Detect(four over the limit) row \"functions over the complexity limit\" = %+v, want value 4", s)
 	}
 	summary := "Function limits: 3 of 4 functions over the complexity limit are listed (at most three per measure, the largest rise first); `report` counts the rest."
 	if len(marksOf(four, ruleComplexity)) != 3 || len(marksOf(four, ruleNesting)) != 1 || !slices.Contains(four.Summaries, summary) {

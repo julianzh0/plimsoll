@@ -148,7 +148,7 @@ type gone struct {
 func functionChanges(rules conventions.Rules, changes []Change, m measured, missing []string, atBase map[string]bool, now, before Tree,
 	nowContent, beforeContent map[string][]byte, nowReadings, beforeReadings map[string]reading) Functions {
 	fr := rules.FunctionRules
-	result := Functions{PerMeasure: fr.PerMeasure, MovedShare: fr.MovedShare, CopyShare: fr.CopyShare, MinifiedLineBytes: fr.MinifiedLineBytes, HeaderLines: fr.HeaderLines,
+	result := Functions{PerMeasure: fr.PerMeasure, Run: fr.Run, MovedShare: fr.MovedShare, CopyShare: fr.CopyShare, MinifiedLineBytes: fr.MinifiedLineBytes, HeaderLines: fr.HeaderLines,
 		Minified: m.minified, Unmeasured: m.unmeasured, Checks: functionChecks}
 	candidates, pool := collect(rules, changes, m, missing, atBase, nowReadings, beforeReadings, &result)
 	if len(candidates) == 0 {
@@ -179,7 +179,8 @@ func functionChanges(rules conventions.Rules, changes []Change, m measured, miss
 				}
 			}
 		}
-		if c.change.AddedWhole && from.fromAnotherProject(c.change.Path, nowContent[c.change.Path]) {
+		// a file whose header or folder says it is another project's holds that project's code, whatever the change did
+		if from.fromAnotherProject(c.change.Path, nowContent[c.change.Path]) {
 			leaveOut(c, FromAnotherProject, "")
 			continue
 		}

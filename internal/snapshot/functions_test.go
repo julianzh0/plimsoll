@@ -397,8 +397,8 @@ func TestBuildLeavesOutFilesFromAnotherProject(t *testing.T) {
 		{"a vendor folder whose project holds its licence", nil, map[string]string{"src/external/zlib/inflate.ts": f, "src/external/zlib/LICENSE": "zlib\n"}, false},
 		{"a licence's own wording is no holder", map[string]string{"LICENSE": apache},
 			map[string]string{"LICENSE": apache, "src/x.ts": "// Copyright (C) 2008 Free Software Foundation, Inc.\n" + f}, false},
-		{"a file that was there", map[string]string{"src/x.ts": h + snapshottest.Function("grow", 5, 4)},
-			map[string]string{"src/x.ts": h + snapshottest.Function("grow", 6, 6)}, true},
+		{"a file that was there, with another project's header", map[string]string{"src/x.ts": h + snapshottest.Function("grow", 5, 4)},
+			map[string]string{"src/x.ts": h + snapshottest.Function("grow", 6, 6)}, false},
 	}
 	for _, tc := range cases {
 		got := functionsIn(t, conventions.Default(), tc.base, tc.now)

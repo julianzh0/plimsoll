@@ -11,7 +11,7 @@ import (
 	"github.com/julianzh0/plimsoll/internal/conventions"
 )
 
-// origins tells, for a file the change added whole, whether it came from another project: by its header, an upstream
+// origins tells, for a measured file, whether it came from another project: by its header, an upstream
 // address or a note that it was ported, or by a vendor folder whose project holds its own licence. What is the
 // repository's own is read from its tracked files only: the copyright holders of its root licence files, and what the
 // headers of its nearest base product files share.
@@ -27,7 +27,7 @@ type origins struct {
 	decided    map[string]bool            // path -> from another project
 }
 
-// fromAnotherProject says whether the file at the path, added whole, came from another project; decided once per file.
+// fromAnotherProject says whether the file at the path came from another project; decided once per file.
 func (o *origins) fromAnotherProject(path string, content []byte) bool {
 	if o.decided == nil {
 		o.decided = map[string]bool{}

@@ -73,8 +73,8 @@ func TestStandingNamesTheRatioAndCountsFilesPerLimit(t *testing.T) {
 		{[]answer.Mark{size(answer.Grown, 1700, new(float64(1600)), 1500), addition("dependencies", "package.json", []string{"a"}, 3, new(float64(2))),
 			addition("dependencies", "web/package.json", []string{"b"}, 3, new(float64(2))), addition("settings", ".env.example", []string{"X", "Y"}, 4, new(float64(2)))},
 			"1 file over 1,500 lines grew, `src/a.ts` the most (+100); runtime dependencies added in 2 manifests (`a`, `b`); 2 settings added"},
-		{[]answer.Mark{nesting(answer.New, 4, nil), nesting(answer.New, 5, nil)}, "2 functions nested deeper, `src/sync.ts` `syncAll` the deepest (5 levels)"},
-		{[]answer.Mark{nesting(answer.New, 4, nil)}, "1 function nested deeper, `src/sync.ts` `syncAll` (4 levels)"},
+		{[]answer.Mark{nesting(answer.New, 4, nil), nesting(answer.New, 5, nil)}, "2 functions nested deeper are listed, `src/sync.ts` `syncAll` the deepest of them (5 levels)"},
+		{[]answer.Mark{nesting(answer.New, 4, nil)}, "1 function nested deeper is listed, `src/sync.ts` `syncAll` (4 levels)"},
 	}
 	for _, tc := range cases {
 		if got := (Detector{}).Standing(tc.items); got != tc.want {

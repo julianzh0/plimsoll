@@ -311,8 +311,8 @@ type Functions struct {
 	LeftOut                       []LeftOutFunction
 	Uncompared, Broken            int
 	Unread, Minified, Unmeasured  []string
-	PerMeasure, Checks            int // the rules' numbers an answer prints
+	PerMeasure, Checks, Run       int // the rules' numbers an answer prints; Run is the tokens of one compared run
 	MinifiedLineBytes             int
-	HeaderLines                   int // the lines of a file added whole that are read for another project's header
+	HeaderLines                   int // the lines of a measured file that are read for another project's header
 	MovedShare, CopyShare         float64
 }

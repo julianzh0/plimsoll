@@ -14,8 +14,8 @@ const (
 	ruleNesting    = "function-nesting"
 )
 
-// complexityCounting is how the complexity counts, said in the verify line of every complexity mark.
-const complexityCounting = "a branch or loop counts 1 plus 1 per level it is nested in, an `else` and a run of one boolean operator count 1."
+// complexityCounting is how the complexity counts, said in the verify line of every complexity mark and in `explain`.
+const complexityCounting = "counted: 1 for each if, loop, switch, catch and conditional expression plus 1 per level it is nested in; 1 for each else, else-if and run of one boolean operator; functions written inside it and markup are not counted"
 
 // functionID names a function: its path, its name, and #n from the second function of that name in its file on.
 func functionID(f snapshot.FunctionChange) string {
@@ -76,7 +76,7 @@ func complexityHint(f snapshot.FunctionChange, nestingLimit float64) string {
 	if len(f.Repeated) == 2 {
 		reasons = append(reasons, fmt.Sprintf("lines %d–%d are repeated at lines %d–%d", f.Repeated[0].Start, f.Repeated[0].End, f.Repeated[1].Start, f.Repeated[1].End))
 	}
-	return fmt.Sprintf("read lines %d–%d: %s; %s", f.Start, f.End, strings.Join(reasons, ", and "), complexityCounting)
+	return fmt.Sprintf("read lines %d–%d (%d of them added by this change): %s; %s.", f.Start, f.End, f.AddedLines, strings.Join(reasons, ", and "), complexityCounting)
 }
 
 // functionRows are the report's rows of the function rules, when a changed product file was measured.
@@ -87,8 +87,8 @@ func functionRows(fs snapshot.Functions) []answer.Statistic {
 	count := func(n int) *float64 { v := float64(n); return &v }
 	rows := []answer.Statistic{
 		{Name: "functions measured", Value: count(fs.Measured), Note: "in " + answer.Plural(fs.Files, "changed product file")},
-		{Name: "functions over the complexity limit", Value: count(len(fs.Complex)), Note: listedNote(len(fs.Complex), fs.ComplexCrossed, fs.PerMeasure)},
-		{Name: "functions nested deeper", Value: count(len(fs.Deeper)), Note: listedNote(len(fs.Deeper), fs.DeeperCrossed, fs.PerMeasure)},
+		{Name: "functions over the complexity limit", Value: count(fs.ComplexCrossed), Note: listedNote(len(fs.Complex), fs.ComplexCrossed, fs.PerMeasure)},
+		{Name: "functions nested deeper", Value: count(fs.DeeperCrossed), Note: listedNote(len(fs.Deeper), fs.DeeperCrossed, fs.PerMeasure)},
 	}
 	if len(fs.LeftOut) > 0 {
 		rows = append(rows, answer.Statistic{Name: "functions left out as code that existed before", Value: count(len(fs.LeftOut)), Note: leftOutNote(fs.LeftOut)})
@@ -101,12 +101,12 @@ func perMeasure(n int) string {
 	return fmt.Sprintf("at most %s per measure, the largest rise first", words(n))
 }
 
-// listedNote is "2 listed", or "3 listed of 7 that crossed it (at most three per measure, the largest rise first)".
+// listedNote is "2 listed", or "3 listed (at most three per measure, the largest rise first)" when more crossed.
 func listedNote(listed, crossed, cap int) string {
 	if crossed <= listed {
 		return fmt.Sprintf("%d listed", listed)
 	}
-	return fmt.Sprintf("%d listed of %d that crossed it (%s)", listed, crossed, perMeasure(cap))
+	return fmt.Sprintf("%d listed (%s)", listed, perMeasure(cap))
 }
 
 // leftOutShown is how many copies the left-out row names.
@@ -128,7 +128,7 @@ func leftOutNote(list []snapshot.LeftOutFunction) string {
 		switch {
 		case n == 0:
 		case reason == snapshot.FromAnotherProject:
-			parts = append(parts, fmt.Sprintf("%d in files added from another project", n))
+			parts = append(parts, fmt.Sprintf("%d in files from another project", n))
 		case reason == snapshot.Extracted:
 			parts = append(parts, fmt.Sprintf("%d split out of code that existed", n))
 		case reason == snapshot.Moved:
@@ -204,9 +204,9 @@ func functionsInStanding(items []answer.Mark) string {
 	}
 	named := fmt.Sprintf("`%s` `%s`", deepest.Subject.Paths[0], deepest.Subject.Names[0])
 	if len(nested) == 1 {
-		return fmt.Sprintf("1 function nested deeper, %s (%d levels)", named, int(deepest.Measured.Value))
+		return fmt.Sprintf("1 function nested deeper is listed, %s (%d levels)", named, int(deepest.Measured.Value))
 	}
-	return fmt.Sprintf("%d functions nested deeper, %s the deepest (%d levels)", len(nested), named, int(deepest.Measured.Value))
+	return fmt.Sprintf("%d functions nested deeper are listed, %s the deepest of them (%d levels)", len(nested), named, int(deepest.Measured.Value))
 }
 
 // words writes a small count as a word, as a sentence reads it: "three".

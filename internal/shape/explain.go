@@ -62,7 +62,7 @@ func functionEvidence(s snapshot.Snapshot, m answer.Mark) []string {
 	}
 	complexityLine := fmt.Sprintf("cognitive complexity now: %d%s", f.Complexity, before(f.ComplexityBefore))
 	nestingLine := fmt.Sprintf("deepest nesting now: %s at line %d%s", answer.Plural(f.Nesting, "level"), f.NestingLine, before(f.NestingBefore))
-	counted := "counted: 1 for each if, loop, switch, catch and conditional expression plus 1 per level it is nested in; 1 for each else, else-if and run of one boolean operator; functions written inside it and markup are not counted"
+	counted := complexityCounting
 	lines := []string{where}
 	if rule == ruleComplexity {
 		lines = append(lines,
@@ -77,16 +77,22 @@ func functionEvidence(s snapshot.Snapshot, m answer.Mark) []string {
 	percent := func(share float64) string { return fmt.Sprintf("%d%%", int(math.Round(100*share))) }
 	lines = append(lines,
 		fmt.Sprintf("lines of it this change added: %d of %d", f.AddedLines, f.End-f.Start+1),
-		fmt.Sprintf("found in lines this change removed: %s of its tokens (%s is moved code)", percent(f.MovedShare), percent(fs.MovedShare)))
-	if f.CopyFiles == 0 {
+		fmt.Sprintf("found in lines this change removed: %s of its tokens (%s or more counts as moved code)", percent(f.MovedShare), percent(fs.MovedShare)))
+	compared := answer.Agree(f.CopyFiles, "file at the base that holds", "files at the base that hold")
+	switch {
+	case f.CopyFiles == 0:
 		lines = append(lines, "no file at the base holds its name or its longest names")
-	} else {
-		lines = append(lines, fmt.Sprintf("compared with %s at the base that hold its name or its longest names; the closest, `%s`, holds %s of its tokens (%s is a copy)",
-			answer.Plural(f.CopyFiles, "file"), f.ClosestFile, percent(f.ClosestShare), percent(fs.CopyShare)))
+	case f.ClosestFile == "":
+		lines = append(lines, fmt.Sprintf("compared with %s its name or its longest names; none holds a run of %d of its tokens", compared, fs.Run))
+	default:
+		lines = append(lines, fmt.Sprintf("compared with %s its name or its longest names; the closest, `%s`, holds %s of its tokens (%s or more counts as a copy)",
+			compared, f.ClosestFile, percent(f.ClosestShare), percent(fs.CopyShare)))
 	}
+	header := fmt.Sprintf("its first %d lines name no other project", fs.HeaderLines)
 	if f.AddedWhole {
-		lines = append(lines, fmt.Sprintf("its file is new in this change; its first %d lines name no other project", fs.HeaderLines))
+		header = "its file is new in this change; " + header
 	}
+	lines = append(lines, header)
 	return lines
 }
 
