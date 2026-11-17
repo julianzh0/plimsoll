@@ -15,7 +15,7 @@ import (
 
 func linksOf(t testing.TB, files map[string]string) snapshot.Links {
 	t.Helper()
-	return snapshot.Build(snapshottest.Files(nil, files), conventions.Default(), snapshottest.Readings(t)).Now.Links
+	return snapshot.Build(snapshottest.Files(files, files), conventions.Default(), snapshottest.Readings(t)).Now.Links
 }
 
 func withCRLF(files map[string]string) map[string]string {
@@ -33,6 +33,12 @@ func folderLink(from string, line int, to string, files ...string) snapshot.Link
 
 func link(from string, line int, to string) snapshot.Link {
 	return snapshot.Link{From: from, Line: line, To: to, Files: []string{to}}
+}
+
+// added is the link as a change that wrote its import gives it.
+func added(l snapshot.Link) snapshot.Link {
+	l.Added = true
+	return l
 }
 
 func TestBuildSortsTypeScriptImportsIntoKinds(t *testing.T) {
@@ -316,7 +322,7 @@ func TestBuildResolvesEachSideAgainstItsOwnFiles(t *testing.T) {
 	}
 	moved := build(base, now)
 	if !reflect.DeepEqual(moved.Before.Links.List, []snapshot.Link{link("src/a.ts", 1, "src/b.ts")}) ||
-		!reflect.DeepEqual(moved.Now.Links.List, []snapshot.Link{link("src/a.ts", 1, "src/c.ts")}) {
+		!reflect.DeepEqual(moved.Now.Links.List, []snapshot.Link{added(link("src/a.ts", 1, "src/c.ts"))}) {
 		t.Errorf("a changed import: Before %+v, Now %+v", moved.Before.Links.List, moved.Now.Links.List)
 	}
 	withoutModule := goTree()
@@ -881,7 +887,7 @@ func TestBuildFollowsIncludesToFiles(t *testing.T) {
 		"src/a.c": "#include \"b.h\"\nint f( {\nstruct S {\n#include \"c.h\"\n", "src/b.h": "#pragma once\n",
 		"src/c.h": "#pragma once\n",
 	}), conventions.Default(), snapshottest.Readings(t))
-	if want := []snapshot.Link{link("src/a.c", 1, "src/b.h"), link("src/a.c", 4, "src/c.h")}; !reflect.DeepEqual(broken.Now.Links.List, want) || len(broken.SyntaxErrors) != 0 {
+	if want := []snapshot.Link{added(link("src/a.c", 1, "src/b.h")), added(link("src/a.c", 4, "src/c.h"))}; !reflect.DeepEqual(broken.Now.Links.List, want) || len(broken.SyntaxErrors) != 0 {
 		t.Errorf("a file with a syntax error: List = %+v, syntax errors %q; want %+v and none", broken.Now.Links.List, broken.SyntaxErrors, want)
 	}
 	// A define with no value and a trailing space is misread by the grammar without an error: the next line becomes

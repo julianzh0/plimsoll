@@ -54,8 +54,8 @@ func Build(source Source, rules conventions.Rules, readings *Readings) Snapshot 
 	now.Uses, before.Uses = settingUses(now.Settings, source.Now, now.Files, nowReadings), settingUses(before.Settings, beforeEntries, before.Files, beforeReadings)
 	now.Dynamic = dynamicReads(now.Files, nowReadings)
 	now.Compose, before.Compose = composeFiles(rules, source.Now), composeFiles(rules, beforeEntries)
-	now.Links = links(rules, nowContent, now, nowReadings)
-	before.Links = links(rules, beforeContent, before, beforeReadings)
+	before.Links = links(rules, beforeContent, before, beforeReadings, nil)
+	now.Links = links(rules, nowContent, now, nowReadings, baseImportsOf(source.Changes, before, beforeReadings))
 	unreadable = append(unreadable, unreadableNow...)
 	slices.Sort(unreadable)
 	return Snapshot{

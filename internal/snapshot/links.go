@@ -51,6 +51,7 @@ type Link struct {
 	Folder   bool     // To is a folder
 	Files    []string // the code files the import reaches, sorted: To itself, or the folder's files
 	TypeOnly bool     // the statement imports types only
+	Added    bool     // the change wrote the statement of this import; set on the links of now only
 }
 
 // kind is what became of one import statement.
@@ -198,8 +199,9 @@ func topLevelParts(text string) []string {
 	return append(parts, text[start:])
 }
 
-// links resolves the readings of one side's code files against that side's tracked paths and prefix files.
-func links(rules conventions.Rules, content map[string][]byte, tree Tree, readings map[string]reading) Links {
+// links resolves the readings of one side's code files against that side's tracked paths and prefix files. base,
+// given for the side of now, says which imports the change wrote.
+func links(rules conventions.Rules, content map[string][]byte, tree Tree, readings map[string]reading, base *baseImports) Links {
 	s := sideOf(tree)
 	var found Links
 	for _, language := range rules.Languages {
@@ -227,7 +229,7 @@ func links(rules conventions.Rules, content map[string][]byte, tree Tree, readin
 		for _, file := range files {
 			r := readings[file.Path]
 			counts.Unreadable += r.computed
-			fileLinks := s.resolveAll(language, own, file.Path, r.statements, &counts)
+			fileLinks := s.resolveAll(language, own, file.Path, r.statements, &counts, base)
 			found.List = append(found.List, fileLinks...)
 			if len(fileLinks) > 0 && r.passesOn {
 				found.PassOn = append(found.PassOn, file.Path)
@@ -243,7 +245,7 @@ func links(rules conventions.Rules, content map[string][]byte, tree Tree, readin
 }
 
 // resolveAll counts each statement of one file by kind and returns the links of those that resolve.
-func (s side) resolveAll(language conventions.Language, own prefix, from string, statements []statement, counts *LanguageImports) []Link {
+func (s side) resolveAll(language conventions.Language, own prefix, from string, statements []statement, counts *LanguageImports, base *baseImports) []Link {
 	var found []Link
 	for _, st := range statements {
 		reached, outcome := s.resolve(language, own, from, st)
@@ -271,7 +273,7 @@ func (s side) resolveAll(language conventions.Language, own prefix, from string,
 			// A grouped statement gives several targets on one line, and two of them may reach one file.
 			repeated := slices.ContainsFunc(found, func(l Link) bool { return l.Line == st.line && l.To == t.to && l.TypeOnly == st.typeOnly })
 			if len(files) > 0 && !repeated {
-				found = append(found, Link{From: from, Line: st.line, To: t.to, Folder: t.folder, Files: files, TypeOnly: st.typeOnly})
+				found = append(found, Link{From: from, Line: st.line, To: t.to, Folder: t.folder, Files: files, TypeOnly: st.typeOnly, Added: base.added(from, t.to, st)})
 			}
 		}
 	}
