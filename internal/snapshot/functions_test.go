@@ -237,3 +237,44 @@ func TestBuildCountsFunctionsItCannotMeasure(t *testing.T) {
 		t.Errorf("Build(a base version with a syntax error).Functions = %+v, want nothing listed and 1 broken", got)
 	}
 }
+
+// leftOut is one line per function left out: "<path> <name> <reason>[ <source>]".
+func leftOut(list []snapshot.LeftOutFunction) []string {
+	var lines []string
+	for _, f := range list {
+		line := fmt.Sprintf("%s %s %s", f.Path, f.Name, f.Reason)
+		if f.Source != "" {
+			line += " " + f.Source
+		}
+		lines = append(lines, line)
+	}
+	return lines
+}
+
+func TestBuildLeavesOutCodeTheChangeDidNotWrite(t *testing.T) {
+	fn := snapshottest.Function
+	cases := []struct {
+		name             string
+		base, now        map[string]string
+		complex, leftOut []string
+	}{
+		{"moved to another file", map[string]string{"src/a.ts": fn("all", 7, 3)},
+			map[string]string{"src/a.ts": fn("all", 0, 3), "src/b.ts": fn("part", 7, 0)}, nil, []string{"src/b.ts part moved"}},
+		{"split out in its file", map[string]string{"src/a.ts": fn("all", 7, 3)},
+			map[string]string{"src/a.ts": fn("part", 7, 0) + fn("all", 0, 3)}, nil, []string{"src/a.ts part extracted"}},
+		{"renamed", map[string]string{"src/a.ts": fn("oldName", 7, 0)}, map[string]string{"src/a.ts": fn("newName", 7, 0)}, nil, nil},
+		{"renamed and pushed over", map[string]string{"src/a.ts": fn("oldName", 5, 4)}, map[string]string{"src/a.ts": fn("newName", 6, 6)},
+			[]string{"src/a.ts newName c=19→27 n=5→6@7"}, nil},
+		{"new beside removed code of another kind", map[string]string{"src/a.ts": fn("small", 1, 0)}, map[string]string{"src/b.ts": fn("seven", 7, 0)},
+			[]string{"src/b.ts seven c=28 n=7@8"}, nil},
+	}
+	for _, tc := range cases {
+		got := functionsIn(t, conventions.Default(), tc.base, tc.now)
+		if !slices.Equal(shown(got.Complex), tc.complex) || !slices.Equal(leftOut(got.LeftOut), tc.leftOut) {
+			t.Errorf("Build(%s).Functions = complex %q, left out %q; want %q, %q", tc.name, shown(got.Complex), leftOut(got.LeftOut), tc.complex, tc.leftOut)
+		}
+		if tc.name == "renamed and pushed over" && (len(got.Complex) != 1 || !got.Complex[0].ByBody || got.Complex[0].BasePath != "src/a.ts") {
+			t.Errorf("Build(%s).Functions.Complex = %+v, want matched by body to src/a.ts", tc.name, got.Complex)
+		}
+	}
+}

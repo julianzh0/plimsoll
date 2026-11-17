@@ -96,7 +96,7 @@ func Build(source Source, rules conventions.Rules, readings *Readings) Snapshot 
 		SkippedChanges:      skippedChanges(rules, source.Changes),
 		Additions:           additions(rules, source.Changes, now, atBase, source.Now, nowReadings, beforeReadings),
 		SyntaxErrors:        syntaxErrors(changed, nowReadings, beforeReadings),
-		Functions:           functionChanges(rules, source.Changes, measured, source.Missing, nowReadings, beforeReadings),
+		Functions:           functionChanges(rules, source.Changes, measured, source.Missing, nowContent, beforeContent, nowReadings, beforeReadings),
 	}
 }
 

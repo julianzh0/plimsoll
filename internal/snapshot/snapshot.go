@@ -270,10 +270,36 @@ type FunctionChange struct {
 	AddedWhole         bool // its file is new in the change
 }
 
-// LeftOutFunction is a function that crossed a rule and was left out, with the reason; Source is the file a copy was
-// found in.
+// LeftOutReason says why a function that crossed a limit is not listed.
+type LeftOutReason int
+
+// The reasons a function is left out, in the order they are tried.
+const (
+	FromAnotherProject LeftOutReason = iota + 1 // its file came from another project
+	Extracted                                   // split out of code that existed: fewer than half its lines are new
+	Moved                                       // its code is code the change removed elsewhere
+	Copied                                      // its code is in a file at the base
+)
+
+func (r LeftOutReason) String() string {
+	switch r {
+	case FromAnotherProject:
+		return "from another project"
+	case Extracted:
+		return "extracted"
+	case Moved:
+		return "moved"
+	case Copied:
+		return "copied"
+	}
+	return "unknown"
+}
+
+// LeftOutFunction is a function that crossed a limit and is left out as code that existed before.
 type LeftOutFunction struct {
-	Path, Name, Reason, Source string
+	Path, Name string
+	Reason     LeftOutReason
+	Source     string // for Copied, the file at the base that holds it
 }
 
 // Functions is what the function rules found in the changed product files.
