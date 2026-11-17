@@ -55,12 +55,15 @@ type Rules struct {
 	LimitsTable      string
 	LimitKeys        []LimitKey
 	OwnKeys          []OwnKey
-	TestNames        []string   // file-name patterns of test code; empty in the shared rules
-	PlanningPaths    []string   // planning and review records: an entry ending in "/" is a folder, at the root when it is one name, at any depth when it is a chain; any other a file-name pattern
-	MeasurementPaths []string   // measurement records, in the syntax of PlanningPaths
-	ComposeFiles     []string   // file-name patterns of compose files, read for their environment keys
-	Limits           Limits     // the shared defaults
-	Languages        []Language // the language entries
+	TestNames        []string // file-name patterns of test code; empty in the shared rules
+	PlanningPaths    []string // planning and review records: an entry ending in "/" is a folder, at the root when it is one name, at any depth when it is a chain; any other a file-name pattern
+	MeasurementPaths []string // measurement records, in the syntax of PlanningPaths
+	ComposeFiles     []string // file-name patterns of compose files, read for their environment keys
+	Limits           Limits   // the shared defaults
+	// ReportOnly are the kinds of mark that report lists and status only counts, as "<detector>.<rule>", or with a
+	// change, "<detector>.<rule> <change>": kinds outside reviewers judged too noisy to show on every change.
+	ReportOnly []string
+	Languages  []Language // the language entries
 }
 
 // Manifest is a known dependency manifest and how its runtime dependencies are read.
@@ -341,6 +344,12 @@ func Default() Rules {
 		ComposeFiles:     []string{"compose*.yml", "compose*.yaml", "docker-compose*.yml", "docker-compose*.yaml"},
 		// A commit that touches more files says little about which files belong together (requirements, R-16).
 		CommitPaths: 20,
+		// Seven outside reviewers judged real answers per kind of mark (2026-11-17); these they judged too noisy for
+		// status and worth keeping in report.
+		ReportOnly: []string{
+			"shape.file-size grown", "shape.dependencies", "shape.settings", "process.doc-churn", "settings.compose-only",
+			"co-change.pair", "links.test-import", "links.folder-cycle",
+		},
 		Limits: Limits{
 			FileLines: Limit{Value: 1000, Step: 1, Source: "the default of Pylint and SonarQube"},
 			TestRatio: Limit{Value: 2.0, Step: 0.1, Source: "plimsoll's rule: test code at most twice the product code"},

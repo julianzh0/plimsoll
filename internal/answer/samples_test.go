@@ -199,7 +199,7 @@ func TestTheSamplesShowEveryRuleAndChange(t *testing.T) {
 	var texts strings.Builder
 	for _, a := range answers {
 		texts.WriteString(q.Text(a))
-		for _, list := range [][]answer.Mark{a.Marks, a.Resolved, a.Touched, a.Standing} {
+		for _, list := range [][]answer.Mark{a.Marks, a.ReportOnly, a.Resolved, a.Touched, a.Standing} {
 			for _, m := range list {
 				seen[strings.SplitN(m.ID, ":", 2)[0]+" "+string(m.Change)] = true
 			}

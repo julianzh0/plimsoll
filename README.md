@@ -146,7 +146,7 @@ Not analysed: no `.env.example`, so no settings count; no `.env.example`, so no 
 
 | Tool | Returns |
 |---|---|
-| `status(repository, base?)` | at most five new or grown marks, one line that counts what the change touched but did not create, the standing line, the footprint and what was not analysed |
+| `status(repository, base?)` | at most five new or grown marks, one line that counts the marks shown in `report` only, one that counts what the change touched but did not create, the standing line, the footprint and what was not analysed |
 | `report(repository, base?, files?)` | everything measured, in a fixed layout, the touched items included. Standing items of one kind past five are counted by folder in the text, and `structuredContent` holds them all. With `files`, also the files that import each named file |
 | `explain(repository, base?, mark)` | the evidence of one mark, computed again and capped |
 
@@ -339,6 +339,12 @@ still run, interpreted and about 80 times slower.
 
 Something over its limit at the base and no longer over it is reported as resolved. Something over it on both
 sides that did not grow is standing.
+
+Some kinds are shown in `report` only: a file that grew while already over its line limit, runtime dependencies and
+settings added, documentation churn, compose-only settings, pairs of files that changed together, imports of test
+code and folder cycles. Seven outside models judged real answers of each kind and found them useful as background
+but too noisy to show on every change. `status` counts them in one line; `report` lists them; `explain` gives their
+evidence.
 
 A link item that is new or larger since the base although the change added none of its imports (a file moved, or a
 new file made existing imports readable) is touched: `status` counts it in one line, `report` lists it, and `explain`

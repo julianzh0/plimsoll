@@ -259,20 +259,20 @@ func TestIntegrationEveryDetectorAnswersForOneRepository(t *testing.T) {
 		t.Errorf("detectors = %v, sections = %v, want %v", report["detectors"], sections, want)
 	}
 	hints := map[string]any{}
-	for _, list := range []string{"marks", "standing"} {
+	for _, list := range []string{"marks", "reportOnly", "standing"} {
 		for _, entry := range as[[]any](t, report[list]) {
 			m := as[map[string]any](t, entry)
 			hints[list+" "+as[string](t, m["id"])] = m["hint"]
 		}
 	}
-	for _, id := range []string{"marks shape.file-size:src/store.ts", "marks process.planning-file:docs/review-packet-1.md",
-		"marks settings.no-reader:SESSION_GRACE_MS", "marks co-change.pair:src/store.ts+tests/fakes/store.ts", "standing settings.compose-only:REDIS_URL",
-		"marks links.test-import:src/wire.ts"} {
+	for _, id := range []string{"reportOnly shape.file-size:src/store.ts", "marks process.planning-file:docs/review-packet-1.md",
+		"marks settings.no-reader:SESSION_GRACE_MS", "reportOnly co-change.pair:src/store.ts+tests/fakes/store.ts", "standing settings.compose-only:REDIS_URL",
+		"reportOnly links.test-import:src/wire.ts"} {
 		if _, found := hints[id]; !found {
 			t.Errorf("report holds no %s; it holds %v", id, slices.Sorted(maps.Keys(hints)))
 		}
 	}
-	if hint := hints["marks shape.file-size:src/store.ts"]; hint != "count the file's lines at the base and now. Also a hotspot: 5 changes x 1,620 lines." {
+	if hint := hints["reportOnly shape.file-size:src/store.ts"]; hint != "count the file's lines at the base and now. Also a hotspot: 5 changes x 1,620 lines." {
 		t.Errorf("size hint = %q", hint)
 	}
 	for i, mark := range explained {

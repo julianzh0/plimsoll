@@ -36,6 +36,7 @@ func Assemble(q Question, version string, s snapshot.Snapshot, results []Result)
 		Marks:       []Mark{},
 		Resolved:    []Mark{},
 		Touched:     []Mark{},
+		ReportOnly:  []Mark{},
 		Standing:    []Mark{},
 		History:     History{Read: s.History.Read, Usable: s.History.Usable},
 		Detectors:   []string{},
@@ -53,6 +54,10 @@ func Assemble(q Question, version string, s snapshot.Snapshot, results []Result)
 		for _, m := range result.Findings.Marks {
 			for _, text := range remarks[m.ID] {
 				m.Hint += " " + text
+			}
+			if (m.Change == New || m.Change == Grown) && reportOnly(s.ReportOnly, m) {
+				a.ReportOnly = append(a.ReportOnly, m)
+				continue
 			}
 			switch m.Change {
 			case New:
@@ -98,6 +103,12 @@ func Assemble(q Question, version string, s snapshot.Snapshot, results []Result)
 	}
 	a.NotAnalysed = append(a.NotAnalysed, repositoryNotAnalysed(s)...)
 	return a
+}
+
+// reportOnly says whether a mark is of a kind status only counts: its detector and rule, with or without its change.
+func reportOnly(kinds []string, m Mark) bool {
+	kind := DetectorOf(m.ID) + "." + RuleOf(m.ID)
+	return slices.Contains(kinds, kind) || slices.Contains(kinds, kind+" "+string(m.Change))
 }
 
 func footprint(f snapshot.Footprint) *Footprint {

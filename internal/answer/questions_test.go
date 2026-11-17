@@ -35,7 +35,7 @@ func questions(t testing.TB, source snapshot.Source, err error) (answer.Question
 }
 
 func grown() snapshot.Source {
-	source := snapshottest.Files(map[string]string{"src/a.ts": snapshottest.Lines(1480)}, map[string]string{"src/a.ts": snapshottest.Lines(1620)})
+	source := snapshottest.Files(map[string]string{"src/a.ts": snapshottest.Lines(900)}, map[string]string{"src/a.ts": snapshottest.Lines(1620)})
 	source.AskedBase, source.Base, source.Head = "main", strings.Repeat("a", 40), strings.Repeat("b", 40)
 	return source
 }

@@ -423,3 +423,25 @@ func TestTouchedItemsAreCountedInStatusAndListedInReport(t *testing.T) {
 		t.Errorf("Render(status without a touched item) names one:\n%s", none)
 	}
 }
+
+func TestReportOnlyMarksAreCountedInStatusAndListedInReport(t *testing.T) {
+	s := sample()
+	s.ReportOnly = []string{"shape.test-ratio grown"}
+	status := Assemble(Status, "0.1.0", s, []Result{{"shape", findings()}})
+	if status.Counts != (Counts{New: 1}) || len(status.Marks) != 1 || len(status.ReportOnly) != 1 ||
+		status.ReportOnly[0].Change != Grown {
+		t.Fatalf("Assemble(status) = counts %+v, %d marks, report only %+v; want {1 0 0}, 1, the grown mark",
+			status.Counts, len(status.Marks), status.ReportOnly)
+	}
+	line := "\nIn `report` only (not counted here): 1 standing.\n"
+	if text := Render(status, wording()); !strings.Contains(text, line) {
+		t.Errorf("Render(status) =\n%s\nwant it to hold %q", text, line)
+	}
+	block := "In `report` only (not counted in `status`):\n- sentence of shape.test-ratio:repository\n"
+	if text := Render(Assemble(Report, "0.1.0", s, []Result{{"shape", findings()}}), wording()); !strings.Contains(text, block) {
+		t.Errorf("Render(report) =\n%s\nwant it to hold %q", text, block)
+	}
+	if text := Render(Assemble(Status, "0.1.0", sample(), []Result{{"shape", findings()}}), wording()); strings.Contains(text, "only") {
+		t.Errorf("Render(status without a report-only kind) =\n%s\nwant no report-only line", text)
+	}
+}

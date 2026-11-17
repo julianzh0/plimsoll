@@ -147,7 +147,7 @@ func TestEveryAnswerMatchesTheOutputSchema(t *testing.T) {
 		report, _ := q.Report(context.Background(), "/repository", "main", nil)
 		answers := []answer.Answer{status, report}
 		kinds := map[string]bool{}
-		for _, m := range report.Marks {
+		for _, m := range slices.Concat(report.Marks, report.ReportOnly) {
 			if kinds[m.Subject.Kind] {
 				continue
 			}

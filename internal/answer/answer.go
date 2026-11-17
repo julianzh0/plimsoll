@@ -46,7 +46,8 @@ type Answer struct {
 	More        int           `json:"more"`                // marks not shown
 	hidden      []Mark        // the marks not shown, for the text to name the context marks among them
 	Resolved    []Mark        `json:"resolved"`
-	Touched     []Mark        `json:"touched"` // in no count and no numbered mark
+	Touched     []Mark        `json:"touched"`    // in no count and no numbered mark
+	ReportOnly  []Mark        `json:"reportOnly"` // new and grown marks of a kind status only counts
 	Standing    []Mark        `json:"standing"`
 	History     History       `json:"history"`
 	Detectors   []string      `json:"detectors"`

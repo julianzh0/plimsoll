@@ -107,6 +107,9 @@ func status(text *strings.Builder, a Answer, w Wording) {
 		}
 		fmt.Fprintf(text, "Resolved: %s.\n", capped(ids, statusResolved))
 	}
+	if len(a.ReportOnly) > 0 {
+		fmt.Fprintf(text, "In `report` only (not counted here): %s.\n", byDetector(a.ReportOnly, a, w, "; "))
+	}
 	if len(a.Touched) > 0 {
 		fmt.Fprintf(text, "Touched but not created by this change (`report` lists them): %s.\n", byDetector(a.Touched, a, w, "; "))
 	}
@@ -129,6 +132,12 @@ func report(text *strings.Builder, a Answer, w Wording) {
 	} else {
 		text.WriteString("Resolved:\n")
 		for _, m := range a.Resolved {
+			fmt.Fprintf(text, "- %s\n  verify: %s id: %s\n", sentence(w, m), m.Hint, m.ID)
+		}
+	}
+	if len(a.ReportOnly) > 0 {
+		text.WriteString("In `report` only (not counted in `status`):\n")
+		for _, m := range a.ReportOnly {
 			fmt.Fprintf(text, "- %s\n  verify: %s id: %s\n", sentence(w, m), m.Hint, m.ID)
 		}
 	}
@@ -169,7 +178,7 @@ func report(text *strings.Builder, a Answer, w Wording) {
 }
 
 func explain(text *strings.Builder, a Answer, w Wording) {
-	for _, m := range slices.Concat(a.Marks, a.Resolved, a.Touched, a.Standing) {
+	for _, m := range slices.Concat(a.Marks, a.ReportOnly, a.Resolved, a.Touched, a.Standing) {
 		fmt.Fprintf(text, "[%s, %s] %s\n   verify: %s id: %s\n", m.Change, m.Confidence, sentence(w, m), m.Hint, m.ID)
 	}
 	if a.Evidence == nil {
