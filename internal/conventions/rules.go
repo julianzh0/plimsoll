@@ -247,8 +247,8 @@ type Language struct {
 	Layout   []Declaration // the standard files and keys in which a project declares its layout; nil for none
 	// Grammar is the tree-sitter grammar that reads the entry's files; "" reads them by the text patterns above.
 	Grammar string
-	// Functions says what a function is and what counts in it, in the grammar's node kinds; nil: functions are not measured.
-	Functions *FunctionKinds
+	// Functions says what a function is and what counts in it, in the grammar's node kinds; every entry has one.
+	Functions FunctionKinds
 	// Tokens splits a function's text into tokens, with the groups ws, com, lit, id and p; set with Functions.
 	Tokens *regexp.Regexp
 	// GrammarBySuffix names another grammar for some of the entry's suffixes.
@@ -270,8 +270,9 @@ type Language struct {
 	//   @type_block  a block whose statements import types only
 	// No fact is read both by a pattern and by the query, except under LineReadWhenBroken.
 	Query string
-	// LineReadWhenBroken reads a file the grammar cannot read without an error by the entry's text patterns instead:
-	// for a language whose files the grammar often misreads (macros), the patterns read every line on its own.
+	// LineReadWhenBroken reads the facts of a file the grammar cannot read without an error (its imports, its
+	// declarations) by the entry's text patterns instead: for a language whose files the grammar often misreads
+	// (macros), the patterns read every line on its own. Its functions still come from the tree.
 	LineReadWhenBroken bool
 	// AttributeMacros finds, in its group "macro", a name that a macro expands to an attribute or to nothing where a
 	// declaration starts (FMT_CONSTEXPR void f()). For a file whose tree holds an error, the function walk reads a

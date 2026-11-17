@@ -75,8 +75,8 @@ const csharpDeclarations = `
 `
 
 // csharpFunctions names what a function is and what counts in it, in the grammar's node kinds.
-func csharpFunctions() *FunctionKinds {
-	return &FunctionKinds{
+func csharpFunctions() FunctionKinds {
+	return FunctionKinds{
 		Declared:     []string{"method_declaration", "constructor_declaration", "destructor_declaration", "operator_declaration", "conversion_operator_declaration", "local_function_statement", "accessor_declaration"},
 		Bodies:       []string{"block", "arrow_expression_clause"},
 		Closures:     []string{"lambda_expression", "anonymous_method_expression"},

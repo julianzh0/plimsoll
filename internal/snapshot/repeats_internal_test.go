@@ -21,7 +21,7 @@ func TestARunPastedTwiceIsOneRepeat(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fs := functionsOf(*language.Functions, language.Tokens, rules.FunctionRules, tree, content)
+	fs := functionsOf(language.Functions, language.Tokens, rules.FunctionRules, tree, content, nil)
 	if len(fs) != 1 || len(fs[0].repeats) != 1 || fs[0].repeats[0].copies[0].startLine != 2 || fs[0].repeats[0].copies[1].startLine != 32 {
 		t.Errorf("functionsOf(30 statements written twice) = %+v, want one repeat at lines 2 and 32", fs)
 	}

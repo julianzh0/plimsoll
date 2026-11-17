@@ -48,8 +48,8 @@ const javaDeclarations = `
 `
 
 // javaFunctions names what a function is and what counts in it, in the grammar's node kinds.
-func javaFunctions() *FunctionKinds {
-	return &FunctionKinds{
+func javaFunctions() FunctionKinds {
+	return FunctionKinds{
 		Declared:     []string{"method_declaration", "constructor_declaration", "compact_constructor_declaration"},
 		Bodies:       []string{"block", "constructor_body"},
 		Closures:     []string{"lambda_expression"},

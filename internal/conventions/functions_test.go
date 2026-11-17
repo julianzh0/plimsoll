@@ -12,8 +12,8 @@ func TestEveryKindAFunctionTableNamesIsInItsGrammar(t *testing.T) {
 	parser := parsetest.Parser(t)
 	for _, l := range Default().Languages {
 		// every language plimsoll reads has its functions measured: no entry is left out
-		if l.Functions == nil {
-			t.Errorf("%s: Functions = nil, want a function table", l.Name)
+		if len(l.Functions.Declared) == 0 {
+			t.Errorf("%s: Functions.Declared = none, want the kinds that declare a function", l.Name)
 			continue
 		}
 		if l.Tokens == nil || l.Tokens.SubexpIndex("ws") < 0 || l.Tokens.SubexpIndex("com") < 0 || l.Tokens.SubexpIndex("lit") < 0 ||

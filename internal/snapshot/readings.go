@@ -131,8 +131,8 @@ const syntaxErrorPattern = "\n(ERROR) @error\n"
 // read makes the reading of one file: by the entry's grammar when it names one, and every fact for which the entry
 // has a pattern by that pattern (no entry reads one fact both ways), over the file with its comments and strings
 // blanked when it is parsed. A file the parser cannot read is unread; its patterns still read it. For an entry that
-// reads broken files line by line, a file the grammar cannot read, or reads only with an error, is read by the
-// entry's text patterns alone.
+// reads broken files line by line, the facts of a file the grammar cannot read, or reads only with an error, come from
+// the entry's text patterns alone; its functions still come from the tree (none when the parser read nothing).
 //
 // lasting is false for a failure of the moment (parse.ErrUnavailable): such a reading answers this question and is not
 // kept, so a later question reads the file again.
@@ -165,7 +165,7 @@ func (rs *Readings) read(language conventions.Language, grammar string, content 
 			r.functionsUnread = true
 			return r, !errors.Is(err, parse.ErrUnavailable)
 		}
-		functions := functionsOf(*language.Functions, language.Tokens, *w.functionRules, tree, content)
+		functions := functionsOf(language.Functions, language.Tokens, *w.functionRules, tree, content, nil)
 		functions = rs.readBlanked(language, grammar, content, *w.functionRules, functions)
 		for _, f := range functions {
 			if !inSpans(r.testSpans, f.start) {
@@ -193,13 +193,21 @@ func (rs *Readings) readBlanked(language conventions.Language, grammar string, c
 	if language.AttributeMacros == nil || !slices.ContainsFunc(functions, func(f function) bool { return f.broken }) {
 		return functions
 	}
-	blanked, changed := blankMacros(language.AttributeMacros, content)
-	if !changed {
+	blanked := blankMacros(language.AttributeMacros, content)
+	if blanked == nil {
 		return functions
 	}
 	tree, err := rs.parser.Nodes(grammar, blanked)
 	if err != nil {
 		return functions
 	}
-	return withBlanked(functions, functionsOf(*language.Functions, language.Tokens, rules, tree, blanked))
+	var clean []function
+	for _, f := range functions {
+		if !f.broken {
+			clean = append(clean, f)
+		}
+	}
+	// a function read cleanly as written is not measured again on the copy
+	within := func(start, end int) bool { return !overlapsAny(clean, function{start: start, end: end}) }
+	return withBlanked(functions, functionsOf(language.Functions, language.Tokens, rules, tree, blanked, within))
 }

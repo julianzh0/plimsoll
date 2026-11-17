@@ -80,8 +80,8 @@ const cppDeclarations = `
 
 // cFunctions is C's function table: an else sits in an else_clause, a goto counts 1 without nesting, and a function's
 // name lies in its innermost declarator (int *f() names f under a pointer_declarator).
-func cFunctions() *FunctionKinds {
-	return &FunctionKinds{
+func cFunctions() FunctionKinds {
+	return FunctionKinds{
 		Declared:     []string{"function_definition"},
 		Bodies:       []string{"compound_statement"},
 		Ifs:          []string{"if_statement"},
@@ -100,7 +100,7 @@ func cFunctions() *FunctionKinds {
 
 // cppFunctions is C++'s: C's, with lambdas, range loops, try and catch, and names through references, destructors and
 // operators.
-func cppFunctions() *FunctionKinds {
+func cppFunctions() FunctionKinds {
 	k := cFunctions()
 	k.Closures = []string{"lambda_expression"}
 	k.NamedClosures, k.NamedBy = []string{"lambda_expression"}, []string{"init_declarator"}

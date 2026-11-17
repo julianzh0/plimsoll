@@ -77,8 +77,8 @@ const rustDeclarations = `
 `
 
 // rustFunctions names what a function is and what counts in it, in the grammar's node kinds.
-func rustFunctions() *FunctionKinds {
-	return &FunctionKinds{
+func rustFunctions() FunctionKinds {
+	return FunctionKinds{
 		Declared:    []string{"function_item"},
 		Bodies:      []string{"block"},
 		Closures:    []string{"closure_expression"},

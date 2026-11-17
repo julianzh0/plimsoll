@@ -121,8 +121,10 @@ func (l lineIndex) line(offset int) int {
 
 // functionsOf measures the functions of one file, in text order: every declared function with a body however deep it
 // is declared, and the closures a name binds outside every function. Closures, nested functions and markup add
-// nothing to the function around them.
-func functionsOf(kinds conventions.FunctionKinds, tokens *regexp.Regexp, rules conventions.FunctionRules, tree parse.Tree, content []byte) []function {
+// nothing to the function around them. within, when not nil, says which byte spans are measured: a function outside
+// them is passed over.
+func functionsOf(kinds conventions.FunctionKinds, tokens *regexp.Regexp, rules conventions.FunctionRules, tree parse.Tree, content []byte,
+	within func(start, end int) bool) []function {
 	t := tableOf(kinds, tree)
 	s := shapeOf(tree.Nodes)
 	lines := linesOf(content)
@@ -137,7 +139,7 @@ func functionsOf(kinds conventions.FunctionKinds, tokens *regexp.Regexp, rules c
 		}
 		if t.declared.has(n) {
 			to, ok := t.functionEnd(s, i)
-			if !ok {
+			if !ok || within != nil && !within(int(n.Start), t.extent(s, i, to)) {
 				continue
 			}
 			f := t.measure(s, i, to, functionName(tree, s, t, i, content), content, lines)
@@ -149,7 +151,8 @@ func functionsOf(kinds conventions.FunctionKinds, tokens *regexp.Regexp, rules c
 			inside = max(inside, to)
 			continue
 		}
-		if i >= inside && t.namedClosures.has(n) && s.parentOf(i) >= 0 && t.namedBy.has(tree.Nodes[s.parentOf(i)]) {
+		if i >= inside && t.namedClosures.has(n) && s.parentOf(i) >= 0 && t.namedBy.has(tree.Nodes[s.parentOf(i)]) &&
+			(within == nil || within(int(n.Start), int(n.End))) {
 			if name := bindingName(tree, s, i, content); name != "" {
 				f := t.measure(s, i, s.endOf(i), name, content, lines)
 				outer = newTokenSpan(tokensOf(tokens, content[f.start:f.end], 0), f.start)
@@ -184,14 +187,16 @@ func (t table) functionEnd(s shape, i int) (int, bool) {
 // identifier kind; else the name field or the first identifier child of one of its named children; else its kind
 // without "_declaration".
 func functionName(tree parse.Tree, s shape, t table, i int, content []byte) string {
-	bodyKinds := t.bodyNames
 	text := func(k int) string {
-		// a name split over lines (C++: Store::\n route) shows on one line; a space within a line stays (Kotlin)
-		lines := strings.Split(string(content[s.nodes[k].Start:s.nodes[k].End]), "\n")
-		for i := range lines {
-			lines[i] = strings.TrimSpace(lines[i])
+		name := string(content[s.nodes[k].Start:s.nodes[k].End])
+		if strings.Contains(name, "\n") { // a name split over lines (C++: Store::\n route) shows on one line
+			lines := strings.Split(name, "\n")
+			for i := range lines {
+				lines[i] = strings.TrimSpace(lines[i])
+			}
+			name = strings.Join(lines, "")
 		}
-		return strings.Trim(strings.Join(lines, ""), "`")
+		return strings.Trim(name, "`")
 	}
 	// a type's name (type_identifier) is not the function's: Dart writes the return type before the name
 	identifier := func(k int) bool {
@@ -216,19 +221,19 @@ func functionName(tree parse.Tree, s shape, t table, i int, content []byte) stri
 			return strings.TrimSuffix(tree.Kinds[s.nodes[i].Kind], "_declaration")
 		}
 	}
-	for k, deeper := i, true; deeper; {
-		deeper = false
+	declarator := func(k int) (int, bool) { // the first child of k that is a declarator
 		for _, c := range children(k) {
-			if !t.declarators.has(s.nodes[c]) {
-				continue
+			if t.declarators.has(s.nodes[c]) {
+				return c, true
 			}
-			k, deeper = c, true
-			for _, g := range children(c) {
-				if identifier(g) || t.names.has(s.nodes[g]) {
-					return text(g)
-				}
+		}
+		return 0, false
+	}
+	for k, found := declarator(i); found; k, found = declarator(k) {
+		for _, g := range children(k) {
+			if identifier(g) || t.names.has(s.nodes[g]) {
+				return text(g)
 			}
-			break
 		}
 	}
 	for _, c := range children(i) {
@@ -237,7 +242,7 @@ func functionName(tree parse.Tree, s shape, t table, i int, content []byte) stri
 		}
 	}
 	for _, c := range children(i) {
-		if kind := tree.Kinds[s.nodes[c].Kind]; !s.nodes[c].Named || bodyKinds[kind] || strings.Contains(kind, "parameter") {
+		if kind := tree.Kinds[s.nodes[c].Kind]; !s.nodes[c].Named || t.bodyNames[kind] || strings.Contains(kind, "parameter") {
 			continue
 		}
 		for _, g := range children(c) {
