@@ -398,6 +398,18 @@ func TestWantsNamesWhatTheReaderReads(t *testing.T) {
 			t.Errorf("Wants.Path(%q) = %v, want %v", p, got, want)
 		}
 	}
+	words := map[string]bool{
+		"README.md": true, "docs/guide.rst": true, "notes.txt": true, "web/package.json": true, "config/app.yaml": true,
+		"pytest.ini": true, "AndroidManifest.xml": true, "Makefile": true, "Dockerfile": true,
+		".npmrc": false, ".env": false, "logo.svg": false, "data.csv": false, "yarn.lock": false, "app.min.js": false,
+		"src/a.ts": false, "node_modules/x/README.md": false, "fixtures/data.json": false, "locales/en.json": false,
+		"examples/demo/README.md": false,
+	}
+	for p, want := range words {
+		if got := w.Words(p); got != want {
+			t.Errorf("Wants.Words(%q) = %v, want %v", p, got, want)
+		}
+	}
 	if w.BaseFile != ".plimsoll.toml" {
 		t.Errorf("Wants.BaseFile = %q, want .plimsoll.toml", w.BaseFile)
 	}

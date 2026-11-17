@@ -7,6 +7,9 @@ type Additions struct {
 	SkippedFolders []string // folder-name patterns, at any depth: code below declares nothing for the list
 	SkippedFiles   []string // file-name patterns: a code file of such a name declares nothing for the list
 	DataFiles      []string // file-name patterns of files whose words are no use: lockfiles, minified code, source maps
+	Docs           []string // suffixes of documentation: a name there is a mention, no use
+	Config         []string // suffixes of configuration: a name there is a use
+	ConfigNames    []string // file names of configuration without a suffix of Config
 }
 
 // defaultAdditions are the rules measured on agent pull requests and human history: entry points a runtime calls,
@@ -25,5 +28,11 @@ func defaultAdditions() Additions {
 			"package-lock.json", "pnpm-lock.yaml", "yarn.lock", "Cargo.lock", "go.sum", "poetry.lock", "uv.lock", "pubspec.lock",
 			"Package.resolved", "*.lock", "*.min.js", "*.map", "*.snap",
 		},
+		Docs: []string{".md", ".mdx", ".rst", ".adoc", ".txt"},
+		Config: []string{
+			".json", ".yaml", ".yml", ".toml", ".xml", ".html", ".cfg", ".ini", ".csproj", ".props", ".targets", ".sln",
+			".properties", ".example",
+		},
+		ConfigNames: []string{"Dockerfile", "Makefile", "Procfile", "Justfile", "justfile", "BUILD", "WORKSPACE", "Taskfile", "Containerfile"},
 	}
 }

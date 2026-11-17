@@ -2,6 +2,7 @@ package snapshot
 
 import (
 	"cmp"
+	"path"
 	"slices"
 	"strings"
 
@@ -35,8 +36,9 @@ type Addition struct {
 	Path  string
 	Name  string
 	Kind  AdditionKind
-	Used  bool // a file that is not test code holds the name, its declaring file more often than it declares it
-	Tests bool // test code holds the name
+	Used  bool     // a file that is not test code holds the name, its declaring file more often than it declares it
+	Tests bool     // test code holds the name
+	Docs  []string // the documentation files that name it, sorted: a mention, no use
 }
 
 // topName is one top-level name a file declares, as its entry's query reads it.
@@ -82,6 +84,9 @@ func additions(rules conventions.Rules, changes []Change, now, before Tree, entr
 		return nil
 	}
 	withUses(rules, found, entries, roles, nowReadings)
+	for i := range found {
+		slices.Sort(found[i].Docs)
+	}
 	slices.SortFunc(found, func(a, b Addition) int {
 		return cmp.Or(strings.Compare(a.Path, b.Path), strings.Compare(a.Name, b.Name))
 	})
@@ -117,7 +122,8 @@ func withUses(rules conventions.Rules, found []Addition, entries []Entry, roles 
 			continue
 		}
 		role, isCode := roles[entry.Path]
-		if !isCode && excluded(rules, entry.Path) {
+		mention := slices.Contains(rules.Additions.Docs, conventions.Suffix(entry.Path))
+		if !isCode && excluded(rules, entry.Path) && !wordsFile(rules, entry.Path) {
 			continue
 		}
 		counts, inTests := map[string]int{}, map[string]bool{}
@@ -146,6 +152,8 @@ func withUses(rules conventions.Rules, found []Addition, entries []Entry, roles 
 			}
 			for _, i := range byName[name] {
 				switch {
+				case mention:
+					found[i].Docs = append(found[i].Docs, entry.Path)
 				case role.IsTest():
 					found[i].Tests = true
 				case entry.Path != found[i].Path || n > declared:
@@ -180,4 +188,16 @@ func eachWord(content []byte, found func(word []byte, at int)) {
 
 func wordByte(r rune) bool {
 	return r == '_' || r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9'
+}
+
+// wordsFile says whether a file is read for its words alone: documentation or configuration outside skipped folders,
+// and no data file.
+func wordsFile(rules conventions.Rules, filePath string) bool {
+	if inFolders(filePath, rules.SkippedFolders) || inFoldersMatching(filePath, rules.Additions.SkippedFolders) ||
+		isDataFile(rules.Additions, filePath) {
+		return false
+	}
+	suffix := conventions.Suffix(filePath)
+	return slices.Contains(rules.Additions.Docs, suffix) || slices.Contains(rules.Additions.Config, suffix) ||
+		slices.Contains(rules.Additions.ConfigNames, path.Base(filePath))
 }

@@ -21,7 +21,11 @@ func additionsOf(t *testing.T, base, now map[string]string, changes ...snapshot.
 	}
 	var got []string
 	for _, a := range snapshot.Build(source, conventions.Default(), snapshottest.Readings(t)).Additions {
-		got = append(got, fmt.Sprintf("%s %s %s used=%v tests=%v", a.Path, a.Name, a.Kind, a.Used, a.Tests))
+		line := fmt.Sprintf("%s %s %s used=%v tests=%v", a.Path, a.Name, a.Kind, a.Used, a.Tests)
+		if len(a.Docs) > 0 {
+			line += " docs=" + strings.Join(a.Docs, ",")
+		}
+		got = append(got, line)
 	}
 	slices.Sort(got)
 	return got
@@ -165,6 +169,16 @@ func TestBuildSaysWhereAnAddedNameIsUsed(t *testing.T) {
 		}, nil, nil},
 		{"test code inside a product file", nil, map[string]string{"src/a.rs": "pub fn probe() {}\n#[cfg(test)]\nmod tests {\n    #[test]\n    fn t() { super::probe(); }\n}\n"}, nil,
 			[]string{"src/a.rs probe function used=false tests=true"}},
+		{"a configuration file", nil, with(lonely, map[string]string{"config/routes.yaml": "handler: lonely\n"}), nil, used},
+		{"one documentation file", nil, with(lonely, map[string]string{"docs/guide.md": "Call `lonely` to start.\n"}), nil,
+			[]string{"src/a.ts lonely function used=false tests=false docs=docs/guide.md"}},
+		{"two documentation files", nil, with(lonely, map[string]string{"docs/guide.md": "lonely\n", "README.md": "lonely\n"}), nil,
+			[]string{"src/a.ts lonely function used=false tests=false docs=README.md,docs/guide.md"}},
+		{"a test use beside a mention", nil, with(lonely, map[string]string{"docs/guide.md": "lonely\n", "tests/a.test.ts": "lonely();\n"}), nil,
+			[]string{"src/a.ts lonely function used=false tests=true docs=docs/guide.md"}},
+		{"data files", nil, with(lonely, map[string]string{"fixtures/data.json": `{"x":"lonely"}`, ".npmrc": "lonely=1\n"}), nil, unused},
+		{"an mdx page", nil, with(lonely, map[string]string{"site/page.mdx": "lonely\n"}), nil,
+			[]string{"src/a.ts lonely function used=false tests=false docs=site/page.mdx"}},
 		{"skipped files", nil, map[string]string{"src/types.d.ts": "export function a1(): void;\n", "src/api.gen.ts": "export function a2() {}\n"}, nil, nil},
 		{"not product", nil, map[string]string{"tests/helper.ts": "export function a1() {}\n", "scripts/tool.ts": "export function a2() {}\n"}, nil, nil},
 	}

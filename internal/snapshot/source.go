@@ -55,6 +55,7 @@ type FileChange struct {
 // Wants tells the reader which contents to read, so the reader needs no rules of its own.
 type Wants struct {
 	Path       func(path string) bool // whether the reader reads this path's content
+	Words      func(path string) bool // whether the reader reads this path of the working tree for its words alone
 	Binary     func(head []byte) bool // whether these first bytes make a file binary
 	SniffBytes int                    // how many first bytes Binary needs
 	// BaseFile is the file that may declare the base of a question that names none, and Base reads that base from

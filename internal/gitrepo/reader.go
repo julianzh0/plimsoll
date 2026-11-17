@@ -250,7 +250,7 @@ func now(run runner, top string, wants snapshot.Wants, source *snapshot.Source) 
 			continue
 		}
 		entry := snapshot.Entry{Path: tracked.path}
-		if wants.Path(tracked.path) {
+		if wants.Path(tracked.path) || wants.Words != nil && wants.Words(tracked.path) {
 			content, readErr := readFile(root, tracked.path, wants)
 			switch {
 			case errors.Is(readErr, os.ErrNotExist):
