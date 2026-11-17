@@ -207,7 +207,6 @@ still run, interpreted and about 80 times slower.
   in `include_directories` or `target_include_directories`. Such a file under several folders is ambiguous, and an
   include that a macro names is not readable. Every `#if` branch is read.
 - **Runtime dependencies:** `vcpkg.json`, the top-level `dependencies` without host tools.
-- **Setting reads:** a computed `getenv(…)` is counted.
 
 ### C#
 
@@ -219,8 +218,6 @@ still run, interpreted and about 80 times slower.
 - **Import rings:** not looked for, because a using names a namespace, not a file.
 - **Runtime dependencies:** every `*.csproj` outside test code: its `PackageReference` items, without those whose
   `PrivateAssets` is `all`.
-- **Setting reads:** a computed `Environment.GetEnvironmentVariable(…)` or index into a configuration object
-  (`configuration[…]`) is counted.
 - **Changed together:** the folder is one unit.
 
 ### Dart
@@ -230,7 +227,6 @@ still run, interpreted and about 80 times slower.
 - **Imports:** `import`, `export`, `part` and `part of`, relative when the target has no scheme, `package:<name>/` for the
   package `pubspec.yaml` names and for the members of its `workspace:`.
 - **Runtime dependencies:** `pubspec.yaml`, `dependencies`.
-- **Setting reads:** a computed `Platform.environment[…]`, `String.fromEnvironment(…)` or `dotenv.env[…]` is counted.
 
 ### Go
 
@@ -239,7 +235,6 @@ still run, interpreted and about 80 times slower.
 - **Imports:** the import path of a folder, under the module named in `go.mod`.
 - **Import rings:** not looked for, because the compiler rejects them.
 - **Runtime dependencies:** `go.mod`, `require` without `// indirect`.
-- **Setting reads:** a computed `os.Getenv(…)` or `os.LookupEnv(…)` is counted.
 - **Changed together:** the package folder is one unit.
 
 ### Java/Kotlin
@@ -252,7 +247,6 @@ still run, interpreted and about 80 times slower.
 - **Import rings:** not looked for, because an import names a package, not a file.
 - **Runtime dependencies:** `pom.xml`, `dependencies` in compile or runtime scope. `build.gradle` and
   `build.gradle.kts`, `implementation`, `api` and `runtimeOnly`.
-- **Setting reads:** a computed `System.getenv(…)` is counted.
 - **Changed together:** the package folder is one unit.
 
 ### Python
@@ -264,8 +258,6 @@ still run, interpreted and about 80 times slower.
 - **Type-only imports,** left out of rings: imports under `if TYPE_CHECKING:`.
 - **Declared test folders and roots:** pytest's `testpaths` and `pythonpath` in `pyproject.toml`.
 - **Runtime dependencies:** `pyproject.toml`, `[project] dependencies`.
-- **Setting reads:** a computed `os.environ[…]` or `os.getenv(…)` is counted, and a pydantic `env_prefix` plus a field
-  of the same file counts as read.
 
 ### Rust
 
@@ -279,7 +271,6 @@ still run, interpreted and about 80 times slower.
 - **Import rings:** not looked for, because a crate's modules use each other.
 - **Test code inside product files:** `#[cfg(test)]` items count as test lines.
 - **Runtime dependencies:** `Cargo.toml`, `[dependencies]` and the `dependencies` of `[target.…]` tables.
-- **Setting reads:** a computed `env::var(…)` or `env::var_os(…)` is counted, also inside a macro such as `println!`.
 
 ### Swift
 
@@ -291,7 +282,6 @@ still run, interpreted and about 80 times slower.
 - **Import rings:** not looked for, because the compiler rejects modules that import each other.
 - **Runtime dependencies:** `Package.swift`, its `.package(url:)`, `.package(path:)` and `.package(id:)` lines, by the
   package's identity.
-- **Setting reads:** a computed `ProcessInfo.processInfo.environment[…]` is counted.
 - **Changed together:** the folder is one unit.
 
 ### TypeScript/JavaScript
@@ -302,7 +292,6 @@ still run, interpreted and about 80 times slower.
   of `tsconfig.json`.
 - **Type-only imports,** left out of rings: `import type`, `export type`.
 - **Runtime dependencies:** `package.json`, `dependencies`.
-- **Setting reads:** a computed `process.env[…]` is counted.
 
 ### Defaults
 
@@ -314,7 +303,6 @@ still run, interpreted and about 80 times slower.
   test infrastructure.
 - **Type-only imports:** none.
 - **Import rings** are looked for.
-- **Setting reads:** every setting is also found by its name as a word.
 - **Changed together:** each file is one unit.
 
 ## Rules
