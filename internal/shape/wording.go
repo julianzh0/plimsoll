@@ -19,8 +19,39 @@ func (Detector) Wording(m answer.Mark) string {
 		return additionSentence(m, "runtime dependency", "runtime dependencies")
 	case ruleSettings:
 		return additionSentence(m, "setting", "settings")
+	case ruleComplexity:
+		return complexitySentence(m)
+	case ruleNesting:
+		return nestingSentence(m)
 	}
 	return m.ID
+}
+
+// complexitySentence says a function is new over the complexity limit, or crossed it.
+func complexitySentence(m answer.Mark) string {
+	named := fmt.Sprintf("`%s` `%s`", m.Subject.Paths[0], m.Subject.Names[0])
+	limit, source := answer.Count(*m.Measured.Limit), "Limit: "+m.Measured.LimitSource+"."
+	if m.Measured.Before == nil {
+		return fmt.Sprintf("%s is new in this change with a cognitive complexity of %s, over the limit of %s. %s",
+			named, answer.Count(m.Measured.Value), limit, source)
+	}
+	return fmt.Sprintf("%s crossed the limit of %s in this change: cognitive complexity %s. %s",
+		named, limit, growth(*m.Measured.Before, m.Measured.Value), source)
+}
+
+// nestingSentence says a function is new and nests deep, or got deeper.
+func nestingSentence(m answer.Mark) string {
+	named := fmt.Sprintf("`%s` `%s`", m.Subject.Paths[0], m.Subject.Names[0])
+	limit := fmt.Sprintf("the limit of %s (%s)", answer.Count(*m.Measured.Limit), m.Measured.LimitSource)
+	switch {
+	case m.Measured.Before == nil:
+		return fmt.Sprintf("%s is new in this change and nests %s levels deep, at or over %s.", named, answer.Count(m.Measured.Value), limit)
+	case m.Change == answer.Grown:
+		return fmt.Sprintf("%s got deeper in this change: nesting %s → %s levels, already at the limit of %s at the base (%s).",
+			named, answer.Count(*m.Measured.Before), answer.Count(m.Measured.Value), answer.Count(*m.Measured.Limit), m.Measured.LimitSource)
+	}
+	return fmt.Sprintf("%s got deeper in this change: nesting %s → %s levels, reaching %s.",
+		named, answer.Count(*m.Measured.Before), answer.Count(m.Measured.Value), limit)
 }
 
 func ratioSentence(change answer.Change, measured answer.Measured) string {
@@ -132,6 +163,9 @@ func (Detector) Standing(items []answer.Mark) string {
 	}
 	if settings > 0 {
 		fragments = append(fragments, answer.Plural(settings, "setting")+" added")
+	}
+	if nested := functionsInStanding(items); nested != "" {
+		fragments = append(fragments, nested)
 	}
 	return strings.Join(fragments, "; ")
 }

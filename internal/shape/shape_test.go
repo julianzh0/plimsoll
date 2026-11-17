@@ -19,7 +19,7 @@ func detect(t *testing.T, source snapshot.Source, rules conventions.Rules) answe
 	findings := Detector{}.Detect(snapshot.Build(source, rules, snapshottest.Readings(t)))
 	for _, m := range findings.Marks {
 		if m.ID == "" || m.Change == "" || m.Subject.Kind == "" || m.Measured.Unit == "" || m.Measured.LimitSource == "" ||
-			m.Hint == "" || m.Confidence != answer.Exact {
+			m.Hint == "" || m.Confidence != wantedConfidence(m) {
 			t.Errorf("mark %+v lacks a field it must carry", m)
 		}
 	}
@@ -431,4 +431,12 @@ func TestTestCodeInsideProductFilesCountsAsTestLines(t *testing.T) {
 			t.Errorf("a tree without such code: %q", line)
 		}
 	}
+}
+
+// wantedConfidence is candidate for the function rules, exact for every other.
+func wantedConfidence(m answer.Mark) answer.Confidence {
+	if rule := answer.RuleOf(m.ID); rule == ruleComplexity || rule == ruleNesting {
+		return answer.Candidate
+	}
+	return answer.Exact
 }

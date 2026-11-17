@@ -378,7 +378,7 @@ func Default() Rules {
 		// status and worth keeping in report.
 		ReportOnly: []string{
 			"shape.file-size grown", "shape.settings", "process.doc-churn", "settings.compose-only",
-			"co-change.pair", "links.test-import", "links.folder-cycle",
+			"co-change.pair", "links.test-import", "links.folder-cycle", "shape.function-nesting",
 		},
 		FunctionRules: defaultFunctionRules(),
 		Limits: Limits{
