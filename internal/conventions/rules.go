@@ -290,7 +290,7 @@ type Declaration struct {
 func Default() Rules {
 	return Rules{
 		NotCode: []string{
-			".md", ".rst", ".txt", ".json", ".arb", ".properties", ".pdf", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".lock", ".csv", ".tsv",
+			".md", ".mdx", ".rst", ".txt", ".json", ".arb", ".properties", ".pdf", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".lock", ".csv", ".tsv",
 			".svg", ".xml", ".html", ".css", ".snap", ".golden",
 			"", ".mod", ".sum", ".example", ".crt", ".pem", ".key", ".diff", ".patch", ".sha256",
 			".resolved", ".natvis", ".csproj", ".props", ".targets", ".sln", ".slnx", ".config", ".Config", ".DotSettings", ".resx",
@@ -298,7 +298,7 @@ func Default() Rules {
 		SkippedFolders:     []string{"node_modules", "dist", "build", "vendor", "migrations", ".venv", "coverage", "testdata", "__pycache__", ".dart_tool", "META-INF"},
 		OtherFolders:       []string{"scripts", "examples", ".github", "docs"},
 		DocFolders:         []string{"docs"},
-		DocSuffixes:        []string{".md"},
+		DocSuffixes:        []string{".md", ".mdx"},
 		TestFolders:        []string{"tests", "Tests", "test", "__tests__", "spec", "integration_test"},
 		TestSourceSets:     []string{"test[A-Z]*", "*Test*"},
 		TestFolderPatterns: []string{"*.Tests", "*.Test"},

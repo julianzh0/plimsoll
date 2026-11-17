@@ -351,7 +351,7 @@ func TestBuildFlagsUsableCommits(t *testing.T) {
 func TestBuildGivesEachHistoryPathItsArea(t *testing.T) {
 	areas := map[string]snapshot.Area{
 		"src/a.ts": snapshot.AreaProduct, "tests/a.test.ts": snapshot.AreaTests, "docs/a.md": snapshot.AreaDocs,
-		"README.md": snapshot.AreaDocs, "package.json": snapshot.AreaOther, "scripts/x.ts": snapshot.AreaOther,
+		"README.md": snapshot.AreaDocs, "site/guide.mdx": snapshot.AreaDocs, "package.json": snapshot.AreaOther, "scripts/x.ts": snapshot.AreaOther,
 		"gone/old.ts":                     snapshot.AreaProduct,
 		"app/src/androidTest/kotlin/A.kt": snapshot.AreaTests, "lib/src/testFixtures/java/A.java": snapshot.AreaTests,
 		"src/testDemo/a.ts": snapshot.AreaTests, "src/latest/a.ts": snapshot.AreaProduct, "src/testing/a.ts": snapshot.AreaProduct,
