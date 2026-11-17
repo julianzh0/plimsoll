@@ -6,7 +6,7 @@ import "regexp"
 
 // goLanguage is the entry of Go.
 func goLanguage() Language {
-	return Language{Name: "go", Extensions: []string{".go"}, Imports: goImports(), Grammar: "go", Query: goQuery, Declarations: goDeclarations}
+	return Language{Name: "go", Functions: goFunctions(), Tokens: cLikeTokens(doubleQuoted + "|" + character + "|" + backQuoted), Extensions: []string{".go"}, Imports: goImports(), Grammar: "go", Query: goQuery, Declarations: goDeclarations}
 }
 
 // goQuery reads the import specs.
@@ -35,3 +35,19 @@ const goDeclarations = `
   (#match? @declared.value "^[A-Z]"))
 ((source_file (const_declaration (const_spec name: (identifier) @declared.value))) (#match? @declared.value "^[A-Z]"))
 `
+
+// goFunctions names what a function is and what counts in it, in the grammar's node kinds.
+func goFunctions() *FunctionKinds {
+	return &FunctionKinds{
+		Declared:    []string{"function_declaration", "method_declaration"},
+		Bodies:      []string{"block"},
+		Closures:    []string{"func_literal"},
+		Ifs:         []string{"if_statement"},
+		Nesting:     []string{"for_statement", "expression_switch_statement", "type_switch_statement", "select_statement"},
+		Logic:       []string{"&&", "||"},
+		Parentheses: []string{"parenthesized_expression"},
+		DepthIfs:    []string{"if_statement"},
+		Depth:       []string{"for_statement", "expression_switch_statement", "type_switch_statement", "select_statement"},
+		Blocks:      []string{"statement_list"},
+	}
+}

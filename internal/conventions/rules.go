@@ -30,6 +30,8 @@ const (
 
 // Rules are the shared rules: which files are code, which code is test, product or other, and the limits.
 type Rules struct {
+	// FunctionRules are the shared rules of the function marks: what is left out, and their other numbers.
+	FunctionRules  FunctionRules
 	NotCode        []string // suffixes of documentation, data and lockfiles; "" stands for no suffix
 	SkippedFolders []string // folder names skipped at any depth
 	OtherFolders   []string // top-level folders whose code is other code
@@ -118,6 +120,11 @@ type Limits struct {
 	// ImportsNotFollowed is the share of a language's own imports that may stay not followed before its link
 	// numbers are not given. It gates the link numbers and is no mark, so it has no step.
 	ImportsNotFollowed Limit
+	// FunctionComplexity is the cognitive complexity over which a function the change made is marked; its step is the
+	// rise a function that existed needs.
+	FunctionComplexity Limit
+	// FunctionNesting is the control nesting a function reaches for the nesting list; its step is the rise it needs.
+	FunctionNesting Limit
 }
 
 // OwnKey is a key of a repository's own file that declares its layout: its table, its key, what an answer calls it
@@ -240,6 +247,10 @@ type Language struct {
 	Layout   []Declaration // the standard files and keys in which a project declares its layout; nil for none
 	// Grammar is the tree-sitter grammar that reads the entry's files; "" reads them by the text patterns above.
 	Grammar string
+	// Functions says what a function is and what counts in it, in the grammar's node kinds; nil: functions are not measured.
+	Functions *FunctionKinds
+	// Tokens splits a function's text into tokens, with the groups ws, com, lit, id and p; set with Functions.
+	Tokens *regexp.Regexp
 	// GrammarBySuffix names another grammar for some of the entry's suffixes.
 	GrammarBySuffix map[string]string
 	// Query is the tree-sitter query that reads, in one parse, everything the entry takes from a file. Its captures:
@@ -369,9 +380,12 @@ func Default() Rules {
 			"shape.file-size grown", "shape.settings", "process.doc-churn", "settings.compose-only",
 			"co-change.pair", "links.test-import", "links.folder-cycle",
 		},
+		FunctionRules: defaultFunctionRules(),
 		Limits: Limits{
-			FileLines: Limit{Value: 1000, Step: 1, Source: "plimsoll's default, taken from Pylint and SonarQube"},
-			TestRatio: Limit{Value: 2.0, Step: 0.1, Source: "plimsoll's rule: test code at most twice the product code"},
+			FileLines:          Limit{Value: 1000, Step: 1, Source: "plimsoll's default, taken from Pylint and SonarQube"},
+			FunctionComplexity: Limit{Value: 25, Step: 8, Source: "plimsoll's rule, read blind on agent pull requests; counted as SonarQube's cognitive complexity"},
+			FunctionNesting:    Limit{Value: 4, Step: 1, Source: "CodeScene's threshold for deep nesting"},
+			TestRatio:          Limit{Value: 2.0, Step: 0.1, Source: "plimsoll's rule: test code at most twice the product code"},
 			// The requirements set the floor for a pair of files that changed together (R-16).
 			SharedCommits: Limit{Value: 5, Step: 1, Source: "plimsoll's rule"},
 			// Read blind on 1,180 changes, growth by one shared commit was most pair marks and rarely worth a look.

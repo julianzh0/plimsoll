@@ -5,7 +5,7 @@ package conventions
 // pythonLanguage is the entry of Python.
 func pythonLanguage() Language {
 	return Language{
-		Name: "python", Extensions: []string{".py", ".pyi"},
+		Name: "python", Functions: pythonFunctions(), Tokens: pythonTokens, Extensions: []string{".py", ".pyi"},
 		Imports: pythonImports(), Layout: pytestLayout(), Grammar: "python", Query: pythonQuery, Declarations: pythonDeclarations,
 		// MkDocs hooks: scripts named under hooks: in mkdocs.yml hold event handlers named on_… (MkDocs 1.4.0).
 		Loaded: []Convention{{Beside: []string{"mkdocs.yml", "mkdocs.yaml"}, Names: "on_*"}},
@@ -64,3 +64,21 @@ const pythonDeclarations = `
 (module (function_definition name: (identifier) @declared.function))
 (module (class_definition name: (identifier) @declared.type))
 `
+
+// pythonFunctions names what a function is and what counts in it, in the grammar's node kinds.
+func pythonFunctions() *FunctionKinds {
+	return &FunctionKinds{
+		Declared:     []string{"function_definition"},
+		Bodies:       []string{"block"},
+		Closures:     []string{"lambda"},
+		Ifs:          []string{"if_statement"},
+		ElseClauses:  []string{"else_clause"},
+		FlatBranches: []string{"elif_clause"},
+		Nesting:      []string{"for_statement", "while_statement", "except_clause", "conditional_expression", "match_statement"},
+		Logic:        []string{"and", "or"},
+		Parentheses:  []string{"parenthesized_expression"},
+		DepthIfs:     []string{"if_statement"},
+		Depth:        []string{"for_statement", "while_statement", "try_statement", "match_statement"},
+		Blocks:       []string{"block"},
+	}
+}

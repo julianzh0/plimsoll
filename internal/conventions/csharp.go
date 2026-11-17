@@ -5,7 +5,7 @@ import "regexp"
 // csharpLanguage is the entry for C#. A using names a namespace: the folders whose files declare it.
 func csharpLanguage() Language {
 	return Language{
-		Name: "csharp", Extensions: []string{".cs"}, Imports: csharpImports(), Grammar: "csharp", Query: csharpQuery, Declarations: csharpDeclarations,
+		Name: "csharp", Functions: csharpFunctions(), Tokens: cLikeTokens(`@"(?:""|[^"])*"|\$?` + tripleQuoted + `|\$?` + doubleQuoted + "|" + character), Extensions: []string{".cs"}, Imports: csharpImports(), Grammar: "csharp", Query: csharpQuery, Declarations: csharpDeclarations,
 		// ASP.NET loads the application class of Global.asax.
 		Loaded: []Convention{{File: "Global.asax.cs"}},
 		// A project is a published library unless it says it is not packable, builds a program, or uses an
@@ -73,3 +73,20 @@ const csharpDeclarations = `
   (enum_declaration (modifier) @_p name: (identifier) @exported) (record_declaration (modifier) @_p name: (identifier) @exported)
   (struct_declaration (modifier) @_p name: (identifier) @exported)])) (#eq? @_p "public"))
 `
+
+// csharpFunctions names what a function is and what counts in it, in the grammar's node kinds.
+func csharpFunctions() *FunctionKinds {
+	return &FunctionKinds{
+		Declared:     []string{"method_declaration", "constructor_declaration", "destructor_declaration", "operator_declaration", "conversion_operator_declaration", "local_function_statement", "accessor_declaration"},
+		Bodies:       []string{"block", "arrow_expression_clause"},
+		Closures:     []string{"lambda_expression", "anonymous_method_expression"},
+		Ifs:          []string{"if_statement"},
+		Nesting:      []string{"for_statement", "foreach_statement", "while_statement", "do_statement", "switch_statement", "switch_expression", "catch_clause", "conditional_expression"},
+		Logic:        []string{"&&", "||"},
+		Parentheses:  []string{"parenthesized_expression"},
+		DepthIfs:     []string{"if_statement"},
+		Depth:        []string{"for_statement", "foreach_statement", "while_statement", "do_statement", "switch_statement", "switch_expression", "try_statement"},
+		Blocks:       []string{"block", "switch_section"},
+		SwitchBlocks: []string{"switch_section"},
+	}
+}

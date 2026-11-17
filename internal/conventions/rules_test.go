@@ -91,6 +91,12 @@ func TestDefaultLimitsNameTheirSource(t *testing.T) {
 	if want := (Limit{0.10, 0, "links checked against go list and dependency-cruiser, 2026-11"}); rules.Limits.ImportsNotFollowed != want {
 		t.Errorf("Limits.ImportsNotFollowed = %+v, want %+v", rules.Limits.ImportsNotFollowed, want)
 	}
+	if want := (Limit{25, 8, "plimsoll's rule, read blind on agent pull requests; counted as SonarQube's cognitive complexity"}); rules.Limits.FunctionComplexity != want {
+		t.Errorf("Limits.FunctionComplexity = %+v, want %+v", rules.Limits.FunctionComplexity, want)
+	}
+	if want := (Limit{4, 1, "CodeScene's threshold for deep nesting"}); rules.Limits.FunctionNesting != want {
+		t.Errorf("Limits.FunctionNesting = %+v, want %+v", rules.Limits.FunctionNesting, want)
+	}
 	if want := (Limit{5, 1, "plimsoll's rule"}); rules.Limits.SharedCommits != want {
 		t.Errorf("Limits.SharedCommits = %+v, want %+v", rules.Limits.SharedCommits, want)
 	}

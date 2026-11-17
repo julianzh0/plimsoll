@@ -2,7 +2,7 @@ package conventions
 
 // dartLanguage is the entry for Dart and Flutter.
 func dartLanguage() Language {
-	return Language{Name: "dart", Extensions: []string{".dart"}, Imports: dartImports(), Grammar: "dart", Query: dartQuery, Declarations: dartDeclarations}
+	return Language{Name: "dart", Functions: dartFunctions(), Tokens: cLikeTokens(`r?'''[\s\S]*?'''|r?` + tripleQuoted + "|" + doubleQuoted + "|" + singleQuoted), Extensions: []string{".dart"}, Imports: dartImports(), Grammar: "dart", Query: dartQuery, Declarations: dartDeclarations}
 }
 
 // dartQuery reads import, export, part and part of with a quoted target (a conditional import's first target is the
@@ -33,3 +33,21 @@ const dartDeclarations = `
 (program (function_signature name: (identifier) @declared.function))
 (program (annotation) . (function_signature name: (identifier) @implicit))
 `
+
+// dartFunctions names what a function is and what counts in it, in the grammar's node kinds.
+func dartFunctions() *FunctionKinds {
+	return &FunctionKinds{
+		Declared:     []string{"function_signature", "method_signature", "getter_signature", "setter_signature", "constructor_signature", "factory_constructor_signature"},
+		Bodies:       []string{"function_body"},
+		BodyAfter:    true,
+		Closures:     []string{"function_expression"},
+		Ifs:          []string{"if_statement", "if_element"},
+		Nesting:      []string{"for_statement", "for_element", "while_statement", "do_statement", "switch_statement", "switch_expression", "catch_clause", "conditional_expression"},
+		Logic:        []string{"&&", "||"},
+		Parentheses:  []string{"parenthesized_expression"},
+		DepthIfs:     []string{"if_statement"},
+		Depth:        []string{"for_statement", "while_statement", "do_statement", "switch_statement", "switch_expression", "try_statement"},
+		Blocks:       []string{"block", "switch_statement_case", "switch_statement_default"},
+		SwitchBlocks: []string{"switch_statement_case", "switch_statement_default"},
+	}
+}
