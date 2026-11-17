@@ -78,6 +78,16 @@ SHA-256 checksum and puts it in `~/.local/bin` (`PLIMSOLL_INSTALL_DIR` changes t
 a release). You can also download a binary and `checksums.txt` from the release page yourself, or build from source
 with Go (see [Development](#development)).
 
+Windows, amd64 and arm64, in PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/julianzh0/plimsoll/main/install.ps1 | iex
+```
+
+The script does the same and puts `plimsoll.exe` in `%LOCALAPPDATA%\plimsoll`, which it adds to your user PATH
+(`$env:PLIMSOLL_INSTALL_DIR` and `$env:PLIMSOLL_VERSION` work as above). The Windows build is checked by compiling it,
+not by a Windows test run.
+
 ## Connect your agent
 
 plimsoll is a local MCP server on standard input and output. It takes no argument and reads no setting.

@@ -1,8 +1,6 @@
 package parse
 
 import (
-	"syscall"
-
 	"github.com/tetratelabs/wazero/experimental"
 )
 
@@ -17,7 +15,7 @@ type mapped struct{ bytes []byte }
 
 // mapMemory maps one instance's memory; a refused mapping is recorded for start, which runs under the parser's lock.
 func (p *Parser) mapMemory(_, _ uint64) experimental.LinearMemory {
-	bytes, err := syscall.Mmap(-1, 0, memoryCapPages*pageBytes, syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_ANON|syscall.MAP_PRIVATE)
+	bytes, err := reserve(memoryCapPages * pageBytes)
 	if err != nil {
 		p.unmapped = true
 		return &mapped{}
@@ -35,7 +33,7 @@ func (m *mapped) Reallocate(size uint64) []byte {
 
 func (m *mapped) Free() {
 	if m.bytes != nil {
-		_ = syscall.Munmap(m.bytes)
+		release(m.bytes)
 		m.bytes = nil
 	}
 }
