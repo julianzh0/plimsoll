@@ -12,12 +12,6 @@ import (
 func (Detector) Wording(m answer.Mark) string {
 	settingName, file := m.Subject.Names[0], snapshot.SettingsFile
 	switch answer.RuleOf(m.ID) {
-	case ruleNoReader:
-		if m.Change == answer.Resolved {
-			return fmt.Sprintf("`%s` no longer stands as a setting without a reader: product code holds it as a word now, or `%s` no longer names it.", settingName, file)
-		}
-		return fmt.Sprintf("`%s` is a setting in `%s`; product files that hold it as a word: 0 of %s (forms searched: %s).",
-			settingName, file, answer.Count(*m.Measured.Total), answer.QuotedList(snapshot.Forms(settingName)))
 	case ruleDefinedTwice:
 		if m.Change == answer.Resolved {
 			return fmt.Sprintf("`%s` is defined on %s of `%s`, no longer on more than one; it was on %s at the base.",
@@ -45,7 +39,6 @@ func (Detector) Standing(items []answer.Mark) string {
 	}
 	var fragments []string
 	for _, part := range []struct{ rule, one, many string }{
-		{ruleNoReader, "setting that no product file holds as a word", "settings that no product file holds as a word"},
 		{ruleDefinedTwice, "name defined on more than one line", "names defined on more than one line"},
 		{ruleComposeOnly, "compose variable without a setting", "compose variables without a setting"},
 	} {

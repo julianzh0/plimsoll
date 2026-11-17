@@ -222,13 +222,13 @@ func TestIntegrationEveryDetectorAnswersForOneRepository(t *testing.T) {
 	}
 	repo.Commit(gitrepotest.Commit{Message: "past the limit", Files: map[string]string{
 		"src/store.ts": snapshottest.Lines(1620), "tests/fakes/store.ts": snapshottest.Lines(20),
-		".env.example": "PORT=1\nSESSION_GRACE_MS=2\n", "docs/review-packet-1.md": "notes\n",
+		".env.example": "PORT=1\nSESSION_GRACE_MS=2\nSESSION_GRACE_MS=3\n", "docs/review-packet-1.md": "notes\n",
 		"src/wire.ts": "import \"../tests/fakes/store.ts\";\n",
 	}})
 	before := gitrepotest.Fingerprint(t, repo.Dir)
 	arguments := map[string]any{"repository": repo.Dir, "base": base}
 	explained := []string{
-		"process.planning-file:docs/review-packet-1.md", "settings.no-reader:SESSION_GRACE_MS", "co-change.pair:src/store.ts+tests/fakes/store.ts",
+		"process.planning-file:docs/review-packet-1.md", "settings.defined-twice:SESSION_GRACE_MS", "co-change.pair:src/store.ts+tests/fakes/store.ts",
 		"links.test-import:src/wire.ts",
 	}
 	requests := []string{call(1, "report", arguments)}
@@ -266,7 +266,7 @@ func TestIntegrationEveryDetectorAnswersForOneRepository(t *testing.T) {
 		}
 	}
 	for _, id := range []string{"reportOnly shape.file-size:src/store.ts", "marks process.planning-file:docs/review-packet-1.md",
-		"marks settings.no-reader:SESSION_GRACE_MS", "reportOnly co-change.pair:src/store.ts+tests/fakes/store.ts", "standing settings.compose-only:REDIS_URL",
+		"marks settings.defined-twice:SESSION_GRACE_MS", "reportOnly co-change.pair:src/store.ts+tests/fakes/store.ts", "standing settings.compose-only:REDIS_URL",
 		"reportOnly links.test-import:src/wire.ts"} {
 		if _, found := hints[id]; !found {
 			t.Errorf("report holds no %s; it holds %v", id, slices.Sorted(maps.Keys(hints)))

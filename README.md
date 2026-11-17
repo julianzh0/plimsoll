@@ -166,7 +166,7 @@ Every number is measured at the base and now, from the tracked files only:
 - the footprint of the change since the base
 - churn by area (product, tests, docs, other) over the last 150 non-merge commits
 - tracked planning and review files, and documentation churn against product and test churn since the base
-- the settings audit: settings no product file names, names defined twice in `.env.example`, compose variables that are not settings, and reads whose name is computed at run time
+- the settings audit: names defined twice in `.env.example`, and compose variables that are not settings
 - hotspots: the three code files (or as many as `hotspot_files` sets) with the most changes in usable commits times their lines now, as report rows, with no rule of its own
 - changed together: pairs of code files that share usable commits, at least one product code, neither a file that defines tests, and not two files that the language treats as one unit
 - test folders and package roots that a project declares in its own configuration or in `.plimsoll.toml`, added to the defaults and named with their source
@@ -329,7 +329,6 @@ still run, interpreted and about 80 times slower.
 | `process.doc-churn:repository` | over the commits since the base, documentation churn is above product plus test churn | documentation above code |
 | `process.limit-change:<key>` | `.plimsoll.toml` sets a limit to another value now than at the base, so a change that raised a limit to clear a mark says so | any change |
 | `process.declaration-change:<key>` | `.plimsoll.toml` declares other values under a key of `[layout]` or `[defaults]` now than at the base | any change |
-| `settings.no-reader:<NAME>` | a setting that no product file holds as a word or reads through a declared prefix (candidate) | plimsoll's rule: a setting has a reader |
 | `settings.defined-twice:<NAME>` | a name on two or more lines of `.env.example` that are not commented out (candidate) | plimsoll's rule: one name, one setting |
 | `settings.compose-only:<NAME>` | a compose `environment` key that takes its value from the host (no value, or `$`) and that `.env.example` does not name (candidate) | the three lists agree |
 | `co-change.pair:<a>+<b>` | two code files changed together in at least 5 usable commits and did not at the base (new), or their share of the commits that touched either rose by at least 0.1 (grown). The mark shows that share and comes after every other mark | 5 shared commits, plimsoll's rule |

@@ -207,7 +207,7 @@ func TestTheSamplesShowEveryRuleAndChange(t *testing.T) {
 	}
 	for _, want := range []string{
 		"process.planning-file new", "process.limit-change new", "process.declaration-change new", "process.planning-file standing", "process.planning-file resolved", "process.doc-churn new",
-		"settings.no-reader new", "settings.no-reader resolved", "settings.defined-twice grown", "settings.defined-twice resolved",
+		"settings.defined-twice grown", "settings.defined-twice resolved",
 		"settings.compose-only standing", "settings.compose-only resolved", "co-change.pair new", "co-change.pair grown",
 		"links.test-import new", "links.test-import grown", "links.test-import resolved", "links.test-import standing",
 		"links.cycle new", "links.cycle grown", "links.cycle resolved", "links.cycle standing",
@@ -219,9 +219,9 @@ func TestTheSamplesShowEveryRuleAndChange(t *testing.T) {
 		}
 	}
 	for _, phrase := range []string{
-		"not decided: ", "with a name computed at run time", "hotspot `", "could not be read",
+		"hotspot `", "could not be read",
 		"imports followed `", "could not be followed", "import rings are not looked for",
-		"shows as a candidate", "at run time: `", "no package of its own", "its own packages are looked for",
+		"no package of its own", "its own packages are looked for",
 		"run without an import of them",
 		"test folders declared in `pyproject.toml`", "roots declared in `pyproject.toml`", "names the repository root",
 		"is or holds a package root", "holds test folders of its own", "leaves the repository or holds a pattern",

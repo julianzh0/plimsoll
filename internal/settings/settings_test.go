@@ -1,10 +1,8 @@
 package settings
 
 import (
-	"fmt"
 	"maps"
 	"slices"
-	"strings"
 	"testing"
 
 	"github.com/julianzh0/plimsoll/internal/answer"
@@ -35,107 +33,6 @@ func marksOf(f answer.Findings, rule string) map[string]answer.Mark {
 		}
 	}
 	return found
-}
-
-func hasStatistic(f answer.Findings, name string) bool {
-	return slices.ContainsFunc(f.Statistics, func(s answer.Statistic) bool { return s.Name == name })
-}
-
-// languageCases is what each language's code looks like; a language without a case fails the test (N-10).
-func languageCases() map[string]struct{ file, testFile, static, dynamic string } {
-	return map[string]struct{ file, testFile, static, dynamic string }{
-		"typescript": {"src/config.ts", "tests/config.test.ts", "process.env.%s", "process.env[name]"},
-		"go":         {"internal/config/config.go", "internal/config/config_test.go", `os.Getenv("%s")`, "os.Getenv(name)"},
-		"python":     {"src/app/config.py", "tests/test_config.py", `os.environ["%s"]`, "os.environ[name]"},
-		"dart":       {"lib/config.dart", "test/config_test.dart", "var a = Platform.environment['%s'];", "var b = Platform.environment[name];"},
-		"java":       {"src/main/java/com/acme/Config.java", "src/test/java/com/acme/ConfigTest.java", `class P { String p = System.getenv("%s"); }`, "class D { String d = System.getenv(name); }"},
-		"kotlin":     {"src/main/kotlin/com/acme/Config.kt", "src/test/kotlin/com/acme/ConfigTest.kt", `System.getenv("%s")`, "System.getenv(name)"},
-		"csharp":     {"src/Acme/Config.cs", "tests/Acme.Tests/ConfigTests.cs", `var p = Environment.GetEnvironmentVariable("%s");`, "var d = Environment.GetEnvironmentVariable(name);"},
-		"c":          {"src/config.c", "tests/test_config.c", `getenv("%s")`, "getenv(name)"},
-		"cpp":        {"src/config.cc", "tests/config_test.cc", `std::getenv("%s")`, "std::getenv(name.c_str())"},
-		"swift":      {"Sources/Kit/Config.swift", "Tests/KitTests/ConfigTests.swift", `ProcessInfo.processInfo.environment["%s"]`, "ProcessInfo.processInfo.environment[name]"},
-		"rust":       {"src/config.rs", "tests/config.rs", `env::var("%s")`, "env::var(name)"},
-	}
-}
-
-func TestSettingsAuditInEachLanguage(t *testing.T) {
-	for _, language := range conventions.Default().Languages {
-		c, known := languageCases()[language.Name]
-		if !known {
-			t.Errorf("language %s has no settings case", language.Name)
-			continue
-		}
-		port := fmt.Sprintf(c.static, "PORT") + "\n"
-		build := func(env, product, test string) snapshot.Source {
-			base := map[string]string{".env.example": "PORT=1\n", c.file: port}
-			now := map[string]string{c.file: port + product, c.testFile: "test(\"x\", () => {});\nfunc TestX(t *testing.T) {}\n" + test}
-			if env != "" {
-				now[".env.example"] = env
-			}
-			return snapshottest.Files(base, now)
-		}
-		env := "PORT=1\nSESSION_GRACE_MS=2\n"
-		_, nothing := detect(t, build(env, "", ""))
-		m := marksOf(nothing, ruleNoReader)["SESSION_GRACE_MS"]
-		if m.Change != answer.New || m.Measured.Value != 0 || *m.Measured.Total != 1 || m.Hint != "no test file holds it either; search product code for the forms as whole words." {
-			t.Errorf("%s, nothing holds it: mark %+v", language.Name, m)
-		}
-		_, onlyTest := detect(t, build(env, "", "SESSION_GRACE_MS\n"))
-		if m := marksOf(onlyTest, ruleNoReader)["SESSION_GRACE_MS"]; !strings.HasPrefix(m.Hint, "held by test files: `"+c.testFile+"`;") {
-			t.Errorf("%s, only a test holds it: hint %q", language.Name, m.Hint)
-		}
-		if _, read := detect(t, build(env, fmt.Sprintf(c.static, "SESSION_GRACE_MS")+"\n", "")); len(marksOf(read, ruleNoReader)) != 0 {
-			t.Errorf("%s, read statically: marks %v, want none", language.Name, read.Marks)
-		}
-		today := "no test file holds it either; search product code for the forms as whole words."
-		for reads, wording := range map[int][2]string{
-			1: {"1 read in product code computes its name", "1 read with a name computed at run time in product code (`" + c.file + "`); a setting read only through it shows"},
-			2: {"2 reads in product code compute their name", "2 reads with a name computed at run time in product code (`" + c.file + "`); a setting read only through them shows"},
-		} {
-			s, dynamic := detect(t, build(env, strings.Repeat(c.dynamic+"\n", reads), ""))
-			m := marksOf(dynamic, ruleNoReader)["SESSION_GRACE_MS"]
-			if m.Change != answer.New || m.Hint != today+" "+wording[0]+" at run time: `"+c.file+"`." {
-				t.Errorf("%s, %d computed reads: mark %+v", language.Name, reads, m)
-			}
-			if !slices.Contains(dynamic.NotAnalysed, wording[1]+" as a candidate") || !hasStatistic(dynamic, "settings without a reader in product code") {
-				t.Errorf("%s, %d computed reads: not analysed %q, statistics %+v", language.Name, reads, dynamic.NotAnalysed, dynamic.Statistics)
-			}
-			if lines := (Detector{}).Explain(s, m); !slices.Contains(lines, fmt.Sprintf("reads with a computed name in product code: %d, in `%s`", reads, c.file)) {
-				t.Errorf("%s, %d computed reads: Explain = %q", language.Name, reads, lines)
-			}
-		}
-		_, gone := detect(t, snapshottest.Files(map[string]string{".env.example": "PORT=1\n", c.file: port + c.dynamic + "\n"},
-			map[string]string{".env.example": env, c.file: port}))
-		if m := marksOf(gone, ruleNoReader)["SESSION_GRACE_MS"]; m.Hint != today ||
-			slices.ContainsFunc(gone.NotAnalysed, func(s string) bool { return strings.Contains(s, "computed at run time") }) {
-			t.Errorf("%s, a computed read at the base only: mark %+v, not analysed %q", language.Name, m, gone.NotAnalysed)
-		}
-		_, prefixed := detect(t, build("PORT=1\nA_SESSION_GRACE_MS=2\n", "SESSION_GRACE_MS\n", ""))
-		if len(marksOf(prefixed, ruleNoReader)) != 0 || !slices.ContainsFunc(prefixed.NotAnalysed, func(s string) bool { return strings.Contains(s, "`A_SESSION_GRACE_MS`") }) {
-			t.Errorf("%s, a prefixed name: marks %v, not analysed %q", language.Name, prefixed.Marks, prefixed.NotAnalysed)
-		}
-		_, absent := detect(t, build("", "", ""))
-		if len(absent.Marks) != 0 || len(absent.Statistics) != 0 || !slices.Contains(absent.NotAnalysed, "no `.env.example`, so no settings were compared") {
-			t.Errorf("%s, no .env.example: %+v", language.Name, absent)
-		}
-	}
-}
-
-func TestNoReaderComparesWithTheBase(t *testing.T) {
-	cases := []struct {
-		base, now map[string]string
-		want      answer.Change
-	}{
-		{map[string]string{".env.example": "UNREAD_X=1\n"}, map[string]string{".env.example": "UNREAD_X=1\n"}, answer.Standing},
-		{map[string]string{".env.example": "UNREAD_X=1\n"}, map[string]string{".env.example": "UNREAD_X=1\n", "src/a.ts": "UNREAD_X\n"}, answer.Resolved},
-		{map[string]string{".env.example": "UNREAD_X=1\n"}, map[string]string{".env.example": "OTHER_X=1\n", "src/a.ts": "OTHER_X\n"}, answer.Resolved},
-	}
-	for _, tc := range cases {
-		_, f := detect(t, snapshottest.Files(tc.base, tc.now))
-		if got := marksOf(f, ruleNoReader)["UNREAD_X"].Change; got != tc.want {
-			t.Errorf("no-reader from %v to %v = %q, want %q", tc.base, tc.now, got, tc.want)
-		}
-	}
 }
 
 func TestDefinedTwiceCountsLinesThatAreNotCommentedOut(t *testing.T) {
@@ -185,7 +82,7 @@ func TestComposeOnlyMarks(t *testing.T) {
 		t.Errorf("unread compose lines: not analysed %q", unread.NotAnalysed)
 	}
 	_, none := detect(t, snapshottest.Files(nil, map[string]string{".env.example": "PORT=1\n", "src/a.ts": code}))
-	if hasStatistic(none, "compose variables without a setting") || !slices.Contains(none.NotAnalysed, "no compose file tracked, so no compose variable was compared") {
+	if slices.ContainsFunc(none.Statistics, func(row answer.Statistic) bool { return row.Name == "compose variables without a setting" }) || !slices.Contains(none.NotAnalysed, "no compose file tracked, so no compose variable was compared") {
 		t.Errorf("no compose file: %+v", none)
 	}
 }
@@ -206,31 +103,9 @@ func TestBrokenSettingsFileStopsTheAudit(t *testing.T) {
 	}
 }
 
-func TestASettingReadThroughADeclaredPrefixHasAReader(t *testing.T) {
-	files := map[string]string{
-		".env.example":      "APP_BATCH_SIZE=1\nAPP_GONE=2\n",
-		"src/app/config.py": "model_config = SettingsConfigDict(env_prefix=\"APP_\")\nbatch_size: int = 1\n",
-	}
-	s, f := detect(t, snapshottest.Files(files, files))
-	noReader := marksOf(f, ruleNoReader)
-	gone, marked := noReader["APP_GONE"]
-	if len(noReader) != 1 || !marked || gone.Change != answer.Standing {
-		t.Errorf("no-reader marks = %+v, want APP_GONE alone, standing", noReader)
-	}
-	for statName, want := range map[string]float64{"settings without a reader in product code": 1, "settings not decided": 0} {
-		i := slices.IndexFunc(f.Statistics, func(row answer.Statistic) bool { return row.Name == statName })
-		if i < 0 || *f.Statistics[i].Value != want {
-			t.Errorf("statistic %q in %+v, want %v", statName, f.Statistics, want)
-		}
-	}
-	if slices.ContainsFunc(f.NotAnalysed, func(s string) bool { return strings.HasPrefix(s, "not decided") }) {
-		t.Errorf("not analysed = %q, want no not-decided entry", f.NotAnalysed)
-	}
-	note := "a setting is read when a product file holds its name as a word, or declares a prefix of the name and holds the rest in lower case as a word; forms searched: as written, lower case, camel case"
-	if len(f.Notes) == 0 || f.Notes[0] != note {
-		t.Errorf("Notes = %q, want %q first", f.Notes, note)
-	}
-	if lines := (Detector{}).Explain(s, gone); !slices.Contains(lines, "product files that declare a prefix of the name and hold the rest: 0") {
-		t.Errorf("Explain(APP_GONE) = %q", lines)
+func TestNoSettingsFileStopsTheAudit(t *testing.T) {
+	_, f := detect(t, snapshottest.Files(nil, map[string]string{"src/a.ts": "export const a = 1;\n"}))
+	if len(f.Marks) != 0 || len(f.Statistics) != 0 || !slices.Contains(f.NotAnalysed, "no `.env.example`, so no settings were compared") {
+		t.Errorf("no .env.example: %+v", f)
 	}
 }
