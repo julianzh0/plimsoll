@@ -1,6 +1,9 @@
 package conventions
 
-import "regexp"
+import (
+	"regexp"
+	"slices"
+)
 
 // cLanguage is the entry for C. Its includes are read as C++'s are; a header named .h belongs to the one of the two
 // entries that has more files of its own in the repository.
@@ -27,13 +30,13 @@ var (
 // cFamily is what the C and C++ entries share: units are the file names the compiler takes as a unit of their own,
 // which no file includes.
 func cFamily(name string, extensions, units []string) Language {
-	declarations, functions, literals := cDeclarations, cFunctions(), doubleQuoted+"|"+character
+	declarations, functions, macros, literals := cDeclarations, cFunctions(), cMacros(), doubleQuoted+"|"+character
 	if name == "cpp" {
 		declarations += cppDeclarations
-		functions, literals = cppFunctions(), cppRawString+"|"+literals
+		functions, macros, literals = cppFunctions(), cppMacros(), cppRawString+"|"+literals
 	}
 	return Language{
-		Name: name, Extensions: extensions, Literals: cComments, Functions: functions, Macros: cMacros(), Tokens: cLikeTokens(`(?:u8|[uUL])?(?:` + literals + `)`),
+		Name: name, Extensions: extensions, Literals: cComments, Functions: functions, Macros: macros, Tokens: cLikeTokens(`(?:u8|[uUL])?(?:` + literals + `)`),
 		Grammar: name, Query: cQuery, Declarations: declarations, LineReadWhenBroken: true,
 		Imports: Imports{
 			Statements: []ImportForm{{Pattern: cIncludeQuoted}, {Pattern: cIncludeAngled}},
@@ -112,40 +115,53 @@ func cppFunctions() FunctionKinds {
 	return k
 }
 
+// cLoopMacro is a loop macro read as while.
+func cLoopMacro() MacroRule {
+	return MacroRule{Pattern: regexp.MustCompile(`\b(?P<macro>[A-Z][A-Z0-9_]*FOR_?EACH[A-Z0-9_]*)\s*\(`), As: "while"}
+}
+
 // NOTE: C++ raw strings are matched with an empty delimiter only (R"(...)"), since Go's regexp has no back-reference;
 // one with a delimiter is split into ordinary tokens. Upgrade: a small scanner for C++ literals.
 const cppRawString = `R"\([\s\S]*?\)"`
 
-// cMacros is the macro uses the C and C++ grammars cannot read, in the order they are rewritten:
-//
+// cMacros is the macro uses the C grammar cannot read, in the order they are rewritten, each in one pass:
 //   - a run of attribute-like names in capitals with an underscore, whole, before another word, where a declaration
 //     starts: at a line's start, after a specifier, or after a template's closing bracket (FMT_CONSTEXPR void f());
-//
 //   - an annotation with underscores around its name, and its arguments (_In_, _Out_opt_, _In_reads_(n)), and
 //     __declspec(...);
-//
-//   - a loop macro, *_FOREACH or *_FOR_EACH, read as while: its arguments are one condition (LIST_FOREACH(x, l, link)).
-//
-//   - the vocabulary of the two most used C and C++ frameworks, Qt and GLib, as each rule says.
+//   - a loop macro, *_FOREACH or *_FOR_EACH, read as while: its arguments are one condition (LIST_FOREACH(x, l, link));
+//   - GLib's cleanup attributes and types, type-definition and attribute macros, and assertions that take an operator.
 //
 // NOTE: conventions, not rules of the language; a capitalised type or constant written where an attribute stands is
 // blanked as well, which only the functions that could not be read as written ever see. Other frameworks' macros are
 // not rewritten. Upgrade: learn the names from the repository's own #define lines.
 func cMacros() []MacroRule {
-	return []MacroRule{
-		{Pattern: regexp.MustCompile(`(?m)(?:^[ \t]*|\b(?:static|inline|constexpr|virtual|explicit|const|extern|friend)[ \t]+|>[ \t]*)(?P<macro>(?:[A-Z][A-Z0-9]*_[A-Z0-9_]+\b[ \t]*\n?[ \t]*)+)[A-Za-z_~]`)},
-		{Pattern: regexp.MustCompile(`(?:^|[^\w])(?P<macro>(?:__declspec|_[A-Z][A-Za-z0-9]*_(?:[A-Za-z0-9]+_)*\b)(?:\s*\((?:[^()]|\([^()]*\))*\))?)`)},
-		// Qt and Boost: foreach (decl, list) read as a range for; before the loop macros, which would take Q_FOREACH
+	return slices.Concat(cDeclarationMacros(), []MacroRule{cLoopMacro()}, glibMacros())
+}
+
+// cppMacros is C's, with Qt's and Boost's: foreach (decl, list) read as a range for, before the loop macros that
+// would take Q_FOREACH; emit before a call; the class, property and d-pointer macros; signal and slot sections.
+func cppMacros() []MacroRule {
+	return slices.Concat(cDeclarationMacros(), []MacroRule{
 		{Pattern: regexp.MustCompile(`\b(?:foreach|Q_FOREACH|BOOST_FOREACH)\s*\((?:[^,()<>]|\([^()]*\)|<(?:[^<>]|<[^<>]*>)*>)*(?P<macro>,)`), As: ":"},
 		{Pattern: regexp.MustCompile(`\b(?P<macro>foreach|Q_FOREACH|BOOST_FOREACH)\s*\(`), As: "for"},
-		{Pattern: regexp.MustCompile(`\b(?P<macro>[A-Z][A-Z0-9_]*FOR_?EACH[A-Z0-9_]*)\s*\(`), As: "while"},
-		// Qt: emit before a call, the d-pointer and class macros, signal and slot sections
+		cLoopMacro(),
 		{Pattern: regexp.MustCompile(`\b(?P<macro>emit|Q_EMIT)\s+[A-Za-z_]`)},
-		{Pattern: regexp.MustCompile(`(?m)^[ \t]*(?P<macro>Q_[DQ]\s*\([^()]*\)\s*;)`)},
 		{Pattern: regexp.MustCompile(`(?m)^[ \t]*(?P<macro>Q_(?:OBJECT|GADGET|[A-Z_]+\s*\((?:[^()]|\([^()]*\))*\))\s*;?)[ \t]*$`)},
 		{Pattern: regexp.MustCompile(`\b(?:public|protected|private)[ \t]+(?P<macro>slots|Q_SLOTS)[ \t]*:`)},
 		{Pattern: regexp.MustCompile(`(?m)^[ \t]*(?P<macro>signals|Q_SIGNALS)[ \t]*:`), As: "public"},
-		// GLib: cleanup attributes and types, type-definition and attribute macros, assertions that take an operator
+	}, glibMacros())
+}
+
+func cDeclarationMacros() []MacroRule {
+	return []MacroRule{
+		{Pattern: regexp.MustCompile(`(?m)(?:^[ \t]*|\b(?:static|inline|constexpr|virtual|explicit|const|extern|friend)[ \t]+|>[ \t]*)(?P<macro>(?:[A-Z][A-Z0-9]*_[A-Z0-9_]+\b[ \t]*\n?[ \t]*)+)[A-Za-z_~]`)},
+		{Pattern: regexp.MustCompile(`(?:^|[^\w])(?P<macro>(?:__declspec|_[A-Z][A-Za-z0-9]*_(?:[A-Za-z0-9]+_)*\b)(?:\s*\((?:[^()]|\([^()]*\))*\))?)`)},
+	}
+}
+
+func glibMacros() []MacroRule {
+	return []MacroRule{
 		{Pattern: regexp.MustCompile(`\b(?P<macro>g_autofree)\b`)},
 		{Pattern: regexp.MustCompile(`\b(?P<macro>g_auto(?:ptr|list|slist)?\s*\([^()]*\))`), As: "void*"},
 		{Pattern: regexp.MustCompile(`(?m)^[ \t]*(?P<macro>G_(?:DEFINE|DECLARE)_\w+\s*\((?:[^()]|\([^()]*\))*\))[ \t]*;?`)},

@@ -6,33 +6,18 @@ import (
 	"github.com/julianzh0/plimsoll/internal/conventions"
 )
 
-// macroPasses is how often one rule is applied to a file at most: a rule finds a whole run of macros in one pass, so
-// the passes after the first only take what a rewrite uncovered (the second comma of a foreach); the bound keeps a
-// pathological file from costing a pass per macro.
-const macroPasses = 4
-
-// rewriteMacros applies the rules in order, each again until it finds nothing or macroPasses are spent: what a rule's
-// group "macro" finds is blanked, or replaced by its As padded with spaces; every byte offset and line break stays
-// where it was. nil when no rule found anything.
+// rewriteMacros applies the rules in order, each in one pass over the file: what a rule's group "macro" finds is
+// blanked, or replaced by its As padded with spaces; every byte offset and line break stays where it was. nil when no
+// rule found anything.
 func rewriteMacros(rules []conventions.MacroRule, content []byte) []byte {
 	rewritten, changed := slices.Clone(content), false
 	for _, rule := range rules {
 		group := rule.Pattern.SubexpIndex("macro")
-		for range macroPasses {
-			found := rule.Pattern.FindAllSubmatchIndex(rewritten, -1)
-			if len(found) == 0 {
-				break
-			}
+		for _, m := range rule.Pattern.FindAllSubmatchIndex(rewritten, -1) {
+			start, end := m[2*group], m[2*group+1]
+			copy(rewritten[start:end], rule.As)
+			blankKeepingLines(rewritten[start+len(rule.As) : end])
 			changed = true
-			for _, m := range found {
-				start, end := m[2*group], m[2*group+1]
-				copy(rewritten[start:end], rule.As)
-				for i := start + len(rule.As); i < end; i++ {
-					if rewritten[i] != '\n' {
-						rewritten[i] = ' '
-					}
-				}
-			}
 		}
 	}
 	if !changed {
@@ -41,10 +26,10 @@ func rewriteMacros(rules []conventions.MacroRule, content []byte) []byte {
 	return rewritten
 }
 
-// withBlanked takes, from the functions read on a copy with macros rewritten, those that overlap no function read
+// withRewritten takes, from the functions read on a copy with macros rewritten, those that overlap no function read
 // cleanly as written; a function unreadable as written stays unless a function of the copy overlaps it, which then
 // stands for it (or for the pieces the grammar split it into). So a function that read cleanly never changes.
-func withBlanked(asWritten, blanked []function) []function {
+func withRewritten(asWritten, rewritten []function) []function {
 	var clean, unreadable, taken []function
 	for _, f := range asWritten {
 		if f.broken {
@@ -53,7 +38,7 @@ func withBlanked(asWritten, blanked []function) []function {
 			clean = append(clean, f)
 		}
 	}
-	for _, b := range blanked {
+	for _, b := range rewritten {
 		if !overlapsAny(clean, b) {
 			taken = append(taken, b)
 		}

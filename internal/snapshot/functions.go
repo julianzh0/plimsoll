@@ -99,7 +99,13 @@ func shapeOf(nodes []parse.Node) shape {
 
 func (s shape) endOf(i int) int    { return int(s.end[i]) }
 func (s shape) parentOf(i int) int { return int(s.parent[i]) }
-func (s shape) prevOf(i int) int   { return int(s.prev[i]) }
+
+// parentIn says whether the node at i has a parent of one of the set's kinds.
+func (s shape) parentIn(i int, set kindSet) bool {
+	p := s.parentOf(i)
+	return p >= 0 && set.has(s.nodes[p])
+}
+func (s shape) prevOf(i int) int { return int(s.prev[i]) }
 
 // lineIndex turns byte offsets into lines, from 1.
 type lineIndex []int // the byte offset of each newline
@@ -137,7 +143,7 @@ func functionsOf(kinds conventions.FunctionKinds, tokens *regexp.Regexp, rules c
 		if !n.Named {
 			continue
 		}
-		if t.declared.has(n) && s.parentOf(i) >= 0 && t.misreadIn.has(s.nodes[s.parentOf(i)]) {
+		if t.declared.has(n) && s.parentIn(i, t.misreadIn) {
 			// a macro read as a function inside a body (C++: Q_FOREACH (const T &x, l) { ... }): the function around
 			// it is not what it seems, so it counts as unreadable and the copy with macros rewritten reads it
 			for k := len(found) - 1; k >= 0; k-- {
@@ -162,7 +168,7 @@ func functionsOf(kinds conventions.FunctionKinds, tokens *regexp.Regexp, rules c
 			inside = max(inside, to)
 			continue
 		}
-		if i >= inside && t.namedClosures.has(n) && s.parentOf(i) >= 0 && t.namedBy.has(tree.Nodes[s.parentOf(i)]) &&
+		if i >= inside && t.namedClosures.has(n) && s.parentIn(i, t.namedBy) &&
 			(within == nil || within(int(n.Start), int(n.End))) {
 			if name := bindingName(tree, s, i, content); name != "" {
 				f := t.measure(s, i, s.endOf(i), name, content, lines)
@@ -209,7 +215,7 @@ func functionName(tree parse.Tree, s shape, t table, i int, content []byte) stri
 				continue
 			}
 			if s.endOf(j) == j+1 {
-				name.WriteString(strings.TrimSpace(string(content[s.nodes[j].Start:s.nodes[j].End])))
+				name.Write(content[s.nodes[j].Start:s.nodes[j].End])
 			}
 		}
 		return strings.Trim(name.String(), "`")

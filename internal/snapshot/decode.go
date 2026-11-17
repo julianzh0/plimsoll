@@ -178,13 +178,20 @@ func readTexts(imports conventions.Imports, content []byte, texts, blanks []pars
 func blanked(stretch []byte, offset int, blanks []parse.Capture) []byte {
 	b := slices.Clone(stretch)
 	for _, bl := range blanks {
-		for i := max(bl.Start, offset); i < min(bl.End, offset+len(b)); i++ {
-			if b[i-offset] != '\n' {
-				b[i-offset] = ' '
-			}
+		if start, end := max(bl.Start, offset), min(bl.End, offset+len(b)); start < end {
+			blankKeepingLines(b[start-offset : end-offset])
 		}
 	}
 	return b
+}
+
+// blankKeepingLines turns every byte into a space but line ends, in place, so offsets and line numbers stay.
+func blankKeepingLines(b []byte) {
+	for i, c := range b {
+		if c != '\n' {
+			b[i] = ' '
+		}
+	}
 }
 
 // spanLines counts the lines the spans touch, each line once; a span that starts inside the one before it is part of

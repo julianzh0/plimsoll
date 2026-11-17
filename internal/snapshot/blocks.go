@@ -2,6 +2,7 @@ package snapshot
 
 import (
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -16,13 +17,8 @@ func masked(literals *regexp.Regexp, content []byte) []byte {
 		if match[0] == '"' || match[0] == '\'' {
 			return match
 		}
-		blank := make([]byte, len(match))
-		for i, c := range match {
-			blank[i] = ' '
-			if c == '\n' {
-				blank[i] = '\n'
-			}
-		}
+		blank := slices.Clone(match)
+		blankKeepingLines(blank)
 		return blank
 	})
 }

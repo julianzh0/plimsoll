@@ -166,7 +166,7 @@ func (rs *Readings) read(language conventions.Language, grammar string, content 
 			return r, !errors.Is(err, parse.ErrUnavailable)
 		}
 		functions := functionsOf(language.Functions, language.Tokens, *w.functionRules, tree, content, nil)
-		functions = rs.readBlanked(language, grammar, content, *w.functionRules, functions)
+		functions = rs.readRewritten(language, grammar, content, *w.functionRules, functions)
 		for _, f := range functions {
 			if !inSpans(r.testSpans, f.start) {
 				r.functions = append(r.functions, f)
@@ -185,19 +185,19 @@ func readByText(language conventions.Language, content []byte) reading {
 	return r
 }
 
-// readBlanked reads, for a language with attribute macros and a file with functions it could not read as written, a
-// copy with those macros blanked, and takes its functions where the written file gave none it could read. A copy the
-// parser cannot read leaves the functions as they were.
-func (rs *Readings) readBlanked(language conventions.Language, grammar string, content []byte, rules conventions.FunctionRules,
+// readRewritten reads, for a language with macro rules and a file with functions it could not read as written, a
+// copy with those macros rewritten, and takes its functions where the written file gave none it could read. A copy
+// the parser cannot read leaves the functions as they were.
+func (rs *Readings) readRewritten(language conventions.Language, grammar string, content []byte, rules conventions.FunctionRules,
 	functions []function) []function {
 	if len(language.Macros) == 0 || !slices.ContainsFunc(functions, func(f function) bool { return f.broken }) {
 		return functions
 	}
-	blanked := rewriteMacros(language.Macros, content)
-	if blanked == nil {
+	rewritten := rewriteMacros(language.Macros, content)
+	if rewritten == nil {
 		return functions
 	}
-	tree, err := rs.parser.Nodes(grammar, blanked)
+	tree, err := rs.parser.Nodes(grammar, rewritten)
 	if err != nil {
 		return functions
 	}
@@ -209,5 +209,5 @@ func (rs *Readings) readBlanked(language conventions.Language, grammar string, c
 	}
 	// a function read cleanly as written is not measured again on the copy
 	within := func(start, end int) bool { return !overlapsAny(clean, function{start: start, end: end}) }
-	return withBlanked(functions, functionsOf(language.Functions, language.Tokens, rules, tree, blanked, within))
+	return withRewritten(functions, functionsOf(language.Functions, language.Tokens, rules, tree, rewritten, within))
 }
