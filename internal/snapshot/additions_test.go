@@ -59,6 +59,7 @@ func TestBuildListsWhatAChangeDeclaredInEachLanguage(t *testing.T) {
 			"pub fn run() {}", "fn helper() {}", "pub struct Config;", "enum Mode { A }", "trait Store {}", "type Alias = u8;",
 			"pub const LIMIT: u8 = 1;", "const PRIVATE: u8 = 1;", "pub static NAME: &str = \"x\";", "#[derive(Debug)]", "pub struct Derived;",
 			"#[frb(mirror(Other))]", "pub struct _Mirror;", "#[cfg(test)]", "fn only_in_tests() {}", "mod inner { pub fn nested() {} }",
+			"#[test]", "fn a_test() {}", "#[bench]", "fn a_bench(b: &mut test::Bencher) {}", "#[tokio::test]", "async fn an_async_test() {}",
 		}, "\n") + "\n", map[string]string{"helper": "function", "run": "function", "Alias": "type", "Config": "type", "Derived": "type",
 			"Mode": "type", "Store": "type", "LIMIT": "value", "NAME": "value"}},
 		{"java", "src/main/java/app/a/A.java", strings.Join([]string{

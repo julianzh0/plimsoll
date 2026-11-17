@@ -70,4 +70,8 @@ const rustDeclarations = `
   (static_item (visibility_modifier) name: (identifier) @declared.value)])
 ((source_file (attribute_item (attribute (identifier) @_frb)) . [(struct_item name: (type_identifier) @implicit)
   (enum_item name: (type_identifier) @implicit)]) (#eq? @_frb "frb"))
+((source_file (attribute_item (attribute [(identifier) @_t (scoped_identifier name: (identifier) @_t)])) .
+  (function_item name: (identifier) @implicit)) (#match? @_t "^(test|bench)$"))
+((source_file (attribute_item (attribute [(identifier) @_t (scoped_identifier name: (identifier) @_t)])) . (attribute_item) .
+  (function_item name: (identifier) @implicit)) (#match? @_t "^(test|bench)$"))
 `
