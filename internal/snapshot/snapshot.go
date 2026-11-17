@@ -312,5 +312,6 @@ type Functions struct {
 	Unread, Minified, Unmeasured  []string
 	PerMeasure, Checks            int // the rules' numbers an answer prints
 	MinifiedLineBytes             int
+	HeaderLines                   int // the lines of a file added whole that are read for another project's header
 	MovedShare, CopyShare         float64
 }

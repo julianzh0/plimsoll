@@ -3,6 +3,7 @@ package shape
 import (
 	"cmp"
 	"fmt"
+	"math"
 	"slices"
 	"strings"
 
@@ -22,8 +23,71 @@ func (Detector) Explain(s snapshot.Snapshot, m answer.Mark) []string {
 		return dependencyEvidence(s, m)
 	case ruleSettings:
 		return settingsEvidence(s)
+	case ruleComplexity, ruleNesting:
+		return functionEvidence(s, m)
 	}
 	return nil
+}
+
+// functionEvidence is what a function item was measured and compared with: its lines, both measures, how the
+// complexity counts, its reason, and the checks that did not leave it out. Only lines, counts, shares and paths.
+func functionEvidence(s snapshot.Snapshot, m answer.Mark) []string {
+	rule := answer.RuleOf(m.ID)
+	var f snapshot.FunctionChange
+	found := false
+	for _, c := range slices.Concat(s.Functions.Complex, s.Functions.Deeper) {
+		if answer.ID(name, rule, functionID(c)) == m.ID {
+			f, found = c, true
+			break
+		}
+	}
+	if !found {
+		return nil
+	}
+	fs, complexity, nesting := s.Functions, s.Limits.FunctionComplexity, s.Limits.FunctionNesting
+	where := fmt.Sprintf("lines now: %d–%d (%s); new in this change", f.Start, f.End, answer.Plural(f.End-f.Start+1, "line"))
+	if !f.New {
+		how := "its name"
+		if f.ByBody {
+			how = "its body"
+		}
+		where = fmt.Sprintf("lines now: %d–%d (%s); at the base: lines %d–%d of `%s`, matched by %s",
+			f.Start, f.End, answer.Plural(f.End-f.Start+1, "line"), f.BaseStart, f.BaseEnd, f.BasePath, how)
+	}
+	before := func(n int) string {
+		if f.New {
+			return ""
+		}
+		return fmt.Sprintf("; at the base: %d", n)
+	}
+	complexityLine := fmt.Sprintf("cognitive complexity now: %d%s", f.Complexity, before(f.ComplexityBefore))
+	nestingLine := fmt.Sprintf("deepest nesting now: %s at line %d%s", answer.Plural(f.Nesting, "level"), f.NestingLine, before(f.NestingBefore))
+	counted := "counted: 1 for each if, loop, switch, catch and conditional expression plus 1 per level it is nested in; 1 for each else, else-if and run of one boolean operator; functions written inside it and markup are not counted"
+	lines := []string{where}
+	if rule == ruleComplexity {
+		lines = append(lines,
+			fmt.Sprintf("%s; limit %s (%s); a function that existed counts from a rise of %s", complexityLine, answer.Count(complexity.Value), complexity.Source, answer.Count(complexity.Step)),
+			counted, nestingLine)
+	} else {
+		lines = append(lines, fmt.Sprintf("%s; limit %s (%s)", nestingLine, answer.Count(nesting.Value), nesting.Source), complexityLine, counted)
+	}
+	if len(f.Repeated) == 2 {
+		lines = append(lines, fmt.Sprintf("repeated block: lines %d–%d and %d–%d, written by this change", f.Repeated[0].Start, f.Repeated[0].End, f.Repeated[1].Start, f.Repeated[1].End))
+	}
+	percent := func(share float64) string { return fmt.Sprintf("%d%%", int(math.Round(100*share))) }
+	lines = append(lines,
+		fmt.Sprintf("lines of it this change added: %d of %d", f.AddedLines, f.End-f.Start+1),
+		fmt.Sprintf("found in lines this change removed: %s of its tokens (%s is moved code)", percent(f.MovedShare), percent(fs.MovedShare)))
+	if f.CopyFiles == 0 {
+		lines = append(lines, "no file at the base holds its name or its longest names")
+	} else {
+		lines = append(lines, fmt.Sprintf("compared with %s at the base that hold its name or its longest names; the closest, `%s`, holds %s of its tokens (%s is a copy)",
+			answer.Plural(f.CopyFiles, "file"), f.ClosestFile, percent(f.ClosestShare), percent(fs.CopyShare)))
+	}
+	if f.AddedWhole {
+		lines = append(lines, fmt.Sprintf("its file is new in this change; its first %d lines name no other project", fs.HeaderLines))
+	}
+	return lines
 }
 
 func sizeEvidence(s snapshot.Snapshot, m answer.Mark) []string {

@@ -149,7 +149,7 @@ func functionChanges(rules conventions.Rules, changes []Change, m measured, miss
 	}
 	limit, nest := rules.Limits.FunctionComplexity, rules.Limits.FunctionNesting
 	fr := rules.FunctionRules
-	result := Functions{PerMeasure: fr.PerMeasure, MovedShare: fr.MovedShare, CopyShare: fr.CopyShare, MinifiedLineBytes: fr.MinifiedLineBytes,
+	result := Functions{PerMeasure: fr.PerMeasure, MovedShare: fr.MovedShare, CopyShare: fr.CopyShare, MinifiedLineBytes: fr.MinifiedLineBytes, HeaderLines: fr.HeaderLines,
 		Minified: m.minified, Unmeasured: m.unmeasured}
 	var candidates []candidate
 	var pool []gone

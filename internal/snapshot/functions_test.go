@@ -477,3 +477,11 @@ func TestBuildLeavesOutCopiesOfCodeAtTheBase(t *testing.T) {
 			shown(many.Complex), len(many.LeftOut), many.Uncompared, many.ComplexCrossed, shown(many.Deeper))
 	}
 }
+
+func TestBuildKeepsNoFunctionText(t *testing.T) {
+	secret := strings.Replace(snapshottest.Function("seven", 7, 0), "  return a;", "  const zzsecret = 'zzsecret text';\n  return a;", 1)
+	got := functionsIn(t, conventions.Default(), map[string]string{"src/old.ts": snapshottest.Function("other", 1, 0)}, map[string]string{"src/a.ts": secret})
+	if text := fmt.Sprintf("%+v", got); strings.Contains(text, "zzsecret") || len(got.Complex) != 1 {
+		t.Errorf("Build(a function with a secret local).Functions = %s, want the function listed and none of its text", text)
+	}
+}
