@@ -250,34 +250,75 @@ func functionChanges(rules conventions.Rules, changes []Change, m measured, miss
 		c.reasonOK = float64(c.change.Nesting) >= nest.Value || c.change.Repeated != nil
 		kept = append(kept, c)
 	}
-	slices.SortFunc(result.LeftOut, func(a, b LeftOutFunction) int {
-		return cmp.Or(cmp.Compare(a.Path, b.Path), cmp.Compare(a.Name, b.Name))
-	})
-	var complexList, deeperList []FunctionChange
+	byRise := func(a, b FunctionChange) int {
+		return cmp.Or(cmp.Compare(b.Complexity-b.ComplexityBefore, a.Complexity-a.ComplexityBefore), cmp.Compare(b.Complexity, a.Complexity), byPlace(a, b))
+	}
+	byDepth := func(a, b FunctionChange) int {
+		return cmp.Or(cmp.Compare(b.Nesting-b.NestingBefore, a.Nesting-a.NestingBefore), cmp.Compare(b.Complexity, a.Complexity), byPlace(a, b))
+	}
+	checks := map[place]copyCheck{}
+	removed := map[place]bool{}
+	// measure keeps, in rank order, the candidates no copy at the base explains, until PerMeasure are kept or its
+	// functionChecks comparisons are spent; a function compared once is not compared again.
+	measure := func(list []candidate, rank func(a, b FunctionChange) int) (kept []FunctionChange, crossed int) {
+		slices.SortFunc(list, func(a, b candidate) int { return rank(a.change, b.change) })
+		spent := 0
+		for i, c := range list {
+			if len(kept) == fr.PerMeasure {
+				crossed += countFunc(list[i:], func(c candidate) bool { return !removed[placeOf(c.change)] })
+				break
+			}
+			key := placeOf(c.change)
+			if removed[key] {
+				continue
+			}
+			check, done := checks[key]
+			if !done {
+				if spent == functionChecks {
+					result.Uncompared += countFunc(list[i:], func(c candidate) bool {
+						_, done := checks[placeOf(c.change)]
+						return !done && !removed[placeOf(c.change)]
+					})
+					crossed += countFunc(list[i:], func(c candidate) bool { return !removed[placeOf(c.change)] })
+					break
+				}
+				check = copyAtBase(rules, c, lines.added(c.change.Path), before.Files, beforeContent, nowContent[c.change.Path])
+				checks[key] = check
+				spent++
+			}
+			if check.source != "" {
+				removed[key] = true
+				result.LeftOut = append(result.LeftOut, LeftOutFunction{Path: c.change.Path, Name: c.change.Name, Reason: Copied, Source: check.source})
+				continue
+			}
+			c.change.CopyFiles, c.change.ClosestFile, c.change.ClosestShare = check.files, check.closest, check.closestShare
+			kept = append(kept, c.change)
+			crossed++
+		}
+		return kept, crossed
+	}
+	var complexCandidates []candidate
 	for _, c := range kept {
 		if c.complex && c.reasonOK {
-			complexList = append(complexList, c.change)
+			complexCandidates = append(complexCandidates, c)
 		}
 	}
-	slices.SortFunc(complexList, func(a, b FunctionChange) int {
-		return cmp.Or(cmp.Compare(b.Complexity-b.ComplexityBefore, a.Complexity-a.ComplexityBefore), cmp.Compare(b.Complexity, a.Complexity), byPlace(a, b))
-	})
-	result.ComplexCrossed = len(complexList)
-	result.Complex = complexList[:min(len(complexList), fr.PerMeasure)]
+	result.Complex, result.ComplexCrossed = measure(complexCandidates, byRise)
 	listed := map[place]bool{}
 	for _, c := range result.Complex {
 		listed[placeOf(c)] = true
 	}
+	var deeperCandidates []candidate
 	for _, c := range kept {
-		if c.deeper && !listed[placeOf(c.change)] {
-			deeperList = append(deeperList, c.change)
+		if c.deeper && !listed[placeOf(c.change)] && !removed[placeOf(c.change)] {
+			deeperCandidates = append(deeperCandidates, c)
 		}
 	}
-	slices.SortFunc(deeperList, func(a, b FunctionChange) int {
-		return cmp.Or(cmp.Compare(b.Nesting-b.NestingBefore, a.Nesting-a.NestingBefore), cmp.Compare(b.Complexity, a.Complexity), byPlace(a, b))
+	result.Deeper, result.DeeperCrossed = measure(deeperCandidates, byDepth)
+	result.Checks = functionChecks
+	slices.SortFunc(result.LeftOut, func(a, b LeftOutFunction) int {
+		return cmp.Or(cmp.Compare(a.Path, b.Path), cmp.Compare(a.Name, b.Name))
 	})
-	result.DeeperCrossed = len(deeperList)
-	result.Deeper = deeperList[:min(len(deeperList), fr.PerMeasure)]
 	return result
 }
 
@@ -379,4 +420,14 @@ func introducedBlock(rules conventions.Rules, c candidate, added []LineRange, li
 		return []LineRange{{first.startLine, first.endLine}, {second.startLine, second.endLine}}
 	}
 	return nil
+}
+
+func countFunc[T any](list []T, keep func(T) bool) int {
+	n := 0
+	for _, x := range list {
+		if keep(x) {
+			n++
+		}
+	}
+	return n
 }

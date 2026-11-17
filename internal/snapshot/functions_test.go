@@ -394,3 +394,86 @@ func TestBuildLeavesOutFilesFromAnotherProject(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildLeavesOutCopiesOfCodeAtTheBase(t *testing.T) {
+	fn := snapshottest.Function
+	f7 := fn("seven", 7, 0)
+	long := func(text string) string {
+		first := strings.Index(text, "\n") + 1
+		return text[:first] + "  const configurationValue = resolveConfiguration(a);\n" + text[first:]
+	}
+	other := strings.ReplaceAll(fn("other", 7, 0), "(a >", "(a <")
+	nested := strings.Join(strings.SplitAfter(other, "\n")[1:15], "")
+	grow := fn("grow", 5, 4)
+	ret := strings.LastIndex(grow, "  return a;\n")
+	twice := func(text string) string {
+		var out, run []string
+		for _, line := range strings.SplitAfter(text, "\n") {
+			if strings.HasPrefix(line, "  if (a === ") && strings.HasSuffix(line, "}\n") {
+				run = append(run, line)
+				continue
+			}
+			out = append(out, run...)
+			out = append(out, run...)
+			run = nil
+			out = append(out, line)
+		}
+		return strings.Join(out, "")
+	}
+	names := map[string]string{"lib/deep/old.ts": f7}
+	for i := 1; i <= 25; i++ {
+		names[fmt.Sprintf("src/m%02d.ts", i)] = "export const seven = 1;\n"
+	}
+	var ten, tenAndFresh strings.Builder
+	for i := 1; i <= 10; i++ {
+		ten.WriteString(fn(fmt.Sprintf("c%02d", i), 8, 0))
+	}
+	tenAndFresh.WriteString(ten.String() + fn("fresh", 7, 0))
+	cases := []struct {
+		name             string
+		base, now        map[string]string
+		complex, leftOut []string
+	}{
+		{"the same name", map[string]string{"src/old.ts": f7}, map[string]string{"src/old.ts": f7, "src/new.ts": f7},
+			nil, []string{"src/new.ts seven copied src/old.ts"}},
+		{"another name, two long names", map[string]string{"src/old.ts": long(f7)}, map[string]string{"src/old.ts": long(f7), "src/new.ts": long(fn("renamed", 7, 0))},
+			nil, []string{"src/new.ts renamed copied src/old.ts"}},
+		{"another name, one long name", map[string]string{"src/old.ts": f7}, map[string]string{"src/old.ts": f7, "src/new.ts": fn("lonely", 7, 0)},
+			[]string{"src/new.ts lonely c=28 n=7@8"}, nil},
+		{"code of its own file", map[string]string{"src/a.ts": grow + "\n" + other}, map[string]string{"src/a.ts": grow[:ret] + nested + grow[ret:] + "\n" + other},
+			nil, []string{"src/a.ts grow copied src/a.ts"}},
+		{"a block of its own body", map[string]string{"src/a.ts": fn("grow", 5, 8)}, map[string]string{"src/a.ts": twice(fn("grow", 5, 8))},
+			[]string{"src/a.ts grow c=23→31 n=5→5@6"}, nil},
+	}
+	for _, tc := range cases {
+		got := functionsIn(t, conventions.Default(), tc.base, tc.now)
+		if !slices.Equal(shown(got.Complex), tc.complex) || !slices.Equal(leftOut(got.LeftOut), tc.leftOut) {
+			t.Errorf("Build(%s).Functions = complex %q, left out %q; want %q, %q", tc.name, shown(got.Complex), leftOut(got.LeftOut), tc.complex, tc.leftOut)
+		}
+		if tc.name == "another name, one long name" && len(got.Complex) == 1 && got.Complex[0].CopyFiles != 0 {
+			t.Errorf("Build(%s).Functions.Complex[0].CopyFiles = %d, want 0", tc.name, got.Complex[0].CopyFiles)
+		}
+	}
+	defaults := conventions.Default()
+	defaults.Limits.FunctionNesting.Value = 99
+	own := functionsIn(t, defaults, map[string]string{"src/a.ts": fn("grow", 5, 8)}, map[string]string{"src/a.ts": twice(fn("grow", 5, 8))})
+	if !slices.Equal(shown(own.Complex), []string{"src/a.ts grow c=23→31 n=5→5@6"}) || len(own.LeftOut) != 0 {
+		t.Errorf("Build(a block of its own body).Functions = complex %q, left out %q; want grow listed, nothing left out", shown(own.Complex), leftOut(own.LeftOut))
+	}
+	far := functionsIn(t, conventions.Default(), names, maps.Collect(func(yield func(string, string) bool) {
+		for k, v := range names {
+			if !yield(k, v) {
+				return
+			}
+		}
+		yield("src/new.ts", f7)
+	}))
+	if len(far.Complex) != 1 || far.Complex[0].CopyFiles != 20 {
+		t.Errorf("Build(the name in 25 nearer files).Functions = %+v, want seven listed after 20 files compared", far)
+	}
+	many := functionsIn(t, conventions.Default(), map[string]string{"src/lib.ts": ten.String()}, map[string]string{"src/lib.ts": ten.String(), "src/new.ts": tenAndFresh.String()})
+	if len(many.Complex) != 0 || len(many.LeftOut) != 10 || many.Uncompared != 1 || many.ComplexCrossed != 1 || !slices.Equal(shown(many.Deeper), []string{"src/new.ts fresh c=28 n=7@198"}) {
+		t.Errorf("Build(ten copies before one of its own).Functions = complex %q, %d left out, uncompared %d, crossed %d, deeper %q; want none, 10, 1, 1, fresh",
+			shown(many.Complex), len(many.LeftOut), many.Uncompared, many.ComplexCrossed, shown(many.Deeper))
+	}
+}

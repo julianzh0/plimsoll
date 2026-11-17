@@ -1,6 +1,7 @@
 package snapshot
 
 import (
+	"bytes"
 	"cmp"
 	"slices"
 	"strings"
@@ -366,4 +367,138 @@ func removedTwice(rules conventions.Rules, path string, block blockSpan, lines *
 		}
 	}
 	return false
+}
+
+// functionChecks is how many functions of one measure are compared with the code at the base in one question.
+// NOTE: provisional, derived in Task 15 from the functions per change that cross a rule in the field repositories.
+const functionChecks = 10
+
+// copyCheck is the result of comparing one function with the code at the base.
+type copyCheck struct {
+	files        int     // base files compared
+	source       string  // the first file that holds it as a copy, "" for none
+	closest      string  // the compared file that held the largest share of it
+	closestShare float64 // that share
+}
+
+// copyAtBase compares a candidate with the base code files of its entry that may hold it: those that hold its name as a
+// whole word, or every one of its long names (at least two), the nearest first, at most CopyFiles; for a function that
+// existed also its own base file, without its old body. A file holds it as a copy when CopyShare or more of its counted
+// tokens (all for a new function, those on added lines otherwise) lie in runs of Run tokens found in that file.
+func copyAtBase(rules conventions.Rules, c candidate, added []LineRange, baseFiles []File, base map[string][]byte, nowContent []byte) copyCheck {
+	fr := rules.FunctionRules
+	language, known := rules.LanguageOf(c.change.Path)
+	if !known || language.Tokens == nil {
+		return copyCheck{}
+	}
+	toks := tokensOf(language.Tokens, nowContent[c.fn.start:c.fn.end], c.change.Start)
+	onAdded := func(line int) bool {
+		return slices.ContainsFunc(added, func(r LineRange) bool { return r.Start <= line && line <= r.End })
+	}
+	counted := make([]bool, len(toks))
+	n := 0
+	for i, t := range toks {
+		counted[i] = c.change.New || onAdded(t.line)
+		if counted[i] {
+			n++
+		}
+	}
+	if n == 0 || len(toks) < fr.Run {
+		return copyCheck{}
+	}
+	text := func(t token) string { return string(nowContent[c.fn.start+t.start : c.fn.start+t.end]) }
+	var long []string
+	for _, t := range toks {
+		word := strings.Trim(text(t), "\"'`")
+		if t.word && word != c.change.Name && len(word) >= fr.LongNameLength && !slices.Contains(long, word) {
+			long = append(long, word)
+		}
+	}
+	slices.SortFunc(long, func(a, b string) int { return cmp.Or(len(b)-len(a), cmp.Compare(a, b)) })
+	long = long[:min(len(long), fr.LongNames)]
+	for i := range long {
+		long[i] = long[i][:min(len(long[i]), 80)]
+	}
+	holds := func(content []byte) bool {
+		if len(c.change.Name) >= fr.NameLength && holdsWord(content, c.change.Name) {
+			return true
+		}
+		return len(long) >= 2 && !slices.ContainsFunc(long, func(w string) bool { return !bytes.Contains(content, []byte(w)) })
+	}
+	var files []string
+	for _, f := range baseFiles {
+		other, readable := rules.LanguageOf(f.Path)
+		if readable && other.Name == language.Name && base[f.Path] != nil && holds(base[f.Path]) {
+			files = append(files, f.Path)
+		}
+	}
+	shared := func(p string) int {
+		a, b := strings.Split(p, "/"), strings.Split(c.change.Path, "/")
+		k := 0
+		for k < len(a)-1 && k < len(b)-1 && a[k] == b[k] {
+			k++
+		}
+		return k
+	}
+	slices.SortFunc(files, func(a, b string) int { return cmp.Or(shared(b)-shared(a), cmp.Compare(a, b)) })
+	files = files[:min(len(files), fr.CopyFiles)]
+	if !c.change.New && !slices.Contains(files, c.change.BasePath) && base[c.change.BasePath] != nil {
+		files = append(files, c.change.BasePath)
+	}
+	runs := make([]uint64, len(toks)-fr.Run+1)
+	for i := range runs {
+		runs[i] = runHash(toks[i : i+fr.Run])
+	}
+	result := copyCheck{files: len(files)}
+	for _, path := range files {
+		fileToks := tokensOf(language.Tokens, base[path], 1)
+		if path == c.change.BasePath {
+			fileToks = slices.DeleteFunc(fileToks, func(t token) bool { return c.change.BaseStart <= t.line && t.line <= c.change.BaseEnd })
+		}
+		present := map[uint64]bool{}
+		for i := 0; i+fr.Run <= len(fileToks); i++ {
+			present[runHash(fileToks[i:i+fr.Run])] = true
+		}
+		covered := make([]bool, len(toks))
+		for i, h := range runs {
+			if present[h] {
+				for j := i; j < i+fr.Run; j++ {
+					covered[j] = true
+				}
+			}
+		}
+		hit := 0
+		for i := range toks {
+			if counted[i] && covered[i] {
+				hit++
+			}
+		}
+		share := float64(hit) / float64(n)
+		if share > result.closestShare {
+			result.closest, result.closestShare = path, share
+		}
+		if share >= fr.CopyShare {
+			result.source = path
+			return result
+		}
+	}
+	return result
+}
+
+// holdsWord says whether content holds the name with no ASCII letter, digit or _ right before or after it.
+func holdsWord(content []byte, name string) bool {
+	wordByte := func(b byte) bool {
+		return b == '_' || '0' <= b && b <= '9' || 'a' <= b && b <= 'z' || 'A' <= b && b <= 'Z'
+	}
+	for at := 0; ; {
+		i := bytes.Index(content[at:], []byte(name))
+		if i < 0 {
+			return false
+		}
+		start, end := at+i, at+i+len(name)
+		if (start == 0 || !wordByte(content[start-1])) && (end == len(content) || !wordByte(content[end])) {
+			return true
+		}
+		at = start + 1
+	}
 }
