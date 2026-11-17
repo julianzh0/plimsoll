@@ -63,6 +63,7 @@ func TestBuildListsFunctionsAChangeMadeComplexOrDeeper(t *testing.T) {
 		{"a test file", nil, map[string]string{"tests/a.test.ts": fn("seven", 7, 0)}, nil, nil, nil, [2]int{0, 0}},
 		{"other code", nil, map[string]string{"scripts/a.ts": fn("seven", 7, 0)}, nil, nil, nil, [2]int{0, 0}},
 		{"a function the change removed", one(fn("seven", 7, 0) + "\n" + fn("kept", 1, 0)), one(fn("kept", 1, 0)), nil, nil, nil, [2]int{0, 0}},
+		{"only the line ends changed", one(fn("seven", 7, 0)), one(strings.ReplaceAll(fn("seven", 7, 0), "\n", "\r\n")), nil, nil, nil, [2]int{0, 0}},
 	}
 	for _, tc := range cases {
 		got := functionsIn(t, conventions.Default(), tc.base, tc.now, tc.changes...)
