@@ -26,8 +26,9 @@ func Build(source Source, rules conventions.Rules, readings *Readings) Snapshot 
 	rules = withSharedSuffixes(rules, source.Now)
 	limits, declaredLimits := declaredLimits(rules, ownNow, ownBefore)
 	rules.Limits = limits
+	question := readings.begin()
 	now := tree(rules, source.Now, nil)
-	nowReadings := readings.side(rules, nowContent, now.Files)
+	nowReadings := readings.side(rules, nowContent, now.Files, question)
 	withTestLines(now.Files, nowReadings)
 	unchanged := map[string]File{}
 	for _, file := range now.Files {
@@ -36,7 +37,7 @@ func Build(source Source, rules conventions.Rules, readings *Readings) Snapshot 
 		}
 	}
 	before := tree(rules, beforeEntries, unchanged)
-	beforeReadings := readings.side(rules, beforeContent, before.Files)
+	beforeReadings := readings.side(rules, beforeContent, before.Files, question)
 	withTestLines(before.Files, beforeReadings)
 	unreadable := slices.Clone(source.Unreadable)
 	now.Settings, before.Settings = settings(source.Now), settings(beforeEntries)
