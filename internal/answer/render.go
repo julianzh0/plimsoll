@@ -81,7 +81,7 @@ func marks(text *strings.Builder, a Answer, w Wording) {
 			commits, files = a.Footprint.Commits, a.Footprint.Files
 		}
 		if a.Question == Status && len(a.ReportOnly)+len(a.Touched)+len(a.Summaries) > 0 {
-			fmt.Fprintf(text, "No mark to act on since `%s` (%s, %s compared); what else the change did is counted below and listed in `report`.\n",
+			fmt.Fprintf(text, "No new or grown mark to list since `%s` (%s, %s compared); the lines below count what else the change did, and `report` lists it.\n",
 				a.Base.Asked, Plural(commits, "commit"), Plural(files, "file"))
 		} else {
 			fmt.Fprintf(text, "No new or grown marks since `%s` (%s, %s compared).\n", a.Base.Asked, Plural(commits, "commit"), Plural(files, "file"))

@@ -121,7 +121,7 @@ func (Detector) Standing(items []answer.Mark) string {
 		fragments = append(fragments, fmt.Sprintf("%d %s over %s lines", files[limit], noun, answer.Count(limit)))
 	}
 	if grownPath != "" && len(fragments) > 0 {
-		fragments[len(fragments)-1] += fmt.Sprintf(", the most grown `%s` (+%s)", grownPath, answer.Count(grownMost))
+		fragments[len(fragments)-1] += fmt.Sprintf(" grew, `%s` the most (+%s)", grownPath, answer.Count(grownMost))
 	}
 	if manifests > 0 {
 		named := answer.QuotedList(dependencies[:min(len(dependencies), namesShown)])

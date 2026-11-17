@@ -422,7 +422,7 @@ func TestAStatusWithoutMarksSaysWhatItLeftToTheLinesBelow(t *testing.T) {
 	f := findings()
 	f.Marks = f.Marks[1:2] // the grown ratio alone
 	text := Render(Assemble(Status, "0.1.0", s, []Result{{"shape", f}}), wording())
-	if want := "No mark to act on since `main`"; !strings.Contains(text, want) || strings.Contains(text, "No new or grown marks") {
+	if want := "No new or grown mark to list since `main` (5 commits, 5 files compared); the lines below count what else the change did, and `report` lists it."; !strings.Contains(text, want) {
 		t.Errorf("Render(status with only a report-only mark) =\n%s\nwant %q and no all-clear", text, want)
 	}
 }
