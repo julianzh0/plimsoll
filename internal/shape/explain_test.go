@@ -25,6 +25,8 @@ func explain(t *testing.T, source snapshot.Source, rule string) []string {
 
 func TestExplainGivesTheEvidenceOfEachRule(t *testing.T) {
 	sizeSource := snapshottest.Files(map[string]string{"src/a.ts": snapshottest.Lines(1480)}, map[string]string{"src/a.ts": snapshottest.Lines(1620)})
+	busy := snapshottest.Files(map[string]string{"src/a.ts": snapshottest.Lines(1480)}, map[string]string{"src/a.ts": snapshottest.Lines(1620)})
+	busy.Commits = []snapshot.Commit{snapshottest.Commit("c2", "src/a.ts"), snapshottest.Commit("c1", "src/a.ts", "src/b.ts"), snapshottest.Commit("c0", "src/b.ts")}
 	renamed := snapshottest.Files(map[string]string{"old/a.ts": snapshottest.Lines(1600)}, map[string]string{"src/a.ts": snapshottest.Lines(1600)})
 	renamed.Changes = []snapshot.Change{{Path: "src/a.ts", From: "old/a.ts"}}
 	defining := "test(\"x\", () => {});\n" + snapshottest.Lines(14)
@@ -46,6 +48,12 @@ func TestExplainGivesTheEvidenceOfEachRule(t *testing.T) {
 			"lines now: 1,620", "lines at the base: 1,480", "counted as: product code (typescript)",
 			"limit: 1,000 lines (plimsoll's default, taken from Pylint and SonarQube)",
 			"a code file by the shared rules: not documentation or data by suffix, not in a skipped folder, not binary, not generated",
+		}},
+		{"a file with history", busy, "file-size", []string{
+			"lines now: 1,620", "lines at the base: 1,480", "counted as: product code (typescript)",
+			"limit: 1,000 lines (plimsoll's default, taken from Pylint and SonarQube)",
+			"a code file by the shared rules: not documentation or data by suffix, not in a skipped folder, not binary, not generated",
+			"changes to it in the 3 usable commits read: 2",
 		}},
 		{"a renamed file", renamed, "file-size", []string{
 			"lines now: 1,600", "lines at the base: 1,600, as `old/a.ts`", "counted as: product code (typescript)",

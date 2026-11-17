@@ -358,7 +358,7 @@ func Default() Rules {
 		// Seven outside reviewers judged real answers per kind of mark (2026-11-17); these they judged too noisy for
 		// status and worth keeping in report.
 		ReportOnly: []string{
-			"shape.file-size grown", "shape.dependencies", "shape.settings", "process.doc-churn", "settings.compose-only",
+			"shape.file-size grown", "shape.settings", "process.doc-churn", "settings.compose-only",
 			"co-change.pair", "links.test-import", "links.folder-cycle",
 		},
 		Limits: Limits{

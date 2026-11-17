@@ -49,11 +49,15 @@ func sizeEvidence(s snapshot.Snapshot, m answer.Mark) []string {
 	if language == "" {
 		language = "no language entry"
 	}
-	return append(lines,
+	lines = append(lines,
 		fmt.Sprintf("counted as: %s (%s)", file.Role, language),
 		fmt.Sprintf("limit: %s lines (%s)", answer.Count(file.Limit.Value), file.Limit.Source),
 		"a code file by the shared rules: not documentation or data by suffix, not in a skipped folder, not binary, not generated",
 	)
+	if s.History.Usable > 0 {
+		lines = append(lines, fmt.Sprintf("changes to it in the %s read: %d", answer.Plural(s.History.Usable, "usable commit"), s.History.Touches()[path].All))
+	}
+	return lines
 }
 
 func ratioEvidence(s snapshot.Snapshot, m answer.Mark) []string {

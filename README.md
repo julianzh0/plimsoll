@@ -339,8 +339,8 @@ still run, interpreted and about 80 times slower.
 Something over its limit at the base and no longer over it is reported as resolved. Something over it on both
 sides that did not grow is standing.
 
-Some kinds are shown in `report` only: a file that grew while already over its line limit, runtime dependencies and
-settings added, documentation churn, compose-only settings, pairs of files that changed together, imports of test
+Some kinds are shown in `report` only: a file that grew while already over its line limit, settings added,
+documentation churn, compose-only settings, pairs of files that changed together, imports of test
 code and folder cycles. Seven outside models judged real answers of each kind and found them useful as background
 but too noisy to show on every change. `status` counts them in one line; `report` lists them; `explain` gives their
 evidence.

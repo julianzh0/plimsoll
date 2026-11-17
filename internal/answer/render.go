@@ -63,7 +63,13 @@ func header(text *strings.Builder, a Answer) {
 		modified = " (working tree modified)"
 	}
 	fmt.Fprintf(text, "plimsoll %s %s: %s, head %s%s\n", a.Version, a.Question, base, Short(a.Head.Commit), modified)
-	fmt.Fprintf(text, "%d new, %d grown, %d resolved\n", a.Counts.New, a.Counts.Grown, a.Counts.Resolved)
+	if a.Question != Explain {
+		counts := fmt.Sprintf("%d new, %d grown, %d resolved", a.Counts.New, a.Counts.Grown, a.Counts.Resolved)
+		if len(a.ReportOnly) > 0 {
+			counts += fmt.Sprintf("; %d more in `report` only", len(a.ReportOnly))
+		}
+		text.WriteString(counts + "\n")
+	}
 	if f := a.Footprint; f != nil {
 		ratio := "no product line added"
 		if f.TestPerProduct != nil {

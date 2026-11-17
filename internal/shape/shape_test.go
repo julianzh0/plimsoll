@@ -99,6 +99,10 @@ func TestDetectOnEachLanguageSample(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			source := snapshottest.Load(t, "../snapshot/testdata/"+tc.name)
 			findings := detect(t, source, conventions.Default())
+			// A manifest new since the base names its dependencies; an unchanged one only counts them.
+			added := source
+			added.Before = slices.DeleteFunc(slices.Clone(source.Before), func(e snapshot.Entry) bool { _, named := tc.dependencies[e.Path]; return named })
+			withNames := detect(t, added, conventions.Default())
 			got := []float64{value(t, findings, "product lines", ""), value(t, findings, "test lines", ""), value(t, findings, "other code lines", ""), value(t, findings, "test ratio", "")}
 			if want := []float64{tc.product, tc.test, tc.other, tc.ratio}; !slices.Equal(got, want) {
 				t.Errorf("Detect(%s) product, test, other, ratio = %v, want %v", tc.name, got, want)
@@ -113,8 +117,11 @@ func TestDetectOnEachLanguageSample(t *testing.T) {
 				t.Errorf("Detect(%s) largest code files = %v, want %v", tc.name, largest, tc.largest)
 			}
 			for manifest, names := range tc.dependencies {
-				if s, found := statistic(findings, "runtime dependencies", manifest); !found || s.Note != names {
-					t.Errorf("Detect(%s) dependencies of %s = %+v, want names %q", tc.name, manifest, s, names)
+				if s, found := statistic(withNames, "runtime dependencies", manifest); !found || s.Note != names {
+					t.Errorf("Detect(%s, %s new) dependencies = %+v, want names %q", tc.name, manifest, s, names)
+				}
+				if s, found := statistic(findings, "runtime dependencies", manifest); !found || s.Note != "" {
+					t.Errorf("Detect(%s, %s unchanged) dependencies = %+v, want the count without names", tc.name, manifest, s)
 				}
 			}
 			for _, want := range append(tc.notAnalysed, "no commit in the history, so no churn") {

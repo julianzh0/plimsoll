@@ -386,6 +386,14 @@ func TestReportOnlyMarksAreCountedInStatusAndListedInReport(t *testing.T) {
 		t.Fatalf("Assemble(status) = counts %+v, %d marks, report only %+v; want {1 0 0}, 1, the grown mark",
 			status.Counts, len(status.Marks), status.ReportOnly)
 	}
+	if text := Render(status, wording()); !strings.Contains(text, "\n1 new, 0 grown, 0 resolved; 1 more in `report` only\n") {
+		t.Errorf("Render(status) =\n%s\nwant the counts to name the report-only mark", text)
+	}
+	explained := status
+	explained.Question = Explain
+	if text := Render(explained, wording()); strings.Contains(text, " grown, ") {
+		t.Errorf("Render(explain) =\n%s\nwant no counts of the whole answer", text)
+	}
 	line := "\nIn `report` only (not counted here): 1 standing.\n"
 	if text := Render(status, wording()); !strings.Contains(text, line) {
 		t.Errorf("Render(status) =\n%s\nwant it to hold %q", text, line)

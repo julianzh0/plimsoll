@@ -98,7 +98,9 @@ func (Detector) Detect(s snapshot.Snapshot) answer.Findings {
 		}
 		previous, existed := manifestAt(s.Before, manifest.Path)
 		row := stat("runtime dependencies", manifest.Path, float64(len(manifest.Dependencies)), float64(len(previous.Dependencies)), existed, "")
-		row.Note = strings.Join(manifest.Dependencies, ", ")
+		if !existed || !slices.Equal(manifest.Dependencies, previous.Dependencies) {
+			row.Note = strings.Join(manifest.Dependencies, ", ")
+		}
 		f.Statistics = append(f.Statistics, row)
 		f.Marks = append(f.Marks, dependencyMark(manifest, previous, existed)...)
 	}
