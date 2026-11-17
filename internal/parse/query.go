@@ -38,6 +38,7 @@ type instance struct {
 	ctx     context.Context
 	mod     api.Module
 	queries map[string]*query
+	kinds   []string // the grammar's kind names, read on the first walk
 }
 
 func newInstance(ctx context.Context, mod api.Module) *instance {

@@ -48,6 +48,10 @@ func TestEveryGrammarAnswersAQuery(t *testing.T) {
 			t.Errorf("Read(%q, (_) @node, %q) = %d matches, %d top, %v; want some of both and no error",
 				grammar, lines[grammar], len(result.Matches), len(result.Top), err)
 		}
+		tree, err := parser.Nodes(grammar, []byte(lines[grammar]))
+		if err != nil || len(tree.Nodes) == 0 || len(tree.Kinds) == 0 {
+			t.Errorf("Nodes(%q, %q) = %d nodes, %d kinds, %v; want some of both and no error", grammar, lines[grammar], len(tree.Nodes), len(tree.Kinds), err)
+		}
 	}
 }
 
@@ -112,6 +116,10 @@ func TestADeeplyNestedFileIsReadOrRefused(t *testing.T) {
 	if _, err := parser.Read("python", "(identifier) @x", []byte("a = 1\n")); err != nil {
 		t.Errorf("Read(python, a = 1) after a deeply nested file error = %v, want none", err)
 	}
+	_, _ = parser.Nodes("python", []byte(deep))
+	if _, err := parser.Nodes("python", []byte("a = 1\n")); err != nil {
+		t.Errorf("Nodes(python, a = 1) after a deeply nested file error = %v, want none", err)
+	}
 }
 
 func TestAFileOverTheCapIsAnErrorAndTheNextCallWorks(t *testing.T) {
@@ -124,6 +132,12 @@ func TestAFileOverTheCapIsAnErrorAndTheNextCallWorks(t *testing.T) {
 	}
 	if _, err := parser.Read("go", "(identifier) @x", goVars(wellUnderTheCap)); err != nil {
 		t.Errorf("Read(go, %d var lines) error = %v, want none: the size is what fails", wellUnderTheCap, err)
+	}
+	if _, err := parser.Nodes("go", goVars(overTheCap)); err == nil {
+		t.Errorf("Nodes(go, %d var lines) error = nil, want the cap of %d MiB", overTheCap, parse.MemoryCapMiB)
+	}
+	if _, err := parser.Nodes("go", []byte("package a\n")); err != nil {
+		t.Errorf("Nodes(go, package a) after a file over the cap error = %v, want none", err)
 	}
 }
 
@@ -141,10 +155,14 @@ func TestReadsFromManyGoroutinesAllSucceed(t *testing.T) {
 	parser := parsetest.Parser(t)
 	inputs := []struct{ grammar, content string }{{"python", "a = 1\nb = 2\n"}, {"go", "package a\nvar b = 1\n"}}
 	want := make([]parse.Result, len(inputs))
+	wantTrees := make([]parse.Tree, len(inputs))
 	for i, in := range inputs {
 		var err error
 		if want[i], err = parser.Read(in.grammar, "(identifier) @x", []byte(in.content)); err != nil {
 			t.Fatalf("Read(%s) error = %v", in.grammar, err)
+		}
+		if wantTrees[i], err = parser.Nodes(in.grammar, []byte(in.content)); err != nil {
+			t.Fatalf("Nodes(%s) error = %v", in.grammar, err)
 		}
 	}
 	var wg sync.WaitGroup
@@ -155,6 +173,11 @@ func TestReadsFromManyGoroutinesAllSucceed(t *testing.T) {
 				got, err := parser.Read(in.grammar, "(identifier) @x", []byte(in.content))
 				if err != nil || !reflect.DeepEqual(got, want[g%len(inputs)]) {
 					t.Errorf("Read(%s) from goroutine %d = %+v, %v; want %+v", in.grammar, g, got, err, want[g%len(inputs)])
+					return
+				}
+				tree, err := parser.Nodes(in.grammar, []byte(in.content))
+				if err != nil || !reflect.DeepEqual(tree, wantTrees[g%len(inputs)]) {
+					t.Errorf("Nodes(%s) from goroutine %d = %d nodes, %v; want %d", in.grammar, g, len(tree.Nodes), err, len(wantTrees[g%len(inputs)].Nodes))
 					return
 				}
 			}

@@ -2,6 +2,7 @@
 // with tree-sitter's core and the grammar's parser. LANGUAGE names the grammar's function (for example
 // tree_sitter_go). The host compiles a query once, then runs it per file and reads every capture of every match.
 #include <stdlib.h>
+#include <string.h>
 #include <tree_sitter/api.h>
 
 #ifdef __wasm__
@@ -21,16 +22,13 @@ typedef struct { uint32_t match, pattern, capture, start_byte, end_byte, start_r
 static Capture *captures;
 static uint32_t capture_count, capture_capacity;
 static TSQueryCursor *query_cursor;
-static uint32_t query_error_offset, query_error_type;
+static uint32_t query_error_offset;
 
 EXPORT("shim_query_new") TSQuery *shim_query_new(const char *src, uint32_t len) {
   TSQueryError type;
-  TSQuery *q = ts_query_new(LANGUAGE(), src, len, &query_error_offset, &type);
-  query_error_type = type;
-  return q;
+  return ts_query_new(LANGUAGE(), src, len, &query_error_offset, &type);
 }
 EXPORT("shim_query_error_offset") uint32_t shim_query_error_offset(void) { return query_error_offset; }
-EXPORT("shim_query_error_type") uint32_t shim_query_error_type(void) { return query_error_type; }
 EXPORT("shim_query_capture_count") uint32_t shim_query_capture_count(TSQuery *q) { return ts_query_capture_count(q); }
 EXPORT("shim_query_capture_name") const char *shim_query_capture_name(TSQuery *q, uint32_t id, uint32_t *len) {
   return ts_query_capture_name_for_id(q, id, len);
@@ -84,3 +82,52 @@ EXPORT("shim_query_run") uint32_t shim_query_run(TSQuery *q, const char *src, ui
   return capture_count;
 }
 EXPORT("shim_query_captures") Capture *shim_query_captures(void) { return captures; }
+
+// The walk: every node of the tree in text order, a parent before its children.
+// flags: 1 named, 2 an ERROR node, 4 the name field of its parent.
+typedef struct { uint16_t kind, flags; uint32_t depth, start_byte, end_byte; } NodeRecord;
+static NodeRecord *nodes;
+static uint32_t node_count, node_capacity;
+
+static void add_node(NodeRecord r) {
+  if (node_count == node_capacity) {
+    node_capacity = node_capacity ? node_capacity * 2 : 4096;
+    NodeRecord *grown = realloc(nodes, node_capacity * sizeof(NodeRecord));
+    if (!grown) abort(); // address 0 is valid memory in WebAssembly
+    nodes = grown;
+  }
+  nodes[node_count++] = r;
+}
+
+EXPORT("shim_walk") uint32_t shim_walk(const char *src, uint32_t len) {
+  if (!parser) {
+    parser = ts_parser_new();
+    ts_parser_set_language(parser, LANGUAGE());
+  }
+  node_count = 0;
+  TSTree *tree = ts_parser_parse_string(parser, NULL, src, len);
+  TSTreeCursor c = ts_tree_cursor_new(ts_tree_root_node(tree));
+  uint32_t depth = 0;
+  for (;;) {
+    TSNode n = ts_tree_cursor_current_node(&c);
+    const char *field = ts_tree_cursor_current_field_name(&c);
+    uint16_t flags = (ts_node_is_named(n) ? 1 : 0) | (ts_node_is_error(n) ? 2 : 0) | (field && !strcmp(field, "name") ? 4 : 0);
+    add_node((NodeRecord){ts_node_symbol(n), flags, depth, ts_node_start_byte(n), ts_node_end_byte(n)});
+    if (ts_tree_cursor_goto_first_child(&c)) { depth++; continue; }
+    while (!ts_tree_cursor_goto_next_sibling(&c)) {
+      if (!ts_tree_cursor_goto_parent(&c)) goto done;
+      depth--;
+    }
+  }
+done:
+  ts_tree_cursor_delete(&c);
+  ts_tree_delete(tree);
+  return node_count;
+}
+EXPORT("shim_nodes") NodeRecord *shim_nodes(void) { return nodes; }
+EXPORT("shim_kind_count") uint32_t shim_kind_count(void) { return ts_language_symbol_count(LANGUAGE()); }
+EXPORT("shim_kind_name") const char *shim_kind_name(uint32_t id, uint32_t *len) {
+  const char *name = ts_language_symbol_name(LANGUAGE(), id);
+  *len = strlen(name);
+  return name;
+}
