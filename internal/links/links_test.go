@@ -402,13 +402,16 @@ func TestCycleMarks(t *testing.T) {
 		beforeOK := tc.before == nil && m.Measured.Before == nil || tc.before != nil && m.Measured.Before != nil && *m.Measured.Before == *tc.before
 		if m.ID != "links.cycle:"+tc.id || m.Change != tc.change || m.Measured.Value != tc.value || !beforeOK ||
 			m.Subject.Kind != "files" || m.Measured.Unit != "files" || m.Measured.Limit != nil ||
-			m.Measured.LimitSource != "files do not import each other in a ring" || m.Hint != hint {
+			m.Measured.LimitSource != "files do not import each other in a ring" || !strings.HasSuffix(m.Hint, hint) {
 			t.Errorf("%s: mark %+v %+v", tc.name, m, m.Measured)
 		}
 	}
 	newRing := marksOf(detect(t, snapshottest.Files(ring("a>b", "b>c"), ring("a>b", "b>c", "c>a"))), ruleCycle)[0]
 	if !slices.Equal(newRing.Subject.Paths, []string{"src/a.ts", "src/b.ts", "src/c.ts"}) {
 		t.Errorf("a new ring's subject = %q, want its three files sorted", newRing.Subject.Paths)
+	}
+	if want := "closed by `src/c.ts` line 1 importing `src/a.ts`, added by this change; " + hint; newRing.Hint != want {
+		t.Errorf("a new ring's hint = %q, want %q", newRing.Hint, want)
 	}
 
 	renamed := snapshottest.Files(ring("a>b", "b>a"), ring("z>b", "b>z"))

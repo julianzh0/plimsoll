@@ -62,7 +62,7 @@ func withLinks(f answer.Findings, s snapshot.Snapshot, languages []snapshot.Lang
 	if slices.ContainsFunc(languages, func(l snapshot.LanguageImports) bool { return l.NoRings == "" }) {
 		basePath := func(file string) []string { return []string{s.BasePath(file)} }
 		ringCreated := func(ring []string) bool { return added(now.ringLinks(ring)) }
-		f.Marks = append(f.Marks, cycleMarks(ruleCycle, nowRings, baseRings, basePath, ringCreated)...)
+		f.Marks = append(f.Marks, withClosingImports(cycleMarks(ruleCycle, nowRings, baseRings, basePath, ringCreated), now)...)
 		f.Statistics = append(f.Statistics, ringRows(nowRings, baseRings, now.rings(true), before.rings(true))...)
 		f.Notes = append(f.Notes, ringsNote)
 	}
