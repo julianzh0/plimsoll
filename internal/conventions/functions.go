@@ -21,6 +21,8 @@ type FunctionKinds struct {
 	Depth         []string // for the nesting measure: the other kinds that open a level
 	Blocks        []string // kinds whose named children are a block's statements
 	SwitchBlocks  []string // of Blocks, those whose children count only when their kind ends in "statement" or "declaration"
+	Declarators   []string // kinds the name search descends through to the innermost one (C, C++: int *f(), T& A::f())
+	Names         []string // kinds that name a function besides identifiers (C++: ~Foo, operator+)
 }
 
 // FunctionRules are the shared rules of the function marks: what is left out, and every number but the two limits.

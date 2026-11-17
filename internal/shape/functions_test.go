@@ -111,7 +111,6 @@ func TestDetectMarksFunctionsAChangeMadeComplexOrDeeper(t *testing.T) {
 		base, now map[string]string
 		want      string
 	}{
-		{nil, map[string]string{"src/a.c": "int f(void) { return 1; }\n"}, "functions are not measured for `c`"},
 		{map[string]string{"src/a.ts": broken[:first] + "    const = 1 +;\n" + broken[first:]}, map[string]string{"src/a.ts": fn("grow", 6, 6)},
 			"1 function holds a syntax error, now or at the base, and is not measured"},
 		{map[string]string{"src/a.ts": broken[:first] + "    const = 1 +;\n" + broken[first:] + strings.Replace(broken[:first], "grow", "keep", 1) + "    const = 1 +;\n" + broken[first:]},
@@ -120,6 +119,8 @@ func TestDetectMarksFunctionsAChangeMadeComplexOrDeeper(t *testing.T) {
 		{nil, map[string]string{"src/min.ts": strings.ReplaceAll(fn("seven", 7, 0), "\n", " ")},
 			"1 changed file has more than 110 bytes a line on average, so its functions were not measured: `src/min.ts`"},
 		{nil, map[string]string{"big.go": big.String()}, "the parser could not read the functions of 1 changed file: `big.go`"},
+		{nil, map[string]string{"big.c": strings.ReplaceAll(strings.ReplaceAll(big.String(), "package main\n", ""), "var v", "int v")},
+			"the parser could not read the functions of 1 changed file: `big.c`"},
 		{map[string]string{"src/lib.ts": ten.String()}, map[string]string{"src/lib.ts": ten.String(), "src/new.ts": ten.String() + fn("fresh", 7, 0)},
 			"1 function over a function limit was not compared with existing code (at most 10 per measure are), so it is not listed"},
 	}

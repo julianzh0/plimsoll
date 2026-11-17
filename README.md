@@ -192,7 +192,8 @@ defaults at the end of this section.
 plimsoll reads code with [tree-sitter](https://tree-sitter.github.io/) grammars that run inside it, so a comment or a
 string never counts as an import. Each language below names its grammar. The package and namespace lines of Java,
 Kotlin and C# are read by text patterns, since generated files declare them too. Macros often confuse the C and C++
-grammars, so a C/C++ file that its grammar reads only with an error is read line by line instead. A file that would
+grammars, so the includes of a C/C++ file that its grammar reads only with an error are read line by line instead; its
+functions are still read from the tree, and one that holds the error is counted as not measured. A file that would
 need more than 128 MiB to parse is not read, and the answer names it under "not analysed". A changed file in which
 the grammar meets a syntax error, such as an unfinished edit, is named there too, since an import after the error may
 be missed. On a system that forbids executable memory the grammars
@@ -216,7 +217,8 @@ still run, interpreted and about 80 times slower.
   in `include_directories` or `target_include_directories`. Such a file under several folders is ambiguous, and an
   include that a macro names is not readable. Every `#if` branch is read.
 - **Runtime dependencies:** `vcpkg.json`, the top-level `dependencies` without host tools.
-- **Functions:** not measured.
+- **Functions:** functions and, in C++, lambdas; a `goto` counts 1. A function a macro bends into code the grammar
+  cannot read is counted as holding a syntax error and is not measured.
 
 ### C#
 
@@ -316,7 +318,7 @@ still run, interpreted and about 80 times slower.
 - **Changed together:** each file is one unit.
 - **Added code:** top-level functions, types and exported values; a decorated or annotated declaration, a default
   export, generated code and example projects are left out.
-- **Functions:** measured in every language below except C and C++.
+- **Functions:** measured in every language below.
 
 ## Rules
 

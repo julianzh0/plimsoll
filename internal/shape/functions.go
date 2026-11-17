@@ -159,9 +159,6 @@ func functionSummary(fs snapshot.Functions) []string {
 // functionsNotAnalysed are what the function rules could not see.
 func functionsNotAnalysed(fs snapshot.Functions) []string {
 	var found []string
-	if len(fs.Unmeasured) > 0 {
-		found = append(found, "functions are not measured for "+answer.QuotedList(fs.Unmeasured))
-	}
 	if fs.Broken > 0 {
 		found = append(found, answer.Agree(fs.Broken, "function holds a syntax error, now or at the base, and is not measured",
 			"functions hold a syntax error, now or at the base, and are not measured"))

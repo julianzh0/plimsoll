@@ -145,7 +145,9 @@ func (rs *Readings) read(language conventions.Language, grammar string, content 
 	}
 	result, err := rs.parser.Read(grammar, query+syntaxErrorPattern, content)
 	if err != nil && language.LineReadWhenBroken {
-		return readByText(language, content), !errors.Is(err, parse.ErrUnavailable)
+		r = readByText(language, content)
+		r.functionsUnread = w.functions // the grammar read nothing, so no function either
+		return r, !errors.Is(err, parse.ErrUnavailable)
 	}
 	if err != nil {
 		r = reading{unread: true}
@@ -153,9 +155,10 @@ func (rs *Readings) read(language conventions.Language, grammar string, content 
 	}
 	r = decode(language, result, content)
 	if r.syntaxError && language.LineReadWhenBroken {
-		return readByText(language, content), true
+		// the imports by the text patterns; the functions still from the tree, each flagged where it holds the error
+		r = readByText(language, content)
 	}
-	if w.functions && language.Functions != nil {
+	if w.functions {
 		tree, err := rs.parser.Nodes(grammar, content)
 		if err != nil {
 			r.functionsUnread = true

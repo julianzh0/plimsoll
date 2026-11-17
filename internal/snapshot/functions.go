@@ -38,6 +38,7 @@ type table struct {
 	declared, bodies, closures, namedClosures, namedBy          kindSet
 	ifs, elseClauses, flatBranches, nesting, logic, parentheses kindSet
 	markup, depthIfs, depth, blocks, switches                   kindSet
+	declarators, names                                          kindSet
 	bodyAfter                                                   bool
 	bodyNames                                                   map[string]bool
 	elseKind                                                    int // the index of the kind "else", or -1
@@ -51,6 +52,7 @@ func tableOf(k conventions.FunctionKinds, tree parse.Tree) table {
 		logic: kindsOf(tree, k.Logic), parentheses: kindsOf(tree, k.Parentheses), markup: kindsOf(tree, k.Markup),
 		depthIfs: kindsOf(tree, k.DepthIfs), depth: kindsOf(tree, k.Depth), bodyAfter: k.BodyAfter,
 		blocks: kindsOf(tree, k.Blocks), switches: kindsOf(tree, k.SwitchBlocks), bodyNames: namesOf(k.Bodies),
+		declarators: kindsOf(tree, k.Declarators), names: kindsOf(tree, k.Names),
 		elseKind: slices.Index(tree.Kinds, "else"),
 	}
 }
@@ -138,7 +140,7 @@ func functionsOf(kinds conventions.FunctionKinds, tokens *regexp.Regexp, rules c
 			if !ok {
 				continue
 			}
-			f := t.measure(s, i, to, functionName(tree, s, i, content, t.bodyNames), content, lines)
+			f := t.measure(s, i, to, functionName(tree, s, t, i, content), content, lines)
 			if i >= inside {
 				outer = newTokenSpan(tokensOf(tokens, content[f.start:f.end], 0), f.start)
 			}
@@ -177,10 +179,12 @@ func (t table) functionEnd(s shape, i int) (int, bool) {
 	return 0, false
 }
 
-// functionName is a declared function's name: its name field when it is an identifier (else its kind); else its first
-// named child of an identifier kind; else the name field or the first identifier child of one of its named children;
-// else its kind without "_declaration".
-func functionName(tree parse.Tree, s shape, i int, content []byte, bodyKinds map[string]bool) string {
+// functionName is a declared function's name: its name field when it is an identifier (else its kind); else, through
+// the table's declarators, the identifier or name kind in the innermost one; else its first named child of an
+// identifier kind; else the name field or the first identifier child of one of its named children; else its kind
+// without "_declaration".
+func functionName(tree parse.Tree, s shape, t table, i int, content []byte) string {
+	bodyKinds := t.bodyNames
 	text := func(k int) string {
 		return strings.Trim(string(content[s.nodes[k].Start:s.nodes[k].End]), "`")
 	}
@@ -205,6 +209,21 @@ func functionName(tree parse.Tree, s shape, i int, content []byte, bodyKinds map
 		}
 		if s.nodes[c].Name { // a computed key or a quoted name is the file's text, not a name: the kind stands for it
 			return strings.TrimSuffix(tree.Kinds[s.nodes[i].Kind], "_declaration")
+		}
+	}
+	for k, deeper := i, true; deeper; {
+		deeper = false
+		for _, c := range children(k) {
+			if !t.declarators.has(s.nodes[c]) {
+				continue
+			}
+			k, deeper = c, true
+			for _, g := range children(c) {
+				if identifier(g) || t.names.has(s.nodes[g]) {
+					return text(g)
+				}
+			}
+			break
 		}
 	}
 	for _, c := range children(i) {

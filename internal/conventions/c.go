@@ -27,12 +27,13 @@ var (
 // cFamily is what the C and C++ entries share: units are the file names the compiler takes as a unit of their own,
 // which no file includes.
 func cFamily(name string, extensions, units []string) Language {
-	declarations := cDeclarations
+	declarations, functions, literals := cDeclarations, cFunctions(), doubleQuoted+"|"+character
 	if name == "cpp" {
 		declarations += cppDeclarations
+		functions, literals = cppFunctions(), cppRawString+"|"+literals
 	}
 	return Language{
-		Name: name, Extensions: extensions, Literals: cComments,
+		Name: name, Extensions: extensions, Literals: cComments, Functions: functions, Tokens: cLikeTokens(`(?:u8|[uUL])?(?:` + literals + `)`),
 		Grammar: name, Query: cQuery, Declarations: declarations, LineReadWhenBroken: true,
 		Imports: Imports{
 			Statements: []ImportForm{{Pattern: cIncludeQuoted}, {Pattern: cIncludeAngled}},
@@ -76,3 +77,40 @@ const cppDeclarations = `
 (namespace_definition body: (declaration_list [(struct_specifier name: (type_identifier) @declared.type body: (_))
   (class_specifier name: (type_identifier) @declared.type body: (_)) (enum_specifier name: (type_identifier) @declared.type body: (_))]))
 `
+
+// cFunctions is C's function table: an else sits in an else_clause, a goto counts 1 without nesting, and a function's
+// name lies in its innermost declarator (int *f() names f under a pointer_declarator).
+func cFunctions() *FunctionKinds {
+	return &FunctionKinds{
+		Declared:     []string{"function_definition"},
+		Bodies:       []string{"compound_statement"},
+		Ifs:          []string{"if_statement"},
+		ElseClauses:  []string{"else_clause"},
+		FlatBranches: []string{"goto_statement"},
+		Nesting:      []string{"for_statement", "while_statement", "do_statement", "switch_statement", "conditional_expression"},
+		Logic:        []string{"&&", "||"},
+		Parentheses:  []string{"parenthesized_expression"},
+		DepthIfs:     []string{"if_statement"},
+		Depth:        []string{"for_statement", "while_statement", "do_statement", "switch_statement"},
+		Blocks:       []string{"compound_statement", "case_statement"},
+		SwitchBlocks: []string{"case_statement"},
+		Declarators:  []string{"function_declarator", "pointer_declarator"},
+	}
+}
+
+// cppFunctions is C++'s: C's, with lambdas, range loops, try and catch, and names through references, destructors and
+// operators.
+func cppFunctions() *FunctionKinds {
+	k := cFunctions()
+	k.Closures = []string{"lambda_expression"}
+	k.NamedClosures, k.NamedBy = []string{"lambda_expression"}, []string{"init_declarator"}
+	k.Nesting = append(k.Nesting, "for_range_loop", "catch_clause")
+	k.Depth = append(k.Depth, "for_range_loop", "try_statement")
+	k.Declarators = append(k.Declarators, "reference_declarator")
+	k.Names = []string{"destructor_name", "operator_name"}
+	return k
+}
+
+// NOTE: C++ raw strings are matched with an empty delimiter only (R"(...)"), since Go's regexp has no back-reference;
+// one with a delimiter is split into ordinary tokens. Upgrade: a small scanner for C++ literals.
+const cppRawString = `R"\([\s\S]*?\)"`
