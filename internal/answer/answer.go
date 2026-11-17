@@ -44,7 +44,6 @@ type Answer struct {
 	Counts      Counts        `json:"counts"`              // all new, grown and resolved, not only those shown
 	Marks       []Mark        `json:"marks"`               // new and grown, ordered
 	More        int           `json:"more"`                // marks not shown
-	hidden      []Mark        // the marks not shown, for the text to name the context marks among them
 	Resolved    []Mark        `json:"resolved"`
 	Touched     []Mark        `json:"touched"`    // in no count and no numbered mark
 	ReportOnly  []Mark        `json:"reportOnly"` // new and grown marks of a kind status only counts
@@ -108,9 +107,6 @@ type Mark struct {
 	Measured   Measured   `json:"measured"`
 	Confidence Confidence `json:"confidence"`
 	Hint       string     `json:"hint"` // one line on how to verify it
-	// Context marks describe the history around a change, not a fact of the change itself (pairs of files that
-	// changed together): they rank after every other mark, so they fill only the places those leave.
-	Context bool `json:"context,omitempty"`
 }
 
 // Subject is what a mark is about.

@@ -42,19 +42,10 @@ func Assemble(q Question, version string, s snapshot.Snapshot, results []Result)
 		Detectors:   []string{},
 		NotAnalysed: []NotAnalysed{},
 	}
-	remarks := map[string][]string{}
-	for _, result := range results {
-		for _, remark := range result.Findings.Remarks {
-			remarks[remark.Mark] = append(remarks[remark.Mark], remark.Text)
-		}
-	}
 	var standing []Mark
 	for _, result := range results {
 		a.Detectors = append(a.Detectors, result.Detector)
 		for _, m := range result.Findings.Marks {
-			for _, text := range remarks[m.ID] {
-				m.Hint += " " + text
-			}
 			if (m.Change == New || m.Change == Grown) && reportOnly(s.ReportOnly, m) {
 				a.ReportOnly = append(a.ReportOnly, m)
 				continue
@@ -91,14 +82,9 @@ func Assemble(q Question, version string, s snapshot.Snapshot, results []Result)
 		}
 	}
 	a.Counts.Resolved = len(a.Resolved)
-	backed := map[string]bool{}
-	for id := range remarks {
-		backed[id] = true
-	}
-	a.Marks = Order(a.Marks, backed)
+	a.Marks = Order(a.Marks)
 	if q == Status && len(a.Marks) > statusMarks {
 		a.More = len(a.Marks) - statusMarks
-		a.hidden = a.Marks[statusMarks:]
 		a.Marks = a.Marks[:statusMarks]
 	}
 	a.NotAnalysed = append(a.NotAnalysed, repositoryNotAnalysed(s)...)

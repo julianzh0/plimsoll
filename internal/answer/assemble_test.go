@@ -272,31 +272,6 @@ func TestMergeBaseAndSingularsAreSaid(t *testing.T) {
 	}
 }
 
-func TestARemarkIsAppendedToTheHintOfTheItemItNames(t *testing.T) {
-	withHint := func(path string, change Change) Mark {
-		m := fileMark(path, change)
-		m.Hint = "count the lines."
-		return m
-	}
-	shape := Result{"shape", Findings{Marks: []Mark{withHint("src/a.ts", New), withHint("src/b.ts", Standing), withHint("src/c.ts", Resolved)}}}
-	hotspots := Result{"hotspots", Findings{Remarks: []Remark{
-		{Mark: "shape.file-size:src/a.ts", Text: "Also among the three hotspots: 8 changes x 1,620 lines."},
-		{Mark: "shape.file-size:src/b.ts", Text: "B."}, {Mark: "shape.file-size:src/c.ts", Text: "C."},
-		{Mark: "shape.file-size:src/nope.ts", Text: "D."},
-	}}}
-	for _, results := range [][]Result{{shape, hotspots}, {hotspots, shape}} {
-		a := Assemble(Report, "0.1.0", sample(), results)
-		if a.Marks[0].Hint != "count the lines. Also among the three hotspots: 8 changes x 1,620 lines." ||
-			!strings.HasSuffix(a.Standing[0].Hint, " B.") || !strings.HasSuffix(a.Resolved[0].Hint, " C.") {
-			t.Errorf("hints = %q, %q, %q", a.Marks[0].Hint, a.Standing[0].Hint, a.Resolved[0].Hint)
-		}
-		data, _ := json.Marshal(a)
-		if strings.Contains(string(data), "D.") || strings.Contains(string(data), "remarks") {
-			t.Errorf("the answer holds a remark that names no item, or the remarks themselves: %s", data)
-		}
-	}
-}
-
 // TestAnAnswerShortensButNeverHides renders a large answer of two detectors in every change kind and checks that each
 // mark the text leaves out is counted: the numbers always add up.
 func TestAnAnswerShortensButNeverHides(t *testing.T) {
@@ -367,24 +342,10 @@ func TestAnAnswerShortensButNeverHides(t *testing.T) {
 	}
 }
 
-func TestStatusShowsContextMarksLastAndNamesTheHiddenOnes(t *testing.T) {
-	var facts, pairs Findings
+func TestStatusCountsTheMarksItDoesNotShow(t *testing.T) {
+	var facts Findings
 	for i := range 3 {
 		facts.Marks = append(facts.Marks, fileMark(fmt.Sprintf("src/new%02d.ts", i), New))
-	}
-	for i := range 4 {
-		m := fileMark(fmt.Sprintf("src/pair%02d.ts", i), New)
-		m.ID, m.Context = fmt.Sprintf("co-change.pair:src/a.ts+src/pair%02d.ts", i), true
-		pairs.Marks = append(pairs.Marks, m)
-	}
-	a := Assemble(Status, "0.1.0", sample(), []Result{{"co-change", pairs}, {"shape", facts}})
-	if len(a.Marks) != 5 || a.More != 2 || a.Marks[0].Context || a.Marks[2].Context || !a.Marks[3].Context {
-		t.Fatalf("Assemble(status) marks %v, %d more; want the 3 facts first, then 2 of the 4 pairs, 2 more", ids(a.Marks), a.More)
-	}
-	w := wording()
-	w["co-change"] = Phrases{Mark: func(m Mark) string { return "pair " + m.ID }, Standing: func(items []Mark) string { return fmt.Sprintf("%d pairs", len(items)) }}
-	if text := Render(a, w); !strings.Contains(text, "2 more, among them 2 pairs: `report` lists them.") {
-		t.Errorf("Render(status) = %s, want the hidden pairs named", text)
 	}
 	plain := Assemble(Status, "0.1.0", sample(), []Result{{"shape", Findings{Marks: slices.Concat(facts.Marks, facts.Marks)}}})
 	if text := Render(plain, wording()); !strings.Contains(text, "1 more: `report` lists them.") {

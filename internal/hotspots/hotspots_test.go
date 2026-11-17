@@ -75,9 +75,6 @@ func TestHotspotsRankChangesTimesLines(t *testing.T) {
 			t.Errorf("row %+v, want name hotspot and unit changes", s)
 		}
 	}
-	if len(f.Remarks) != 3 || f.Remarks[0] != (answer.Remark{Mark: "shape.file-size:src/big.ts", Text: "Also a hotspot: 3 changes x 100 lines."}) {
-		t.Errorf("remarks = %+v", f.Remarks)
-	}
 	if len(f.Marks) != 0 || len(f.NotAnalysed) != 0 || len(f.Notes) != 1 {
 		t.Errorf("marks %v, not analysed %q, notes %q; want none, none, the note", f.Marks, f.NotAnalysed, f.Notes)
 	}
@@ -116,7 +113,7 @@ func TestHistoryWithoutAUsableCommitIsNotAnalysed(t *testing.T) {
 		wide = append(wide, fmt.Sprintf("src/f%d.ts", i))
 	}
 	source.Commits = []snapshot.Commit{snapshottest.Commit("c2", wide...), snapshottest.Commit("c1", wide...), snapshottest.Commit("c0", wide...)}
-	if f := detect(t, source); len(f.Statistics) != 0 || len(f.Remarks) != 0 || !slices.Equal(f.NotAnalysed, []string{"no usable commit in the history, so no hotspots"}) {
+	if f := detect(t, source); len(f.Statistics) != 0 || !slices.Equal(f.NotAnalysed, []string{"no usable commit in the history, so no hotspots"}) {
 		t.Errorf("no usable commit: %+v", f)
 	}
 	source.Commits = []snapshot.Commit{snapshottest.Commit("c0", "README.md")}

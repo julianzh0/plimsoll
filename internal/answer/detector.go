@@ -22,13 +22,6 @@ type Findings struct {
 	Statistics  []Statistic
 	Notes       []string
 	NotAnalysed []string
-	Remarks     []Remark // sentences for other detectors' items; one that names no item is dropped
-}
-
-// Remark is one more sentence for another detector's item: assembly appends Text to the hint of the item Mark.
-type Remark struct {
-	Mark string // the identifier of the item
-	Text string
 }
 
 // Result is one detector's findings, under its name.

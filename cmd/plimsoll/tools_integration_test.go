@@ -272,7 +272,7 @@ func TestIntegrationEveryDetectorAnswersForOneRepository(t *testing.T) {
 			t.Errorf("report holds no %s; it holds %v", id, slices.Sorted(maps.Keys(hints)))
 		}
 	}
-	if hint := hints["reportOnly shape.file-size:src/store.ts"]; hint != "count the file's lines at the base and now. Also a hotspot: 5 changes x 1,620 lines." {
+	if hint := hints["reportOnly shape.file-size:src/store.ts"]; hint != "count the file's lines at the base and now." {
 		t.Errorf("size hint = %q", hint)
 	}
 	for i, mark := range explained {

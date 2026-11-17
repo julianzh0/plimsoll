@@ -72,7 +72,7 @@ func check(t *testing.T, m answer.Mark, x, y string, change answer.Change, value
 		Confidence: answer.Exact, Hint: "`explain` lists the shared commits by name.",
 	}
 	if m.ID != want.ID || m.Change != want.Change || !slices.Equal(m.Subject.Paths, want.Subject.Paths) || m.Subject.Kind != "files" ||
-		!m.Context || m.Confidence != want.Confidence || m.Hint != want.Hint || m.Measured.Value != value || m.Measured.Unit != want.Measured.Unit ||
+		m.Confidence != want.Confidence || m.Hint != want.Hint || m.Measured.Value != value || m.Measured.Unit != want.Measured.Unit ||
 		m.Measured.LimitSource != want.Measured.LimitSource || m.Measured.Before == nil || *m.Measured.Before != before ||
 		m.Measured.Limit == nil || *m.Measured.Limit != limit || m.Measured.Total == nil || *m.Measured.Total != total {
 		t.Errorf("mark = %+v %+v, want %+v %+v", m, m.Measured, want, want.Measured)

@@ -78,8 +78,7 @@ func (Detector) Detect(s snapshot.Snapshot) answer.Findings {
 			Measured: answer.Measured{
 				Value: value, Before: &before, Limit: &limitValue, LimitSource: limit.Source, Total: &total, Unit: "shared commits",
 			},
-			Hint:    "`explain` lists the shared commits by name.",
-			Context: true,
+			Hint: "`explain` lists the shared commits by name.",
 		})
 	}
 	countNow := float64(len(atLimit))

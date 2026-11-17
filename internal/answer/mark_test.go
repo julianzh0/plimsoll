@@ -53,35 +53,21 @@ func TestOrderPutsNewExactAndFarthestFirstWithTwoPerDetector(t *testing.T) {
 		mark("settings.no-reader:X", New, Candidate, 0, nil),
 		mark("shape.test-ratio:repository", Grown, Exact, 3.8, limit(2.0)),
 		mark("shape.dependencies:package.json", Grown, Exact, 6, nil),
-		mark("co-change.pair:a+b", New, Exact, 6, limit(5)),
 	}
-	marks[7].Context = true // context about history ranks after every fact of the change, even a new one
 	want := []string{
 		"shape.file-size:a.ts", "shape.file-size:c.ts", "process.planning-file:docs/x.md", "settings.no-reader:X",
-		"shape.file-size:b.ts", "shape.test-ratio:repository", "shape.dependencies:package.json", "co-change.pair:a+b",
+		"shape.file-size:b.ts", "shape.test-ratio:repository", "shape.dependencies:package.json",
 	}
 	reversed := slices.Clone(marks)
 	slices.Reverse(reversed)
 	for _, input := range [][]Mark{marks, reversed, append(slices.Clone(marks[5:]), marks[:5]...)} {
 		var got []string
-		for _, m := range Order(input, nil) {
+		for _, m := range Order(input) {
 			got = append(got, m.ID)
 		}
 		if !slices.Equal(got, want) {
 			t.Fatalf("Order = %v, want %v", got, want)
 		}
-	}
-	backed := map[string]bool{"shape.test-ratio:repository": true, "co-change.pair:a+b": true}
-	wantBacked := []string{
-		"shape.test-ratio:repository", "shape.file-size:a.ts", "process.planning-file:docs/x.md", "settings.no-reader:X",
-		"shape.file-size:c.ts", "shape.file-size:b.ts", "shape.dependencies:package.json", "co-change.pair:a+b",
-	}
-	var got []string
-	for _, m := range Order(marks, backed) {
-		got = append(got, m.ID)
-	}
-	if !slices.Equal(got, wantBacked) {
-		t.Errorf("Order with a backed grown mark = %v, want it first and the rest in order %v", got, wantBacked)
 	}
 }
 

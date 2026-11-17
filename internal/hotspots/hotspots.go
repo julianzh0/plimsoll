@@ -3,7 +3,6 @@ package hotspots
 
 import (
 	"cmp"
-	"fmt"
 	"slices"
 
 	"github.com/julianzh0/plimsoll/internal/answer"
@@ -12,13 +11,7 @@ import (
 
 const name = "hotspots"
 
-// The shape detector's name and its size rule: they build the identifier of the size mark a hotspot remarks on.
-const (
-	shapeName     = "shape"
-	shapeFileSize = "file-size"
-)
-
-// Detector is the hotspots detector. It gives no mark: its rows are statistics and its remarks join the size marks.
+// Detector is the hotspots detector. It gives no mark: its rows are statistics.
 type Detector struct{}
 
 // Name is the prefix of the detector's identifiers.
@@ -53,10 +46,6 @@ func (Detector) Detect(s snapshot.Snapshot) answer.Findings {
 		size := "x " + answer.Plural(spot.file.Lines, "line")
 		f.Statistics = append(f.Statistics, answer.Statistic{
 			Name: "hotspot", Subject: spot.file.Path, Value: &value, Before: &atBase, Unit: "changes", Note: size,
-		})
-		f.Remarks = append(f.Remarks, answer.Remark{
-			Mark: answer.ID(shapeName, shapeFileSize, spot.file.Path),
-			Text: fmt.Sprintf("Also a hotspot: %s %s.", answer.Plural(spot.changes, "change"), size),
 		})
 	}
 	return f
