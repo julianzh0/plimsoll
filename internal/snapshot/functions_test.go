@@ -515,6 +515,13 @@ func TestBuildKeepsNoFunctionText(t *testing.T) {
 	if text := fmt.Sprintf("%+v", got); strings.Contains(text, "zzsecret") || len(got.Complex) != 1 {
 		t.Errorf("Build(a function with a secret local).Functions = %s, want the function listed and none of its text", text)
 	}
+	// a qualified name may be split over lines; a name shows on one line
+	split := "int Store::\n    route(int a) {\n  return a;\n}\n"
+	for _, f := range functionsIn(t, everyFunction(), nil, map[string]string{"src/store.cpp": split}).Complex {
+		if f.Name != "Store::route" {
+			t.Errorf("Build(a qualified name split over two lines).Functions names %q, want \"Store::route\"", f.Name)
+		}
+	}
 }
 
 func TestBuildMeasuresNestedFunctionsInTimeThatGrowsWithTheFile(t *testing.T) {

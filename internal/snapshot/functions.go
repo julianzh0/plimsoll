@@ -186,7 +186,12 @@ func (t table) functionEnd(s shape, i int) (int, bool) {
 func functionName(tree parse.Tree, s shape, t table, i int, content []byte) string {
 	bodyKinds := t.bodyNames
 	text := func(k int) string {
-		return strings.Trim(string(content[s.nodes[k].Start:s.nodes[k].End]), "`")
+		// a name split over lines (C++: Store::\n route) shows on one line; a space within a line stays (Kotlin)
+		lines := strings.Split(string(content[s.nodes[k].Start:s.nodes[k].End]), "\n")
+		for i := range lines {
+			lines[i] = strings.TrimSpace(lines[i])
+		}
+		return strings.Trim(strings.Join(lines, ""), "`")
 	}
 	// a type's name (type_identifier) is not the function's: Dart writes the return type before the name
 	identifier := func(k int) bool {
