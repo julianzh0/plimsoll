@@ -448,3 +448,12 @@ func TestTouchesCountUsableCommitsPerPath(t *testing.T) {
 		t.Errorf("Touches() = %v, want %v", got, want)
 	}
 }
+
+func TestWantsOfReadsRootLicenceFiles(t *testing.T) {
+	w := snapshot.WantsOf(conventions.Default())
+	for path, want := range map[string]bool{"LICENSE": true, "LICENCE.md": true, "COPYING": true, "NOTICE.txt": true, "docs/LICENSE": false, "src/NOTICE": false} {
+		if got := w.Path(path); got != want {
+			t.Errorf("WantsOf(default).Path(%q) = %v, want %v", path, got, want)
+		}
+	}
+}

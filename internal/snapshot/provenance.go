@@ -3,6 +3,8 @@ package snapshot
 import (
 	"cmp"
 	"slices"
+	"strings"
+	"unicode"
 
 	"github.com/julianzh0/plimsoll/internal/conventions"
 )
@@ -123,4 +125,210 @@ func lineOffset(newlines lineIndex, line int) int {
 		return 0
 	}
 	return newlines[len(newlines)-1] + 1
+}
+
+// origins tells, for a file the change added whole, whether it came from another project: by its header, an upstream
+// address or a note that it was ported, or by a vendor folder with its own licence. What is the repository's own is read
+// from its tracked files only: the holders of its root licence files, and what the headers of its nearest base product
+// files share.
+type origins struct {
+	rules      conventions.FunctionRules
+	nowPaths   []string
+	nowContent map[string][]byte
+	baseFiles  []File
+	base       map[string][]byte
+	own        map[string]bool            // holder words of the root licence files
+	shared     map[string]map[string]bool // folder -> the holder sets and addresses at least NearAgree nearest files hold
+}
+
+// fromAnotherProject says whether the file at the path, added whole, came from another project.
+func (o *origins) fromAnotherProject(path string, content []byte) bool {
+	fr := o.rules
+	for _, line := range commentLines(content, fr.HeaderLines) {
+		if words, holds := o.holderOf(line); holds && !o.ownHolder(words, path) {
+			return true
+		}
+		for _, m := range fr.CodeHost.FindAllStringSubmatch(line, -1) {
+			if !o.sharedNear(path)[addressKey(m[1], m[2])] {
+				return true
+			}
+		}
+		if fr.Ported.MatchString(line) {
+			return true
+		}
+	}
+	parts := strings.Split(path, "/")
+	for k := range len(parts) - 1 {
+		if !slices.Contains(fr.VendorFolders, strings.ToLower(parts[k])) {
+			continue
+		}
+		folder := strings.Join(parts[:k+1], "/") + "/"
+		if slices.ContainsFunc(o.nowPaths, func(p string) bool {
+			rest, under := strings.CutPrefix(p, folder)
+			return under && !strings.Contains(rest, "/") && fr.VendorLicence.MatchString(rest)
+		}) {
+			return true
+		}
+	}
+	return false
+}
+
+// holderOf is the holder of a header line, as a set of words: the group of a "Licensed to" or "part of" line, else the
+// whole of a copyright line; false for a line that names no holder.
+func (o *origins) holderOf(line string) (string, bool) {
+	fr := o.rules
+	if m := fr.LicensedTo.FindStringSubmatch(line); m != nil {
+		return holderWords(fr, m[1]), true
+	}
+	if m := fr.PartOf.FindStringSubmatch(line); m != nil {
+		return holderWords(fr, m[1]), true
+	}
+	if fr.Copyright.MatchString(line) {
+		return holderWords(fr, line), true
+	}
+	return "", false
+}
+
+// ownHolder says whether a holder is the repository's own: no words, a word of a root licence file's holder, or a set
+// the nearest base product files share.
+func (o *origins) ownHolder(words, path string) bool {
+	if words == "" {
+		return true
+	}
+	if o.own == nil {
+		o.own = map[string]bool{}
+		for _, p := range o.nowPaths {
+			if strings.Contains(p, "/") || !o.rules.RootLicence.MatchString(p) {
+				continue
+			}
+			for line := range strings.SplitSeq(string(o.nowContent[p]), "\n") {
+				if o.rules.Copyright.MatchString(line) {
+					for w := range strings.SplitSeq(holderWords(o.rules, line), " ") {
+						o.own[w] = true
+					}
+				}
+			}
+		}
+	}
+	for w := range strings.SplitSeq(words, " ") {
+		if o.own[w] {
+			return true
+		}
+	}
+	return o.sharedNear(path)[words]
+}
+
+// sharedNear are the holder sets and code-host addresses that at least NearAgree of the NearFiles base product files
+// nearest to the path hold in their headers: most shared leading folders first, then by path.
+func (o *origins) sharedNear(path string) map[string]bool {
+	folder := path[:strings.LastIndex(path, "/")+1]
+	if found, made := o.shared[folder]; made {
+		return found
+	}
+	if o.shared == nil {
+		o.shared = map[string]map[string]bool{}
+	}
+	sharedFolders := func(p string) int {
+		a, b := strings.Split(p, "/"), strings.Split(path, "/")
+		n := 0
+		for n < len(a)-1 && n < len(b)-1 && a[n] == b[n] {
+			n++
+		}
+		return n
+	}
+	var near []string
+	for _, f := range o.baseFiles {
+		if f.Role == Product {
+			near = append(near, f.Path)
+		}
+	}
+	slices.SortFunc(near, func(a, b string) int { return cmp.Or(sharedFolders(b)-sharedFolders(a), cmp.Compare(a, b)) })
+	count := map[string]int{}
+	for _, p := range near[:min(len(near), o.rules.NearFiles)] {
+		keys := map[string]bool{}
+		for _, line := range commentLines(o.base[p], o.rules.HeaderLines) {
+			if words, holds := o.holderOf(line); holds {
+				keys[words] = true
+			}
+			for _, m := range o.rules.CodeHost.FindAllStringSubmatch(line, -1) {
+				keys[addressKey(m[1], m[2])] = true
+			}
+		}
+		for k := range keys {
+			count[k]++
+		}
+	}
+	found := map[string]bool{}
+	for k, n := range count {
+		if n >= o.rules.NearAgree {
+			found[k] = true
+		}
+	}
+	o.shared[folder] = found
+	return found
+}
+
+// addressKey names a code-host address by its owner and repository, apart from any holder set.
+func addressKey(owner, name string) string {
+	return "\x00" + strings.ToLower(owner) + "/" + strings.TrimSuffix(strings.ToLower(name), ".git")
+}
+
+// holderWords are the words of a holder, sorted and joined: the text in lower case split at every character that is no
+// letter or digit, without stop words, words of at most two characters and years (4 or 8 digits).
+func holderWords(fr conventions.FunctionRules, text string) string {
+	words := strings.FieldsFunc(strings.ToLower(text), func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) })
+	var kept []string
+	for _, w := range words {
+		year := (len(w) == 4 || len(w) == 8) && strings.IndexFunc(w, func(r rune) bool { return !unicode.IsDigit(r) }) < 0
+		if len(w) > 2 && !year && !slices.Contains(fr.HolderStopWords, w) {
+			kept = append(kept, w)
+		}
+	}
+	slices.Sort(kept)
+	return strings.Join(slices.Compact(kept), " ")
+}
+
+// commentLines are the comment lines among the first n lines of content: a line that starts with //, #, /*, *, -- or
+// <!-- (not a preprocessor line), every line of a /* */ comment or of a triple-quoted string opened there.
+func commentLines(content []byte, n int) []string {
+	var out []string
+	block, triple := false, ""
+	lines := strings.SplitN(string(content), "\n", n+1)
+	for _, line := range lines[:min(len(lines), n)] {
+		s := strings.TrimSpace(line)
+		switch {
+		case block:
+			out = append(out, line)
+			block = !strings.Contains(s, "*/")
+			continue
+		case triple != "":
+			out = append(out, line)
+			if strings.Contains(s, triple) {
+				triple = ""
+			}
+			continue
+		}
+		if hasAnyPrefix(s, "#include", "#import", "#define", "#if", "#!") {
+			continue
+		}
+		if hasAnyPrefix(s, "//", "#", "/*", "*", "--", "<!--") {
+			out = append(out, line)
+			block = strings.HasPrefix(s, "/*") && !strings.Contains(s[2:], "*/")
+			continue
+		}
+		for _, q := range []string{`"""`, "'''"} {
+			if hasAnyPrefix(s, q, "r"+q, "b"+q) {
+				out = append(out, line)
+				if !strings.Contains(s[strings.Index(s, q)+3:], q) {
+					triple = q
+				}
+				break
+			}
+		}
+	}
+	return out
+}
+
+func hasAnyPrefix(s string, prefixes ...string) bool {
+	return slices.ContainsFunc(prefixes, func(p string) bool { return strings.HasPrefix(s, p) })
 }

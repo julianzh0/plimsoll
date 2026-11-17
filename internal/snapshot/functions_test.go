@@ -3,6 +3,7 @@ package snapshot_test
 import (
 	"cmp"
 	"fmt"
+	"maps"
 	"os"
 	"slices"
 	"strings"
@@ -275,6 +276,53 @@ func TestBuildLeavesOutCodeTheChangeDidNotWrite(t *testing.T) {
 		}
 		if tc.name == "renamed and pushed over" && (len(got.Complex) != 1 || !got.Complex[0].ByBody || got.Complex[0].BasePath != "src/a.ts") {
 			t.Errorf("Build(%s).Functions.Complex = %+v, want matched by body to src/a.ts", tc.name, got.Complex)
+		}
+	}
+}
+
+func TestBuildLeavesOutFilesFromAnotherProject(t *testing.T) {
+	f := snapshottest.Function("seven", 7, 0)
+	h := "// Copyright (c) Meta Platforms, Inc. and affiliates.\n"
+	neighbours := func(header string) map[string]string {
+		files := map[string]string{}
+		for _, name := range []string{"src/n1.ts", "src/n2.ts", "src/n3.ts"} {
+			files[name] = header + "export const v = 1;\n"
+		}
+		return files
+	}
+	with := func(files ...map[string]string) map[string]string {
+		all := map[string]string{}
+		for _, m := range files {
+			maps.Copy(all, m)
+		}
+		return all
+	}
+	url := "// See https://github.com/acme/widgets for the format\n"
+	notes := strings.Repeat("// note\n", 40)
+	cases := []struct {
+		name      string
+		base, now map[string]string
+		listed    bool
+	}{
+		{"a foreign copyright", nil, map[string]string{"src/x.ts": h + f}, false},
+		{"the repository's own holder by its licence", map[string]string{"LICENSE": "Copyright (c) Meta Platforms, Inc.\n"},
+			map[string]string{"LICENSE": "Copyright (c) Meta Platforms, Inc.\n", "src/x.ts": h + f}, true},
+		{"the holder its neighbours share", neighbours(h), with(neighbours(h), map[string]string{"src/x.ts": h + f}), true},
+		{"a copyright without a holder", nil, map[string]string{"src/x.ts": "// Copyright (c) 2026\n" + f}, true},
+		{"a note that it was ported", nil, map[string]string{"src/x.ts": "// Ported from an older tool\n" + f}, false},
+		{"an upstream address", nil, map[string]string{"src/x.ts": url + f}, false},
+		{"an address its neighbours share", neighbours(url), with(neighbours(url), map[string]string{"src/x.ts": url + f}), true},
+		{"a header past the first 40 lines", nil, map[string]string{"src/x.ts": notes + h + f}, true},
+		{"a vendor folder with its own licence", nil, map[string]string{"src/external/zlib/inflate.ts": f, "src/external/LICENSE": "zlib\n"}, false},
+		{"a vendor folder without a licence", nil, map[string]string{"src/external/zlib/inflate.ts": f}, true},
+		{"a file that was there", map[string]string{"src/x.ts": h + snapshottest.Function("grow", 5, 4)},
+			map[string]string{"src/x.ts": h + snapshottest.Function("grow", 6, 6)}, true},
+	}
+	for _, tc := range cases {
+		got := functionsIn(t, conventions.Default(), tc.base, tc.now)
+		foreign := slices.ContainsFunc(got.LeftOut, func(l snapshot.LeftOutFunction) bool { return l.Reason == snapshot.FromAnotherProject })
+		if (len(got.Complex) == 1) != tc.listed || foreign == tc.listed {
+			t.Errorf("Build(%s).Functions = complex %q, left out %q; want listed %v", tc.name, shown(got.Complex), leftOut(got.LeftOut), tc.listed)
 		}
 	}
 }

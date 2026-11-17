@@ -136,8 +136,8 @@ type gone struct {
 
 // functionChanges finds the functions of the changed product files that the change made complex or nested deeper, and
 // leaves out those whose code existed before.
-func functionChanges(rules conventions.Rules, changes []Change, m measured, missing []string, nowContent, beforeContent map[string][]byte,
-	nowReadings, beforeReadings map[string]reading) Functions {
+func functionChanges(rules conventions.Rules, changes []Change, m measured, missing []string, now, before Tree,
+	nowContent, beforeContent map[string][]byte, nowReadings, beforeReadings map[string]reading) Functions {
 	fr := rules.FunctionRules
 	result := Functions{PerMeasure: fr.PerMeasure, MovedShare: fr.MovedShare, CopyShare: fr.CopyShare, MinifiedLineBytes: fr.MinifiedLineBytes,
 		Minified: m.minified, Unmeasured: m.unmeasured}
@@ -170,7 +170,8 @@ func functionChanges(rules conventions.Rules, changes []Change, m measured, miss
 			}
 			result.Measured++
 			c := candidate{fn: f, tracked: tracked, change: FunctionChange{Path: change.Path, Name: f.name, Occurrence: seen[f.name],
-				Start: f.startLine, End: f.endLine, Complexity: f.complexity, Nesting: f.nesting, NestingLine: f.nestingLine, New: true}}
+				Start: f.startLine, End: f.endLine, Complexity: f.complexity, Nesting: f.nesting, NestingLine: f.nestingLine, New: true,
+				AddedWhole: !tracked && change.From == ""}}
 			if partners := base[f.name]; len(partners) >= seen[f.name] {
 				partner := partners[seen[f.name]-1]
 				if partner.broken {
@@ -197,6 +198,7 @@ func functionChanges(rules conventions.Rules, changes []Change, m measured, miss
 	}
 	slices.SortFunc(pool, func(a, b gone) int { return cmp.Or(cmp.Compare(a.path, b.path), a.fn.start-b.fn.start) })
 	lines := lineChanges{changes: changes, now: nowContent, before: beforeContent}
+	from := origins{rules: fr, nowPaths: now.Paths, nowContent: nowContent, baseFiles: before.Files, base: beforeContent}
 	sortByRise(candidates)
 	var kept []candidate
 	for _, c := range candidates {
@@ -209,6 +211,10 @@ func functionChanges(rules conventions.Rules, changes []Change, m measured, miss
 					continue
 				}
 			}
+		}
+		if c.change.AddedWhole && from.fromAnotherProject(c.change.Path, nowContent[c.change.Path]) {
+			result.LeftOut = append(result.LeftOut, LeftOutFunction{Path: c.change.Path, Name: c.change.Name, Reason: FromAnotherProject})
+			continue
 		}
 		added := lines.added(c.change.Path)
 		for _, r := range added {
