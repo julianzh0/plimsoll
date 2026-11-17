@@ -226,7 +226,7 @@ still run, interpreted and about 80 times slower.
   branches that split its braces or another framework's macros, is counted as unreadable and is not
   measured.
   Validated like the other languages on 61 blind-read marks of C and C++ agent pull requests (0.72 worth acting on,
-  per-change lower bound 0.61), with two limits: they came from 13 repositories rather than 15, and 4 of 43 macro-heavy
+  per-change lower bound 0.61), with two limits: they came from 13 repositories rather than 15, and 5 of 43 macro-heavy
   repositories kept more than 10% of their functions unreadable.
 
 ### C#
