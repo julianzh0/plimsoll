@@ -131,55 +131,80 @@ func (l lineIndex) line(offset int) int {
 // them is passed over.
 func functionsOf(kinds conventions.FunctionKinds, tokens *regexp.Regexp, rules conventions.FunctionRules, tree parse.Tree, content []byte,
 	within func(start, end int) bool) []function {
-	t := tableOf(kinds, tree)
-	s := shapeOf(tree.Nodes)
-	lines := linesOf(content)
-	var found []function
-	inside := 0 // the end of the outermost function or listed closure seen so far
-	// the tokens of the outermost function seen so far, from its first byte: a function inside takes its part of them,
-	// so the file is tokenized once
-	var outer tokenSpan
+	w := walk{t: tableOf(kinds, tree), s: shapeOf(tree.Nodes), tree: tree, content: content, lines: linesOf(content),
+		tokens: tokens, rules: rules, within: within}
 	for i, n := range tree.Nodes {
-		if !n.Named {
-			continue
-		}
-		if t.declared.has(n) && s.parentIn(i, t.misreadIn) {
-			// a macro read as a function inside a body (C++: Q_FOREACH (const T &x, l) { ... }): the function around
-			// it is not what it seems, so it counts as unreadable and the copy with macros rewritten reads it
-			for k := len(found) - 1; k >= 0; k-- {
-				if found[k].start <= int(n.Start) && int(n.End) <= found[k].end {
-					found[k].broken = true
-					break
-				}
-			}
-			continue
-		}
-		if t.declared.has(n) {
-			to, ok := t.functionEnd(s, i)
-			if !ok || within != nil && !within(int(n.Start), t.extent(s, i, to)) {
-				continue
-			}
-			f := t.measure(s, i, to, functionName(tree, s, t, i, content), content, lines)
-			if i >= inside {
-				outer = newTokenSpan(tokensOf(tokens, content[f.start:f.end], 0), f.start)
-			}
-			f.repeats = repeatsOf(rules, tree, s, t, i, to, outer, lines)
-			found = append(found, f)
-			inside = max(inside, to)
-			continue
-		}
-		if i >= inside && t.namedClosures.has(n) && s.parentIn(i, t.namedBy) &&
-			(within == nil || within(int(n.Start), int(n.End))) {
-			if name := bindingName(tree, s, i, content); name != "" {
-				f := t.measure(s, i, s.endOf(i), name, content, lines)
-				outer = newTokenSpan(tokensOf(tokens, content[f.start:f.end], 0), f.start)
-				f.repeats = repeatsOf(rules, tree, s, t, i, s.endOf(i), outer, lines)
-				found = append(found, f)
-				inside = s.endOf(i)
-			}
+		switch {
+		case !n.Named:
+		case w.t.declared.has(n) && w.s.parentIn(i, w.t.misreadIn):
+			w.misread(n)
+		case w.t.declared.has(n):
+			w.declared(i)
+		case i >= w.inside && w.t.namedClosures.has(n) && w.s.parentIn(i, w.t.namedBy):
+			w.closure(i)
 		}
 	}
-	return found
+	return w.found
+}
+
+// walk is one file's walk for its functions.
+type walk struct {
+	t       table
+	s       shape
+	tree    parse.Tree
+	content []byte
+	lines   lineIndex
+	tokens  *regexp.Regexp
+	rules   conventions.FunctionRules
+	within  func(start, end int) bool
+	found   []function
+	inside  int // the end of the outermost function or listed closure seen so far
+	// the tokens of the outermost function seen so far, from its first byte: a function inside takes its part of
+	// them, so the file is tokenized once
+	outer tokenSpan
+}
+
+// declared measures the declared function at i, when it has a body and lies within the measured spans.
+func (w *walk) declared(i int) {
+	to, ok := w.t.functionEnd(w.s, i)
+	if !ok || w.within != nil && !w.within(int(w.s.nodes[i].Start), w.t.extent(w.s, i, to)) {
+		return
+	}
+	f := w.t.measure(w.s, i, to, functionName(w.tree, w.s, w.t, i, w.content), w.content, w.lines)
+	if i >= w.inside {
+		w.outer = newTokenSpan(tokensOf(w.tokens, w.content[f.start:f.end], 0), f.start)
+	}
+	f.repeats = repeatsOf(w.rules, w.tree, w.s, w.t, i, to, w.outer, w.lines)
+	w.found = append(w.found, f)
+	w.inside = max(w.inside, to)
+}
+
+// closure measures the closure at i, outside every function, when a name binds it.
+func (w *walk) closure(i int) {
+	n := w.s.nodes[i]
+	if w.within != nil && !w.within(int(n.Start), int(n.End)) {
+		return
+	}
+	name := bindingName(w.tree, w.s, i, w.content)
+	if name == "" {
+		return
+	}
+	f := w.t.measure(w.s, i, w.s.endOf(i), name, w.content, w.lines)
+	w.outer = newTokenSpan(tokensOf(w.tokens, w.content[f.start:f.end], 0), f.start)
+	f.repeats = repeatsOf(w.rules, w.tree, w.s, w.t, i, w.s.endOf(i), w.outer, w.lines)
+	w.found = append(w.found, f)
+	w.inside = w.s.endOf(i)
+}
+
+// misread marks the function around a macro the grammar read as a function inside a body (C++: Q_FOREACH (const T
+// &x, l) { ... }) as unreadable: it is not what it seems, and the copy with macros rewritten reads it.
+func (w *walk) misread(n parse.Node) {
+	for k := len(w.found) - 1; k >= 0; k-- {
+		if f := &w.found[k]; f.start <= int(n.Start) && int(n.End) <= f.end {
+			f.broken = true
+			return
+		}
+	}
 }
 
 // functionEnd is where a declared function ends: after its body, or false when it has none.
