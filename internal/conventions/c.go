@@ -33,7 +33,7 @@ func cFamily(name string, extensions, units []string) Language {
 		functions, literals = cppFunctions(), cppRawString+"|"+literals
 	}
 	return Language{
-		Name: name, Extensions: extensions, Literals: cComments, Functions: functions, Macros: cMacros, Tokens: cLikeTokens(`(?:u8|[uUL])?(?:` + literals + `)`),
+		Name: name, Extensions: extensions, Literals: cComments, Functions: functions, Macros: cMacros(), Tokens: cLikeTokens(`(?:u8|[uUL])?(?:` + literals + `)`),
 		Grammar: name, Query: cQuery, Declarations: declarations, LineReadWhenBroken: true,
 		Imports: Imports{
 			Statements: []ImportForm{{Pattern: cIncludeQuoted}, {Pattern: cIncludeAngled}},
@@ -115,7 +115,7 @@ func cppFunctions() FunctionKinds {
 // one with a delimiter is split into ordinary tokens. Upgrade: a small scanner for C++ literals.
 const cppRawString = `R"\([\s\S]*?\)"`
 
-// cMacros are the macro uses the C and C++ grammars cannot read, in the order they are rewritten:
+// cMacros is the macro uses the C and C++ grammars cannot read, in the order they are rewritten:
 //   - an attribute-like name in capitals with an underscore, whole, before another word, where a declaration starts:
 //     at a line's start, after a specifier, or after a template's closing bracket (FMT_CONSTEXPR void f());
 //   - an annotation with underscores around its name, and its arguments (_In_, _Out_opt_, _In_reads_(n)), and
@@ -126,8 +126,10 @@ const cppRawString = `R"\([\s\S]*?\)"`
 // blanked as well, which only the functions that could not be read as written ever see. Frameworks with their own
 // vocabulary (Qt's emit and Q_D, GLib's g_autofree and G_DEFINE_TYPE) are not rewritten. Upgrade: learn the names
 // from the repository's own #define lines.
-var cMacros = []MacroRule{
-	{Pattern: regexp.MustCompile(`(?m)(?:^[ \t]*|\b(?:static|inline|constexpr|virtual|explicit|const|extern|friend)[ \t]+|>[ \t]*)(?P<macro>[A-Z][A-Z0-9]*_[A-Z0-9_]+)\b[ \t]*\n?[ \t]*[A-Za-z_~]`)},
-	{Pattern: regexp.MustCompile(`(?:^|[^\w])(?P<macro>(?:__declspec|_[A-Z][A-Za-z0-9]*_(?:[A-Za-z0-9]+_)*)(?:\s*\((?:[^()]|\([^()]*\))*\))?)`)},
-	{Pattern: regexp.MustCompile(`\b(?P<macro>[A-Z][A-Z0-9_]*FOR_?EACH[A-Z0-9_]*)\s*\(`), As: "while"},
+func cMacros() []MacroRule {
+	return []MacroRule{
+		{Pattern: regexp.MustCompile(`(?m)(?:^[ \t]*|\b(?:static|inline|constexpr|virtual|explicit|const|extern|friend)[ \t]+|>[ \t]*)(?P<macro>[A-Z][A-Z0-9]*_[A-Z0-9_]+)\b[ \t]*\n?[ \t]*[A-Za-z_~]`)},
+		{Pattern: regexp.MustCompile(`(?:^|[^\w])(?P<macro>(?:__declspec|_[A-Z][A-Za-z0-9]*_(?:[A-Za-z0-9]+_)*)(?:\s*\((?:[^()]|\([^()]*\))*\))?)`)},
+		{Pattern: regexp.MustCompile(`\b(?P<macro>[A-Z][A-Z0-9_]*FOR_?EACH[A-Z0-9_]*)\s*\(`), As: "while"},
+	}
 }
