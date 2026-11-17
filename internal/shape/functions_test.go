@@ -68,7 +68,7 @@ func TestDetectMarksFunctionsAChangeMadeComplexOrDeeper(t *testing.T) {
 
 	four := detect(t, snapshottest.Files(nil, map[string]string{"src/four.ts": fn("a", 7, 0) + "\n" + fn("b", 8, 0) + "\n" + fn("c", 9, 0) + "\n" + fn("d", 7, 1)}), rules)
 	rows := map[string]string{
-		"functions measured":                  "4 in 1 changed product file",
+		"functions measured":                  "in 1 changed product file",
 		"functions over the complexity limit": "3 listed of 4 that crossed it (at most three per measure, the largest rise first)",
 		"functions nested deeper":             "1 listed",
 	}
@@ -109,7 +109,10 @@ func TestDetectMarksFunctionsAChangeMadeComplexOrDeeper(t *testing.T) {
 	}{
 		{nil, map[string]string{"src/a.c": "int f(void) { return 1; }\n"}, "functions are not measured for `c`"},
 		{map[string]string{"src/a.ts": broken[:first] + "    const = 1 +;\n" + broken[first:]}, map[string]string{"src/a.ts": fn("grow", 6, 6)},
-			"1 function holds a syntax error, now or at the base, and was not measured"},
+			"1 function holds a syntax error, now or at the base, and is not measured"},
+		{map[string]string{"src/a.ts": broken[:first] + "    const = 1 +;\n" + broken[first:] + strings.Replace(broken[:first], "grow", "keep", 1) + "    const = 1 +;\n" + broken[first:]},
+			map[string]string{"src/a.ts": fn("grow", 6, 6) + fn("keep", 6, 6)},
+			"2 functions hold a syntax error, now or at the base, and are not measured"},
 		{nil, map[string]string{"src/min.ts": strings.ReplaceAll(fn("seven", 7, 0), "\n", " ")},
 			"1 changed file has more than 110 bytes a line on average, so its functions were not measured: `src/min.ts`"},
 		{nil, map[string]string{"big.go": big.String()}, "the parser could not read the functions of 1 changed file: `big.go`"},

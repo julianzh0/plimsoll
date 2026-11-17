@@ -86,7 +86,7 @@ func functionRows(fs snapshot.Functions) []answer.Statistic {
 	}
 	count := func(n int) *float64 { v := float64(n); return &v }
 	rows := []answer.Statistic{
-		{Name: "functions measured", Value: count(fs.Measured), Note: fmt.Sprintf("%d in %s", fs.Measured, answer.Plural(fs.Files, "changed product file"))},
+		{Name: "functions measured", Value: count(fs.Measured), Note: "in " + answer.Plural(fs.Files, "changed product file")},
 		{Name: "functions over the complexity limit", Value: count(len(fs.Complex)), Note: listedNote(len(fs.Complex), fs.ComplexCrossed, fs.PerMeasure)},
 		{Name: "functions nested deeper", Value: count(len(fs.Deeper)), Note: listedNote(len(fs.Deeper), fs.DeeperCrossed, fs.PerMeasure)},
 	}
@@ -163,7 +163,8 @@ func functionsNotAnalysed(fs snapshot.Functions) []string {
 		found = append(found, "functions are not measured for "+answer.QuotedList(fs.Unmeasured))
 	}
 	if fs.Broken > 0 {
-		found = append(found, answer.Agree(fs.Broken, "function holds", "functions hold")+" a syntax error, now or at the base, and was not measured")
+		found = append(found, answer.Agree(fs.Broken, "function holds a syntax error, now or at the base, and is not measured",
+			"functions hold a syntax error, now or at the base, and are not measured"))
 	}
 	if len(fs.Minified) > 0 {
 		found = append(found, fmt.Sprintf("%s more than %d bytes a line on average, so its functions were not measured: %s",
