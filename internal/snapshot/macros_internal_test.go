@@ -2,7 +2,10 @@ package snapshot
 
 import (
 	"slices"
+	"strings"
 	"testing"
+
+	"github.com/julianzh0/plimsoll/internal/conventions"
 )
 
 func TestWithBlankedKeepsCleanFunctionsAndLosesNone(t *testing.T) {
@@ -22,5 +25,19 @@ func TestWithBlankedKeepsCleanFunctionsAndLosesNone(t *testing.T) {
 	}
 	if !slices.Equal(names(got), []string{"clean", "fixed", "stuck"}) || got[0].complexity != 3 || got[1].broken || got[1].complexity != 5 || !got[2].broken {
 		t.Errorf("withBlanked(clean, fixed, stuck) = %+v, want clean unchanged (3), fixed read from the copy (5), stuck kept unreadable", got)
+	}
+}
+
+func TestRewriteMacrosKeepsOffsetsAndRewritesWholeNames(t *testing.T) {
+	var cpp conventions.Language
+	for _, l := range conventions.Default().Languages {
+		if l.Name == "cpp" {
+			cpp = l
+		}
+	}
+	content := "MY_API_EXPORT\nMY_INLINE int f(_In_reads_(n,\n m) int a) {\n  LIST_FOREACH(x, &list, link)\n    a++;\n  return a;\n}\n"
+	want := "             \n          int f(" + strings.Repeat(" ", 13) + "\n    int a) {\n  while       (x, &list, link)\n    a++;\n  return a;\n}\n"
+	if got := string(rewriteMacros(cpp.Macros, []byte(content))); got != want {
+		t.Errorf("rewriteMacros(%q) = %q, want %q", content, got, want)
 	}
 }

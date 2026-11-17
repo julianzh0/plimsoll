@@ -190,10 +190,10 @@ func readByText(language conventions.Language, content []byte) reading {
 // parser cannot read leaves the functions as they were.
 func (rs *Readings) readBlanked(language conventions.Language, grammar string, content []byte, rules conventions.FunctionRules,
 	functions []function) []function {
-	if language.AttributeMacros == nil || !slices.ContainsFunc(functions, func(f function) bool { return f.broken }) {
+	if len(language.Macros) == 0 || !slices.ContainsFunc(functions, func(f function) bool { return f.broken }) {
 		return functions
 	}
-	blanked := blankMacros(language.AttributeMacros, content)
+	blanked := rewriteMacros(language.Macros, content)
 	if blanked == nil {
 		return functions
 	}

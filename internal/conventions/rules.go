@@ -274,10 +274,10 @@ type Language struct {
 	// declarations) by the entry's text patterns instead: for a language whose files the grammar often misreads
 	// (macros), the patterns read every line on its own. Its functions still come from the tree.
 	LineReadWhenBroken bool
-	// AttributeMacros finds, in its group "macro", a name that a macro expands to an attribute or to nothing where a
-	// declaration starts (FMT_CONSTEXPR void f()). For a file whose tree holds an error, the function walk reads a
-	// copy with such names blanked, for the functions it could not read as written; nil for a language without them.
-	AttributeMacros *regexp.Regexp
+	// Macros rewrite, in a copy of a file whose tree holds an error, what the grammar cannot read as a macro is used
+	// (FMT_CONSTEXPR void f(), _In_ const char* p, LIST_FOREACH(x, l, link)); the function walk reads that copy for the
+	// functions it could not read as written. None for a language without a preprocessor.
+	Macros []MacroRule
 	// Declarations is the query that reads the top-level names a file declares, run only on the files a change names,
 	// with these captures:
 	//   @declared.function, @declared.type, @declared.value  the name of a top-level function, type or value
@@ -455,4 +455,11 @@ func (r Rules) TestRule() string {
 		parts = append(parts, "`"+beginning+"*`")
 	}
 	return strings.Join(parts, ", ")
+}
+
+// MacroRule rewrites what its pattern's group "macro" finds: blanked when As is "", else replaced by As padded with
+// spaces (As is never longer than what it replaces). Offsets and line breaks stay where they were.
+type MacroRule struct {
+	Pattern *regexp.Regexp
+	As      string
 }

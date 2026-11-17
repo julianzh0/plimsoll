@@ -218,9 +218,11 @@ still run, interpreted and about 80 times slower.
   include that a macro names is not readable. Every `#if` branch is read.
 - **Runtime dependencies:** `vcpkg.json`, the top-level `dependencies` without host tools.
 - **Functions:** functions and, in C++, lambdas; a `goto` counts 1. When a file holds a function the grammar cannot
-  read, a copy with attribute-like macros blanked (a bare `NAME_IN_CAPITALS` where a declaration starts, such as
-  `FMT_CONSTEXPR`) is read for those functions only. A function still unreadable, as behind `#ifdef` branches that
-  split its braces, is counted as holding a syntax error and is not measured.
+  read, a copy with three kinds of macro rewritten is read for those functions only, with every line kept: an
+  attribute-like name where a declaration starts (`FMT_CONSTEXPR`) and an annotation (`_In_`, `_In_reads_(n)`,
+  `__declspec(...)`) are blanked, and a loop macro (`LIST_FOREACH(...)`) is read as `while`. A function still
+  unreadable, as behind `#ifdef` branches that split its braces or a framework's own macros, is counted as holding a
+  syntax error and is not measured.
 
 ### C#
 

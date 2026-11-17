@@ -1,27 +1,35 @@
 package snapshot
 
 import (
-	"regexp"
 	"slices"
+
+	"github.com/julianzh0/plimsoll/internal/conventions"
 )
 
-// blankMacros replaces every name the pattern's group "macro" finds with spaces, again until none is left, so a run of
-// macros goes too; every byte offset and line stays where it was. nil when nothing was found.
-func blankMacros(pattern *regexp.Regexp, content []byte) []byte {
-	group := pattern.SubexpIndex("macro")
-	blanked, changed := slices.Clone(content), false
-	for found := pattern.FindAllSubmatchIndex(blanked, -1); len(found) > 0; found = pattern.FindAllSubmatchIndex(blanked, -1) {
-		changed = true
-		for _, m := range found {
-			for i := m[2*group]; i < m[2*group+1]; i++ {
-				blanked[i] = ' '
+// rewriteMacros applies the rules in order, each again until it finds nothing, so a run of macros goes too: what a
+// rule's group "macro" finds is blanked, or replaced by its As padded with spaces; every byte offset and line break
+// stays where it was. nil when no rule found anything.
+func rewriteMacros(rules []conventions.MacroRule, content []byte) []byte {
+	rewritten, changed := slices.Clone(content), false
+	for _, rule := range rules {
+		group := rule.Pattern.SubexpIndex("macro")
+		for found := rule.Pattern.FindAllSubmatchIndex(rewritten, -1); len(found) > 0; found = rule.Pattern.FindAllSubmatchIndex(rewritten, -1) {
+			changed = true
+			for _, m := range found {
+				start, end := m[2*group], m[2*group+1]
+				copy(rewritten[start:end], rule.As)
+				for i := start + len(rule.As); i < end; i++ {
+					if rewritten[i] != '\n' {
+						rewritten[i] = ' '
+					}
+				}
 			}
 		}
 	}
 	if !changed {
 		return nil
 	}
-	return blanked
+	return rewritten
 }
 
 // withBlanked takes, from the functions read on a copy with macros blanked, those that overlap no function read
