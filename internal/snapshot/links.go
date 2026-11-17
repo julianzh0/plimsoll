@@ -112,12 +112,14 @@ type statement struct {
 // reading is what one file's content says: its imports, before they are resolved against a side, its test code and
 // its settings reads.
 type reading struct {
-	statements  []statement
-	computed    int  // imports whose target is built at run time
-	passesOn    bool // the whole content only passes imports on
-	testLines   int  // lines of test code inside the file, by the entry's blocks
-	unread      bool // the parser could not read the file
-	syntaxError bool // the parser met a syntax error: a statement next to it may be missing
+	statements   []statement
+	computed     int       // imports whose target is built at run time
+	passesOn     bool      // the whole content only passes imports on
+	testLines    int       // lines of test code inside the file, by the entry's blocks
+	unread       bool      // the parser could not read the file
+	syntaxError  bool      // the parser met a syntax error: a statement next to it may be missing
+	parsed       bool      // the entry's grammar read the file
+	declarations []topName // the top-level names it declares, by the entry's query
 }
 
 // scan finds the import statements of one file's content, its literals blanked.

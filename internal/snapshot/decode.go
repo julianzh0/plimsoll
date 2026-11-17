@@ -55,6 +55,8 @@ func decode(language conventions.Language, result parse.Result, content []byte) 
 				blanks = append(blanks, c)
 			case "error":
 				r.syntaxError = true
+			case "declared.function", "declared.type", "declared.value", "implicit":
+				r.declarations = declared(r.declarations, c.Name, string(content[c.Start:c.End]))
 			}
 		}
 		if moduleName.End > 0 {
@@ -88,7 +90,25 @@ func decode(language conventions.Language, result parse.Result, content []byte) 
 	}
 	r.passesOn = len(passes) > 0 && !slices.ContainsFunc(result.Top, func(top parse.Span) bool { return !passes[top] })
 	r.testLines = spanLines(content, tests)
+	r.parsed = true
 	return r
+}
+
+// declared adds one captured name to a file's declarations: a name is declared once, of the strongest kind captured
+// (a function before a type before a value), and implicit once any capture says so.
+func declared(found []topName, capture, name string) []topName {
+	i := slices.IndexFunc(found, func(d topName) bool { return d.name == name })
+	if i < 0 {
+		found, i = append(found, topName{name: name}), len(found)
+	}
+	kind := map[string]AdditionKind{"declared.function": AddedFunction, "declared.type": AddedType, "declared.value": AddedValue}[capture]
+	switch {
+	case capture == "implicit":
+		found[i].implicit = true
+	case found[i].kind == 0 || kind < found[i].kind:
+		found[i].kind = kind
+	}
+	return found
 }
 
 // importCapture is one import match: the @import capture, which holds the statement's @name captures, its target

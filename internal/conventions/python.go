@@ -30,6 +30,8 @@ const pythonQuery = `
 (module [(comment) (import_from_statement) (future_import_statement)] @pass)
 (module (expression_statement (string)) @pass)
 ((module (expression_statement (assignment left: (identifier) @n)) @pass) (#eq? @n "__all__"))
+(module (function_definition name: (identifier) @declared.function))
+(module (class_definition name: (identifier) @declared.type))
 `
 
 func pythonImports() Imports {

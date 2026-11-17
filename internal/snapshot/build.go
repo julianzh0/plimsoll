@@ -84,6 +84,7 @@ func Build(source Source, rules conventions.Rules, readings *Readings) Snapshot 
 		Unreadable:          slices.Compact(unreadable),
 		Missing:             source.Missing,
 		Unparsed:            unparsed(nowReadings, beforeReadings),
+		Additions:           additions(rules, source.Changes, now, before, source.Now, nowReadings, beforeReadings),
 		SyntaxErrors:        syntaxErrors(changed, nowReadings, beforeReadings),
 	}
 }

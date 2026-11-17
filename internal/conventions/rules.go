@@ -63,6 +63,7 @@ type Rules struct {
 	// ReportOnly are the kinds of mark that report lists and status only counts, as "<detector>.<rule>", or with a
 	// change, "<detector>.<rule> <change>": kinds outside reviewers judged too noisy to show on every change.
 	ReportOnly []string
+	Additions  Additions  // what never counts as code a change added, and which files are no use of a name
 	Languages  []Language // the language entries
 }
 
@@ -250,6 +251,10 @@ type Language struct {
 	//             are marked only passes imports on, and an entry whose query marks none never does
 	//   @name     one name a statement imports out of its target, inside the statement's @import
 	//   @type_block  a block whose statements import types only
+	//   @declared.function, @declared.type, @declared.value  the name of a top-level function, type or value the file
+	//             declares, for the list of code a change added that nothing uses
+	//   @implicit a declared name a runtime or framework calls without its being written (a default export, a
+	//             decorated class); its declaration is never listed
 	// No fact is read both by a pattern and by the query, except under LineReadWhenBroken.
 	Query string
 	// LineReadWhenBroken reads a file the grammar cannot read without an error by the entry's text patterns instead:
@@ -343,6 +348,7 @@ func Default() Rules {
 		CommitPaths: 20,
 		// Seven outside reviewers judged real answers per kind of mark (2026-11-17); these they judged too noisy for
 		// status and worth keeping in report.
+		Additions: defaultAdditions(),
 		ReportOnly: []string{
 			"shape.file-size grown", "shape.dependencies", "shape.settings", "process.doc-churn", "settings.compose-only",
 			"co-change.pair", "links.test-import", "links.folder-cycle",
