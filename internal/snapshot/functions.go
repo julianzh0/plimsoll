@@ -1,0 +1,339 @@
+package snapshot
+
+import (
+	"slices"
+	"strings"
+
+	"github.com/julianzh0/plimsoll/internal/conventions"
+	"github.com/julianzh0/plimsoll/internal/parse"
+)
+
+// function is one function of a file, measured: a name and numbers, no text.
+type function struct {
+	name                 string
+	startLine, endLine   int // from 1
+	start, end           int // byte offsets
+	complexity           int
+	nesting, nestingLine int  // nestingLine is 0 when nesting is 0
+	broken               bool // its subtree holds an ERROR node: not measured
+	repeats              []repeat
+}
+
+// repeat is a block of statements repeated inside a function: a hash of its tokens and the line and byte ranges of its
+// copies.
+type repeat struct {
+	hash   uint64
+	copies []span
+	lines  []LineRange
+}
+
+// kindSet holds, by kind index, the kinds one field of a function table names.
+type kindSet []bool
+
+func kindsOf(tree parse.Tree, names []string) kindSet {
+	set := make(kindSet, len(tree.Kinds))
+	for i, kind := range tree.Kinds {
+		set[i] = slices.Contains(names, kind)
+	}
+	return set
+}
+
+func (s kindSet) has(n parse.Node) bool { return int(n.Kind) < len(s) && s[n.Kind] }
+
+// table is a function table resolved against one tree's kind names.
+type table struct {
+	declared, bodies, closures, namedClosures, namedBy          kindSet
+	ifs, elseClauses, flatBranches, nesting, logic, parentheses kindSet
+	markup, depthIfs, depth                                     kindSet
+	bodyAfter                                                   bool
+	elseKind                                                    int // the index of the kind "else", or -1
+}
+
+func tableOf(k conventions.FunctionKinds, tree parse.Tree) table {
+	return table{
+		declared: kindsOf(tree, k.Declared), bodies: kindsOf(tree, k.Bodies), closures: kindsOf(tree, k.Closures),
+		namedClosures: kindsOf(tree, k.NamedClosures), namedBy: kindsOf(tree, k.NamedBy), ifs: kindsOf(tree, k.Ifs),
+		elseClauses: kindsOf(tree, k.ElseClauses), flatBranches: kindsOf(tree, k.FlatBranches), nesting: kindsOf(tree, k.Nesting),
+		logic: kindsOf(tree, k.Logic), parentheses: kindsOf(tree, k.Parentheses), markup: kindsOf(tree, k.Markup),
+		depthIfs: kindsOf(tree, k.DepthIfs), depth: kindsOf(tree, k.Depth), bodyAfter: k.BodyAfter,
+		elseKind: slices.Index(tree.Kinds, "else"),
+	}
+}
+
+// shape is a tree's structure: each node's parent, previous sibling and the index after its subtree, -1 for none.
+type shape struct {
+	nodes             []parse.Node
+	parent, prev, end []int
+}
+
+// shapeOf makes the shape in one pass with a stack: no recursion, whatever the depth.
+func shapeOf(nodes []parse.Node) shape {
+	s := shape{nodes: nodes, parent: make([]int, len(nodes)), prev: make([]int, len(nodes)), end: make([]int, len(nodes))}
+	var stack []int
+	last := map[int]int{} // parent index -> its last child seen
+	for i, n := range nodes {
+		for len(stack) > 0 && nodes[stack[len(stack)-1]].Depth >= n.Depth {
+			s.end[stack[len(stack)-1]] = i
+			stack = stack[:len(stack)-1]
+		}
+		s.parent[i], s.prev[i] = -1, -1
+		if len(stack) > 0 {
+			p := stack[len(stack)-1]
+			s.parent[i] = p
+			if c, found := last[p]; found {
+				s.prev[i] = c
+			}
+			last[p] = i
+		}
+		stack = append(stack, i)
+	}
+	for _, i := range stack {
+		s.end[i] = len(nodes)
+	}
+	return s
+}
+
+// lineIndex turns byte offsets into lines, from 1.
+type lineIndex []int // the byte offset of each newline
+
+func linesOf(content []byte) lineIndex {
+	var at lineIndex
+	for i, b := range content {
+		if b == '\n' {
+			at = append(at, i)
+		}
+	}
+	return at
+}
+
+func (l lineIndex) line(offset int) int {
+	n, _ := slices.BinarySearch(l, offset)
+	return n + 1
+}
+
+// functionsOf measures the functions of one file, in text order: every declared function with a body however deep it
+// is declared, and the closures a name binds outside every function. Closures, nested functions and markup add
+// nothing to the function around them.
+func functionsOf(kinds conventions.FunctionKinds, tree parse.Tree, content []byte) []function {
+	t := tableOf(kinds, tree)
+	s := shapeOf(tree.Nodes)
+	lines := linesOf(content)
+	var found []function
+	inside := 0 // the end of the outermost function or listed closure seen so far
+	for i, n := range tree.Nodes {
+		if !n.Named {
+			continue
+		}
+		if t.declared.has(n) {
+			to, ok := t.functionEnd(s, i)
+			if !ok {
+				continue
+			}
+			found = append(found, t.measure(s, i, to, functionName(tree, s, i, content), content, lines))
+			inside = max(inside, to)
+			continue
+		}
+		if i >= inside && t.namedClosures.has(n) && s.parent[i] >= 0 && t.namedBy.has(tree.Nodes[s.parent[i]]) {
+			if name := bindingName(tree, s, i, content); name != "" {
+				found = append(found, t.measure(s, i, s.end[i], name, content, lines))
+				inside = s.end[i]
+			}
+		}
+	}
+	return found
+}
+
+// functionEnd is where a declared function ends: after its body, or false when it has none.
+func (t table) functionEnd(s shape, i int) (int, bool) {
+	if t.bodyAfter {
+		next := s.end[i]
+		if next < len(s.nodes) && s.nodes[next].Depth == s.nodes[i].Depth && s.nodes[next].Named && t.bodies.has(s.nodes[next]) {
+			return s.end[next], true
+		}
+		return 0, false
+	}
+	for k := i + 1; k < s.end[i]; k = s.end[k] {
+		if s.nodes[k].Named && t.bodies.has(s.nodes[k]) {
+			return s.end[i], true
+		}
+	}
+	return 0, false
+}
+
+// functionName is a declared function's name: its name field; else its first named child of an identifier kind; else
+// the name field or the first identifier child of one of its named children; else its kind without "_declaration".
+func functionName(tree parse.Tree, s shape, i int, content []byte) string {
+	text := func(k int) string {
+		return strings.Trim(string(content[s.nodes[k].Start:s.nodes[k].End]), "`")
+	}
+	identifier := func(k int) bool { return strings.HasSuffix(tree.Kinds[s.nodes[k].Kind], "identifier") }
+	children := func(k int) []int {
+		var c []int
+		for j := k + 1; j < s.end[k]; j = s.end[j] {
+			c = append(c, j)
+		}
+		return c
+	}
+	for _, c := range children(i) {
+		if s.nodes[c].Name {
+			return text(c)
+		}
+	}
+	for _, c := range children(i) {
+		if s.nodes[c].Named && identifier(c) {
+			return text(c)
+		}
+	}
+	for _, c := range children(i) {
+		if !s.nodes[c].Named {
+			continue
+		}
+		for _, g := range children(c) {
+			if s.nodes[g].Name || s.nodes[g].Named && identifier(g) {
+				return text(g)
+			}
+		}
+	}
+	return strings.TrimSuffix(tree.Kinds[s.nodes[i].Kind], "_declaration")
+}
+
+// bindingName is the name a parent gives a closure: its first named child before the closure of kind identifier or
+// property_identifier.
+func bindingName(tree parse.Tree, s shape, i int, content []byte) string {
+	p := s.parent[i]
+	for j := p + 1; j < i; j = s.end[j] {
+		kind := tree.Kinds[s.nodes[j].Kind]
+		if s.nodes[j].Named && (kind == "identifier" || kind == "property_identifier") {
+			return string(content[s.nodes[j].Start:s.nodes[j].End])
+		}
+	}
+	return ""
+}
+
+// measure is one function's numbers over the nodes [from, to).
+func (t table) measure(s shape, from, to int, name string, content []byte, lines lineIndex) function {
+	f := function{name: name, start: int(s.nodes[from].Start), end: int(s.nodes[to-1].End)}
+	for k := from; k < to; k++ {
+		f.end = max(f.end, int(s.nodes[k].End))
+		f.broken = f.broken || s.nodes[k].Error
+	}
+	f.startLine, f.endLine = lines.line(f.start), lines.line(max(f.start, f.end-1))
+	f.complexity = t.complexity(s, from, to)
+	f.nesting, f.nestingLine = t.depthOf(s, from, to, lines)
+	return f
+}
+
+// skipped says whether the node at k starts a subtree that adds nothing to the function around it: a declared function,
+// a closure or markup.
+func (t table) skipped(n parse.Node) bool {
+	return n.Named && (t.declared.has(n) || t.closures.has(n) || t.markup.has(n))
+}
+
+func (t table) isElse(s shape, i int) bool { return i >= 0 && int(s.nodes[i].Kind) == t.elseKind }
+
+func (t table) isIf(s shape, i int) bool { return i >= 0 && s.nodes[i].Named && t.ifs.has(s.nodes[i]) }
+
+// elseIf says whether the if at k continues an if before it: it follows an else, it is the whole of an else clause of
+// an if, or its parent follows an else of an if.
+func (t table) elseIf(s shape, k int) bool {
+	p := s.parent[k]
+	return t.isElse(s, s.prev[k]) ||
+		(p >= 0 && t.elseClauses.has(s.nodes[p]) && t.isIf(s, s.parent[p])) ||
+		(p >= 0 && t.isElse(s, s.prev[p]) && t.isIf(s, s.parent[p]))
+}
+
+// complexity is SonarSource's cognitive complexity of the nodes [from, to): an if, loop, switch, catch or conditional
+// expression counts 1 plus the levels open around it and opens one; an else, else-if or elif counts 1; each sequence of
+// like boolean operators, read in text order through one expression tree, counts 1.
+func (t table) complexity(s shape, from, to int) int {
+	total := 0
+	var open []uint32
+	last := map[int]uint16{} // the root of a tree of boolean operators -> its last operator's kind
+	for k := from + 1; k < to; k++ {
+		n := s.nodes[k]
+		for len(open) > 0 && open[len(open)-1] >= n.Depth {
+			open = open[:len(open)-1]
+		}
+		switch {
+		case t.skipped(n):
+			k = s.end[k] - 1
+		case int(n.Kind) == t.elseKind:
+			p := s.parent[k]
+			if t.isIf(s, p) || (p >= 0 && t.elseClauses.has(s.nodes[p]) && t.isIf(s, s.parent[p])) {
+				total++
+			}
+		case n.Named && t.ifs.has(n):
+			if !t.elseIf(s, k) {
+				total += 1 + len(open)
+				open = append(open, n.Depth)
+			}
+		case n.Named && t.flatBranches.has(n):
+			total++
+		case n.Named && t.nesting.has(n):
+			total += 1 + len(open)
+			open = append(open, n.Depth)
+		case !n.Named && t.logic.has(n):
+			root := t.logicRoot(s, k, from)
+			if kind, seen := last[root]; !seen || kind != n.Kind {
+				total++
+			}
+			last[root] = n.Kind
+		}
+	}
+	return total
+}
+
+// logicRoot is the topmost node of the tree of boolean operators, through parentheses, that holds the token at k.
+func (t table) logicRoot(s shape, k, from int) int {
+	holdsLogic := func(i int) bool {
+		if i < 0 || !s.nodes[i].Named {
+			return false
+		}
+		for j := i + 1; j < s.end[i]; j = s.end[j] {
+			if !s.nodes[j].Named && t.logic.has(s.nodes[j]) {
+				return true
+			}
+		}
+		return false
+	}
+	root := s.parent[k]
+	for {
+		p := s.parent[root]
+		for p >= 0 && t.parentheses.has(s.nodes[p]) {
+			p = s.parent[p]
+		}
+		if p < from || !holdsLogic(p) {
+			return root
+		}
+		root = p
+	}
+}
+
+// depthOf is the deepest nesting of control structures in [from, to), and the line of the first node that reaches it.
+// An else-if stays at its if's level; closures, nested functions and markup are skipped.
+func (t table) depthOf(s shape, from, to int, lines lineIndex) (int, int) {
+	deepest, line := 0, 0
+	var open []uint32
+	for k := from + 1; k < to; k++ {
+		n := s.nodes[k]
+		for len(open) > 0 && open[len(open)-1] >= n.Depth {
+			open = open[:len(open)-1]
+		}
+		push := false
+		switch {
+		case t.skipped(n):
+			k = s.end[k] - 1
+		case n.Named && t.depthIfs.has(n):
+			push = !t.elseIf(s, k)
+		case n.Named && t.depth.has(n):
+			push = true
+		}
+		if push {
+			open = append(open, n.Depth)
+			if len(open) > deepest {
+				deepest, line = len(open), lines.line(int(n.Start))
+			}
+		}
+	}
+	return deepest, line
+}

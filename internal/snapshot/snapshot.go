@@ -47,7 +47,9 @@ type Snapshot struct {
 	// SkippedChanges are the skipped folders that hold changed files, each with how many: "`dist/` (3 files)", sorted.
 	SkippedChanges []string
 	SyntaxErrors   []string // changed code files whose reading on either side met a syntax error; sorted, each once
-	Named          []string // the files the caller named, cleaned, sorted, each once; nil when none
+	// Functions are the functions of the changed product files that the change made complex or nested deeper.
+	Functions Functions
+	Named     []string // the files the caller named, cleaned, sorted, each once; nil when none
 }
 
 // Tree is one side of the repository.
@@ -240,4 +242,49 @@ func (s Snapshot) BasePath(path string) string {
 		}
 	}
 	return path
+}
+
+// LineRange is a range of lines, from 1, both ends included.
+type LineRange struct{ Start, End int }
+
+// FunctionChange is a function of a changed product file that crossed a function rule: names and numbers, no text.
+type FunctionChange struct {
+	Path, Name         string
+	Occurrence         int // 1 for the first function of the name in its file
+	Start, End         int // its lines now
+	New                bool
+	BasePath           string // "" when New
+	BaseStart, BaseEnd int
+	ByBody             bool // matched to its base function by a like body, not by its name
+	Complexity         int
+	ComplexityBefore   int
+	Nesting            int
+	NestingBefore      int
+	NestingLine        int
+	Repeated           []LineRange // two ranges of a repeated block the change introduced; nil without one
+	AddedLines         int         // lines of the function the change added
+	MovedShare         float64     // the share of its tokens found in lines the change removed
+	CopyFiles          int         // base files compared for a copy
+	ClosestFile        string      // the compared file that held most of its tokens
+	ClosestShare       float64
+	AddedWhole         bool // its file is new in the change
+}
+
+// LeftOutFunction is a function that crossed a rule and was left out, with the reason; Source is the file a copy was
+// found in.
+type LeftOutFunction struct {
+	Path, Name, Reason, Source string
+}
+
+// Functions is what the function rules found in the changed product files.
+type Functions struct {
+	Files, Measured               int // changed product files measured, and their functions now
+	Complex, Deeper               []FunctionChange
+	ComplexCrossed, DeeperCrossed int // functions that crossed each rule and were not left out, the listed ones included
+	LeftOut                       []LeftOutFunction
+	Uncompared, Broken            int
+	Unread, Minified, Unmeasured  []string
+	PerMeasure, Checks            int // the rules' numbers an answer prints
+	MinifiedLineBytes             int
+	MovedShare, CopyShare         float64
 }

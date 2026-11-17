@@ -1,0 +1,77 @@
+package snapshot_test
+
+import (
+	"fmt"
+	"slices"
+	"testing"
+
+	"github.com/julianzh0/plimsoll/internal/conventions"
+	"github.com/julianzh0/plimsoll/internal/snapshot"
+	"github.com/julianzh0/plimsoll/internal/snapshot/snapshottest"
+)
+
+// shown is one line per listed function: "<path> <name> c=<complexity> n=<nesting>@<line>", with "<before>→" before a
+// number when the function existed at the base.
+func shown(list []snapshot.FunctionChange) []string {
+	var lines []string
+	for _, f := range list {
+		if f.New {
+			lines = append(lines, fmt.Sprintf("%s %s c=%d n=%d@%d", f.Path, f.Name, f.Complexity, f.Nesting, f.NestingLine))
+			continue
+		}
+		lines = append(lines, fmt.Sprintf("%s %s c=%d→%d n=%d→%d@%d", f.Path, f.Name, f.ComplexityBefore, f.Complexity, f.NestingBefore, f.Nesting, f.NestingLine))
+	}
+	return lines
+}
+
+func functionsIn(t *testing.T, rules conventions.Rules, base, now map[string]string, changes ...snapshot.Change) snapshot.Functions {
+	t.Helper()
+	source := snapshottest.Files(base, now)
+	if len(changes) > 0 {
+		source.Changes = changes
+	}
+	return snapshot.Build(source, rules, snapshottest.Readings(t)).Functions
+}
+
+func TestBuildListsFunctionsAChangeMadeComplexOrDeeper(t *testing.T) {
+	fn := snapshottest.Function
+	one := func(content string) map[string]string { return map[string]string{"src/a.ts": content} }
+	four := fn("a", 7, 0) + "\n" + fn("b", 8, 0) + "\n" + fn("c", 9, 0) + "\n" + fn("d", 7, 1)
+	cases := []struct {
+		name            string
+		base, now       map[string]string
+		changes         []snapshot.Change
+		complex, deeper []string
+		crossed         [2]int // ComplexCrossed, DeeperCrossed
+	}{
+		{"new, over the limit, nested 7 deep", nil, one(fn("seven", 7, 0)), nil, []string{"src/a.ts seven c=28 n=7@8"}, nil, [2]int{1, 0}},
+		{"new, over the limit, nested 3 deep", nil, one(fn("wide", 3, 20)), nil, nil, nil, [2]int{0, 0}},
+		{"pushed over the limit by 8", one(fn("grow", 5, 4)), one(fn("grow", 6, 6)), nil, []string{"src/a.ts grow c=19→27 n=5→6@7"}, nil, [2]int{1, 0}},
+		{"pushed over the limit by 7", one(fn("grow", 5, 4)), one(fn("grow", 6, 5)), nil, nil, []string{"src/a.ts grow c=19→26 n=5→6@7"}, [2]int{0, 1}},
+		{"over the limit at the base and grown", one(fn("grow", 7, 0)), one(fn("grow", 7, 9)), nil, nil, nil, [2]int{0, 0}},
+		{"nesting 3 to 4", one(fn("walk", 3, 0)), one(fn("walk", 4, 0)), nil, nil, []string{"src/a.ts walk c=6→10 n=3→4@5"}, [2]int{0, 1}},
+		{"nesting 4 to 5", one(fn("walk", 4, 0)), one(fn("walk", 5, 0)), nil, nil, []string{"src/a.ts walk c=10→15 n=4→5@6"}, [2]int{0, 1}},
+		{"nesting 4 to 4", one(fn("walk", 4, 0)), one(fn("walk", 4, 1)), nil, nil, nil, [2]int{0, 0}},
+		{"four over the limit", nil, map[string]string{"src/four.ts": four}, nil,
+			[]string{"src/four.ts c c=45 n=9@48", "src/four.ts b c=36 n=8@27", "src/four.ts d c=29 n=7@68"},
+			[]string{"src/four.ts a c=28 n=7@8"}, [2]int{4, 1}},
+		{"a renamed file", map[string]string{"old/a.ts": fn("grow", 5, 4)}, one(fn("grow", 6, 6)),
+			[]snapshot.Change{{Path: "src/a.ts", From: "old/a.ts"}}, []string{"src/a.ts grow c=19→27 n=5→6@7"}, nil, [2]int{1, 0}},
+		{"a test file", nil, map[string]string{"tests/a.test.ts": fn("seven", 7, 0)}, nil, nil, nil, [2]int{0, 0}},
+		{"other code", nil, map[string]string{"scripts/a.ts": fn("seven", 7, 0)}, nil, nil, nil, [2]int{0, 0}},
+		{"a function the change removed", one(fn("seven", 7, 0) + "\n" + fn("kept", 1, 0)), one(fn("kept", 1, 0)), nil, nil, nil, [2]int{0, 0}},
+	}
+	for _, tc := range cases {
+		got := functionsIn(t, conventions.Default(), tc.base, tc.now, tc.changes...)
+		if !slices.Equal(shown(got.Complex), tc.complex) || !slices.Equal(shown(got.Deeper), tc.deeper) ||
+			got.ComplexCrossed != tc.crossed[0] || got.DeeperCrossed != tc.crossed[1] {
+			t.Errorf("Build(%s).Functions = complex %q, deeper %q, crossed %d and %d; want %q, %q, %v",
+				tc.name, shown(got.Complex), shown(got.Deeper), got.ComplexCrossed, got.DeeperCrossed, tc.complex, tc.deeper, tc.crossed)
+		}
+	}
+	renamed := functionsIn(t, conventions.Default(), map[string]string{"old/a.ts": fn("grow", 5, 4)}, one(fn("grow", 6, 6)), snapshot.Change{Path: "src/a.ts", From: "old/a.ts"})
+	if len(renamed.Complex) != 1 || renamed.Complex[0].BasePath != "old/a.ts" || renamed.Complex[0].BaseStart != 1 || renamed.Complex[0].BaseEnd != 17 ||
+		renamed.Complex[0].Start != 1 || renamed.Complex[0].End != 21 || renamed.Files != 1 || renamed.Measured != 1 {
+		t.Errorf("Build(a renamed file).Functions = %+v, want grow at lines 1 to 21, from lines 1 to 17 of old/a.ts, 1 file and 1 function measured", renamed)
+	}
+}

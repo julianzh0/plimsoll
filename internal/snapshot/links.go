@@ -122,6 +122,9 @@ type reading struct {
 	// declarations are the top-level names the file declares outside its test code, when it was read with them.
 	declarations []topName
 	testSpans    []span // the test code inside the file, by the entry's blocks
+	// functions are the file's measured functions, when it was read with them; functionsUnread when the walk failed.
+	functions       []function
+	functionsUnread bool
 }
 
 // scan finds the import statements of one file's content, its literals blanked.
