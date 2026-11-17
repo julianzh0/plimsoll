@@ -107,6 +107,9 @@ func status(text *strings.Builder, a Answer, w Wording) {
 		}
 		fmt.Fprintf(text, "Resolved: %s.\n", capped(ids, statusResolved))
 	}
+	if len(a.Touched) > 0 {
+		fmt.Fprintf(text, "Touched but not created by this change (`report` lists them): %s.\n", byDetector(a.Touched, a, w, "; "))
+	}
 	fmt.Fprintf(text, "Standing (already at the base, not grown): %s.\n", standingLine(a, w))
 	trailer(text, a)
 	whats := make([]string, 0, len(a.NotAnalysed))
@@ -126,6 +129,14 @@ func report(text *strings.Builder, a Answer, w Wording) {
 	} else {
 		text.WriteString("Resolved:\n")
 		for _, m := range a.Resolved {
+			fmt.Fprintf(text, "- %s\n  verify: %s id: %s\n", sentence(w, m), m.Hint, m.ID)
+		}
+	}
+	if len(a.Touched) == 0 {
+		text.WriteString("Touched but not created by this change: none.\n")
+	} else {
+		text.WriteString("Touched but not created by this change:\n")
+		for _, m := range a.Touched {
 			fmt.Fprintf(text, "- %s\n  verify: %s id: %s\n", sentence(w, m), m.Hint, m.ID)
 		}
 	}
@@ -158,7 +169,7 @@ func report(text *strings.Builder, a Answer, w Wording) {
 }
 
 func explain(text *strings.Builder, a Answer, w Wording) {
-	for _, m := range append(append(slices.Clone(a.Marks), a.Resolved...), a.Standing...) {
+	for _, m := range slices.Concat(a.Marks, a.Resolved, a.Touched, a.Standing) {
 		fmt.Fprintf(text, "[%s, %s] %s\n   verify: %s id: %s\n", m.Change, m.Confidence, sentence(w, m), m.Hint, m.ID)
 	}
 	if a.Evidence == nil {
@@ -181,38 +192,37 @@ func trailer(text *strings.Builder, a Answer) {
 // hiddenContext names the context marks among the marks status does not show, in each detector's own words, or is ""
 // when there are none.
 func hiddenContext(a Answer, w Wording) string {
-	var fragments []string
-	for _, detector := range a.Detectors {
-		var items []Mark
-		for _, m := range a.hidden {
-			if m.Context && DetectorOf(m.ID) == detector {
-				items = append(items, m)
-			}
-		}
-		if phrases, found := w[detector]; found && len(items) > 0 {
-			fragments = append(fragments, phrases.Standing(items))
+	var context []Mark
+	for _, m := range a.hidden {
+		if m.Context {
+			context = append(context, m)
 		}
 	}
-	return strings.Join(fragments, " and ")
+	return byDetector(context, a, w, " and ")
 }
 
 func standingLine(a Answer, w Wording) string {
+	if line := byDetector(a.Standing, a, w, "; "); line != "" {
+		return line
+	}
+	return "none"
+}
+
+// byDetector sums items up in each detector's own words, in the detectors' order, or is "" when there are none.
+func byDetector(items []Mark, a Answer, w Wording, separator string) string {
 	var fragments []string
 	for _, detector := range a.Detectors {
-		var items []Mark
-		for _, m := range a.Standing {
+		var own []Mark
+		for _, m := range items {
 			if DetectorOf(m.ID) == detector {
-				items = append(items, m)
+				own = append(own, m)
 			}
 		}
-		if phrases, found := w[detector]; found && len(items) > 0 {
-			fragments = append(fragments, phrases.Standing(items))
+		if phrases, found := w[detector]; found && len(own) > 0 {
+			fragments = append(fragments, phrases.Standing(own))
 		}
 	}
-	if len(fragments) == 0 {
-		return "none"
-	}
-	return strings.Join(fragments, "; ")
+	return strings.Join(fragments, separator)
 }
 
 func statistic(s Statistic) string {

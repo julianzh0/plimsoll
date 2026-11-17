@@ -15,12 +15,14 @@ const (
 // Change says how an observation changed since the base.
 type Change string
 
-// The four changes. Standing items live in their own list.
+// The five changes. Standing and touched items live in their own lists.
 const (
 	New      Change = "new"
 	Grown    Change = "grown"
 	Resolved Change = "resolved"
 	Standing Change = "standing"
+	// Touched is an item the change touched but did not create: a new or grown item no change of its own made.
+	Touched Change = "touched"
 )
 
 // Confidence says whether a mark is a measurement or an inference from a search.
@@ -44,6 +46,7 @@ type Answer struct {
 	More        int           `json:"more"`                // marks not shown
 	hidden      []Mark        // the marks not shown, for the text to name the context marks among them
 	Resolved    []Mark        `json:"resolved"`
+	Touched     []Mark        `json:"touched"` // in no count and no numbered mark
 	Standing    []Mark        `json:"standing"`
 	History     History       `json:"history"`
 	Detectors   []string      `json:"detectors"`

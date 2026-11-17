@@ -35,6 +35,7 @@ func Assemble(q Question, version string, s snapshot.Snapshot, results []Result)
 		Footprint:   footprint(s.Footprint),
 		Marks:       []Mark{},
 		Resolved:    []Mark{},
+		Touched:     []Mark{},
 		Standing:    []Mark{},
 		History:     History{Read: s.History.Read, Usable: s.History.Usable},
 		Detectors:   []string{},
@@ -62,6 +63,8 @@ func Assemble(q Question, version string, s snapshot.Snapshot, results []Result)
 				a.Marks = append(a.Marks, m)
 			case Resolved:
 				a.Resolved = append(a.Resolved, m)
+			case Touched:
+				a.Touched = append(a.Touched, m)
 			case Standing:
 				standing = append(standing, m)
 			}

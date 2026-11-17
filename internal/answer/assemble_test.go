@@ -110,6 +110,7 @@ func TestReportListsEverythingInAFixedLayout(t *testing.T) {
 		"Resolved:\n" +
 		"- sentence of shape.file-size:src/c.ts\n" +
 		"  verify: count the file's lines at the base and now. id: shape.file-size:src/c.ts\n" +
+		"Touched but not created by this change: none.\n" +
 		"\n" +
 		"shape\n" +
 		"  product lines: 19,465 lines (+120)\n" +
@@ -397,4 +398,28 @@ func ids(marks []Mark) []string {
 		found = append(found, m.ID)
 	}
 	return found
+}
+
+func TestTouchedItemsAreCountedInStatusAndListedInReport(t *testing.T) {
+	f := findings()
+	f.Marks = append(f.Marks, fileMark("src/t.ts", Touched), fileMark("src/u.ts", Touched))
+	status := Assemble(Status, "0.1.0", sample(), []Result{{"shape", f}})
+	if status.Counts != (Counts{New: 1, Grown: 1}) || len(status.Marks) != 2 || status.More != 0 || len(status.Touched) != 2 {
+		t.Fatalf("Assemble(status) = counts %+v, %d marks, %d more, %d touched; want {1 1 0}, 2, 0, 2",
+			status.Counts, len(status.Marks), status.More, len(status.Touched))
+	}
+	line := "\nTouched but not created by this change (`report` lists them): 2 standing.\nStanding (already at the base, not grown): 1 standing.\n"
+	if text := Render(status, wording()); !strings.Contains(text, line) {
+		t.Errorf("Render(status) =\n%s\nwant it to hold %q", text, line)
+	}
+	block := "Touched but not created by this change:\n" +
+		"- sentence of shape.file-size:src/t.ts\n  verify: count the file's lines at the base and now. id: shape.file-size:src/t.ts\n" +
+		"- sentence of shape.file-size:src/u.ts\n  verify: count the file's lines at the base and now. id: shape.file-size:src/u.ts\n\nshape\n"
+	report := Assemble(Report, "0.1.0", sample(), []Result{{"shape", f}})
+	if text := Render(report, wording()); !strings.Contains(text, block) {
+		t.Errorf("Render(report) =\n%s\nwant it to hold %q", text, block)
+	}
+	if none := Render(Assemble(Status, "0.1.0", sample(), []Result{{"shape", findings()}}), wording()); strings.Contains(none, "Touched") {
+		t.Errorf("Render(status without a touched item) names one:\n%s", none)
+	}
 }
