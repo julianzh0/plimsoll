@@ -55,20 +55,27 @@ func tableOf(k conventions.FunctionKinds, tree parse.Tree) table {
 	}
 }
 
-// shape is a tree's structure: each node's parent, previous sibling and the index after its subtree, -1 for none.
+// shape is a tree's structure: each node's parent, previous sibling and the index after its subtree, -1 for none, and
+// how many error nodes stand before each node.
 type shape struct {
 	nodes             []parse.Node
 	parent, prev, end []int32
+	errorsBefore      []int32 // errorsBefore[k]: the error nodes among nodes[:k]; one more entry than nodes
 }
 
 // shapeOf makes the shape in one pass with a stack: no recursion, whatever the depth.
 func shapeOf(nodes []parse.Node) shape {
-	s := shape{nodes: nodes, parent: make([]int32, len(nodes)), prev: make([]int32, len(nodes)), end: make([]int32, len(nodes))}
+	s := shape{nodes: nodes, parent: make([]int32, len(nodes)), prev: make([]int32, len(nodes)), end: make([]int32, len(nodes)),
+		errorsBefore: make([]int32, len(nodes)+1)}
 	var stack []int32
 	var after int32                        // the index past the last node seen
 	lastChild := make([]int32, len(nodes)) // by parent: its last child seen, -1 for none
 	for i, n := range nodes {
 		after = int32(i) + 1
+		s.errorsBefore[i+1] = s.errorsBefore[i]
+		if n.Error {
+			s.errorsBefore[i+1]++
+		}
 		lastChild[i] = -1
 		for len(stack) > 0 && nodes[stack[len(stack)-1]].Depth >= n.Depth {
 			s.end[stack[len(stack)-1]] = int32(i)
@@ -119,6 +126,9 @@ func functionsOf(kinds conventions.FunctionKinds, tokens *regexp.Regexp, rules c
 	lines := linesOf(content)
 	var found []function
 	inside := 0 // the end of the outermost function or listed closure seen so far
+	// the tokens of the outermost function seen so far, from its first byte: a function inside takes its part of them,
+	// so the file is tokenized once
+	var outer tokenSpan
 	for i, n := range tree.Nodes {
 		if !n.Named {
 			continue
@@ -129,7 +139,10 @@ func functionsOf(kinds conventions.FunctionKinds, tokens *regexp.Regexp, rules c
 				continue
 			}
 			f := t.measure(s, i, to, functionName(tree, s, i, content, t.bodyNames), content, lines)
-			f.repeats = repeatsOf(tokens, rules, tree, s, t, i, to, content, lines)
+			if i >= inside {
+				outer = newTokenSpan(tokensOf(tokens, content[f.start:f.end], 0), f.start)
+			}
+			f.repeats = repeatsOf(rules, tree, s, t, i, to, outer, lines)
 			found = append(found, f)
 			inside = max(inside, to)
 			continue
@@ -137,7 +150,8 @@ func functionsOf(kinds conventions.FunctionKinds, tokens *regexp.Regexp, rules c
 		if i >= inside && t.namedClosures.has(n) && s.parentOf(i) >= 0 && t.namedBy.has(tree.Nodes[s.parentOf(i)]) {
 			if name := bindingName(tree, s, i, content); name != "" {
 				f := t.measure(s, i, s.endOf(i), name, content, lines)
-				f.repeats = repeatsOf(tokens, rules, tree, s, t, i, s.endOf(i), content, lines)
+				outer = newTokenSpan(tokensOf(tokens, content[f.start:f.end], 0), f.start)
+				f.repeats = repeatsOf(rules, tree, s, t, i, s.endOf(i), outer, lines)
 				found = append(found, f)
 				inside = s.endOf(i)
 			}
@@ -163,8 +177,9 @@ func (t table) functionEnd(s shape, i int) (int, bool) {
 	return 0, false
 }
 
-// functionName is a declared function's name: its name field; else its first named child of an identifier kind; else
-// the name field or the first identifier child of one of its named children; else its kind without "_declaration".
+// functionName is a declared function's name: its name field when it is an identifier (else its kind); else its first
+// named child of an identifier kind; else the name field or the first identifier child of one of its named children;
+// else its kind without "_declaration".
 func functionName(tree parse.Tree, s shape, i int, content []byte, bodyKinds map[string]bool) string {
 	text := func(k int) string {
 		return strings.Trim(string(content[s.nodes[k].Start:s.nodes[k].End]), "`")
@@ -185,8 +200,11 @@ func functionName(tree parse.Tree, s shape, i int, content []byte, bodyKinds map
 		return strings.TrimSuffix(kind, "_declaration") // an operator's other names are its types
 	}
 	for _, c := range children(i) {
-		if s.nodes[c].Name {
+		if s.nodes[c].Name && (identifier(c) || !s.nodes[c].Named) { // an identifier, or a keyword such as C#'s get
 			return text(c)
+		}
+		if s.nodes[c].Name { // a computed key or a quoted name is the file's text, not a name: the kind stands for it
+			return strings.TrimSuffix(tree.Kinds[s.nodes[i].Kind], "_declaration")
 		}
 	}
 	for _, c := range children(i) {
@@ -222,15 +240,22 @@ func bindingName(tree parse.Tree, s shape, i int, content []byte) string {
 
 // measure is one function's numbers over the nodes [from, to).
 func (t table) measure(s shape, from, to int, name string, content []byte, lines lineIndex) function {
-	f := function{name: name, start: int(s.nodes[from].Start), end: int(s.nodes[to-1].End)}
-	for k := from; k < to; k++ {
-		f.end = max(f.end, int(s.nodes[k].End))
-		f.broken = f.broken || s.nodes[k].Error
-	}
+	f := function{name: name, start: int(s.nodes[from].Start), end: t.extent(s, from, to),
+		broken: s.errorsBefore[to] > s.errorsBefore[from]}
 	f.startLine, f.endLine = lines.line(f.start), lines.line(max(f.start, f.end-1))
 	f.complexity = t.complexity(s, from, to)
 	f.nesting, f.nestingLine = t.depthOf(s, from, to, lines)
 	return f
+}
+
+// extent is where the nodes from..to end: the end of the last of them at from's level (a Dart body follows its
+// signature), without walking the nodes inside.
+func (t table) extent(s shape, from, to int) int {
+	end := 0
+	for k := from; k < to; k = s.endOf(k) {
+		end = max(end, int(s.nodes[k].End))
+	}
+	return end
 }
 
 // skipped says whether the node at k starts a subtree that adds nothing to the function around it: a declared function,

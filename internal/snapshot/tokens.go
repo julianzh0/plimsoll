@@ -7,6 +7,7 @@ import (
 	"hash/fnv"
 	"iter"
 	"regexp"
+	"slices"
 )
 
 // token is one token of a text: a hash of its bytes, where it stands, and whether it is a name or a quoted literal.
@@ -113,14 +114,34 @@ func windowHashes(tokens []token, n int) []uint64 {
 	return found
 }
 
-// runHash is the hash of n tokens in a row.
-func runHash(tokens []token) uint64 {
-	h := fnv.New64a()
-	for _, t := range tokens {
-		writeUint64(h, t.hash)
-	}
-	return h.Sum64()
+// tokenSpan is the tokens of a range of a content, from its byte base, with prefix hashes: the hash of any run of them
+// in constant time, equal to the hash windows gives that run.
+type tokenSpan struct {
+	toks   []token
+	base   int
+	prefix []uint64 // prefix[i]: the rolling hash of toks[:i]
+	power  []uint64 // power[i]: rollBase to i
 }
+
+func newTokenSpan(toks []token, base int) tokenSpan {
+	ts := tokenSpan{toks: toks, base: base, prefix: make([]uint64, len(toks)+1), power: make([]uint64, len(toks)+1)}
+	ts.power[0] = 1
+	for i, t := range toks {
+		ts.prefix[i+1] = ts.prefix[i]*rollBase + t.hash
+		ts.power[i+1] = ts.power[i] * rollBase
+	}
+	return ts
+}
+
+// in is the run of tokens that start inside the content's bytes a to b.
+func (ts tokenSpan) in(a, b int) (lo, hi int) {
+	lo, _ = slices.BinarySearchFunc(ts.toks, a-ts.base, func(t token, at int) int { return t.start - at })
+	hi, _ = slices.BinarySearchFunc(ts.toks, b-ts.base, func(t token, at int) int { return t.start - at })
+	return lo, hi
+}
+
+// hash is the rolling hash of the tokens lo to hi.
+func (ts tokenSpan) hash(lo, hi int) uint64 { return ts.prefix[hi] - ts.prefix[lo]*ts.power[hi-lo] }
 
 // writeUint64 writes v to a hash in eight little-endian bytes.
 func writeUint64(h hash.Hash64, v uint64) {

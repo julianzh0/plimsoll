@@ -6,4 +6,7 @@ class Store {
   save() { const inner = () => {}; inner(); }
   field = function () {};
   get size() { return 1; }
+  ["key: hunter2\n" +
+    SUFFIX]() {}
+  "quoted name"() {}
 }

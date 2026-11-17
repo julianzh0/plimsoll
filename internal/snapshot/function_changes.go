@@ -200,9 +200,15 @@ func functionChanges(rules conventions.Rules, changes []Change, m measured, miss
 	}
 	var kept []candidate
 	if len(open) > 0 {
-		removedNow := readRemoved(rules, lines, wantRuns, wantBlocks)
-		for _, c := range open {
-			c.change.MovedShare = movedShare(c, fr.Run, removedNow)
+		bodies := make([]oldBody, len(open))
+		for k, c := range open {
+			if !c.change.New {
+				bodies[k] = oldBody{path: c.change.BasePath, start: c.change.BaseStart, end: c.change.BaseEnd}
+			}
+		}
+		removedNow := readRemoved(rules, lines, wantRuns, wantBlocks, bodies)
+		for k, c := range open {
+			c.change.MovedShare = movedShare(c, fr.Run, removedNow, removedNow.own[k])
 			if c.change.MovedShare >= fr.MovedShare {
 				leaveOut(c, Moved, "")
 				continue

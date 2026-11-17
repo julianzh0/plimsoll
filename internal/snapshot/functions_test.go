@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/julianzh0/plimsoll/internal/conventions"
 	"github.com/julianzh0/plimsoll/internal/snapshot"
@@ -69,6 +70,9 @@ func TestBuildListsFunctionsAChangeMadeComplexOrDeeper(t *testing.T) {
 			map[string]string{"src/two.ts": "class A {\n" + strings.Replace(fn("m", 7, 0), "function ", "", 1) + "}\nclass B {\n" + strings.Replace(fn("m", 4, 0), "function ", "", 1) + "}\n"},
 			nil, []string{"src/two.ts m c=28 n=7@9"}, []string{"src/two.ts m c=10 n=4@25"}, [2]int{1, 1}},
 		{"only the line ends changed", one(fn("seven", 7, 0)), one(strings.ReplaceAll(fn("seven", 7, 0), "\n", "\r\n")), nil, nil, nil, [2]int{0, 0}},
+		// the function's own old body is no code moved from elsewhere
+		{"pushed over by 8 with new line ends", one(fn("grow", 5, 4)), one(strings.ReplaceAll(fn("grow", 6, 6), "\n", "\r\n")), nil,
+			[]string{"src/a.ts grow c=19→27 n=5→6@7"}, nil, [2]int{1, 0}},
 	}
 	for _, tc := range cases {
 		got := functionsIn(t, conventions.Default(), tc.base, tc.now, tc.changes...)
@@ -115,7 +119,7 @@ func TestBuildMeasuresFunctionsInEveryLanguage(t *testing.T) {
 		"src/a.swift": {"pick c=3 n=1", "chain c=5 n=1"},
 		"src/n.go":    {"Method c=0 n=0", "Plain c=0 n=0"},
 		"src/n.py":    {"save c=0 n=0", "inner c=0 n=0", "fetch c=0 n=0"},
-		"src/n.ts":    {"plain c=0 n=0", "arrow c=0 n=0", "constructor c=0 n=0", "save c=0 n=0", "field c=0 n=0", "size c=0 n=0"},
+		"src/n.ts":    {"plain c=0 n=0", "arrow c=0 n=0", "constructor c=0 n=0", "save c=0 n=0", "field c=0 n=0", "size c=0 n=0", "method_definition c=0 n=0", "method_definition c=0 n=0"},
 		"src/N.java":  {"N c=0 n=0", "size c=0 n=0"},
 		"src/n.dart":  {"Store c=0 n=0", "size c=0 n=0", "save c=0 n=0", "top c=0 n=0"},
 		"src/n.kt":    {"save c=0 n=0", "getter c=0 n=0", "top c=0 n=0", "weird name c=0 n=0"},
@@ -504,5 +508,27 @@ func TestBuildKeepsNoFunctionText(t *testing.T) {
 	got := functionsIn(t, conventions.Default(), map[string]string{"src/old.ts": snapshottest.Function("other", 1, 0)}, map[string]string{"src/a.ts": secret})
 	if text := fmt.Sprintf("%+v", got); strings.Contains(text, "zzsecret") || len(got.Complex) != 1 {
 		t.Errorf("Build(a function with a secret local).Functions = %s, want the function listed and none of its text", text)
+	}
+}
+
+func TestBuildMeasuresNestedFunctionsInTimeThatGrowsWithTheFile(t *testing.T) {
+	// each function measures its own code once: a file of functions declared inside each other costs what its size costs
+	const nested = 4000
+	var b strings.Builder
+	for i := range nested {
+		fmt.Fprintf(&b, "function f%d(a: number): number { if (a === %d) { a += 1; }\n", i, i)
+	}
+	b.WriteString(strings.Repeat("}\n", nested))
+	done := make(chan snapshot.Functions, 1)
+	go func() {
+		done <- functionsIn(t, conventions.Default(), nil, map[string]string{"src/deep.ts": b.String()})
+	}()
+	select {
+	case got := <-done:
+		if got.Measured != nested {
+			t.Errorf("Build(%d nested functions).Functions.Measured = %d, want %d", nested, got.Measured, nested)
+		}
+	case <-time.After(20 * time.Second):
+		t.Fatalf("Build(%d nested functions) did not answer within 20 s", nested)
 	}
 }

@@ -3,7 +3,6 @@ package snapshot
 import (
 	"encoding/binary"
 	"hash/fnv"
-	"regexp"
 	"slices"
 	"strings"
 
@@ -32,19 +31,10 @@ type statementRun struct {
 // sibling statements with at least BlockStatements statements and BlockTokens tokens; such a run is repeated when the
 // same statements with the same tokens stand at least twice without overlap. The statements are the named children of
 // the function's Blocks nodes that are no comments (in a SwitchBlocks node, only statements and declarations); a declared
-// function inside is not entered, a closure is.
-func repeatsOf(pattern *regexp.Regexp, rules conventions.FunctionRules, tree parse.Tree, s shape, t table,
-	from, to int, content []byte, lines lineIndex) []repeat {
-	start, end := int(s.nodes[from].Start), int(s.nodes[to-1].End)
-	for k := from; k < to; k++ {
-		end = max(end, int(s.nodes[k].End))
-	}
-	toks := tokensOf(pattern, content[start:end], 0) // the function's tokens, once; a statement takes its slice of them
-	tokensIn := func(a, b int) []token {
-		lo, _ := slices.BinarySearchFunc(toks, a-start, func(t token, at int) int { return t.start - at })
-		hi, _ := slices.BinarySearchFunc(toks, b-start, func(t token, at int) int { return t.start - at })
-		return toks[lo:hi]
-	}
+// function inside is not entered, a closure is. span holds the tokens of a range around the function; a statement's
+// hash is that of its run of them.
+func repeatsOf(rules conventions.FunctionRules, tree parse.Tree, s shape, t table, from, to int, span tokenSpan,
+	lines lineIndex) []repeat {
 	var sequences [][]statementRun
 	for k := from + 1; k < to; k++ {
 		n := s.nodes[k]
@@ -66,8 +56,8 @@ func repeatsOf(pattern *regexp.Regexp, rules conventions.FunctionRules, tree par
 				continue
 			}
 			start, end := int(child.Start), int(child.End)
-			own := tokensIn(start, end)
-			seq = append(seq, statementRun{hash: runHash(own), tokens: len(own),
+			lo, hi := span.in(start, end)
+			seq = append(seq, statementRun{hash: span.hash(lo, hi), tokens: hi - lo,
 				span: blockSpan{startLine: lines.line(start), endLine: lines.line(max(start, end-1)), start: start, end: end}})
 		}
 		sequences = append(sequences, seq)
