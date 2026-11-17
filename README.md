@@ -45,7 +45,8 @@ overview of a change.
 
 Six detectors look at a change from different sides:
 
-- **Size** (`shape`): how much product and test code there is, the largest files, new dependencies and new settings.
+- **Size** (`shape`): how much product and test code there is, the largest files, new dependencies and new settings,
+  and the functions a change made complex or nested deeper.
 - **Working habits** (`process`): planning or review notes committed into the repository, and more churn in
   documentation than in code.
 - **Settings** (`settings`): names defined twice, and variables only the container setup knows.
@@ -168,6 +169,7 @@ Every number is measured at the base and now, from the tracked files only:
 - when the ratio is over its limit, test code split into files that define tests and test infrastructure that
   defines none, with the largest infrastructure files
 - the three largest code files
+- for the product files a change touched, each function's cognitive complexity and deepest nesting, at the base and now; code the change moved, split out or copied, files from another project, benchmarks and generated or minified files are left out, and nothing is said about functions the change did not touch
 - the settings in `.env.example` and the runtime dependencies of `package.json`, `go.mod`, `pyproject.toml` (`[project] dependencies`), `pubspec.yaml`, `pom.xml`, `build.gradle` or `build.gradle.kts`, `Cargo.toml`, `Package.swift`, `vcpkg.json`, and every `*.csproj` outside test code
 - the footprint of the change since the base
 - churn by area (product, tests, docs, other) over the last 150 non-merge commits
@@ -214,6 +216,7 @@ still run, interpreted and about 80 times slower.
   in `include_directories` or `target_include_directories`. Such a file under several folders is ambiguous, and an
   include that a macro names is not readable. Every `#if` branch is read.
 - **Runtime dependencies:** `vcpkg.json`, the top-level `dependencies` without host tools.
+- **Functions:** not measured.
 
 ### C#
 
@@ -313,6 +316,7 @@ still run, interpreted and about 80 times slower.
 - **Changed together:** each file is one unit.
 - **Added code:** top-level functions, types and exported values; a decorated or annotated declaration, a default
   export, generated code and example projects are left out.
+- **Functions:** measured in every language below except C and C++.
 
 ## Rules
 
@@ -322,6 +326,8 @@ still run, interpreted and about 80 times slower.
 | `shape.file-size:<path>` | a code file is over its line limit now and was not at the base (new), or grew while over it (grown) | 1,000 lines, plimsoll's default, taken from Pylint and SonarQube |
 | `shape.dependencies:<manifest>` | a runtime dependency was added since the base. Its verify line names the new ones that no tracked lockfile holds (never installed, or not a real package) | any addition |
 | `shape.settings:.env.example` | a setting was added since the base | any addition |
+| `shape.function-complexity:<path>:<function>` | a function of a product file the change touched has a cognitive complexity over its limit now and is new, or was at or under it at the base and rose by 8 or more; and it nests control flow 4 levels deep, or holds a block of at least 4 statements and 40 tokens that the change wrote twice inside it. Left out: code the change moved or split out of another function, code found in a file at the base, files from another project (by their header or a vendor folder with a licence), benchmarks, generated and minified files. At most three per change, the largest rise first (candidate) | 25, plimsoll's rule, read blind on agent pull requests; counted as SonarQube's cognitive complexity |
+| `shape.function-nesting:<path>:<function>` | a function of a product file the change touched nests control flow 4 or more levels deep now and deeper than at the base (new), or was that deep and got deeper (grown). The same code is left out; at most three per change (candidate). In `report` only | 4 levels, CodeScene's threshold for deep nesting |
 | `process.planning-file:<path>` | a file under a planning or review path is tracked now and was not at the base | repositories hold no planning records |
 | `process.doc-churn:repository` | over the commits since the base, documentation churn is above product plus test churn | documentation above code |
 | `process.limit-change:<key>` | `.plimsoll.toml` sets a limit to another value now than at the base, so a change that raised a limit to clear a mark says so | any change |
@@ -334,11 +340,13 @@ still run, interpreted and about 80 times slower.
 | `links.folder-cycle:<folder>` | two or more folders directly under one folder depend on each other in a cycle, through imports between product files below them, and none of them did at the base (new), or the cycle has more folders (grown), and the change added one of the imports between them. The folder is the cycle's smallest (candidate) | the Acyclic Dependencies Principle (Robert C. Martin) |
 
 Something over its limit at the base and no longer over it is reported as resolved. Something over it on both
-sides that did not grow is standing.
+sides that did not grow is standing. The function rules look only at the files a change touched, so they have no
+standing and no resolved items. A function is named by its path and name, and a second function of the same name in
+one file by `#2`.
 
 Some kinds are shown in `report` only: a file that grew while already over its line limit, settings added,
 documentation churn, compose-only settings, pairs of files that changed together, imports of test
-code and folder cycles. Seven outside models judged real answers of each kind and found them useful as background
+code, folder cycles and functions nested deeper. Seven outside models judged real answers of each kind and found them useful as background
 but too noisy to show on every change. `status` counts them in one line; `report` lists them; `explain` gives their
 evidence.
 
@@ -381,6 +389,8 @@ base = "main"                               # the base of a question that names 
 | `files` under `[ignore]` | File names, with the same patterns as `test_files`, of files plimsoll leaves out wherever they lie |
 | `base` | The branch, remote branch or tag a question without a base compares with. A remote branch is named with its remote (`origin/main`): `main` alone finds no remote branch. A branch of the name comes before a remote branch, and a remote branch before a tag |
 
+The function limits cannot be set in the file: they are the ones the measurement was read against.
+
 A declaration adds to the defaults and takes none away, and now's file applies to both sides of a question. Every
 mark names its limit's source, for example "1,500 lines, set by `.plimsoll.toml`", every report names what the file
 declares, and a limit or a declaration that changed since the base is itself a mark. The file switches no rule off,
@@ -398,14 +408,14 @@ base whose repository declares no usable default base is refused with one senten
 ## Guarantees
 
 - **trust**: plimsoll never changes a repository it reads. It runs only read-only git commands, takes no lock, starts no file monitor, runs no filter and fetches nothing from a remote. Tests: `internal/gitrepo/history_integration_test.go::TestIntegrationReadLeavesTheRepositoryUnchanged`, `internal/gitrepo/history_integration_test.go::TestIntegrationReadFetchesNothingFromARemote`, `cmd/plimsoll/tools_integration_test.go::TestIntegrationAnswersAreRepeatableAndLeaveNoTrace`
-- **trust**: no answer shows the content of a file or the value of a setting: only names, paths, line numbers and counts, and, from the repository's own `.plimsoll.toml`, its limits, the declared values that are plain paths, file-name patterns or branch names, and key and table names that are plain names. Documentation and configuration files are read for their words alone, to see whether they name code a change added. Content plimsoll does not need is never read. Tests: `internal/snapshot/facts_test.go::TestBuildReadsSettingNamesNeverValues`, `internal/snapshot/links_test.go::TestBuildKeepsNoImportText`, `internal/links/links_test.go::TestNoLinksLineHoldsImportText`, `internal/snapshot/settings_test.go::TestBuildReadsComposeEnvironmentKeys`, `internal/shape/explain_test.go::TestExplainHoldsNoFileContentOrSettingValue`, `internal/gitrepo/reader_integration_test.go::TestIntegrationReadLeavesUnwantedAndBinaryContentUnread`, `internal/answer/layout_test.go::TestLayoutLinesHoldNoValueFromOutsideTheRepository`, `internal/answer/samples_test.go::TestNoAnswerPrintsADeclaredValueOutsideItsForm`, `internal/links/additions_test.go::TestAddedCodeRowsGroupNamesByFileAndReason`
+- **trust**: no answer shows the content of a file or the value of a setting: only names, paths, line numbers and counts, and, from the repository's own `.plimsoll.toml`, its limits, the declared values that are plain paths, file-name patterns or branch names, and key and table names that are plain names; and function names. Documentation and configuration files are read for their words alone, to see whether they name code a change added, and root licence files for the names of their copyright holders. Content plimsoll does not need is never read. Tests: `internal/snapshot/facts_test.go::TestBuildReadsSettingNamesNeverValues`, `internal/snapshot/links_test.go::TestBuildKeepsNoImportText`, `internal/links/links_test.go::TestNoLinksLineHoldsImportText`, `internal/snapshot/settings_test.go::TestBuildReadsComposeEnvironmentKeys`, `internal/shape/explain_test.go::TestExplainHoldsNoFileContentOrSettingValue`, `internal/gitrepo/reader_integration_test.go::TestIntegrationReadLeavesUnwantedAndBinaryContentUnread`, `internal/answer/layout_test.go::TestLayoutLinesHoldNoValueFromOutsideTheRepository`, `internal/answer/samples_test.go::TestNoAnswerPrintsADeclaredValueOutsideItsForm`, `internal/links/additions_test.go::TestAddedCodeRowsGroupNamesByFileAndReason`, `internal/snapshot/functions_test.go::TestBuildKeepsNoFunctionText`
 - **idempotency**: the same question about the same repository state gives the same answer, in the same process or a new one, whatever the user's git configuration. The history and the file readings kept between questions answer as a fresh read does, also for questions answered at the same time. Tests: `cmd/plimsoll/tools_integration_test.go::TestIntegrationAnswersAreRepeatableAndLeaveNoTrace`, `internal/snapshot/readings_test.go::TestKeptReadingsEqualFreshOnes`, `internal/gitrepo/history_integration_test.go::TestIntegrationKeptHistoryEqualsAFreshRead`, `internal/gitrepo/history_integration_test.go::TestIntegrationReadsAtTheSameTimeShareOneReader`, `internal/gitrepo/history_test.go::TestQuestionsAtTheSameTimeShareOneHistoryRead`, `internal/gitrepo/history_integration_test.go::TestIntegrationReadIsTheSameEverywhere`
 - **ordering**: new and grown marks come in one order (new before grown, exact before candidate, the farthest past its limit first, then by identifier, at most two of one detector before the others). `status` shows at most five, and the report's sections follow the detector list. Tests: `internal/answer/mark_test.go::TestOrderPutsNewExactAndFarthestFirstWithTwoPerDetector`, `internal/answer/assemble_test.go::TestStatusShowsFiveMarksAndStaysInsideFortyLines`, `cmd/plimsoll/detectors_test.go::TestDetectorsAreListedInReportOrder`
 - **cleanup**: a SIGTERM or the end of its input ends the server with exit status 0. Tests: `cmd/plimsoll/main_e2e_test.go::TestE2EProgramAnswersAndEndsOnASignal`, `cmd/plimsoll/main_e2e_test.go::TestE2EEndOfInputEndsTheProcess`
 - **trust**: plimsoll sends no telemetry and opens no network connection. It talks MCP over standard input and output, runs only `git` and imports no network package. The MCP SDK it uses carries HTTP code for its other transports, which plimsoll never calls. Tests: `cmd/plimsoll/guard_test.go::TestModuleKeepsItsGuards`, `cmd/plimsoll/guard_test.go::TestGuardRulesNameEachViolation`, `internal/gitrepo/history_integration_test.go::TestIntegrationReadFetchesNothingFromARemote`
 - **trust**: the grammars plimsoll runs are given no file, network, clock or environment, and the only functions they can call answer with a failure. Tests: `internal/parse/modules_test.go::TestModulesImportOnlyTheFailingHost`
 - **ownership**: a parser belongs to whoever created it. Closing it frees its grammars and their memory, and any other parser keeps working. Tests: `internal/parse/parse_test.go::TestClosingOneParserLeavesAnotherWorking`
-- **error mapping**: a file the parser cannot read, or a changed file in which it meets a syntax error, is named under "not analysed" and never fails the question. Tests: `internal/parse/parse_test.go::TestAFileOverTheCapIsAnErrorAndTheNextCallWorks`, `internal/snapshot/build_test.go::TestBuildListsAFileTheParserCannotRead`, `internal/snapshot/links_test.go::TestBuildReadsImportsAroundASyntaxError`
+- **error mapping**: a file the parser cannot read, or a changed file in which it meets a syntax error, is named under "not analysed" and never fails the question; so is a function the parser cannot measure. Tests: `internal/parse/parse_test.go::TestAFileOverTheCapIsAnErrorAndTheNextCallWorks`, `internal/snapshot/build_test.go::TestBuildListsAFileTheParserCannotRead`, `internal/snapshot/links_test.go::TestBuildReadsImportsAroundASyntaxError`, `internal/snapshot/functions_test.go::TestBuildCountsFunctionsItCannotMeasure`
 - **error mapping**: git's own refusal (exit status 1 or 128) keeps its kind, such as an unknown base or no repository. Any other git failure is "git failed". A question without a base whose repository declares no usable default base is refused, and its sentence names `.plimsoll.toml`. Every refusal is one plain sentence without structured content. A malformed request, an unknown method or an unknown tool is a JSON-RPC error with its standard code. Tests: `internal/gitrepo/refusal_test.go::TestRefusalKeepsItsKindOnlyForGitsOwnAnswer`, `cmd/plimsoll/tools_integration_test.go::TestIntegrationRefusals`, `internal/mcpserver/tools_test.go::TestBaseIsOptionalInEveryTool`, `cmd/plimsoll/protocol_test.go::TestProtocolErrors`
 
 ## Protocol
@@ -473,7 +483,9 @@ internal/parse/grammars/         # the grammar modules, their pins, the C shim a
 ```
 
 A language is one file in `internal/conventions/` (`typescript.go`, `golang.go`, `python.go`) and one line in the
-list of `Default`. No detector names a language.
+list of `Default`. No detector names a language. Its function tables (which node kinds are functions, branches, loops,
+closures and boolean operators) and its token pattern live in that file too; a sample under
+`internal/snapshot/testdata/functions` checks that each language counts as the measurement did.
 
 To add a grammar: add its row to `pins.txt` and run `make grammars`, add its licence to `THIRD_PARTY_NOTICES.md`,
 name the grammar and write its query in the language's file, then extend the language's import cases and sample

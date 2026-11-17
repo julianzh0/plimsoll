@@ -8,7 +8,7 @@ import "regexp"
 // by the TypeScript grammar; .tsx and the JavaScript suffixes by the TSX grammar, which also reads JSX.
 func typescriptLanguage() Language {
 	return Language{
-		Name: "typescript", Extensions: []string{".ts", ".tsx", ".js", ".mjs", ".cjs"},
+		Name: "typescript", Functions: typescriptFunctions(), Tokens: cLikeTokens(doubleQuoted + "|" + singleQuoted + "|" + backQuoted), Extensions: []string{".ts", ".tsx", ".js", ".mjs", ".cjs"},
 		Imports: typescriptImports(), Grammar: "tsx", GrammarBySuffix: map[string]string{".ts": "typescript"},
 		Query: typescriptQuery, Declarations: typescriptDeclarations,
 		// trigger.dev finds tasks in folders named trigger when its config sets no dirs
@@ -84,3 +84,24 @@ const typescriptDeclarations = `
   (lexical_declaration (variable_declarator name: (identifier) @exported))
   (variable_declaration (variable_declarator name: (identifier) @exported))]))
 `
+
+// typescriptFunctions names what a function is and what counts in it, in the grammar's node kinds.
+func typescriptFunctions() *FunctionKinds {
+	return &FunctionKinds{
+		Declared:      []string{"function_declaration", "generator_function_declaration", "method_definition"},
+		Bodies:        []string{"statement_block"},
+		Closures:      []string{"arrow_function", "function_expression", "generator_function"},
+		NamedClosures: []string{"arrow_function", "function_expression"},
+		NamedBy:       []string{"variable_declarator", "public_field_definition"},
+		Ifs:           []string{"if_statement"},
+		ElseClauses:   []string{"else_clause"},
+		Nesting:       []string{"for_statement", "for_in_statement", "while_statement", "do_statement", "switch_statement", "catch_clause", "ternary_expression"},
+		Logic:         []string{"&&", "||"},
+		Parentheses:   []string{"parenthesized_expression"},
+		Markup:        []string{"jsx_expression"},
+		DepthIfs:      []string{"if_statement"},
+		Depth:         []string{"for_statement", "for_in_statement", "while_statement", "do_statement", "switch_statement", "try_statement"},
+		Blocks:        []string{"statement_block", "switch_case", "switch_default"},
+		SwitchBlocks:  []string{"switch_case", "switch_default"},
+	}
+}

@@ -83,6 +83,10 @@ func detectorSamples() []snapshot.Source {
 		return files
 	}
 	return []snapshot.Source{
+		// functions: a new complex function beside one nested deeper, and one nested deeper while already deep
+		snapshottest.Files(map[string]string{"src/walk.ts": snapshottest.Function("walk", 3, 0)},
+			map[string]string{"src/sync.ts": snapshottest.Function("syncAll", 7, 0), "src/walk.ts": snapshottest.Function("walk", 4, 0)}),
+		snapshottest.Files(map[string]string{"src/walk.ts": snapshottest.Function("walk", 4, 0)}, map[string]string{"src/walk.ts": snapshottest.Function("walk", 5, 0)}),
 		// java: packages under source roots, one of them under a test source set too
 		snapshottest.Files(nil, map[string]string{
 			"src/main/java/com/acme/a/A.java": "package com.acme.a;\n\nimport com.acme.b.B;\n",
@@ -211,6 +215,7 @@ func TestTheSamplesShowEveryRuleAndChange(t *testing.T) {
 		"links.cycle new", "links.cycle grown", "links.cycle resolved", "links.cycle standing",
 		"links.folder-cycle new", "links.folder-cycle grown", "links.folder-cycle resolved", "links.folder-cycle standing",
 		"links.cycle touched", "links.folder-cycle touched", "links.test-import touched",
+		"shape.function-complexity new", "shape.function-nesting new", "shape.function-nesting grown",
 	} {
 		if !seen[want] {
 			t.Errorf("no sample shows %s; seen %v", want, seen)
@@ -234,6 +239,7 @@ func TestTheSamplesShowEveryRuleAndChange(t *testing.T) {
 		"test folders declared in `.plimsoll.toml`", "test files declared in `.plimsoll.toml`", "matches no tracked file",
 		"is no plain file-name pattern", "This change altered the test folders declared", "what it does not set keeps plimsoll's default",
 		"(declared in `.plimsoll.toml`)", "This change altered the default base declared in `.plimsoll.toml`",
+		"levels deep at line", "nested deeper",
 	} {
 		if !strings.Contains(texts.String(), phrase) {
 			t.Errorf("no sample text holds %q", phrase)

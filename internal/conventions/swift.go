@@ -6,7 +6,7 @@ import "regexp"
 // file of it, at any depth.
 func swiftLanguage() Language {
 	return Language{
-		Name: "swift", Extensions: []string{".swift"}, Grammar: "swift", Query: swiftQuery, Declarations: swiftDeclarations,
+		Name: "swift", Functions: swiftFunctions(), Tokens: cLikeTokens(`#*` + tripleQuoted + `#*|` + doubleQuoted), Extensions: []string{".swift"}, Grammar: "swift", Query: swiftQuery, Declarations: swiftDeclarations,
 		Library: &Library{Manifest: "Package.swift", Is: regexp.MustCompile(`\.library\(`)},
 		Imports: Imports{
 			Relative:   NoRelative,
@@ -41,3 +41,18 @@ const swiftDeclarations = `
   (typealias_declaration (modifiers (visibility_modifier) @_p) name: (type_identifier) @exported)])
   (#match? @_p "^(public|open)$"))
 `
+
+// swiftFunctions names what a function is and what counts in it, in the grammar's node kinds.
+func swiftFunctions() *FunctionKinds {
+	return &FunctionKinds{
+		Declared: []string{"function_declaration", "init_declaration", "deinit_declaration"},
+		Bodies:   []string{"function_body"},
+		Closures: []string{"lambda_literal"},
+		Ifs:      []string{"if_statement"},
+		Nesting:  []string{"guard_statement", "for_statement", "while_statement", "repeat_while_statement", "switch_statement", "catch_block", "ternary_expression"},
+		Logic:    []string{"&&", "||"},
+		DepthIfs: []string{"if_statement"},
+		Depth:    []string{"guard_statement", "for_statement", "while_statement", "repeat_while_statement", "switch_statement", "do_statement"},
+		Blocks:   []string{"statements"},
+	}
+}

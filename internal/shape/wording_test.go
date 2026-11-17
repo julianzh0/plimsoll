@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/julianzh0/plimsoll/internal/answer"
+	"github.com/julianzh0/plimsoll/internal/conventions"
 )
 
 const (
@@ -47,6 +48,11 @@ func TestWordingOfEachRuleAndChange(t *testing.T) {
 		{addition("dependencies", "package.json", []string{"a", "b"}, 2, nil), "`package.json` names 2 runtime dependencies that were not there at the base: `a`, `b` (2 now; the file did not exist at the base)."},
 		{addition("settings", ".env.example", []string{"ALPHA", "BETA"}, 93, new(float64(91))), "`.env.example` names 2 settings that were not there at the base: `ALPHA`, `BETA` (93 now, 91 at the base)."},
 		{addition("settings", ".env.example", []string{"ALPHA"}, 92, new(float64(91))), "`.env.example` names 1 setting that was not there at the base: `ALPHA` (92 now, 91 at the base)."},
+		{complexity(answer.New, 44, nil), "`src/sync.ts` `syncAll` is new in this change with a cognitive complexity of 44, over the limit of 25. Limit: plimsoll's rule, read blind on agent pull requests; counted as SonarQube's cognitive complexity."},
+		{complexity(answer.New, 42, new(float64(17))), "`src/sync.ts` `syncAll` crossed the limit of 25 in this change: cognitive complexity 17 → 42 (+25). Limit: plimsoll's rule, read blind on agent pull requests; counted as SonarQube's cognitive complexity."},
+		{nesting(answer.New, 5, nil), "`src/sync.ts` `syncAll` is new in this change and nests 5 levels deep, at or over the limit of 4 (CodeScene's threshold for deep nesting)."},
+		{nesting(answer.New, 4, new(float64(2))), "`src/sync.ts` `syncAll` got deeper in this change: nesting 2 → 4 levels, reaching the limit of 4 (CodeScene's threshold for deep nesting)."},
+		{nesting(answer.Grown, 6, new(float64(4))), "`src/sync.ts` `syncAll` got deeper in this change: nesting 4 → 6 levels, already at the limit of 4 at the base (CodeScene's threshold for deep nesting)."},
 	}
 	for _, tc := range cases {
 		if got := (Detector{}).Wording(tc.mark); got != tc.want {
@@ -67,10 +73,28 @@ func TestStandingNamesTheRatioAndCountsFilesPerLimit(t *testing.T) {
 		{[]answer.Mark{size(answer.Grown, 1700, new(float64(1600)), 1500), addition("dependencies", "package.json", []string{"a"}, 3, new(float64(2))),
 			addition("dependencies", "web/package.json", []string{"b"}, 3, new(float64(2))), addition("settings", ".env.example", []string{"X", "Y"}, 4, new(float64(2)))},
 			"1 file over 1,500 lines grew, `src/a.ts` the most (+100); runtime dependencies added in 2 manifests (`a`, `b`); 2 settings added"},
+		{[]answer.Mark{nesting(answer.New, 4, nil), nesting(answer.New, 5, nil)}, "2 functions nested deeper are listed, `src/sync.ts` `syncAll` the deepest of them (5 levels)"},
+		{[]answer.Mark{nesting(answer.New, 4, nil)}, "1 function nested deeper is listed, `src/sync.ts` `syncAll` (4 levels)"},
 	}
 	for _, tc := range cases {
 		if got := (Detector{}).Standing(tc.items); got != tc.want {
 			t.Errorf("Standing = %q, want %q", got, tc.want)
 		}
 	}
+}
+
+// complexity is a complexity mark of src/sync.ts syncAll with the default limit.
+func complexity(change answer.Change, now float64, before *float64) answer.Mark {
+	limit := conventions.Default().Limits.FunctionComplexity
+	return answer.Mark{ID: answer.ID(name, ruleComplexity, "src/sync.ts:syncAll"), Change: change, Confidence: answer.Candidate,
+		Subject:  answer.Subject{Kind: "function", Paths: []string{"src/sync.ts"}, Names: []string{"syncAll"}},
+		Measured: answer.Measured{Value: now, Before: before, Limit: &limit.Value, LimitSource: limit.Source, Unit: "cognitive complexity"}}
+}
+
+// nesting is a nesting item of src/sync.ts syncAll with the default limit.
+func nesting(change answer.Change, now float64, before *float64) answer.Mark {
+	limit := conventions.Default().Limits.FunctionNesting
+	return answer.Mark{ID: answer.ID(name, ruleNesting, "src/sync.ts:syncAll"), Change: change, Confidence: answer.Candidate,
+		Subject:  answer.Subject{Kind: "function", Paths: []string{"src/sync.ts"}, Names: []string{"syncAll"}},
+		Measured: answer.Measured{Value: now, Before: before, Limit: &limit.Value, LimitSource: limit.Source, Unit: "levels"}}
 }

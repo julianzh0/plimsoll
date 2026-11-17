@@ -101,14 +101,15 @@ func TestIntegrationReadFollowsARename(t *testing.T) {
 func TestIntegrationReadLeavesUnwantedAndBinaryContentUnread(t *testing.T) {
 	repo := gitrepotest.New(t, gitrepotest.Commit{Message: "base", Files: map[string]string{"README.md": "# x\n", "logo.bin": "BIN\x00data", "empty.ts": "",
 		"tsconfig.json": "{}\n", "web/tsconfig.json": "{}\n", "logo.svg": "<svg/>\n", ".npmrc": "x=1\n",
-		"pyproject.toml": "[project]\n", "web/pyproject.toml": "[project]\n", "pytest.ini": "[pytest]\n"}})
+		"pyproject.toml": "[project]\n", "web/pyproject.toml": "[project]\n", "pytest.ini": "[pytest]\n",
+		"LICENSE": "Copyright x\n", "web/LICENSE": "Copyright y\n"}})
 	src, err := read(t, repo.Dir, "HEAD")
 	if err != nil {
 		t.Fatalf("Read = %v", err)
 	}
 	// Documentation and configuration are read for their words alone, to see whether they name code a change added.
 	read := map[string]string{"README.md": "# x\n", "tsconfig.json": "{}\n", "web/tsconfig.json": "{}\n", "pyproject.toml": "[project]\n",
-		"web/pyproject.toml": "[project]\n", "pytest.ini": "[pytest]\n", "empty.ts": ""}
+		"web/pyproject.toml": "[project]\n", "pytest.ini": "[pytest]\n", "empty.ts": "", "LICENSE": "Copyright x\n"}
 	for _, entry := range src.Now {
 		want, wanted := read[entry.Path]
 		switch {

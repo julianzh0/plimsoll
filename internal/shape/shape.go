@@ -69,6 +69,10 @@ func (Detector) Detect(s snapshot.Snapshot) answer.Findings {
 	}
 	f.Statistics = append(f.Statistics, largest(s, s.Now.Files, "largest code file")...)
 	f.Marks = append(f.Marks, sizeMarks(s)...)
+	f.Marks = append(f.Marks, functionMarks(s)...)
+	f.Statistics = append(f.Statistics, functionRows(s.Functions)...)
+	f.Summaries = append(f.Summaries, functionSummary(s.Functions)...)
+	f.NotAnalysed = append(f.NotAnalysed, functionsNotAnalysed(s.Functions)...)
 
 	switch {
 	case slices.Contains(s.Now.Broken, snapshot.SettingsFile):

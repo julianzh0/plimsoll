@@ -6,7 +6,7 @@ import "regexp"
 // declare it.
 func javaLanguage() Language {
 	return Language{
-		Name: "java", Extensions: []string{".java"}, Grammar: "java", Query: javaQuery, Declarations: javaDeclarations,
+		Name: "java", Functions: javaFunctions(), Tokens: cLikeTokens(tripleQuoted + "|" + doubleQuoted + "|" + character), Extensions: []string{".java"}, Grammar: "java", Query: javaQuery, Declarations: javaDeclarations,
 		Imports: jvmImports([]string{".kt", ".kts"}, []string{"package-info.java", "module-info.java"}),
 	}
 }
@@ -46,3 +46,20 @@ const javaDeclarations = `
   (interface_declaration (modifiers [(marker_annotation) (annotation)]) name: (identifier) @implicit)
   (record_declaration (modifiers [(marker_annotation) (annotation)]) name: (identifier) @implicit)])
 `
+
+// javaFunctions names what a function is and what counts in it, in the grammar's node kinds.
+func javaFunctions() *FunctionKinds {
+	return &FunctionKinds{
+		Declared:     []string{"method_declaration", "constructor_declaration", "compact_constructor_declaration"},
+		Bodies:       []string{"block", "constructor_body"},
+		Closures:     []string{"lambda_expression"},
+		Ifs:          []string{"if_statement"},
+		Nesting:      []string{"for_statement", "enhanced_for_statement", "while_statement", "do_statement", "switch_expression", "catch_clause", "ternary_expression"},
+		Logic:        []string{"&&", "||"},
+		Parentheses:  []string{"parenthesized_expression"},
+		DepthIfs:     []string{"if_statement"},
+		Depth:        []string{"for_statement", "enhanced_for_statement", "while_statement", "do_statement", "switch_expression", "try_statement", "try_with_resources_statement"},
+		Blocks:       []string{"block", "switch_block_statement_group"},
+		SwitchBlocks: []string{"switch_block_statement_group"},
+	}
+}

@@ -6,7 +6,7 @@ import "regexp"
 // the mod lines declare.
 func rustLanguage() Language {
 	return Language{
-		Name: "rust", Extensions: []string{".rs"}, Grammar: "rust", Query: rustQuery, Declarations: rustDeclarations,
+		Name: "rust", Functions: rustFunctions(), Tokens: cLikeTokens(rustLiterals), Extensions: []string{".rs"}, Grammar: "rust", Query: rustQuery, Declarations: rustDeclarations,
 		Imports: Imports{
 			Statements: []ImportForm{{Pattern: rustMod}, {Pattern: rustUse}, {Pattern: rustExtern}},
 			Grouped:    true,
@@ -75,3 +75,20 @@ const rustDeclarations = `
 ((source_file (attribute_item (attribute [(identifier) @_t (scoped_identifier name: (identifier) @_t)])) . (attribute_item) .
   (function_item name: (identifier) @implicit)) (#match? @_t "^(test|bench)$"))
 `
+
+// rustFunctions names what a function is and what counts in it, in the grammar's node kinds.
+func rustFunctions() *FunctionKinds {
+	return &FunctionKinds{
+		Declared:    []string{"function_item"},
+		Bodies:      []string{"block"},
+		Closures:    []string{"closure_expression"},
+		Ifs:         []string{"if_expression"},
+		ElseClauses: []string{"else_clause"},
+		Nesting:     []string{"for_expression", "while_expression", "loop_expression", "match_expression"},
+		Logic:       []string{"&&", "||"},
+		Parentheses: []string{"parenthesized_expression"},
+		DepthIfs:    []string{"if_expression"},
+		Depth:       []string{"for_expression", "while_expression", "loop_expression", "match_expression"},
+		Blocks:      []string{"block"},
+	}
+}

@@ -30,7 +30,8 @@ func Build(source Source, rules conventions.Rules, readings *Readings) Snapshot 
 	rules.Limits = limits
 	question := readings.begin()
 	now := tree(rules, source.Now, nil)
-	nowReadings := readings.side(rules, nowContent, now.Files, question, changed)
+	nowMeasured := measuredFiles(rules, source.Changes, now, Tree{}, nowContent, nil)
+	nowReadings := readings.side(rules, nowContent, now.Files, question, changed, nowMeasured.now)
 	withTestLines(now.Files, nowReadings)
 	unchanged := map[string]File{}
 	for _, file := range now.Files {
@@ -39,7 +40,8 @@ func Build(source Source, rules conventions.Rules, readings *Readings) Snapshot 
 		}
 	}
 	before := tree(rules, beforeEntries, unchanged)
-	beforeReadings := readings.side(rules, beforeContent, before.Files, question, changed)
+	measured := measuredFiles(rules, source.Changes, now, before, nowContent, beforeContent)
+	beforeReadings := readings.side(rules, beforeContent, before.Files, question, changed, measured.base)
 	withTestLines(before.Files, beforeReadings)
 	unreadable := slices.Clone(source.Unreadable)
 	now.Settings, before.Settings = settings(source.Now), settings(beforeEntries)
@@ -94,6 +96,7 @@ func Build(source Source, rules conventions.Rules, readings *Readings) Snapshot 
 		SkippedChanges:      skippedChanges(rules, source.Changes),
 		Additions:           additions(rules, source.Changes, now, atBase, source.Now, nowReadings, beforeReadings),
 		SyntaxErrors:        syntaxErrors(changed, nowReadings, beforeReadings),
+		Functions:           functionChanges(rules, source.Changes, measured, source.Missing, atBase, now, before, nowContent, beforeContent, nowReadings, beforeReadings),
 	}
 }
 

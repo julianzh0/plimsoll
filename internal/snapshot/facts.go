@@ -26,6 +26,11 @@ func WantsOf(rules conventions.Rules) Wants {
 			if path == SettingsFile || path == rules.OwnFile {
 				return true
 			}
+			// a root licence file names the repository's own copyright holders: a file added whole that another
+			// holder signed came from another project
+			if !strings.Contains(path, "/") && rules.FunctionRules.RootLicence.MatchString(path) {
+				return true
+			}
 			if _, known := manifestOf(rules, path); known || slices.ContainsFunc(rules.Manifests, func(m conventions.Manifest) bool { return slices.Contains(m.Lockfiles, path) }) {
 				return true
 			}

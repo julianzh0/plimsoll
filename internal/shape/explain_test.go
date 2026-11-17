@@ -89,6 +89,27 @@ func TestExplainGivesTheEvidenceOfEachRule(t *testing.T) {
 		}},
 		{"dependencies", additions, "dependencies", []string{"`package.json` at the base: a, b", "`package.json` now: a, b, c", "added: c"}},
 		{"settings", additions, "settings", []string{"names at the base: 1", "names now: 3", "added: BETA, GAMMA"}},
+		{"function complexity", snapshottest.Files(nil, map[string]string{"src/sync.ts": snapshottest.Function("syncAll", 7, 0)}), "function-complexity", []string{
+			"lines now: 1–17 (17 lines); new in this change",
+			"cognitive complexity now: 28; limit 25 (plimsoll's rule, read blind on agent pull requests; counted as SonarQube's cognitive complexity); a function that existed counts from a rise of 8",
+			"counted: 1 for each if, loop, switch, catch and conditional expression plus 1 per level it is nested in; 1 for each else, else-if and run of one boolean operator; functions written inside it and markup are not counted",
+			"deepest nesting now: 7 levels at line 8",
+			"lines of it this change added: 17 of 17",
+			"found in lines this change removed: 0% of its tokens (70% or more counts as moved code)",
+			"no file at the base holds its name or its longest names",
+			"its file is new in this change; its first 40 lines name no other project",
+		}},
+		{"function complexity, compared without a match", snapshottest.Files(map[string]string{"src/old.ts": "export const syncAll = 1;\n"},
+			map[string]string{"src/old.ts": "export const syncAll = 1;\n", "src/sync.ts": snapshottest.Function("syncAll", 7, 0)}), "function-complexity", []string{
+			"lines now: 1–17 (17 lines); new in this change",
+			"cognitive complexity now: 28; limit 25 (plimsoll's rule, read blind on agent pull requests; counted as SonarQube's cognitive complexity); a function that existed counts from a rise of 8",
+			"counted: 1 for each if, loop, switch, catch and conditional expression plus 1 per level it is nested in; 1 for each else, else-if and run of one boolean operator; functions written inside it and markup are not counted",
+			"deepest nesting now: 7 levels at line 8",
+			"lines of it this change added: 17 of 17",
+			"found in lines this change removed: 0% of its tokens (70% or more counts as moved code)",
+			"compared with 1 file at the base that holds its name or its longest names; none holds a run of 10 of its tokens",
+			"its file is new in this change; its first 40 lines name no other project",
+		}},
 	}
 	for _, tc := range cases {
 		if got := explain(t, tc.source, tc.rule); !slices.Equal(got, tc.want) {
@@ -98,15 +119,38 @@ func TestExplainGivesTheEvidenceOfEachRule(t *testing.T) {
 }
 
 func TestExplainHoldsNoFileContentOrSettingValue(t *testing.T) {
-	source := snapshottest.Files(nil, map[string]string{
+	secret := strings.Replace(snapshottest.Function("zzsecretName", 7, 0), "  return a;", "  const zzsecretLocal = 'zzsecret';\n  return a;", 1)
+	source := snapshottest.Files(map[string]string{"src/w.ts": snapshottest.Function("zzsecretWalk", 3, 0)}, map[string]string{
 		".env.example": "SECRET_TOKEN=hunter2\n", "src/a.ts": "const password = 'swordfish'\n" + snapshottest.Lines(1600),
-		"tests/a.ts": snapshottest.Lines(4000),
+		"tests/a.ts": snapshottest.Lines(4000), "src/f.ts": secret,
+		"src/w.ts": strings.Replace(snapshottest.Function("zzsecretWalk", 4, 0), "  return a;", "  const zzsecretLocal = 'zzsecret';\n  return a;", 1),
 	})
 	s := snapshot.Build(source, conventions.Default(), snapshottest.Readings(t))
 	for _, m := range (Detector{}).Detect(s).Marks {
 		for _, line := range (Detector{}).Explain(s, m) {
-			if strings.Contains(line, "hunter2") || strings.Contains(line, "swordfish") {
+			if strings.Contains(line, "hunter2") || strings.Contains(line, "swordfish") || strings.Contains(line, "zzsecretLocal") || strings.Contains(line, "'zzsecret'") {
 				t.Errorf("Explain(%s) holds file content: %q", m.ID, line)
+			}
+		}
+	}
+}
+
+func TestExplainGivesTheEvidenceOfAFunctionNestedDeeper(t *testing.T) {
+	walk := explain(t, snapshottest.Files(map[string]string{"src/a.ts": snapshottest.Function("walk", 3, 0)}, map[string]string{"src/a.ts": snapshottest.Function("walk", 4, 0)}), "function-nesting")
+	want := []string{
+		"lines now: 1–11 (11 lines); at the base: lines 1–9 of `src/a.ts`, matched by its name",
+		"deepest nesting now: 4 levels at line 5; at the base: 3; limit 4 (CodeScene's threshold for deep nesting)",
+		"cognitive complexity now: 10; at the base: 6",
+	}
+	if len(walk) < 3 || !slices.Equal(walk[:3], want) {
+		t.Errorf("Explain(a function nested deeper) =\n%q\nwant it to start with\n%q", walk, want)
+	}
+	s := snapshot.Build(snapshottest.Files(nil, map[string]string{"src/run.ts": snapshottest.Function("run", 7, 0) + snapshottest.Function("run", 7, 0)}),
+		conventions.Default(), snapshottest.Readings(t))
+	for _, m := range (Detector{}).Detect(s).Marks {
+		if m.ID == "shape.function-complexity:src/run.ts:run#2" {
+			if got := (Detector{}).Explain(s, m); len(got) == 0 || got[0] != "lines now: 18–34 (17 lines); new in this change" {
+				t.Errorf("Explain(%s) = %q, want the second function's lines", m.ID, got)
 			}
 		}
 	}

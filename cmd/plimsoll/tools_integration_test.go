@@ -224,12 +224,13 @@ func TestIntegrationEveryDetectorAnswersForOneRepository(t *testing.T) {
 		"src/store.ts": snapshottest.Lines(1620), "tests/fakes/store.ts": snapshottest.Lines(20),
 		".env.example": "PORT=1\nSESSION_GRACE_MS=2\nSESSION_GRACE_MS=3\n", "docs/review-packet-1.md": "notes\n",
 		"src/wire.ts": "import \"../tests/fakes/store.ts\";\n",
+		"src/deep.ts": snapshottest.Function("syncAll", 7, 0), "src/nest.ts": snapshottest.Function("walk", 4, 0),
 	}})
 	before := gitrepotest.Fingerprint(t, repo.Dir)
 	arguments := map[string]any{"repository": repo.Dir, "base": base}
 	explained := []string{
 		"process.planning-file:docs/review-packet-1.md", "settings.defined-twice:SESSION_GRACE_MS", "co-change.pair:src/store.ts+tests/fakes/store.ts",
-		"links.test-import:src/wire.ts",
+		"links.test-import:src/wire.ts", "shape.function-complexity:src/deep.ts:syncAll",
 	}
 	requests := []string{call(1, "report", arguments)}
 	named := map[string]any{"repository": repo.Dir, "base": base, "files": []string{"src/store.ts"}}
@@ -267,7 +268,7 @@ func TestIntegrationEveryDetectorAnswersForOneRepository(t *testing.T) {
 	}
 	for _, id := range []string{"reportOnly shape.file-size:src/store.ts", "marks process.planning-file:docs/review-packet-1.md",
 		"marks settings.defined-twice:SESSION_GRACE_MS", "reportOnly co-change.pair:src/store.ts+tests/fakes/store.ts", "standing settings.compose-only:REDIS_URL",
-		"reportOnly links.test-import:src/wire.ts"} {
+		"reportOnly links.test-import:src/wire.ts", "marks shape.function-complexity:src/deep.ts:syncAll", "reportOnly shape.function-nesting:src/nest.ts:walk"} {
 		if _, found := hints[id]; !found {
 			t.Errorf("report holds no %s; it holds %v", id, slices.Sorted(maps.Keys(hints)))
 		}
