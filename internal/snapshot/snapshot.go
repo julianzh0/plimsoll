@@ -55,8 +55,6 @@ type Tree struct {
 	Manifests []Manifest    // the known manifests found: at the root, and a nested format's wherever it is tracked
 	Broken    []string      // known manifests found that could not be read as their format
 	Planning  []string      // tracked files under a planning or review path, sorted
-	Uses      []SettingUse  // one per distinct setting name, sorted by name
-	Dynamic   []DynamicRead // sorted by path; read on the working tree only
 	Compose   []ComposeFile // sorted by path
 	Links     Links         // the imports of its code files, as far as they could be followed
 }
@@ -133,22 +131,6 @@ type Settings struct {
 	Path   string
 	Names  []string // every name, a commented-out line included
 	Active []string // the names of lines that are not commented out
-}
-
-// SettingUse says which code files hold a form of a setting's name as a word.
-type SettingUse struct {
-	Name    string
-	Product []string // product files, sorted
-	Test    []string // test files, tests and test infrastructure, sorted
-	Rest    string   // the name without its first part, when no product file reads the name and one holds that
-	// Prefixed are the product files that declare a prefix of the name and hold the rest of it in lower case, sorted.
-	Prefixed []string
-}
-
-// DynamicRead is a product file and its settings reads whose name is computed at run time.
-type DynamicRead struct {
-	Path  string
-	Count int
 }
 
 // ComposeFile is a compose file's environment keys. Never a value.

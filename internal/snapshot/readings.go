@@ -107,7 +107,6 @@ func (rs *Readings) read(language conventions.Language, grammar string, content 
 	}
 	if err != nil {
 		r = reading{unread: true}
-		readPatterns(language, content, &r)
 		return r, !errors.Is(err, parse.ErrUnavailable)
 	}
 	r = decode(language, result, content)
@@ -123,13 +122,5 @@ func readByText(language conventions.Language, content []byte) reading {
 	if len(language.Imports.Statements) > 0 {
 		r = scan(language.Imports, masked(language.Literals, content))
 	}
-	readPatterns(language, content, &r)
 	return r
-}
-
-// readPatterns reads the computed settings reads when the entry has a pattern for them.
-func readPatterns(language conventions.Language, content []byte, r *reading) {
-	if language.DynamicRead != nil {
-		r.dynamic = len(language.DynamicRead.FindAllIndex(content, -1))
-	}
 }

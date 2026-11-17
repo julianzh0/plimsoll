@@ -14,7 +14,7 @@ func typescriptLanguage() Language {
 
 // typescriptQuery reads import and export statements with a target, `import x = require()`, calls of `import()` and
 // `require()` with a string first, every such call as one built at run time unless a target lies inside it, the
-// statements a file that only passes imports on may hold, and a settings read through a computed name.
+// and the statements a file that only passes imports on may hold.
 const typescriptQuery = `
 (import_statement "type"? @type source: (string (string_fragment)) @spec) @import
 (export_statement "type"? @type source: (string (string_fragment)) @spec) @import
@@ -24,8 +24,6 @@ const typescriptQuery = `
 ((call_expression function: [(import) (identifier) @f] arguments: (arguments . (_) @computed)) (#eq? @f "require"))
 (program (export_statement source: (string)) @pass)
 (program (comment) @pass)
-((subscript_expression object: (member_expression object: (identifier) @o property: (property_identifier) @p) index: (_) @dynamic)
-  (#eq? @o "process") (#eq? @p "env") (#not-match? @dynamic "^[\"']"))
 `
 
 func typescriptImports() Imports {

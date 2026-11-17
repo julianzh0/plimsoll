@@ -8,14 +8,7 @@ func kotlinLanguage() Language {
 	}
 }
 
-// kotlinQuery reads an import (with its wildcard; an alias is not part of the target) and a settings read whose name
-// is not a quoted literal.
+// kotlinQuery reads an import (with its wildcard; an alias is not part of the target).
 const kotlinQuery = `
 (import_header (identifier) @spec (wildcard_import)? @spec) @import
-((call_expression
-   (navigation_expression
-     [(simple_identifier) @o (navigation_expression (navigation_suffix (simple_identifier) @o) .)]
-     (navigation_suffix (simple_identifier) @m))
-   (call_suffix (value_arguments . (value_argument) @dynamic)))
-  (#eq? @o "System") (#eq? @m "getenv") (#not-match? @dynamic "^\""))
 `

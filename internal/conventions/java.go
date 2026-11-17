@@ -12,15 +12,10 @@ func javaLanguage() Language {
 }
 
 // javaQuery reads an import (plain, static or a wildcard, the wildcard part of its target; an import of a module is
-// none of the repository's code) and a settings read whose name is not a quoted literal.
+// none of the repository's code).
 const javaQuery = `
 ((import_declaration [(identifier) (scoped_identifier)] @spec (asterisk)? @spec) @import
   (#not-match? @import "^import[ \t]+module[ \t]"))
-((method_invocation
-   object: [(identifier) @o (field_access field: (identifier) @o)]
-   name: (identifier) @m
-   arguments: (argument_list . (_) @dynamic))
-  (#eq? @o "System") (#eq? @m "getenv") (#not-match? @dynamic "^\""))
 `
 
 // jvmPackage is the package a file declares, its first statement. It stays a pattern: it is also read from generated

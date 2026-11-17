@@ -237,9 +237,6 @@ func TestNoEntryReadsAFactBothWays(t *testing.T) {
 		if len(l.Imports.Statements) > 0 && strings.Contains(l.Query, "@spec") && !strings.Contains(l.Query, "@text") && !l.LineReadWhenBroken {
 			t.Errorf("%s reads its imports by patterns and by its query", l.Name)
 		}
-		if l.DynamicRead != nil && strings.Contains(l.Query, "@dynamic") {
-			t.Errorf("%s reads its computed settings reads by a pattern and by its query", l.Name)
-		}
 	}
 }
 

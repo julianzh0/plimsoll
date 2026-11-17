@@ -12,8 +12,7 @@ func pythonLanguage() Language {
 
 // pythonQuery reads `import` and `from` statements with the names they import, `import_module()` and `__import__()`
 // with a plain string first (any other first argument is an import built at run time), the imports under a top-level
-// `if TYPE_CHECKING:`, what a file that only passes imports on may hold, settings reads through a computed name, and
-// pydantic's env_prefix.
+// `if TYPE_CHECKING:`, and what a file that only passes imports on may hold.
 const pythonQuery = `
 (import_from_statement module_name: (_) @spec) @import
 (import_from_statement name: [(dotted_name) @name (aliased_import name: (dotted_name) @name)])
@@ -31,18 +30,6 @@ const pythonQuery = `
 (module [(comment) (import_from_statement) (future_import_statement)] @pass)
 (module (expression_statement (string)) @pass)
 ((module (expression_statement (assignment left: (identifier) @n)) @pass) (#eq? @n "__all__"))
-((subscript value: (attribute object: (identifier) @o attribute: (identifier) @a) subscript: (_) @dynamic)
-  (#match? @o "os$") (#eq? @a "environ") (#not-match? @dynamic "^[\"']"))
-((call function: (attribute object: (identifier) @o attribute: (identifier) @a) arguments: (argument_list . (_) @dynamic))
-  (#match? @o "os$") (#eq? @a "getenv") (#not-match? @dynamic "^[\"']"))
-((call
-   function: (attribute object: (attribute object: (identifier) @o attribute: (identifier) @e) attribute: (identifier) @a)
-   arguments: (argument_list . (_) @dynamic))
-  (#match? @o "os$") (#eq? @e "environ") (#eq? @a "get") (#not-match? @dynamic "^[\"']"))
-((keyword_argument name: (identifier) @k value: (string (string_content) @prefix))
-  (#match? @k "env_prefix$") (#match? @prefix "^[A-Za-z0-9_]+$"))
-((assignment left: (identifier) @k right: (string (string_content) @prefix))
-  (#match? @k "env_prefix$") (#match? @prefix "^[A-Za-z0-9_]+$"))
 `
 
 func pythonImports() Imports {

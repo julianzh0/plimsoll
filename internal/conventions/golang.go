@@ -9,13 +9,9 @@ func goLanguage() Language {
 	return Language{Name: "go", Extensions: []string{".go"}, Imports: goImports(), Grammar: "go", Query: goQuery}
 }
 
-// goQuery reads the import specs, and a settings read whose name is not a quoted string.
+// goQuery reads the import specs.
 const goQuery = `
 (import_spec path: (_) @spec) @import
-((call_expression
-   function: (selector_expression operand: (identifier) @o field: (field_identifier) @f)
-   arguments: (argument_list . (_) @dynamic))
-  (#eq? @o "os") (#match? @f "^(Getenv|LookupEnv)$") (#not-match? @dynamic "^\""))
 `
 
 var goFolderExcept = regexp.MustCompile(`_test\.go$`)

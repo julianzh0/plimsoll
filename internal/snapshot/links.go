@@ -113,13 +113,11 @@ type statement struct {
 // its settings reads.
 type reading struct {
 	statements  []statement
-	computed    int      // imports whose target is built at run time
-	passesOn    bool     // the whole content only passes imports on
-	testLines   int      // lines of test code inside the file, by the entry's blocks
-	dynamic     int      // settings reads whose name is computed at run time
-	prefixes    []string // settings prefixes the file declares, each once, in order
-	unread      bool     // the parser could not read the file
-	syntaxError bool     // the parser met a syntax error: a statement next to it may be missing
+	computed    int  // imports whose target is built at run time
+	passesOn    bool // the whole content only passes imports on
+	testLines   int  // lines of test code inside the file, by the entry's blocks
+	unread      bool // the parser could not read the file
+	syntaxError bool // the parser met a syntax error: a statement next to it may be missing
 }
 
 // scan finds the import statements of one file's content, its literals blanked.

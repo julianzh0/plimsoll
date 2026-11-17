@@ -51,8 +51,6 @@ func Build(source Source, rules conventions.Rules, readings *Readings) Snapshot 
 	}
 	now.Broken = unreadableNow
 	now.Planning, before.Planning = planningFiles(rules, now.Paths), planningFiles(rules, before.Paths)
-	now.Uses, before.Uses = settingUses(now.Settings, source.Now, now.Files, nowReadings), settingUses(before.Settings, beforeEntries, before.Files, beforeReadings)
-	now.Dynamic = dynamicReads(now.Files, nowReadings)
 	now.Compose, before.Compose = composeFiles(rules, source.Now), composeFiles(rules, beforeEntries)
 	before.Links = links(rules, beforeContent, before, beforeReadings, nil)
 	now.Links = links(rules, nowContent, now, nowReadings, baseImportsOf(source.Changes, before, beforeReadings))

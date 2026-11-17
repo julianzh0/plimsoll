@@ -339,115 +339,6 @@ var (
 	composeKey = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 )
 
-// Forms are the ways code writes a setting's name, in this order: as written, in lower case, in camel case.
-func Forms(name string) []string {
-	parts := strings.Split(strings.ToLower(name), "_")
-	var camel strings.Builder
-	camel.WriteString(parts[0])
-	for _, part := range parts[1:] {
-		if part != "" {
-			camel.WriteString(strings.ToUpper(part[:1]) + part[1:])
-		}
-	}
-	forms := []string{name}
-	for _, form := range []string{strings.ToLower(name), camel.String()} {
-		if !slices.Contains(forms, form) {
-			forms = append(forms, form)
-		}
-	}
-	return forms
-}
-
-// settingUses finds, for every setting name, the product and test files that hold one of its forms as a word, and the
-// product files that declare a prefix of the name and hold the rest of it in lower case.
-// NOTE: a prefix is matched per file, not per class; a field not in lower case, a prefix built at run time, an alias
-// in another case and env_nested_delimiter are not seen. Upgrade: read class bodies.
-func settingUses(settings *Settings, entries []Entry, files []File, readings map[string]reading) []SettingUse {
-	if settings == nil {
-		return nil
-	}
-	names := slices.Compact(slices.Sorted(slices.Values(settings.Names)))
-	roles := rolesOf(files)
-	type hit struct{ product, test, rest, prefixed map[string]bool }
-	hits := make([]hit, len(names))
-	byForm := map[string][]int{}     // a form of a name -> the names it belongs to
-	byRestForm := map[string][]int{} // a form of a name's remainder -> the names it belongs to
-	for i, name := range names {
-		hits[i] = hit{map[string]bool{}, map[string]bool{}, map[string]bool{}, map[string]bool{}}
-		for _, form := range Forms(name) {
-			byForm[form] = append(byForm[form], i)
-		}
-		if _, rest, found := strings.Cut(name, "_"); found && rest != "" {
-			for _, form := range Forms(rest) {
-				byRestForm[form] = append(byRestForm[form], i)
-			}
-		}
-	}
-	for _, entry := range entries {
-		role, isCode := roles[entry.Path]
-		if !isCode || role == Other || entry.Content == nil {
-			continue
-		}
-		var prefixes []string
-		if role == Product {
-			prefixes = readings[entry.Path].prefixes
-		}
-		words := map[string]bool{} // filled only for a file that declares a prefix
-		eachWord(entry.Content, func(w []byte) {
-			if len(prefixes) > 0 {
-				words[string(w)] = true
-			}
-			for _, i := range byForm[string(w)] {
-				if role == Product {
-					hits[i].product[entry.Path] = true
-				} else {
-					hits[i].test[entry.Path] = true
-				}
-			}
-			if role == Product {
-				for _, i := range byRestForm[string(w)] {
-					hits[i].rest[entry.Path] = true
-				}
-			}
-		})
-		for _, prefix := range prefixes {
-			for i, name := range names {
-				rest, starts := strings.CutPrefix(name, strings.ToUpper(prefix))
-				if starts && rest != "" && words[strings.ToLower(rest)] {
-					hits[i].prefixed[entry.Path] = true
-				}
-			}
-		}
-	}
-	found := make([]SettingUse, 0, len(names))
-	for i, name := range names {
-		use := SettingUse{Name: name, Product: sortedKeys(hits[i].product), Test: sortedKeys(hits[i].test), Prefixed: sortedKeys(hits[i].prefixed)}
-		if len(use.Product)+len(use.Prefixed) == 0 && len(hits[i].rest) > 0 {
-			_, use.Rest, _ = strings.Cut(name, "_")
-		}
-		found = append(found, use)
-	}
-	return found
-}
-
-func sortedKeys(set map[string]bool) []string {
-	if len(set) == 0 {
-		return nil
-	}
-	return slices.Sorted(maps.Keys(set))
-}
-
-// dynamicReads counts, per product file, the settings reads whose name is computed at run time.
-func dynamicReads(files []File, readings map[string]reading) []DynamicRead {
-	var found []DynamicRead
-	for _, file := range files {
-		if n := readings[file.Path].dynamic; file.Role == Product && n > 0 {
-			found = append(found, DynamicRead{Path: file.Path, Count: n})
-		}
-	}
-	return found
-}
-
 // composeFiles reads the environment keys of every compose file, line by line. Only keys are kept.
 func composeFiles(rules conventions.Rules, entries []Entry) []ComposeFile {
 	var found []ComposeFile
@@ -518,25 +409,6 @@ func environmentKey(entry string) (key string, fromHost, ok bool) {
 	return key, value == "" || strings.Contains(value, "$"), composeKey.MatchString(key)
 }
 
-// eachWord calls found with every run of ASCII letters, digits and "_" in content: the words a setting's name is
-// looked for among. A loop over the bytes, since a pattern match over every code file was the largest cost of a build.
-func eachWord(content []byte, found func(word []byte)) {
-	start := -1
-	for i, c := range content {
-		inWord := c == '_' || '0' <= c && c <= '9' || 'a' <= c && c <= 'z' || 'A' <= c && c <= 'Z'
-		switch {
-		case inWord && start < 0:
-			start = i
-		case !inWord && start >= 0:
-			found(content[start:i])
-			start = -1
-		}
-	}
-	if start >= 0 {
-		found(content[start:])
-	}
-}
-
 // holdsName says whether a lockfile's text holds a dependency name as a whole name: not as part of a longer name
 // (letters, digits, "_", "." and "-" around it).
 // NOTE: the name is matched by text, not by the lockfile's format; a name that only appears inside another
@@ -557,4 +429,11 @@ func holdsName(lock []byte, name string) bool {
 		}
 		start = i + 1
 	}
+}
+
+func sortedKeys(set map[string]bool) []string {
+	if len(set) == 0 {
+		return nil
+	}
+	return slices.Sorted(maps.Keys(set))
 }

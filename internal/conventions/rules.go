@@ -223,9 +223,8 @@ type Limit struct {
 
 // Language is a language's entry: only what the shared rules cannot know for that language.
 type Language struct {
-	Name        string
-	Extensions  []string       // the suffixes the entry speaks for
-	DynamicRead *regexp.Regexp // a settings read whose name is computed at run time
+	Name       string
+	Extensions []string // the suffixes the entry speaks for
 	// Literals are comments, strings and character literals; comments are blanked before imports are read, and
 	// strings and character literals are kept as written, so a comment marker inside one starts no comment. Nil reads
 	// the text as written.
@@ -251,8 +250,6 @@ type Language struct {
 	//             are marked only passes imports on, and an entry whose query marks none never does
 	//   @name     one name a statement imports out of its target, inside the statement's @import
 	//   @type_block  a block whose statements import types only
-	//   @prefix   a declared prefix of settings names
-	//   @dynamic  a settings read whose name is computed at run time; each match counts once
 	// No fact is read both by a pattern and by the query, except under LineReadWhenBroken.
 	Query string
 	// LineReadWhenBroken reads a file the grammar cannot read without an error by the entry's text patterns instead:

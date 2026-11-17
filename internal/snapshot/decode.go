@@ -41,12 +41,6 @@ func decode(language conventions.Language, result parse.Result, content []byte) 
 				computed = append(computed, c)
 			case "pass":
 				passes[parse.Span{Start: c.Start, End: c.End}] = true
-			case "prefix":
-				if prefix := string(content[c.Start:c.End]); !slices.Contains(r.prefixes, prefix) {
-					r.prefixes = append(r.prefixes, prefix)
-				}
-			case "dynamic":
-				r.dynamic++
 			case "module":
 				module = c
 			case "module.name":
@@ -91,9 +85,6 @@ func decode(language conventions.Language, result parse.Result, content []byte) 
 		if !slices.ContainsFunc(targets, func(t parse.Capture) bool { return c.Start <= t.Start && t.End <= c.End }) {
 			r.computed++
 		}
-	}
-	if language.DynamicRead != nil {
-		r.dynamic = len(language.DynamicRead.FindAllIndex(blanked(content, 0, blanks), -1))
 	}
 	r.passesOn = len(passes) > 0 && !slices.ContainsFunc(result.Top, func(top parse.Span) bool { return !passes[top] })
 	r.testLines = spanLines(content, tests)

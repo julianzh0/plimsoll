@@ -9,8 +9,6 @@ func cLanguage() Language {
 }
 
 var (
-	// cDynamicRead is a settings read whose name is not a quoted literal.
-	cDynamicRead = regexp.MustCompile(`getenv\([ \t]*[^" \t)]`)
 	// cComments are a string, a character literal, a line comment and a block comment; the strings are matched so a
 	// comment marker inside one starts no comment.
 	// NOTE: an include line inside a raw string is read. Upgrade: match raw strings too.
@@ -30,7 +28,7 @@ var (
 // which no file includes.
 func cFamily(name string, extensions, units []string) Language {
 	return Language{
-		Name: name, Extensions: extensions, DynamicRead: cDynamicRead, Literals: cComments,
+		Name: name, Extensions: extensions, Literals: cComments,
 		Grammar: name, Query: cQuery, LineReadWhenBroken: true,
 		Imports: Imports{
 			Statements: []ImportForm{{Pattern: cIncludeQuoted}, {Pattern: cIncludeAngled}},
@@ -46,8 +44,7 @@ func cFamily(name string, extensions, units []string) Language {
 }
 
 // cQuery reads the includes of a file the grammar reads without an error: a quoted target is unquoted, an angled one
-// keeps its brackets, and an include a macro names is built at run time. Comments are blanked for cDynamicRead. A
-// define whose value is a directive is a misread the grammar reports no error for (a define with no value and a
+// keeps its brackets, and an include a macro names is built at run time. A define whose value is a directive is a misread the grammar reports no error for (a define with no value and a
 // trailing space takes the next directive line as its value), so it counts as one.
 const cQuery = `
 (preproc_include path: [(string_literal) (system_lib_string)] @spec) @import

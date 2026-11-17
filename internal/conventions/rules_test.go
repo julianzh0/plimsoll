@@ -2,14 +2,9 @@ package conventions
 
 import (
 	"bytes"
-	"fmt"
 	"slices"
 	"strings"
 	"testing"
-
-	"github.com/julianzh0/plimsoll/internal/parse"
-
-	"github.com/julianzh0/plimsoll/internal/parse/parsetest"
 )
 
 func TestTestDefinitionMatchesOnlyStatementStarts(t *testing.T) {
@@ -131,107 +126,6 @@ func TestPlanningRuleIsPrintedFromTheData(t *testing.T) {
 	if got := Default().MeasurementPaths; !slices.Equal(got, []string{"docs/qualification/", "evidence/"}) {
 		t.Errorf("MeasurementPaths = %q, want docs/qualification/ and evidence/", got)
 	}
-}
-
-func TestEveryLanguageNamesItsDynamicRead(t *testing.T) {
-	cases := map[string]struct{ matches, misses []string }{
-		"typescript": {[]string{"process.env[name]", "process.env[`${p}X`]"}, []string{`process.env["X"]`, "process.env.X"}},
-		"go":         {[]string{"os.Getenv(name)", `os.LookupEnv(prefix + "X")`}, []string{`os.Getenv("X")`, `os.Getenv( "X")`}},
-		"python": {[]string{"os.environ[name]", "_os.environ[k]", `os.getenv(prefix + "X")`, `os.environ.get(f"A_{x}")`},
-			[]string{`os.environ["X"]`, `os.getenv('X')`, `os.environ.get("X", "d")`}},
-		"dart": {[]string{"Platform.environment[name]", "io.Platform.environment[name]", "String.fromEnvironment(key)", "bool.fromEnvironment(flag)", "dotenv.env[k]"},
-			[]string{"Platform.environment['X']", `String.fromEnvironment("X")`, "dotenv.env['X']", "const int.fromEnvironment('N')"}},
-		"java":   {[]string{"System.getenv(name)", `System.getenv(prefix + "X")`, "java.lang.System.getenv(name)"}, []string{`System.getenv("X")`, `System.getenv( "X")`, "System.getenv()"}},
-		"kotlin": {[]string{"System.getenv(name)", `System.getenv(prefix + "X")`, "java.lang.System.getenv(name)"}, []string{`System.getenv("X")`, `System.getenv( "X")`, "System.getenv()"}},
-		"rust": {[]string{"env::var(name)", "std::env::var_os(key)", `env::var(&format!("A_{x}"))`, "env::var(\n    name,\n)"},
-			[]string{`env::var("X")`, `std::env::var_os( "X")`, "env::vars()", `env!("X")`, `option_env!("X")`}},
-		"csharp": {[]string{"Environment.GetEnvironmentVariable(name)", "System.Environment.GetEnvironmentVariable(name)", `Environment.GetEnvironmentVariable(prefix + "X")`, "configuration[key]", "_config[k]", `builder.Configuration[$"Db:{name}"]`},
-			[]string{`Environment.GetEnvironmentVariable("X")`, `Environment.GetEnvironmentVariable( "X")`, "Environment.GetEnvironmentVariables()", `configuration["X"]`, "config[0]", "reconfiguration[key]"}},
-		"swift": {[]string{"ProcessInfo.processInfo.environment[key]", `ProcessInfo.processInfo.environment[prefix + "X"]`},
-			[]string{`ProcessInfo.processInfo.environment["X"]`, `ProcessInfo.processInfo.environment[ "X"]`, "ProcessInfo.processInfo.environment.keys"}},
-		"c":   {[]string{"getenv(name)", "getenv( key )", "secure_getenv(buf)"}, []string{`getenv("X")`, `getenv( "X")`, "setenv(name, value, 1)", "getenv_r"}},
-		"cpp": {[]string{"std::getenv(name.c_str())", "getenv(key)", "::getenv(k)"}, []string{`std::getenv("X")`, `getenv( "X")`, "environ[i]"}},
-	}
-	// wraps make a row valid code for an entry that reads by its grammar.
-	wraps := map[string]string{"go": "package a\nfunc f() { _ = %s }\n", "typescript": "const v = %s;\n", "python": "x = %s\n", "dart": "var v = %s;\n", "java": "class A { void f() { var v = %s; } }\n", "kotlin": "val v = %s\n", "csharp": "var v = %s;\n", "swift": "let v = %s\n"}
-	for _, language := range Default().Languages {
-		if language.DynamicRead == nil && language.Grammar != "" {
-			for i, lines := range [][]string{cases[language.Name].matches, cases[language.Name].misses} {
-				for _, line := range lines {
-					code := fmt.Sprintf(wraps[language.Name], line)
-					if got := dynamicMatches(t, language, code); (i == 0) != (got > 0) {
-						t.Errorf("%s: @dynamic matches in %q = %d, want %v", language.Name, code, got, i == 0)
-					}
-				}
-			}
-			continue
-		}
-		if language.DynamicRead == nil {
-			t.Errorf("language %s has no dynamic-read pattern", language.Name)
-			continue
-		}
-		for _, line := range cases[language.Name].matches {
-			if !language.DynamicRead.MatchString(line) {
-				t.Errorf("%s DynamicRead.MatchString(%q) = false, want true", language.Name, line)
-			}
-		}
-		for _, line := range cases[language.Name].misses {
-			if language.DynamicRead.MatchString(line) {
-				t.Errorf("%s DynamicRead.MatchString(%q) = true, want false", language.Name, line)
-			}
-		}
-	}
-}
-
-func TestSettingsPrefixFindsADeclaredPrefix(t *testing.T) {
-	cases := map[string]string{
-		`model_config = SettingsConfigDict(env_prefix="APP_", extra="ignore")`: "APP_",
-		`env_prefix = 'job_'`:        "job_",
-		`Settings(_env_prefix="X_")`: "X_",
-		`env_prefix=prefix`:          "",
-		`env_prefix=""`:              "",
-	}
-	for _, language := range Default().Languages {
-		if language.Name != "python" {
-			if strings.Contains(language.Query, "@prefix") {
-				t.Errorf("%s: its query reads settings prefixes, want none", language.Name)
-			}
-			continue
-		}
-		for text, want := range cases {
-			result, err := parsetest.Parser(t).Read(language.Grammar, language.Query, []byte(text+"\n"))
-			if err != nil {
-				t.Fatalf("Read(%q) error = %v", text, err)
-			}
-			got := ""
-			for _, match := range result.Matches {
-				for _, c := range match {
-					if c.Name == "prefix" {
-						got = text[c.Start:c.End]
-					}
-				}
-			}
-			if got != want {
-				t.Errorf("python settings prefix in %q = %q, want %q", text, got, want)
-			}
-		}
-	}
-}
-
-// dynamicMatches is the number of matches of an entry's query that hold @dynamic in code.
-func dynamicMatches(t *testing.T, l Language, code string) int {
-	t.Helper()
-	result, err := parsetest.Parser(t).Read(l.GrammarOf("a"+l.Extensions[0]), l.Query, []byte(code))
-	if err != nil {
-		t.Fatalf("%s: Read(%q) error = %v", l.Name, code, err)
-	}
-	n := 0
-	for _, match := range result.Matches {
-		if slices.ContainsFunc(match, func(c parse.Capture) bool { return c.Name == "dynamic" }) {
-			n++
-		}
-	}
-	return n
 }
 
 func TestOwnValuesAreBroughtToTheirForm(t *testing.T) {

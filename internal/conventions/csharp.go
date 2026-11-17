@@ -9,8 +9,7 @@ func csharpLanguage() Language {
 
 // csharpQuery reads using directives: one that names a namespace, and a using static or a using alias, which names a
 // type whose namespace is the part before its last name; global:: is no part of the name, and a global using is
-// written once for every file of its project. It also reads a settings read whose name is not a quoted literal: an
-// environment variable, or an index into a configuration object.
+// written once for every file of its project.
 // NOTE: an alias of a namespace (using N = A.B;) is read as the type B of A. Upgrade: try the whole name first.
 const csharpQuery = `
 ((using_directive "global"? @everywhere !name [(identifier) (qualified_name) (alias_qualified_name)] @spec) @import
@@ -19,15 +18,6 @@ const csharpQuery = `
   (#strip-prefix! @spec "global::"))
 ((using_directive "global"? @everywhere name: (identifier) (qualified_name qualifier: (_) @spec)) @import
   (#strip-prefix! @spec "global::"))
-((invocation_expression
-   function: (member_access_expression
-     expression: [(identifier) @o (member_access_expression name: (identifier) @o)] name: (identifier) @m)
-   arguments: (argument_list . (argument (_) @dynamic)))
-  (#eq? @o "Environment") (#eq? @m "GetEnvironmentVariable") (#not-match? @dynamic "^[\"@]"))
-((element_access_expression
-   expression: [(identifier) @o (member_access_expression name: (identifier) @o)]
-   subscript: (bracketed_argument_list . (argument (_) @dynamic)))
-  (#match? @o "(?i)^(.*_)?config(uration)?$") (#not-match? @dynamic "^[\"@0-9]"))
 `
 
 // dotnetProject is the file-name pattern of a .NET project file: a manifest of dependencies, and a name of the
