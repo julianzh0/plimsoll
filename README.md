@@ -223,7 +223,7 @@ still run, interpreted and about 80 times slower.
   `__declspec(...)`) are blanked, a loop macro (`LIST_FOREACH(...)`) is read as `while`, and the macros of Qt
   (`emit`, `Q_D`, `Q_OBJECT`, `foreach`, signal and slot sections) and GLib (`g_autofree`, `g_autoptr`,
   `G_DEFINE_TYPE`, `G_GNUC_*`) are read as what they expand to. A function still unreadable, as behind `#ifdef`
-  branches that split its braces or another framework's macros, is counted as holding a syntax error and is not
+  branches that split its braces or another framework's macros, is counted as unreadable and is not
   measured.
   Validated like the other languages on 61 blind-read marks of C and C++ agent pull requests (0.72 worth acting on,
   per-change lower bound 0.61), with two limits: they came from 13 repositories rather than 15, and 4 of 43 macro-heavy
