@@ -154,99 +154,132 @@ func functionChanges(rules conventions.Rules, changes []Change, m measured, miss
 	if len(candidates) == 0 {
 		return result
 	}
-	lines := newLineChanges(changes, nowContent, beforeContent)
-	from := origins{rules: fr, nowPaths: now.Paths, nowContent: nowContent, baseFiles: before.Files, base: beforeContent}
-	leaveOut := func(c candidate, reason LeftOutReason, source string) {
-		result.LeftOut = append(result.LeftOut, LeftOutFunction{Path: c.change.Path, Name: c.change.Name, Occurrence: c.change.Occurrence, Reason: reason, Source: source})
-	}
+	run := functionRun{rules: rules, result: &result, pool: pool, now: nowContent, base: beforeContent,
+		lines: newLineChanges(changes, nowContent, beforeContent),
+		from:  origins{rules: fr, nowPaths: now.Paths, nowContent: nowContent, baseFiles: before.Files, base: beforeContent}}
 	slices.SortFunc(candidates, func(a, b candidate) int { return byRise(a.change, b.change) })
 	var open []candidate
-	wantRuns, wantBlocks := map[uint64]bool{}, map[blockWindow]bool{}
 	for _, c := range candidates {
-		if c.change.New {
-			if i := c.likeBody(pool, fr.LikeBody, nowContent, beforeContent); i >= 0 {
-				g := pool[i]
-				pool = slices.Delete(pool, i, i+1)
-				if g.fn.broken {
-					// its code existed under another name but cannot be compared
-					result.Broken++
-					continue
-				}
-				c.partner(g.path, g.fn)
-				c.change.ByBody = true
-				if c.cross(rules); !c.complex && !c.deeper {
-					continue
-				}
+		if c, stays := run.screen(c); stays {
+			open = append(open, c)
+		}
+	}
+	run.list(run.notMoved(open), before.Files)
+	slices.SortFunc(result.LeftOut, func(a, b LeftOutFunction) int {
+		return cmp.Or(cmp.Compare(a.Path, b.Path), cmp.Compare(a.Name, b.Name), cmp.Compare(a.Occurrence, b.Occurrence))
+	})
+	return result
+}
+
+// functionRun is what one question's function rules share once the candidates are collected.
+type functionRun struct {
+	rules     conventions.Rules
+	result    *Functions
+	pool      []gone // base functions no function now has by name, until a candidate matches one by body
+	now, base map[string][]byte
+	lines     *lineChanges
+	from      origins
+}
+
+func (r *functionRun) leaveOut(c candidate, reason LeftOutReason, source string) {
+	r.result.LeftOut = append(r.result.LeftOut, LeftOutFunction{Path: c.change.Path, Name: c.change.Name, Occurrence: c.change.Occurrence, Reason: reason, Source: source})
+}
+
+// screen applies the checks that need no other candidate: a body that existed under another name, another project's
+// file, code split out of existing code. It returns the candidate with its added lines and tokens, and whether it stays.
+func (r *functionRun) screen(c candidate) (candidate, bool) {
+	fr := r.rules.FunctionRules
+	if c.change.New {
+		if i := c.likeBody(r.pool, fr.LikeBody, r.now, r.base); i >= 0 {
+			g := r.pool[i]
+			r.pool = slices.Delete(r.pool, i, i+1)
+			if g.fn.broken {
+				r.result.Broken++ // its code existed under another name but cannot be compared
+				return c, false
+			}
+			c.partner(g.path, g.fn)
+			c.change.ByBody = true
+			if c.cross(r.rules); !c.complex && !c.deeper {
+				return c, false
 			}
 		}
-		// a file whose header or folder says it is another project's holds that project's code, whatever the change did
-		if from.fromAnotherProject(c.change.Path, nowContent[c.change.Path]) {
-			leaveOut(c, FromAnotherProject, "")
-			continue
-		}
-		c.added = addedMask(lines.of(c.file).added, c.change.Start, c.change.End)
-		c.change.AddedLines = countFunc(c.added, func(a bool) bool { return a })
-		if c.change.New && float64(c.change.AddedLines) < fr.ExtractedShare*float64(len(c.added)) {
-			leaveOut(c, Extracted, "")
-			continue
-		}
-		c.read(rules, nowContent[c.change.Path])
-		for _, h := range windowHashes(c.tokens, fr.Run) {
+	}
+	// a file whose header or folder says it is another project's holds that project's code, whatever the change did
+	if r.from.fromAnotherProject(c.change.Path, r.now[c.change.Path]) {
+		r.leaveOut(c, FromAnotherProject, "")
+		return c, false
+	}
+	c.added = addedMask(r.lines.of(c.file).added, c.change.Start, c.change.End)
+	c.change.AddedLines = countFunc(c.added, func(a bool) bool { return a })
+	if c.change.New && float64(c.change.AddedLines) < fr.ExtractedShare*float64(len(c.added)) {
+		r.leaveOut(c, Extracted, "")
+		return c, false
+	}
+	c.read(r.rules, r.now[c.change.Path])
+	return c, true
+}
+
+// notMoved reads the removed code once for all open candidates, leaves out those whose code was moved from elsewhere,
+// and finds the repeated block each remaining one introduced.
+func (r *functionRun) notMoved(open []candidate) []candidate {
+	if len(open) == 0 {
+		return nil
+	}
+	run := r.rules.FunctionRules.Run
+	wantRuns, wantBlocks := map[uint64]bool{}, map[blockWindow]bool{}
+	bodies := make([]oldBody, len(open))
+	for k, c := range open {
+		for _, h := range windowHashes(c.tokens, run) {
 			wantRuns[h] = true
 		}
 		for _, b := range c.blocks {
 			wantBlocks[b] = true
 		}
-		open = append(open, c)
+		if !c.change.New {
+			bodies[k] = oldBody{path: c.change.BasePath, start: c.change.BaseStart, end: c.change.BaseEnd}
+		}
 	}
+	removed := readRemoved(r.rules, r.lines, wantRuns, wantBlocks, bodies)
 	var kept []candidate
-	if len(open) > 0 {
-		bodies := make([]oldBody, len(open))
-		for k, c := range open {
-			if !c.change.New {
-				bodies[k] = oldBody{path: c.change.BasePath, start: c.change.BaseStart, end: c.change.BaseEnd}
-			}
+	for k, c := range open {
+		c.change.MovedShare = movedShare(c, run, removed, removed.own[k])
+		if c.change.MovedShare >= r.rules.FunctionRules.MovedShare {
+			r.leaveOut(c, Moved, "")
+			continue
 		}
-		removedNow := readRemoved(rules, lines, wantRuns, wantBlocks, bodies)
-		for k, c := range open {
-			c.change.MovedShare = movedShare(c, fr.Run, removedNow, removedNow.own[k])
-			if c.change.MovedShare >= fr.MovedShare {
-				leaveOut(c, Moved, "")
-				continue
-			}
-			c.change.Repeated = introducedBlock(c, removedNow)
-			kept = append(kept, c)
-		}
+		c.change.Repeated = introducedBlock(c, removed)
+		kept = append(kept, c)
 	}
-	nest := rules.Limits.FunctionNesting.Value
-	copies := copyChecks{rules: rules, baseFiles: before.Files, base: beforeContent, now: nowContent,
-		checks: map[place]copyCheck{}, copied: map[place]bool{}, starved: map[place]bool{}, leaveOut: leaveOut}
+	return kept
+}
+
+// list runs both measures over the kept candidates, the complexity first, and counts what crossed each.
+func (r *functionRun) list(kept []candidate, baseFiles []File) {
+	nest := r.rules.Limits.FunctionNesting.Value
+	copies := copyChecks{rules: r.rules, baseFiles: baseFiles, base: r.base, now: r.now,
+		checks: map[place]copyCheck{}, copied: map[place]bool{}, starved: map[place]bool{}, leaveOut: r.leaveOut}
 	complexList := slices.DeleteFunc(slices.Clone(kept), func(c candidate) bool {
 		// a reason to mark it: deep nesting or a repeated block the change introduced
 		return !c.complex || float64(c.change.Nesting) < nest && c.change.Repeated == nil
 	})
-	result.Complex = copies.measure(complexList, byRise)
+	r.result.Complex = copies.measure(complexList, byRise)
 	listed := map[place]bool{}
-	for _, c := range result.Complex {
+	for _, c := range r.result.Complex {
 		listed[placeOf(c)] = true
 	}
 	deeperList := slices.DeleteFunc(slices.Clone(kept), func(c candidate) bool {
 		return !c.deeper || listed[placeOf(c.change)] || copies.copied[placeOf(c.change)]
 	})
-	result.Deeper = copies.measure(deeperList, byDepth)
+	r.result.Deeper = copies.measure(deeperList, byDepth)
 	// counted after both measures, so a function the second measure found copied or compared counts once
 	standing := func(c candidate) bool { return !copies.copied[placeOf(c.change)] }
-	result.ComplexCrossed = countFunc(complexList, standing)
-	result.DeeperCrossed = countFunc(deeperList, standing)
+	r.result.ComplexCrossed = countFunc(complexList, standing)
+	r.result.DeeperCrossed = countFunc(deeperList, standing)
 	for key := range copies.starved {
 		if _, done := copies.checks[key]; !done && !copies.copied[key] {
-			result.Uncompared++
+			r.result.Uncompared++
 		}
 	}
-	slices.SortFunc(result.LeftOut, func(a, b LeftOutFunction) int {
-		return cmp.Or(cmp.Compare(a.Path, b.Path), cmp.Compare(a.Name, b.Name), cmp.Compare(a.Occurrence, b.Occurrence))
-	})
-	return result
 }
 
 // collect counts the measured files and functions into result and returns the functions that crossed a rule by name,
@@ -255,63 +288,77 @@ func collect(rules conventions.Rules, changes []Change, m measured, missing []st
 	nowReadings, beforeReadings map[string]reading, result *Functions) (candidates []candidate, pool []gone) {
 	for _, change := range changes {
 		basePath := cmp.Or(change.From, change.Path)
+		b, readAtBase := beforeReadings[basePath]
 		if !m.now[change.Path] {
 			if m.base[basePath] {
-				for _, f := range beforeReadings[basePath].functions {
-					pool = append(pool, gone{path: basePath, fn: f})
-				}
+				pool = append(pool, goneFrom(basePath, b.functions)...)
 			}
 			continue
 		}
 		r, readNow := nowReadings[change.Path]
-		b, readAtBase := beforeReadings[basePath]
 		tracked := atBase[basePath]
 		if !readNow || r.unread || r.functionsUnread || tracked && (!readAtBase || b.unread || b.functionsUnread) || slices.Contains(missing, basePath) {
 			result.Unread = append(result.Unread, change.Path)
 			continue
 		}
 		result.Files++
-		base := byName(b.functions)
-		seen := map[string]int{}
-		for _, f := range r.functions {
-			seen[f.name]++
-			if f.broken {
-				result.Broken++
-				continue
-			}
-			c := candidate{file: change, fn: f, change: FunctionChange{Path: change.Path, Name: f.name, Occurrence: seen[f.name],
-				Start: f.startLine, End: f.endLine, Complexity: f.complexity, Nesting: f.nesting, NestingLine: f.nestingLine, New: true,
-				AddedWhole: !tracked && change.From == ""}}
-			c.cross(rules)
-			if partners := base[f.name]; len(partners) >= seen[f.name] {
-				partner := partners[seen[f.name]-1]
-				if partner.broken {
-					// it cannot be compared; it is counted only when it could have crossed as new
-					if c.complex || c.deeper {
-						result.Broken++
-					} else {
-						result.Measured++
-					}
-					continue
-				}
-				c.partner(basePath, partner)
-				c.cross(rules)
-			}
-			result.Measured++
-			if c.complex || c.deeper {
-				candidates = append(candidates, c)
-			}
-		}
-		for name, partners := range base {
-			for _, f := range partners[min(seen[name], len(partners)):] {
-				pool = append(pool, gone{path: basePath, fn: f})
-			}
-		}
+		crossed, unmatched := collectFile(rules, change, tracked, r.functions, b.functions, result)
+		candidates = append(candidates, crossed...)
+		pool = append(pool, goneFrom(basePath, unmatched)...)
 	}
 	slices.Sort(result.Unread)
 	result.Unread = slices.Compact(result.Unread)
 	slices.SortFunc(pool, func(a, b gone) int { return cmp.Or(cmp.Compare(a.path, b.path), a.fn.start-b.fn.start) })
 	return candidates, pool
+}
+
+// collectFile pairs a file's functions now with those of its base version by name and place, counts them into result,
+// and returns those that crossed a rule and the base functions no function now has by name.
+func collectFile(rules conventions.Rules, change Change, tracked bool, functions, baseFunctions []function, result *Functions) (crossed []candidate, unmatched []function) {
+	base := byName(baseFunctions)
+	seen := map[string]int{}
+	for _, f := range functions {
+		seen[f.name]++
+		if f.broken {
+			result.Broken++
+			continue
+		}
+		c := candidate{file: change, fn: f, change: FunctionChange{Path: change.Path, Name: f.name, Occurrence: seen[f.name],
+			Start: f.startLine, End: f.endLine, Complexity: f.complexity, Nesting: f.nesting, NestingLine: f.nestingLine, New: true,
+			AddedWhole: !tracked && change.From == ""}}
+		c.cross(rules)
+		partners := base[f.name]
+		if len(partners) >= seen[f.name] && partners[seen[f.name]-1].broken {
+			// it cannot be compared; it is counted only when it could have crossed as new
+			if c.complex || c.deeper {
+				result.Broken++
+			} else {
+				result.Measured++
+			}
+			continue
+		}
+		if len(partners) >= seen[f.name] {
+			c.partner(cmp.Or(change.From, change.Path), partners[seen[f.name]-1])
+			c.cross(rules)
+		}
+		result.Measured++
+		if c.complex || c.deeper {
+			crossed = append(crossed, c)
+		}
+	}
+	for name, partners := range base {
+		unmatched = append(unmatched, partners[min(seen[name], len(partners)):]...)
+	}
+	return crossed, unmatched
+}
+
+// goneFrom puts base functions into the pool, with the path of their file.
+func goneFrom(path string, functions []function) []gone {
+	found := make([]gone, len(functions))
+	for i, f := range functions {
+		found[i] = gone{path: path, fn: f}
+	}
+	return found
 }
 
 // read takes the candidate's tokens from its file's content, which tokens the shares weigh, and its repeated blocks as
