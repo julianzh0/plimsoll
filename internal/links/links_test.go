@@ -263,6 +263,12 @@ func marksOf(f answer.Findings, rule string) []answer.Mark {
 }
 
 func TestTestImportMarksInEachLanguage(t *testing.T) {
+	support := map[string]string{"src/a.ts": "import \"@t/db\";\n", "tests/support/db.ts": "export const db = 1;\n"}
+	if marks := marksOf(detect(t, snapshottest.Files(aliased(false, support), aliased(true, support))), "test-import"); len(marks) != 1 ||
+		marks[0].ID != "links.test-import:src/a.ts" || marks[0].Change != answer.Touched || marks[0].Measured.Value != 1 ||
+		marks[0].Measured.Before == nil || *marks[0].Measured.Before != 0 {
+		t.Errorf("an import of test code only made readable: marks %+v, want one touched, 1 now and 0 at the base", marks)
+	}
 	eachLanguage(t, func(t *testing.T, _ string, c languageCase) {
 		a, b, db, clock := c.product("a"), c.product("b"), c.support("db"), c.support("clock")
 		one := 1.0
@@ -359,8 +365,18 @@ func statisticNamed(f answer.Findings, statName string) (answer.Statistic, bool)
 	return answer.Statistic{}, false
 }
 
+// aliased is a TypeScript tree whose files reach others by aliases that only its tsconfig.json makes readable.
+func aliased(withConfig bool, files map[string]string) map[string]string {
+	tree := maps.Clone(files)
+	if withConfig {
+		tree["tsconfig.json"] = `{"compilerOptions":{"paths":{"@app/*":["src/app/*"],"@t/*":["tests/support/*"]}}}` + "\n"
+	}
+	return tree
+}
+
 func TestCycleMarks(t *testing.T) {
 	three, two := 3.0, 2.0
+	readable := map[string]string{"src/app/a.ts": "import \"@app/b\";\n", "src/app/b.ts": "import \"./a.ts\";\n"}
 	cases := []struct {
 		name      string
 		base, now map[string]string
@@ -374,6 +390,7 @@ func TestCycleMarks(t *testing.T) {
 		{"an unchanged ring", ring("a>b", "b>c", "c>a"), ring("a>b", "b>c", "c>a"), "src/a.ts", answer.Standing, 3, &three},
 		{"a broken ring", ring("a>b", "b>c", "c>a"), ring("a>b", "b>c"), "src/a.ts", answer.Resolved, 0, &three},
 		{"two rings joined", ring("a>b", "b>a", "c>d", "d>c"), ring("a>b", "b>a", "c>d", "d>c", "b>c", "d>a"), "src/a.ts", answer.Grown, 4, &two},
+		{"a ring only made readable", aliased(false, readable), aliased(true, readable), "src/app/a.ts", answer.Touched, 2, nil},
 	}
 	for _, tc := range cases {
 		marks := marksOf(detect(t, snapshottest.Files(tc.base, tc.now)), ruleCycle)

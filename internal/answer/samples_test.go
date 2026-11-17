@@ -45,6 +45,20 @@ func repeat(n int, paths ...string) [][]string {
 }
 
 // detectorSamples make each sentence of the four detectors after shape appear at least once.
+// aliasedLinks is a typescript tree whose ring, folder cycle and import of test code go through aliases that only its
+// tsconfig.json makes readable.
+func aliasedLinks(withConfig bool) map[string]string {
+	files := map[string]string{
+		"src/app/a.ts": "import \"@app/b\";\n", "src/app/b.ts": "import \"./a.ts\";\n",
+		"src/p/x.ts": "import \"@q/y\";\n", "src/q/y.ts": "import \"../p/w.ts\";\n", "src/p/w.ts": "export const w = 1;\n",
+		"src/t.ts": "import \"@t/db\";\n", "tests/support/db.ts": "export const db = 1;\n",
+	}
+	if withConfig {
+		files["tsconfig.json"] = `{"compilerOptions":{"paths":{"@app/*":["src/app/*"],"@q/*":["src/q/*"],"@t/*":["tests/support/*"]}}}` + "\n"
+	}
+	return files
+}
+
 func detectorSamples() []snapshot.Source {
 	pair := []string{"src/store.ts", "tests/fakes/store.ts"}
 	// linkTree is a typescript tree: product a imports the test support named, and the ring files import each
@@ -79,6 +93,8 @@ func detectorSamples() []snapshot.Source {
 		snapshottest.Files(linkTree([]string{"db"}, "a", "b"), linkTree([]string{"db", "clock"}, "a", "b", "c")),
 		snapshottest.Files(linkTree([]string{"db"}, "a", "b"), linkTree([]string{"db"}, "a", "b")),
 		snapshottest.Files(linkTree([]string{"db"}, "a", "b"), linkTree(nil, "a")),
+		// links: a ring, a folder cycle and an import of test code that a new tsconfig.json only made readable: touched
+		snapshottest.Files(aliasedLinks(false), aliasedLinks(true)),
 		// links: a language over the limit, and one whose rings are not looked for
 		snapshottest.Files(nil, map[string]string{"src/a.ts": "import \"./gone.ts\";\n"}),
 		snapshottest.Files(nil, map[string]string{
@@ -183,7 +199,7 @@ func TestTheSamplesShowEveryRuleAndChange(t *testing.T) {
 	var texts strings.Builder
 	for _, a := range answers {
 		texts.WriteString(q.Text(a))
-		for _, list := range [][]answer.Mark{a.Marks, a.Resolved, a.Standing} {
+		for _, list := range [][]answer.Mark{a.Marks, a.Resolved, a.Touched, a.Standing} {
 			for _, m := range list {
 				seen[strings.SplitN(m.ID, ":", 2)[0]+" "+string(m.Change)] = true
 			}
@@ -196,6 +212,7 @@ func TestTheSamplesShowEveryRuleAndChange(t *testing.T) {
 		"links.test-import new", "links.test-import grown", "links.test-import resolved", "links.test-import standing",
 		"links.cycle new", "links.cycle grown", "links.cycle resolved", "links.cycle standing",
 		"links.folder-cycle new", "links.folder-cycle grown", "links.folder-cycle resolved", "links.folder-cycle standing",
+		"links.cycle touched", "links.folder-cycle touched", "links.test-import touched",
 	} {
 		if !seen[want] {
 			t.Errorf("no sample shows %s; seen %v", want, seen)

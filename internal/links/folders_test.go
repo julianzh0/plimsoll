@@ -38,6 +38,16 @@ func (c languageCase) folders(edges ...string) map[string]string {
 }
 
 func TestFolderCycleMarksInEachLanguage(t *testing.T) {
+	base := map[string]string{"src/a/x.ts": "import \"../b/y.ts\";\n", "src/b/y.ts": "export const y = 1;\n",
+		"src/a/d.ts": "import \"./w.ts\";\n", "src/a/w.ts": "export const w = 1;\n"}
+	now := map[string]string{"src/a/x.ts": base["src/a/x.ts"], "src/b/y.ts": base["src/b/y.ts"],
+		"src/b/d.ts": "import \"../a/w.ts\";\n", "src/a/w.ts": base["src/a/w.ts"]}
+	moved := snapshottest.Files(base, now)
+	moved.Changes = []snapshot.Change{{Path: "src/b/d.ts", From: "src/a/d.ts", Added: 1, Removed: 1}}
+	if marks := marksOf(detect(t, moved), ruleFolderCycle); len(marks) != 1 || marks[0].ID != "links.folder-cycle:src/a" ||
+		marks[0].Change != answer.Touched || marks[0].Measured.Value != 2 {
+		t.Errorf("a folder cycle a moved file made: marks %+v, want one touched of 2 folders", marks)
+	}
 	eachLanguage(t, func(t *testing.T, name string, c languageCase) {
 		cycle := []string{"a/x>b/y", "b/z>a/w"}
 		open := []string{"a/x>b/y", "b/z", "a/w"}

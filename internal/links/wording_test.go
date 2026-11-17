@@ -26,6 +26,7 @@ func TestLinksWordingStandingAndEvidence(t *testing.T) {
 		new(testImport(answer.Grown, 3, &two)):    "`src/a.ts` is product code and has 3 imports of test code, 2 at the base.",
 		new(testImport(answer.Standing, 3, &two)): "`src/a.ts` is product code and has 3 imports of test code, 2 at the base.",
 		new(testImport(answer.Resolved, 0, &two)): "No import of test code found in `src/a.ts` now; it had 2 at the base.",
+		new(testImport(answer.Touched, 2, &zero)): "`src/a.ts` is product code and has 2 imports of test code, 0 at the base; this change added none of them.",
 	} {
 		if got := (Detector{}).Wording(*m); got != want {
 			t.Errorf("Wording(%s, %v) = %q, want %q", m.Change, m.Measured.Value, got, want)
@@ -49,6 +50,8 @@ func TestLinksWordingStandingAndEvidence(t *testing.T) {
 		new(cycle(answer.Grown, 4, &three)):    "The ring of `src/a.ts` has 4 files, 3 at the base.",
 		new(cycle(answer.Standing, 4, &three)): "The ring of `src/a.ts` has 4 files, 3 at the base.",
 		new(cycle(answer.Resolved, 0, &three)): "The ring of `src/a.ts` had 3 files at the base; no ring found among them now.",
+		new(cycle(answer.Touched, 41, nil)):    "41 files import each other in a ring, the first `src/a.ts`; no ring was read among them at the base, and this change added none of its imports.",
+		new(cycle(answer.Touched, 4, &three)):  "The ring of `src/a.ts` has 4 files, 3 at the base; this change added none of its imports.",
 	} {
 		if got := (Detector{}).Wording(*m); got != want {
 			t.Errorf("Wording(cycle %s, %v) = %q, want %q", m.Change, m.Measured.Value, got, want)
@@ -68,6 +71,8 @@ func TestLinksWordingStandingAndEvidence(t *testing.T) {
 		new(folder(answer.Grown, 3, &two, "src/a", "src/b", "src/c")):    "The folder cycle of `src/a/` has 3 folders, 2 at the base.",
 		new(folder(answer.Standing, 3, &two, "src/a", "src/b", "src/c")): "The folder cycle of `src/a/` has 3 folders, 2 at the base.",
 		new(folder(answer.Resolved, 0, &two, "src/a", "src/b")):          "The folder cycle of `src/a/` had 2 folders at the base; no cycle found among them now.",
+		new(folder(answer.Touched, 2, nil, "a", "b")):                    "2 folders at the root depend on each other in a cycle, the first `a/`; no cycle was read among them at the base, and this change added none of the imports between them.",
+		new(folder(answer.Touched, 3, &two, "src/a", "src/b", "src/c")):  "The folder cycle of `src/a/` has 3 folders, 2 at the base; this change added none of the imports between them.",
 	} {
 		if got := (Detector{}).Wording(*m); got != want {
 			t.Errorf("Wording(folder cycle %s, %v) = %q, want %q", m.Change, m.Measured.Value, got, want)
@@ -86,7 +91,7 @@ func TestLinksWordingStandingAndEvidence(t *testing.T) {
 	closed := tsCase.folders("a/x>b/y", "a/u>b/v", "b/z>a/w")
 	if got, want := explainFolders(open, closed), []string{
 		"cycle of 2 folders under `src/`: `src/a/`, `src/b/`; at the base: none", "`src/b/` has 1 import of `src/a/`", "`src/a/` has 2 imports of `src/b/`",
-		"`src/b/z.ts` line 1 imports `src/a/w.ts`", "`src/a/u.ts` line 1 imports `src/b/v.ts`", "`src/a/x.ts` line 1 imports `src/b/y.ts`",
+		"`src/b/z.ts` line 1 imports `src/a/w.ts`, added by this change", "`src/a/u.ts` line 1 imports `src/b/v.ts`", "`src/a/x.ts` line 1 imports `src/b/y.ts`",
 		"imports between two files of one import ring are left out",
 	}; !slices.Equal(got, want) {
 		t.Errorf("Explain(new folder cycle) =\n%q\nwant\n%q", got, want)
@@ -97,10 +102,10 @@ func TestLinksWordingStandingAndEvidence(t *testing.T) {
 	}
 	typeOnlyCycle := tsCase.folders("adapters/db>domain/order", "adapters/http")
 	typeOnlyCycle["src/domain/order.ts"] = "import type { H } from \"../adapters/http.ts\";\nexport const v = 1;\n"
-	if got := explainFolders(tsCase.folders("adapters/db>domain/order"), typeOnlyCycle); !slices.ContainsFunc(got, func(l string) bool { return strings.HasSuffix(l, ", type-only") }) {
+	if got := explainFolders(tsCase.folders("adapters/db>domain/order"), typeOnlyCycle); !slices.ContainsFunc(got, func(l string) bool { return strings.HasSuffix(l, ", type-only, added by this change") }) {
 		t.Errorf("Explain(a cycle closed by a type-only import) = %q, want its line marked type-only", got)
 	}
-	if got := explainFolders(goCase.folders("a/x>b/y", "b/z", "a/w"), goCase.folders("a/x>b/y", "b/z>a/w")); !slices.Contains(got, "`internal/b/z/z.go` line 4 imports the folder `internal/a/w`") {
+	if got := explainFolders(goCase.folders("a/x>b/y", "b/z", "a/w"), goCase.folders("a/x>b/y", "b/z>a/w")); !slices.Contains(got, "`internal/b/z/z.go` line 4 imports the folder `internal/a/w`, added by this change") {
 		t.Errorf("Explain(go folder cycle) = %q", got)
 	}
 	explainRing := func(base, now map[string]string) []string {
@@ -109,7 +114,7 @@ func TestLinksWordingStandingAndEvidence(t *testing.T) {
 	}
 	if got, want := explainRing(ring("a>b", "b>c"), ring("a>b", "b>c", "c>a")), []string{
 		"ring of 3 files; at the base: none", "`src/a.ts` line 1 imports `src/b.ts`", "`src/b.ts` line 1 imports `src/c.ts`",
-		"`src/c.ts` line 1 imports `src/a.ts`", "type-only imports are left out",
+		"`src/c.ts` line 1 imports `src/a.ts`, added by this change", "type-only imports are left out",
 	}; !slices.Equal(got, want) {
 		t.Errorf("Explain(new ring) = %q, want %q", got, want)
 	}
@@ -128,7 +133,7 @@ func TestLinksWordingStandingAndEvidence(t *testing.T) {
 	grown := marksOf(Detector{}.Detect(s), ruleTestImport)[0]
 	want := []string{
 		"`src/a.ts` line 1 imports `tests/support/db.ts` (test infrastructure)",
-		"`src/a.ts` line 2 imports `tests/support/clock.ts` (test infrastructure)",
+		"`src/a.ts` line 2 imports `tests/support/clock.ts` (test infrastructure), added by this change",
 		"at the base: 1 import of test code", "searched: the import lines of `src/a.ts`",
 	}
 	if got := (Detector{}).Explain(s, grown); !slices.Equal(got, want) {
@@ -138,7 +143,7 @@ func TestLinksWordingStandingAndEvidence(t *testing.T) {
 	typeOnly[a] = `import type { T } from "../tests/support/db.ts";` + "\n"
 	s = snapshot.Build(snapshottest.Files(ts.tree(nil), typeOnly), conventions.Default(), snapshottest.Readings(t))
 	if got := (Detector{}).Explain(s, marksOf(Detector{}.Detect(s), ruleTestImport)[0]); len(got) == 0 ||
-		got[0] != "`src/a.ts` line 1 imports `tests/support/db.ts` (test infrastructure), type-only" {
+		got[0] != "`src/a.ts` line 1 imports `tests/support/db.ts` (test infrastructure), type-only, added by this change" {
 		t.Errorf("Explain(type-only) = %q", got)
 	}
 
@@ -146,7 +151,7 @@ func TestLinksWordingStandingAndEvidence(t *testing.T) {
 	goNow := golang.imports(golang.product("a"), golang.support("db"))
 	s = snapshot.Build(snapshottest.Files(golang.tree(nil), goNow), conventions.Default(), snapshottest.Readings(t))
 	if got := (Detector{}).Explain(s, marksOf(Detector{}.Detect(s), ruleTestImport)[0]); len(got) == 0 ||
-		got[0] != "`internal/a/a.go` line 4 imports the folder `internal/test/db` (1 file of test code)" {
+		got[0] != "`internal/a/a.go` line 4 imports the folder `internal/test/db` (1 file of test code), added by this change" {
 		t.Errorf("Explain(go) = %q", got)
 	}
 }

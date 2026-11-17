@@ -61,13 +61,19 @@ func withLinks(f answer.Findings, s snapshot.Snapshot, languages []snapshot.Lang
 	nowRings, baseRings := now.rings(false), before.rings(false)
 	if slices.ContainsFunc(languages, func(l snapshot.LanguageImports) bool { return l.NoRings == "" }) {
 		basePath := func(file string) []string { return []string{s.BasePath(file)} }
-		f.Marks = append(f.Marks, cycleMarks(ruleCycle, nowRings, baseRings, basePath)...)
+		ringCreated := func(ring []string) bool { return added(now.ringLinks(ring)) }
+		f.Marks = append(f.Marks, cycleMarks(ruleCycle, nowRings, baseRings, basePath, ringCreated)...)
 		f.Statistics = append(f.Statistics, ringRows(nowRings, baseRings, now.rings(true), before.rings(true))...)
 		f.Notes = append(f.Notes, ringsNote)
 	}
 	nowImports := now.siblingImports(nowRings)
 	nowFolders, baseFolders := folderCycles(nowImports), folderCycles(before.siblingImports(baseRings))
-	f.Marks = append(f.Marks, cycleMarks(ruleFolderCycle, nowFolders, baseFolders, folderAtBase(s))...)
+	folderCreated := func(cycle []string) bool {
+		return slices.ContainsFunc(nowImports, func(i siblingImport) bool {
+			return i.link.Added && slices.Contains(cycle, i.from) && slices.Contains(cycle, i.to)
+		})
+	}
+	f.Marks = append(f.Marks, cycleMarks(ruleFolderCycle, nowFolders, baseFolders, folderAtBase(s), folderCreated)...)
 	f.Statistics = append(f.Statistics, folderRow(nowFolders, baseFolders, len(nowImports)))
 	f.Notes = append(f.Notes, folderCyclesNote)
 	f.Notes = append(f.Notes, noRingsNotes(languages)...)

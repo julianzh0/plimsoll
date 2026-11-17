@@ -26,11 +26,29 @@ func folderCycleWording(m answer.Mark) string {
 	switch {
 	case m.Change == answer.Resolved:
 		return fmt.Sprintf("The folder cycle of %s had %s at the base; no cycle found among them now.", first, answer.Plural(int(*m.Measured.Before), "folder"))
+	case m.Measured.Before == nil && m.Change == answer.Touched:
+		return fmt.Sprintf("%s %s depend on each other in a cycle, the first %s; no cycle was read among them at the base, and %s.",
+			answer.Plural(int(m.Measured.Value), "folder"), parentShown(m.Subject.Paths[0]), first, noneOfTheImportsBetween)
 	case m.Measured.Before == nil:
 		return fmt.Sprintf("%s %s depend on each other in a cycle, the first %s; none of them was in a folder cycle at the base.",
 			answer.Plural(int(m.Measured.Value), "folder"), parentShown(m.Subject.Paths[0]), first)
 	}
-	return fmt.Sprintf("The folder cycle of %s has %s, %s at the base.", first, answer.Plural(int(m.Measured.Value), "folder"), answer.Count(*m.Measured.Before))
+	grew := fmt.Sprintf("The folder cycle of %s has %s, %s at the base", first, answer.Plural(int(m.Measured.Value), "folder"), answer.Count(*m.Measured.Before))
+	return touchedEnding(m, grew, noneOfTheImportsBetween)
+}
+
+// The endings of a touched item: the change added none of the imports it rests on.
+const (
+	noneOfItsImports        = "this change added none of its imports"
+	noneOfTheImportsBetween = "this change added none of the imports between them"
+)
+
+// touchedEnding ends a sentence: with what the change did not add when the item is touched, else with a full stop.
+func touchedEnding(m answer.Mark, sentence, ending string) string {
+	if m.Change == answer.Touched {
+		return sentence + "; " + ending + "."
+	}
+	return sentence + "."
 }
 
 // parentShown names where a folder lies: "under `src/`", or "at the root".
@@ -43,6 +61,8 @@ func testImportWording(m answer.Mark) string {
 	}
 	has := fmt.Sprintf("`%s` is product code and has %s of test code", path, answer.Plural(int(m.Measured.Value), "import"))
 	switch {
+	case m.Change == answer.Touched && m.Measured.Before != nil:
+		return has + ", " + answer.Count(*m.Measured.Before) + " at the base; this change added none of them."
 	case m.Measured.Before == nil:
 		return has + "; it did not exist at the base."
 	case *m.Measured.Before == 0:
@@ -56,11 +76,15 @@ func cycleWording(m answer.Mark) string {
 	switch {
 	case m.Change == answer.Resolved:
 		return fmt.Sprintf("The ring of `%s` had %s at the base; no ring found among them now.", path, answer.Plural(int(*m.Measured.Before), "file"))
+	case m.Measured.Before == nil && m.Change == answer.Touched:
+		return fmt.Sprintf("%s import each other in a ring, the first `%s`; no ring was read among them at the base, and %s.",
+			answer.Plural(int(m.Measured.Value), "file"), path, noneOfItsImports)
 	case m.Measured.Before == nil:
 		return fmt.Sprintf("%s import each other in a ring, the first `%s`; none of them was in a ring at the base.",
 			answer.Plural(int(m.Measured.Value), "file"), path)
 	}
-	return fmt.Sprintf("The ring of `%s` has %s, %s at the base.", path, answer.Plural(int(m.Measured.Value), "file"), answer.Count(*m.Measured.Before))
+	grew := fmt.Sprintf("The ring of `%s` has %s, %s at the base", path, answer.Plural(int(m.Measured.Value), "file"), answer.Count(*m.Measured.Before))
+	return touchedEnding(m, grew, noneOfItsImports)
 }
 
 // Standing is the detector's part of the one standing line.

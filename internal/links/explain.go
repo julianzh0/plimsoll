@@ -100,22 +100,33 @@ func importLine(g graph, link snapshot.Link, verb string) string {
 	if link.Folder {
 		role = answer.Plural(len(link.Files), "file") + " of test code"
 	}
-	line, typeOnly := strings.CutSuffix(linkLine(link, verb), typeOnlySuffix)
-	line += " (" + role + ")"
-	if typeOnly {
-		line += typeOnlySuffix
-	}
-	return line
+	return importedAs(link, verb) + " (" + role + ")" + suffixes(link)
 }
 
 // linkLine is one import by file, line and target; never its text.
 func linkLine(link snapshot.Link, verb string) string {
-	line := fmt.Sprintf("`%s` line %d %s %s", link.From, link.Line, verb, targetShown(link))
-	if link.TypeOnly {
-		line += typeOnlySuffix
-	}
-	return line
+	return importedAs(link, verb) + suffixes(link)
 }
+
+// importedAs names an import by file, line and target.
+func importedAs(link snapshot.Link, verb string) string {
+	return fmt.Sprintf("`%s` line %d %s %s", link.From, link.Line, verb, targetShown(link))
+}
+
+// suffixes say whether an import names types only and whether the change wrote it.
+func suffixes(link snapshot.Link) string {
+	var ends string
+	if link.TypeOnly {
+		ends += typeOnlySuffix
+	}
+	if link.Added {
+		ends += addedSuffix
+	}
+	return ends
+}
+
+// addedSuffix marks an import the change wrote.
+const addedSuffix = ", added by this change"
 
 // typeOnlySuffix marks an import that names types only.
 const typeOnlySuffix = ", type-only"

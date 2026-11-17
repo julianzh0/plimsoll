@@ -146,8 +146,8 @@ Not analysed: no `.env.example`, so no settings count; no `.env.example`, so no 
 
 | Tool | Returns |
 |---|---|
-| `status(repository, base?)` | at most five new or grown marks, the standing line, the footprint and what was not analysed |
-| `report(repository, base?, files?)` | everything measured, in a fixed layout. Standing items of one kind past five are counted by folder in the text, and `structuredContent` holds them all. With `files`, also the files that import each named file |
+| `status(repository, base?)` | at most five new or grown marks, one line that counts what the change touched but did not create, the standing line, the footprint and what was not analysed |
+| `report(repository, base?, files?)` | everything measured, in a fixed layout, the touched items included. Standing items of one kind past five are counted by folder in the text, and `structuredContent` holds them all. With `files`, also the files that import each named file |
 | `explain(repository, base?, mark)` | the evidence of one mark, computed again and capped |
 
 Without `base`, a question compares with the default base the repository declares in `.plimsoll.toml`, and the
@@ -333,12 +333,17 @@ still run, interpreted and about 80 times slower.
 | `settings.defined-twice:<NAME>` | a name on two or more lines of `.env.example` that are not commented out (candidate) | plimsoll's rule: one name, one setting |
 | `settings.compose-only:<NAME>` | a compose `environment` key that takes its value from the host (no value, or `$`) and that `.env.example` does not name (candidate) | the three lists agree |
 | `co-change.pair:<a>+<b>` | two code files changed together in at least 5 usable commits and did not at the base (new), or their share of the commits that touched either rose by at least 0.1 (grown). The mark shows that share and comes after every other mark | 5 shared commits, plimsoll's rule |
-| `links.test-import:<path>` | a product file has an import of test code now and had none at the base (new), or has more (grown) (candidate) | product code imports no test code |
-| `links.cycle:<path>` | two or more files import each other in a ring, by imports that are not type-only, and did not at the base (new), or the ring has more files (grown). The path is the ring's smallest (candidate) | files do not import each other in a ring |
-| `links.folder-cycle:<folder>` | two or more folders directly under one folder depend on each other in a cycle, through imports between product files below them, and none of them did at the base (new), or the cycle has more folders (grown). The folder is the cycle's smallest (candidate) | the Acyclic Dependencies Principle (Robert C. Martin) |
+| `links.test-import:<path>` | a product file has an import of test code now and had none at the base (new), or has more (grown), and the change added one of these imports (candidate) | product code imports no test code |
+| `links.cycle:<path>` | two or more files import each other in a ring, by imports that are not type-only, and did not at the base (new), or the ring has more files (grown), and the change added one of its imports. The path is the ring's smallest (candidate) | files do not import each other in a ring |
+| `links.folder-cycle:<folder>` | two or more folders directly under one folder depend on each other in a cycle, through imports between product files below them, and none of them did at the base (new), or the cycle has more folders (grown), and the change added one of the imports between them. The folder is the cycle's smallest (candidate) | the Acyclic Dependencies Principle (Robert C. Martin) |
 
 Something over its limit at the base and no longer over it is reported as resolved. Something over it on both
 sides that did not grow is standing.
+
+A link item that is new or larger since the base although the change added none of its imports (a file moved, or a
+new file made existing imports readable) is touched: `status` counts it in one line, `report` lists it, and `explain`
+gives its imports. An import is added when the change wrote its statement: the file is new, or the file at the base
+neither wrote the same import nor reached the same target.
 
 ### Your own limits and layout
 
