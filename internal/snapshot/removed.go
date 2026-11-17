@@ -59,8 +59,8 @@ func readRemoved(rules conventions.Rules, lines *lineChanges, runs map[uint64]bo
 }
 
 // movedShare is the share of a candidate's counted tokens that lie in runs of Run tokens found in lines the change
-// removed, each removed run used once. A new function counts all its tokens, a token on a line the change did not add
-// as found; a function that existed counts the tokens on added lines, and 0 with none.
+// removed, each removed run used once; a token of a new function on a line the change did not add counts as found.
+// 0 when no token is counted.
 func movedShare(c candidate, run int, removed removedCode) float64 {
 	left := map[uint64]int{}
 	covered := make([]bool, len(c.tokens))
@@ -71,19 +71,16 @@ func movedShare(c candidate, run int, removed removedCode) float64 {
 		}
 		if have > 0 {
 			left[h] = have - 1
-			for j := i; j < i+run; j++ {
-				covered[j] = true
-			}
+			cover(covered, i, run)
 		}
 	}
 	counted, hit := 0, 0
 	for i, t := range c.tokens {
-		onAdded := c.added[t.line-c.change.Start]
-		if !c.change.New && !onAdded {
+		if !c.counted[i] {
 			continue
 		}
 		counted++
-		if covered[i] || c.change.New && !onAdded {
+		if covered[i] || !c.added[t.line-c.change.Start] {
 			hit++
 		}
 	}
@@ -121,18 +118,25 @@ func introducedBlock(c candidate, removed removedCode) []LineRange {
 		}
 		return 2*n >= b.endLine-b.startLine+1
 	}
-	for _, r := range c.fn.repeats {
+	for k, r := range c.fn.repeats {
 		if !slices.ContainsFunc(r.copies, onAdded) {
 			continue
 		}
 		if c.base != nil && slices.ContainsFunc(c.base.repeats, func(b repeat) bool { return b.key == r.key }) {
 			continue
 		}
-		if removed.blocks[c.blockOf(r)] >= 2 {
+		if removed.blocks[c.blocks[k]] >= 2 {
 			continue
 		}
 		first, second := r.copies[0], r.copies[1]
 		return []LineRange{{first.startLine, first.endLine}, {second.startLine, second.endLine}}
 	}
 	return nil
+}
+
+// cover marks the n tokens from i as covered.
+func cover(covered []bool, i, n int) {
+	for j := i; j < i+n; j++ {
+		covered[j] = true
+	}
 }

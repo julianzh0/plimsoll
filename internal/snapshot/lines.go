@@ -7,15 +7,10 @@ type lineChanges struct {
 	changes     []Change
 	now, before map[string][]byte
 	made        map[string]lineChange // by path now, or by base path for a file gone since
-	byPath      map[string]Change     // the change of each path now
 }
 
 func newLineChanges(changes []Change, now, before map[string][]byte) *lineChanges {
-	l := &lineChanges{changes: changes, now: now, before: before, made: map[string]lineChange{}, byPath: map[string]Change{}}
-	for _, c := range changes {
-		l.byPath[c.Path] = c
-	}
-	return l
+	return &lineChanges{changes: changes, now: now, before: before, made: map[string]lineChange{}}
 }
 
 // of is the line change of the file at the path now, or of a file gone since at its base path.
@@ -27,14 +22,6 @@ func (l *lineChanges) of(change Change) lineChange {
 	made := compareLines(l.before[cmp.Or(change.From, change.Path)], l.now[change.Path])
 	l.made[key] = made
 	return made
-}
-
-// added are the lines the change added to the file at the path now.
-func (l *lineChanges) added(path string) []LineRange {
-	if change, found := l.byPath[path]; found {
-		return l.of(change).added
-	}
-	return nil
 }
 
 // addedMask says, for each line of a function from start to end, whether the change added it.

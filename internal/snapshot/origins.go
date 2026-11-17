@@ -21,6 +21,7 @@ type origins struct {
 	nowContent map[string][]byte
 	baseFiles  []File
 	base       map[string][]byte
+	product    []File                     // the base product files, made on first need
 	own        map[string]bool            // holder words of the root licence files
 	shared     map[string]map[string]bool // folder -> the holder sets and addresses at least NearAgree nearest files hold
 	decided    map[string]bool            // path -> from another project
@@ -66,10 +67,10 @@ func (o *origins) vendored(path string) bool {
 			continue
 		}
 		for depth := k + 1; depth < len(parts); depth++ {
-			folder := strings.Join(parts[:depth], "/") + "/"
+			folder := strings.Join(parts[:depth], "/")
 			if slices.ContainsFunc(o.nowPaths, func(p string) bool {
-				rest, under := strings.CutPrefix(p, folder)
-				return under && !strings.Contains(rest, "/") && o.rules.VendorLicence.MatchString(rest)
+				rest, in := under(p, folder)
+				return in && !strings.Contains(rest, "/") && o.rules.VendorLicence.MatchString(rest)
 			}) {
 				return true
 			}
@@ -137,14 +138,11 @@ func (o *origins) sharedNear(path string) map[string]bool {
 	if o.shared == nil {
 		o.shared = map[string]map[string]bool{}
 	}
-	var product []File
-	for _, f := range o.baseFiles {
-		if f.Role == Product {
-			product = append(product, f)
-		}
+	if o.product == nil {
+		o.product = slices.DeleteFunc(slices.Clone(o.baseFiles), func(f File) bool { return f.Role != Product })
 	}
 	count := map[string]int{}
-	for _, p := range nearest(product, path, o.rules.NearFiles) {
+	for _, p := range nearest(o.product, path, o.rules.NearFiles) {
 		keys := map[string]bool{}
 		for _, line := range commentLines(o.base[p], o.rules.HeaderLines) {
 			if words, holds := o.holderOf(line); holds {
