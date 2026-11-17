@@ -310,9 +310,16 @@ type Functions struct {
 	ComplexCrossed, DeeperCrossed int // functions that crossed each rule and were not left out, the listed ones included
 	LeftOut                       []LeftOutFunction
 	Uncompared, Broken            int
+	BrokenIn                      []FileCount // the files of the Broken functions, the most first
 	Unread, Minified              []string
 	PerMeasure, Checks, Run       int // the rules' numbers an answer prints; Run is the tokens of one compared run
 	MinifiedLineBytes             int
 	HeaderLines                   int // the lines of a measured file that are read for another project's header
 	MovedShare, CopyShare         float64
+}
+
+// FileCount is how many of something one file holds.
+type FileCount struct {
+	Path  string
+	Count int
 }

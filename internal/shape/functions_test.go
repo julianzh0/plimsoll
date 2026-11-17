@@ -112,10 +112,14 @@ func TestDetectMarksFunctionsAChangeMadeComplexOrDeeper(t *testing.T) {
 		want      string
 	}{
 		{map[string]string{"src/a.ts": broken[:first] + "    const = 1 +;\n" + broken[first:]}, map[string]string{"src/a.ts": fn("grow", 6, 6)},
-			"1 function holds a syntax error, now or at the base, and is not measured"},
+			"1 function could not be read by the parser, now or at the base (a macro or a syntax its grammar does not know), and is not measured: in `src/a.ts`"},
 		{map[string]string{"src/a.ts": broken[:first] + "    const = 1 +;\n" + broken[first:] + strings.Replace(broken[:first], "grow", "keep", 1) + "    const = 1 +;\n" + broken[first:]},
 			map[string]string{"src/a.ts": fn("grow", 6, 6) + fn("keep", 6, 6)},
-			"2 functions hold a syntax error, now or at the base, and are not measured"},
+			"2 functions could not be read by the parser, now or at the base (a macro or a syntax its grammar does not know), and are not measured: 2 in `src/a.ts`"},
+		{map[string]string{"src/a.ts": broken[:first] + "    const = 1 +;\n" + broken[first:] + strings.Replace(broken[:first], "grow", "keep", 1) + "    const = 1 +;\n" + broken[first:],
+			"src/b.ts": broken[:first] + "    const = 1 +;\n" + broken[first:]},
+			map[string]string{"src/a.ts": fn("grow", 6, 6) + fn("keep", 6, 6), "src/b.ts": fn("grow", 6, 6)},
+			"3 functions could not be read by the parser, now or at the base (a macro or a syntax its grammar does not know), and are not measured: most in `src/a.ts` (2)"},
 		{nil, map[string]string{"src/min.ts": strings.ReplaceAll(fn("seven", 7, 0), "\n", " ")},
 			"1 changed file has more than 110 bytes a line on average, so its functions were not measured: `src/min.ts`"},
 		{nil, map[string]string{"big.go": big.String()}, "the parser could not read the functions of 1 changed file: `big.go`"},

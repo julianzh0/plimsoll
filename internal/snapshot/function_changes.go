@@ -144,6 +144,7 @@ func functionChanges(rules conventions.Rules, changes []Change, m measured, miss
 		Minified: m.minified, Checks: functionChecks}
 	candidates, pool := collect(rules, changes, m, missing, atBase, nowReadings, beforeReadings, &result)
 	if len(candidates) == 0 {
+		result.sortBrokenIn()
 		return result
 	}
 	run := functionRun{rules: rules, result: &result, pool: pool, now: nowContent, base: beforeContent,
@@ -157,6 +158,7 @@ func functionChanges(rules conventions.Rules, changes []Change, m measured, miss
 		}
 	}
 	run.list(run.notMoved(open), before.Files)
+	result.sortBrokenIn()
 	slices.SortFunc(result.LeftOut, func(a, b LeftOutFunction) int {
 		return cmp.Or(cmp.Compare(a.Path, b.Path), cmp.Compare(a.Name, b.Name), cmp.Compare(a.Occurrence, b.Occurrence))
 	})
@@ -186,7 +188,7 @@ func (r *functionRun) screen(c candidate) (candidate, bool) {
 			g := r.pool[i]
 			r.pool = slices.Delete(r.pool, i, i+1)
 			if g.fn.broken {
-				r.result.Broken++ // its code existed under another name but cannot be compared
+				r.result.unreadable(g.path) // its code existed under another name but cannot be compared
 				return c, false
 			}
 			c.partner(g.path, g.fn)
@@ -312,7 +314,7 @@ func collectFile(rules conventions.Rules, change Change, tracked bool, functions
 	for _, f := range functions {
 		seen[f.name]++
 		if f.broken {
-			result.Broken++
+			result.unreadable(change.Path)
 			continue
 		}
 		c := candidate{file: change, fn: f, change: FunctionChange{Path: change.Path, Name: f.name, Occurrence: seen[f.name],
@@ -323,7 +325,7 @@ func collectFile(rules conventions.Rules, change Change, tracked bool, functions
 		if len(partners) >= seen[f.name] && partners[seen[f.name]-1].broken {
 			// it cannot be compared; it is counted only when it could have crossed as new
 			if c.complex || c.deeper {
-				result.Broken++
+				result.unreadable(cmp.Or(change.From, change.Path))
 			} else {
 				result.Measured++
 			}
@@ -523,4 +525,19 @@ func countFunc[T any](list []T, keep func(T) bool) int {
 		}
 	}
 	return n
+}
+
+// unreadable counts a function the parser could not read, in the file at the path.
+func (f *Functions) unreadable(path string) {
+	f.Broken++
+	if i := slices.IndexFunc(f.BrokenIn, func(c FileCount) bool { return c.Path == path }); i >= 0 {
+		f.BrokenIn[i].Count++
+		return
+	}
+	f.BrokenIn = append(f.BrokenIn, FileCount{Path: path, Count: 1})
+}
+
+// sortBrokenIn puts the file with the most unreadable functions first, then by path.
+func (f *Functions) sortBrokenIn() {
+	slices.SortFunc(f.BrokenIn, func(a, b FileCount) int { return cmp.Or(b.Count-a.Count, cmp.Compare(a.Path, b.Path)) })
 }

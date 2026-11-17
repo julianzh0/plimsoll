@@ -160,8 +160,16 @@ func functionSummary(fs snapshot.Functions) []string {
 func functionsNotAnalysed(fs snapshot.Functions) []string {
 	var found []string
 	if fs.Broken > 0 {
-		found = append(found, answer.Agree(fs.Broken, "function holds a syntax error, now or at the base, and is not measured",
-			"functions hold a syntax error, now or at the base, and are not measured"))
+		where := fmt.Sprintf("in `%s`", fs.BrokenIn[0].Path)
+		switch {
+		case len(fs.BrokenIn) > 1:
+			where = fmt.Sprintf("most in `%s` (%d)", fs.BrokenIn[0].Path, fs.BrokenIn[0].Count)
+		case fs.Broken > 1:
+			where = fmt.Sprintf("%d %s", fs.Broken, where)
+		}
+		found = append(found, answer.Agree(fs.Broken,
+			"function could not be read by the parser, now or at the base (a macro or a syntax its grammar does not know), and is not measured",
+			"functions could not be read by the parser, now or at the base (a macro or a syntax its grammar does not know), and are not measured")+": "+where)
 	}
 	if len(fs.Minified) > 0 {
 		found = append(found, fmt.Sprintf("%s more than %d bytes a line on average, so its functions were not measured: %s",
