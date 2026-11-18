@@ -75,7 +75,11 @@ func (q Questions) Explain(ctx context.Context, repository, base, mark string) (
 	explained.Question, explained.Footprint, explained.Sections = Explain, nil, nil
 	explained.Marks, explained.ReportOnly, explained.Resolved = only(report.Marks, mark), only(report.ReportOnly, mark), only(report.Resolved, mark)
 	explained.Touched, explained.Standing = only(report.Touched, mark), only(report.Standing, mark)
-	items := slices.Concat(explained.Marks, explained.ReportOnly, explained.Resolved, explained.Touched, explained.Standing)
+	explained.Acknowledged = only(report.Acknowledged, mark)
+	if len(explained.Acknowledged) == 0 {
+		explained.AcknowledgedIn = ""
+	}
+	items := slices.Concat(explained.Marks, explained.ReportOnly, explained.Resolved, explained.Touched, explained.Standing, explained.Acknowledged)
 	index := slices.IndexFunc(q.Detectors, func(d Detector) bool { return d.Name() == DetectorOf(mark) })
 	if len(items) == 0 || index < 0 {
 		return Answer{}, &Refusal{Sentence: fmt.Sprintf("Unknown mark `%s`: nothing with this identifier exists against this base now. `report` lists the current identifiers.", mark)}

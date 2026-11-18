@@ -53,17 +53,20 @@ type Rules struct {
 	// OwnFile is the file at a repository's root in which it sets its own limits and declares its layout. LimitsTable
 	// is its table of limits and LimitKeys the keys of that table, in the order an answer names them; OwnKeys are the
 	// keys that declare the layout, in the same order.
-	OwnFile          string
-	LimitsTable      string
-	LimitKeys        []LimitKey
-	OwnKeys          []OwnKey
-	TestNames        []string // file-name patterns of test code; empty in the shared rules
-	IgnoredPaths     []string // folders, as paths from the repository root, whose files are left out; empty in the shared rules
-	IgnoredNames     []string // file-name patterns of files left out; empty in the shared rules
-	PlanningPaths    []string // planning and review records: an entry ending in "/" is a folder, at the root when it is one name, at any depth when it is a chain; any other a file-name pattern
-	MeasurementPaths []string // measurement records, in the syntax of PlanningPaths
-	ComposeFiles     []string // file-name patterns of compose files, read for their environment keys
-	Limits           Limits   // the shared defaults
+	OwnFile     string
+	LimitsTable string
+	LimitKeys   []LimitKey
+	OwnKeys     []OwnKey
+	// AcknowledgedTable is the table of the own file whose keys are mark identifiers the repository acknowledges, each
+	// with a reason; AcknowledgedName is what an answer calls its entries.
+	AcknowledgedTable, AcknowledgedName string
+	TestNames                           []string // file-name patterns of test code; empty in the shared rules
+	IgnoredPaths                        []string // folders, as paths from the repository root, whose files are left out; empty in the shared rules
+	IgnoredNames                        []string // file-name patterns of files left out; empty in the shared rules
+	PlanningPaths                       []string // planning and review records: an entry ending in "/" is a folder, at the root when it is one name, at any depth when it is a chain; any other a file-name pattern
+	MeasurementPaths                    []string // measurement records, in the syntax of PlanningPaths
+	ComposeFiles                        []string // file-name patterns of compose files, read for their environment keys
+	Limits                              Limits   // the shared defaults
 	// ReportOnly are the kinds of mark that report lists and status only counts, as "<detector>.<rule>": kinds
 	// outside reviewers or a blind reading judged too noisy to show on every change.
 	ReportOnly []string
@@ -153,6 +156,27 @@ const (
 // OwnValueLength is the longest value an own key may hold: the longest tracked folder path of sixteen repositories is
 // 109 characters, the longest file name 72 (2026-11-16).
 const OwnValueLength = 200
+
+// MarkIDLength is the longest mark identifier the acknowledged table may hold: a pair names two paths, and the
+// longest tracked path of the 193 local validation clones is 257 characters, so a pair identifier stays under 530.
+const MarkIDLength = 600
+
+// ReasonLength is the longest reason an acknowledged entry may give, in characters: the reason is never kept or
+// printed, so the cap only keeps an entry to one readable line.
+const ReasonLength = 200
+
+// markID is a mark identifier as answers print it: a detector and a rule, each lower-case words joined by single
+// hyphens, and a subject of letters, digits and the punctuation paths, functions and pairs hold. A space or a quote
+// has no place in it, so an identifier cannot carry a sentence into an answer.
+// NOTE: a path with a space or a letter outside ASCII has no identifier in this form, so its item cannot be
+// acknowledged (279 code files of the validation clones, 257 of them for a space). Upgrade: print such identifiers
+// quoted, then admit the quote's content.
+var markID = regexp.MustCompile(`^[a-z]+(?:-[a-z]+)*\.[a-z]+(?:-[a-z]+)*:[A-Za-z0-9._\-+/:#~@$()\[\],=]+$`)
+
+// MarkID says whether an acknowledged entry's identifier has the form of a mark identifier, within its cap.
+func MarkID(id string) bool {
+	return len(id) <= MarkIDLength && markID.MatchString(id)
+}
 
 var (
 	// ownFolder is a folder path from the root: segments of letters, digits and ._+- joined by "/".
@@ -355,8 +379,9 @@ func Default() Rules {
 			{File: "Package.swift", Format: SwiftDependencies, Lockfiles: []string{"Package.resolved"}},
 			{File: "vcpkg.json", Format: VcpkgDependencies},
 		},
-		OwnFile:     ".plimsoll.toml",
-		LimitsTable: "limits",
+		OwnFile:           ".plimsoll.toml",
+		LimitsTable:       "limits",
+		AcknowledgedTable: "acknowledged", AcknowledgedName: "acknowledged items",
 		OwnKeys: []OwnKey{
 			{Table: "layout", Key: "test_folders", Name: "test folders", Holds: TestFolderPaths},
 			{Table: "layout", Key: "test_files", Name: "test files", Holds: TestFileNames},

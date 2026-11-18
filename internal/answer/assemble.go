@@ -44,9 +44,11 @@ func Assemble(q Question, version string, s snapshot.Snapshot, results []Result)
 		NotAnalysed: []NotAnalysed{},
 	}
 	var standing []Mark
+	returned := map[string]bool{}
 	for _, result := range results {
 		a.Detectors = append(a.Detectors, result.Detector)
 		for _, m := range result.Findings.Marks {
+			returned[m.ID] = true
 			if (m.Change == New || m.Change == Grown) && reportOnly(s.ReportOnly, m) {
 				a.ReportOnly = append(a.ReportOnly, m)
 				continue
@@ -78,11 +80,23 @@ func Assemble(q Question, version string, s snapshot.Snapshot, results []Result)
 			})
 		}
 	}
+	acknowledged := map[string]bool{}
+	for _, id := range s.Acknowledged.IDs {
+		acknowledged[id] = true
+	}
 	for _, m := range standing {
-		if !shownAsMark(a.Marks, m.Subject) {
+		switch {
+		case shownAsMark(a.Marks, m.Subject):
+		case acknowledged[m.ID]:
+			a.Acknowledged = append(a.Acknowledged, m)
+		default:
 			a.Standing = append(a.Standing, m)
 		}
 	}
+	if len(a.Acknowledged) > 0 {
+		a.AcknowledgedIn = s.OwnFile
+	}
+	a.NotAnalysed = append(a.NotAnalysed, acknowledgedNotAnalysed(s, returned)...)
 	a.Counts.Resolved = len(a.Resolved)
 	a.Marks = Order(a.Marks)
 	if q == Status && len(a.Marks) > statusMarks {
@@ -209,4 +223,20 @@ func declaredIn(s snapshot.Snapshot) string {
 		return s.OwnFile
 	}
 	return ""
+}
+
+// acknowledgedNotAnalysed are the "not analysed" entries of the acknowledged table: its problems, then each entry
+// whose identifier no detector returned for this question (stale against this base), in file order.
+func acknowledgedNotAnalysed(s snapshot.Snapshot, returned map[string]bool) []NotAnalysed {
+	prefix := fmt.Sprintf("`%s` `[%s]`: ", s.OwnFile, s.Acknowledged.Table)
+	var entries []NotAnalysed
+	for _, problem := range s.Acknowledged.Problems {
+		entries = append(entries, NotAnalysed{Detector: repositoryEntry, What: prefix + problem})
+	}
+	for _, id := range s.Acknowledged.IDs {
+		if !returned[id] {
+			entries = append(entries, NotAnalysed{Detector: repositoryEntry, What: prefix + fmt.Sprintf("`%s` matches no item of this answer; it acknowledges nothing", id)})
+		}
+	}
+	return entries
 }

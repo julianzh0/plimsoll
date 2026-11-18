@@ -443,3 +443,59 @@ func TestChangedFilesInSkippedFoldersComeFirstUnderNotAnalysed(t *testing.T) {
 		t.Errorf("Render(status) =\n%s\nwant the not-analysed line to start with %q", text, want)
 	}
 }
+
+func TestAcknowledgedStandingItemsAreListedApartAndStaleEntriesNamed(t *testing.T) {
+	s := sample()
+	s.OwnFile = ".plimsoll.toml"
+	s.Acknowledged = snapshot.Acknowledged{Table: "acknowledged",
+		IDs:      []string{"shape.file-size:src/b.ts", "shape.file-size:src/a.ts", "shape.file-size:src/gone.ts"},
+		Problems: []string{"1 line is no `\"identifier\" = \"reason\"` entry; it is not applied"}}
+	f := findings()
+	f.Marks = append(f.Marks, fileMark("src/c.ts", Standing))
+	a := Assemble(Report, "0.1.0", s, []Result{{"shape", f}})
+	ids := func(marks []Mark) []string {
+		var out []string
+		for _, m := range marks {
+			out = append(out, m.ID)
+		}
+		return out
+	}
+	if !slices.Equal(ids(a.Acknowledged), []string{"shape.file-size:src/b.ts"}) || !slices.Equal(ids(a.Standing), []string{"shape.file-size:src/c.ts"}) ||
+		a.Acknowledged[0].Change != Standing || a.AcknowledgedIn != ".plimsoll.toml" || !slices.Contains(ids(a.Marks), "shape.file-size:src/a.ts") {
+		t.Errorf("Assemble = acknowledged %v in %q, standing %v, marks %v; want the standing src/b.ts apart, src/c.ts standing, the new src/a.ts a mark as usual",
+			ids(a.Acknowledged), a.AcknowledgedIn, ids(a.Standing), ids(a.Marks))
+	}
+	var notAnalysed []string
+	for _, n := range a.NotAnalysed {
+		if n.Detector == repositoryEntry && strings.HasPrefix(n.What, "`.plimsoll.toml` `[acknowledged]`: ") {
+			notAnalysed = append(notAnalysed, n.What)
+		}
+	}
+	want := []string{"`.plimsoll.toml` `[acknowledged]`: 1 line is no `\"identifier\" = \"reason\"` entry; it is not applied",
+		"`.plimsoll.toml` `[acknowledged]`: `shape.file-size:src/gone.ts` matches no item of this answer; it acknowledges nothing"}
+	if !slices.Equal(notAnalysed, want) {
+		t.Errorf("not analysed about the table = %q, want %q", notAnalysed, want)
+	}
+
+	none := Assemble(Report, "0.1.0", sample(), []Result{{"shape", f}})
+	if none.Acknowledged != nil || none.AcknowledgedIn != "" || len(none.Standing) != 2 {
+		t.Errorf("no table: acknowledged %v in %q, standing %d; want none and both standing", none.Acknowledged, none.AcknowledgedIn, len(none.Standing))
+	}
+}
+
+func TestAcknowledgedItemsAreCountedInStatusAndListedInReport(t *testing.T) {
+	s := sample()
+	s.OwnFile = ".plimsoll.toml"
+	s.Acknowledged = snapshot.Acknowledged{Table: "acknowledged", IDs: []string{"shape.file-size:src/b.ts"}}
+	status := Render(Assemble(Status, "0.1.0", s, []Result{{"shape", findings()}}), wording())
+	if !strings.Contains(status, "Standing (already at the base, not grown): none.\n1 standing item acknowledged in `.plimsoll.toml`; `report` lists them.\n") {
+		t.Errorf("Render(status) =\n%s\nwant standing none and the acknowledged line after it", status)
+	}
+	report := Render(Assemble(Report, "0.1.0", s, []Result{{"shape", findings()}}), wording())
+	if !strings.Contains(report, "Standing (already at the base, not grown): none.\nAcknowledged in `.plimsoll.toml` (standing, not listed above):\n- sentence of shape.file-size:src/b.ts id: shape.file-size:src/b.ts\n") {
+		t.Errorf("Render(report) =\n%s\nwant the acknowledged list after the standing one", report)
+	}
+	if plain := Render(Assemble(Status, "0.1.0", sample(), []Result{{"shape", findings()}}), wording()); strings.Contains(plain, "acknowledged") {
+		t.Errorf("Render(status without a table) =\n%s\nwant no word about acknowledged items", plain)
+	}
+}

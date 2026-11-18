@@ -124,6 +124,9 @@ func status(text *strings.Builder, a Answer, w Wording) {
 		text.WriteString(summary + "\n")
 	}
 	fmt.Fprintf(text, "Standing (already at the base, not grown): %s.\n", standingLine(a, w))
+	if len(a.Acknowledged) > 0 {
+		fmt.Fprintf(text, "%s acknowledged in `%s`; `report` lists them.\n", Plural(len(a.Acknowledged), "standing item"), a.AcknowledgedIn)
+	}
 	trailer(text, a)
 	whats := make([]string, 0, len(a.NotAnalysed))
 	for _, entry := range a.NotAnalysed {
@@ -176,6 +179,13 @@ func report(text *strings.Builder, a Answer, w Wording) {
 		text.WriteString("Standing (already at the base, not grown):\n")
 		standingList(text, a.Standing, w)
 	}
+	if len(a.Acknowledged) > 0 {
+		// listed in full: the repository's own file bounds the list
+		fmt.Fprintf(text, "Acknowledged in `%s` (standing, not listed above):\n", a.AcknowledgedIn)
+		for _, m := range a.Acknowledged {
+			fmt.Fprintf(text, "- %s id: %s\n", sentence(w, m), m.ID)
+		}
+	}
 	trailer(text, a)
 	if len(a.NotAnalysed) == 0 {
 		text.WriteString("Not analysed: none.\n")
@@ -190,6 +200,10 @@ func report(text *strings.Builder, a Answer, w Wording) {
 func explain(text *strings.Builder, a Answer, w Wording) {
 	for _, m := range slices.Concat(a.Marks, a.ReportOnly, a.Resolved, a.Touched, a.Standing) {
 		fmt.Fprintf(text, "[%s, %s] %s\n   verify: %s id: %s\n", m.Change, m.Confidence, sentence(w, m), m.Hint, m.ID)
+	}
+	for _, m := range a.Acknowledged {
+		fmt.Fprintf(text, "[%s, %s] %s\n   verify: %s id: %s\n", m.Change, m.Confidence, sentence(w, m), m.Hint, m.ID)
+		fmt.Fprintf(text, "   acknowledged in `%s`: `report` lists it under \"Acknowledged\", not under \"Standing\".\n", a.AcknowledgedIn)
 	}
 	if a.Evidence == nil {
 		return

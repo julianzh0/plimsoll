@@ -233,3 +233,24 @@ func TestReportTakesNamedFiles(t *testing.T) {
 		t.Errorf("Report(src/, empty) = %q, %v; want two named rows", named(report), err)
 	}
 }
+
+func TestExplainSaysAnItemIsAcknowledged(t *testing.T) {
+	source := snapshottest.Files(
+		map[string]string{"src/new.ts": "x\n", "src/old.ts": snapshottest.Lines(1600)},
+		map[string]string{"src/new.ts": snapshottest.Lines(1600), "src/old.ts": snapshottest.Lines(1600),
+			".plimsoll.toml": "[acknowledged]\n\"shape.file-size:src/old.ts\" = \"one parser, one file\"\n\"shape.file-size:src/gone.ts\" = \"x\"\n"},
+	)
+	q, _ := questions(t, source, nil)
+	a, err := q.Explain(context.Background(), "/repository", "main", "shape.file-size:src/old.ts")
+	if err != nil || len(a.Acknowledged) != 1 || len(a.Standing) != 0 || a.AcknowledgedIn != ".plimsoll.toml" ||
+		!strings.Contains(q.Text(a), "acknowledged in `.plimsoll.toml`: `report` lists it under \"Acknowledged\"") {
+		t.Errorf("Explain(acknowledged) = %+v, %v; want the item under acknowledged, named so in the text", a, err)
+	}
+	other, err := q.Explain(context.Background(), "/repository", "main", "shape.file-size:src/new.ts")
+	if err != nil || len(other.Acknowledged) != 0 || other.AcknowledgedIn != "" {
+		t.Errorf("Explain(another item) = acknowledged %v in %q, %v; want none", other.Acknowledged, other.AcknowledgedIn, err)
+	}
+	if _, err := q.Explain(context.Background(), "/repository", "main", "shape.file-size:src/gone.ts"); err == nil {
+		t.Error("Explain(a stale entry's identifier) = no error, want it refused as unknown")
+	}
+}

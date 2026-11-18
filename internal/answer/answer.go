@@ -36,24 +36,28 @@ const (
 
 // Answer is the result of every question. structuredContent is its JSON, and the text is rendered from it alone.
 type Answer struct {
-	Question    Question      `json:"question"`
-	Version     string        `json:"version"`
-	Base        Base          `json:"base"`
-	Head        Head          `json:"head"`
-	Footprint   *Footprint    `json:"footprint,omitempty"` // status and report, the same in both
-	Counts      Counts        `json:"counts"`              // all new, grown and resolved, not only those shown
-	Marks       []Mark        `json:"marks"`               // new and grown, ordered
-	More        int           `json:"more"`                // marks not shown
-	Resolved    []Mark        `json:"resolved"`
-	Touched     []Mark        `json:"touched"`    // in no count and no numbered mark
-	Summaries   []string      `json:"summaries"`  // one sentence per list of report rows that status only counts
-	ReportOnly  []Mark        `json:"reportOnly"` // new and grown marks of a kind status only counts
-	Standing    []Mark        `json:"standing"`
-	History     History       `json:"history"`
-	Detectors   []string      `json:"detectors"`
-	NotAnalysed []NotAnalysed `json:"notAnalysed"`
-	Sections    []Section     `json:"sections,omitempty"` // report: one per detector
-	Evidence    *Evidence     `json:"evidence,omitempty"` // explain
+	Question   Question   `json:"question"`
+	Version    string     `json:"version"`
+	Base       Base       `json:"base"`
+	Head       Head       `json:"head"`
+	Footprint  *Footprint `json:"footprint,omitempty"` // status and report, the same in both
+	Counts     Counts     `json:"counts"`              // all new, grown and resolved, not only those shown
+	Marks      []Mark     `json:"marks"`               // new and grown, ordered
+	More       int        `json:"more"`                // marks not shown
+	Resolved   []Mark     `json:"resolved"`
+	Touched    []Mark     `json:"touched"`    // in no count and no numbered mark
+	Summaries  []string   `json:"summaries"`  // one sentence per list of report rows that status only counts
+	ReportOnly []Mark     `json:"reportOnly"` // new and grown marks of a kind status only counts
+	Standing   []Mark     `json:"standing"`
+	// Acknowledged are the standing items whose identifiers the repository acknowledges in AcknowledgedIn; both are
+	// left out when there is none, so an answer without such items is unchanged.
+	Acknowledged   []Mark        `json:"acknowledged,omitempty"`
+	AcknowledgedIn string        `json:"acknowledgedIn,omitempty"`
+	History        History       `json:"history"`
+	Detectors      []string      `json:"detectors"`
+	NotAnalysed    []NotAnalysed `json:"notAnalysed"`
+	Sections       []Section     `json:"sections,omitempty"` // report: one per detector
+	Evidence       *Evidence     `json:"evidence,omitempty"` // explain
 }
 
 // Base is the revision compared with.
