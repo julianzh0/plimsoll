@@ -1,0 +1,16 @@
+# One pull request a month for every outdated Go module and GitHub Action; security fixes still come at once.
+# The tree-sitter grammars (internal/parse/grammars/pins.txt) and zig are not covered: they are checked by hand per release.
+version: 2
+multi-ecosystem-groups:
+  monthly:
+    schedule:
+      interval: monthly
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    patterns: ["*"]
+    multi-ecosystem-group: monthly
+  - package-ecosystem: github-actions
+    directory: /
+    patterns: ["*"]
+    multi-ecosystem-group: monthly
