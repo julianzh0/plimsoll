@@ -4,6 +4,7 @@ package gitrepo
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -250,5 +251,28 @@ func TestIntegrationAPartialCloneIsReadAroundItsMissingContent(t *testing.T) {
 	}
 	if !reflect.DeepEqual(partial.Now, full.Now) {
 		t.Errorf("partial clone: Now = %v, want the full clone's %v", paths(partial.Now), paths(full.Now))
+	}
+}
+
+// A partial clone can lack the old content of more files than one command line can name; the read goes on.
+func TestIntegrationAPartialCloneMissingManyFilesIsRead(t *testing.T) {
+	folder := "data/" + strings.Repeat("a-long-folder-name/", 4)
+	old, now := map[string]string{"src/a.ts": "a\n"}, map[string]string{"src/a.ts": "a\nb\n"}
+	for i := range 12000 { // 12,000 paths of about 100 bytes: over the 1 MiB a command line may hold
+		path := fmt.Sprintf("%sfile-%05d-with-a-long-name.txt", folder, i)
+		old[path], now[path] = "1\n", "2\n"
+	}
+	origin := gitrepotest.New(t, gitrepotest.Commit{Message: "base", Files: old}, gitrepotest.Commit{Message: "change", Files: now})
+	origin.Git("config", "uploadpack.allowFilter", "true")
+	clone := filepath.Join(t.TempDir(), "clone")
+	if out, err := exec.Command("git", "clone", "-q", "--filter=blob:none", "file://"+origin.Dir, clone).CombinedOutput(); err != nil {
+		t.Fatalf("partial clone: %v: %s", err, out)
+	}
+	source, err := read(t, clone, "HEAD~1")
+	if err != nil {
+		t.Fatalf("Read(partial clone missing 12,000 old contents) = %v, want an answer", err)
+	}
+	if len(source.Missing) < 12000 {
+		t.Errorf("Read(partial clone missing 12,000 old contents) = %d missing, want the 12,000 named", len(source.Missing))
 	}
 }
