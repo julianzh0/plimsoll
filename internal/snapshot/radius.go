@@ -157,7 +157,7 @@ func (w *radiusWalk) readPrints() {
 	}
 	results := make([]printPair, len(jobs))
 	parallel(len(jobs), func(i int) {
-		results[i] = w.in.readings.printsOfReading(jobs[i].language, jobs[i].content, jobs[i].reading, w.in.question)
+		results[i] = w.in.readings.printsOfReading(jobs[i].language, jobs[i].language.GrammarOf(jobs[i].path), jobs[i].content, jobs[i].reading, w.in.question)
 	})
 	for i, j := range jobs {
 		if j.now {

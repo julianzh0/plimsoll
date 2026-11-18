@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/julianzh0/plimsoll/internal/answer"
 	"github.com/julianzh0/plimsoll/internal/conventions"
@@ -333,5 +334,34 @@ func TestAModuleDeclarationAloneMakesNoImporterOrUser(t *testing.T) {
 	}
 	if r, _ := statisticNamed(f, "importers of the change"); !strings.HasPrefix(r.Note, "1 file directly, ") {
 		t.Errorf("importers of the change = %q, want main.rs alone", r.Note)
+	}
+}
+
+// A Swift target's files are each changed file's peers; the links of every file that imports the target reach all of
+// them. Indexing those links once per imported folder keeps a large target fast: indexing per file and link took
+// about 45 s for these 1,000 files and 100 importers.
+func TestALargeSwiftTargetWithManyImportersIsQuick(t *testing.T) {
+	const files, importers = 1000, 100
+	base := map[string]string{"Package.swift": "let package = Package(name: \"app\", targets: [\n" +
+		"    .target(name: \"Core\", path: \"Sources/Core\"),\n    .target(name: \"App\", path: \"Sources/App\"),\n])\n"}
+	for i := range files {
+		base[fmt.Sprintf("Sources/Core/F%d.swift", i)] = fmt.Sprintf("public func f%d() -> Int { return %d }\n", i, i)
+	}
+	var want []string
+	for i := range importers {
+		p := fmt.Sprintf("Sources/App/U%d.swift", i)
+		base[p] = "import Core\n\nlet use = f0()\n"
+		want = append(want, p)
+	}
+	slices.Sort(want)
+	now := clone(base)
+	now["Sources/Core/F0.swift"] = "public func f0() -> Int { return 1 }\n"
+	start := time.Now()
+	_, users := radiusOf(t, snapshottest.Files(base, now))
+	if took := time.Since(start); took > 10*time.Second {
+		t.Errorf("the blast radius of a 1,000-file target with 100 importers took %v, want a few seconds at most", took)
+	}
+	if !slices.Equal(users, want) {
+		t.Errorf("users = %d files %q..., want the %d importers that call f0", len(users), users[:min(3, len(users))], importers)
 	}
 }

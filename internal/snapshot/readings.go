@@ -35,10 +35,11 @@ type Readings struct {
 	prints      byContent[printPair]
 }
 
-// printsOfReading gives the prints of a content read with its units, made once per content; the prints with no import
-// left out only for an entry that has files whose imports are what their package offers.
-func (rs *Readings) printsOfReading(language conventions.Language, content []byte, r reading, question uint64) printPair {
-	return keptOrMade(rs, &rs.prints, contentKey("prints\x00"+language.Name, content), question, func() (printPair, bool) {
+// printsOfReading gives the prints of a content read with its units by a grammar, made once per content and grammar
+// (one entry's grammars split the same content into different units); the prints with no import left out only for an
+// entry that has files whose imports are what their package offers.
+func (rs *Readings) printsOfReading(language conventions.Language, grammar string, content []byte, r reading, question uint64) printPair {
+	return keptOrMade(rs, &rs.prints, contentKey("prints\x00"+language.Name+"\x00"+grammar, content), question, func() (printPair, bool) {
 		return printsOf(language, content, r.units, r.pureImports, len(language.SurfaceFiles) > 0), true
 	})
 }
@@ -56,11 +57,11 @@ func (ids identifiers) find(name string) (held, outside bool) {
 	return found, found && ids.outsideTests[i]
 }
 
-// identifiersOf gives the identifier tokens of a content: each with whether it stands outside the test spans, made
-// once per content. When they are not kept yet and worth is false for the content, it gives none, reads nothing and
+// identifiersOf gives the identifier tokens of a content: each with whether it stands outside the test spans its
+// grammar read, made once per content and grammar. When they are not kept yet and worth is false for the content, it gives none, reads nothing and
 // keeps nothing.
-func (rs *Readings) identifiersOf(language conventions.Language, content []byte, testSpans []span, question uint64, worth func() bool) identifiers {
-	return keptOrMade(rs, &rs.identifiers, contentKey("identifiers\x00"+language.Name, content), question, func() (identifiers, bool) {
+func (rs *Readings) identifiersOf(language conventions.Language, grammar string, content []byte, testSpans []span, question uint64, worth func() bool) identifiers {
+	return keptOrMade(rs, &rs.identifiers, contentKey("identifiers\x00"+language.Name+"\x00"+grammar, content), question, func() (identifiers, bool) {
 		if !worth() {
 			return identifiers{}, false
 		}

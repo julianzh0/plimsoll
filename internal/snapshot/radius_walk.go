@@ -31,7 +31,8 @@ type radiusWalk struct {
 	nowPrints, basePrints map[string]printPair
 	byFolder              map[string][]File // the code files now by folder, made on first use
 	byPackage             map[string]map[string][]string
-	byTarget              map[string][]string // per file: the files of the folder links that reach it
+	byTarget              map[string][]string // per file: the imported folders whose links reach it
+	folderReach           map[string][]string // per imported folder: the files its links reach
 }
 
 func newWalk(in radiusInput) *radiusWalk {
@@ -214,11 +215,13 @@ func (w *radiusWalk) packageFiles(language conventions.Language) map[string][]st
 	}
 	found := map[string][]string{}
 	for _, f := range w.in.now.Files {
-		if declared := packageOf(language.Imports.PackageLine, w.in.nowContent[f.Path]); f.Language == language.Name && declared != "" {
+		if f.Language != language.Name {
+			continue
+		}
+		if declared := packageOf(language.Imports.PackageLine, w.in.nowContent[f.Path]); declared != "" {
 			found[declared] = append(found[declared], f.Path)
 		}
 	}
-	delete(found, "")
 	w.byPackage[language.Name] = found
 	return found
 }
@@ -226,18 +229,24 @@ func (w *radiusWalk) packageFiles(language conventions.Language) map[string][]st
 // targetFiles are the files of the module a file belongs to, as the links that import a module's folders reach them:
 // a Swift target, wherever its manifest puts it; a file no such link reaches has its folder's files.
 func (w *radiusWalk) targetFiles(file string) []string {
-	if w.byTarget == nil {
-		w.byTarget = map[string][]string{}
+	if w.byTarget == nil { // the imported folders that reach each file, and each such folder's files, once
+		w.byTarget, w.folderReach = map[string][]string{}, map[string][]string{}
 		for _, link := range w.in.now.Links.List {
-			if link.Folder {
-				for _, f := range link.Files {
-					w.byTarget[f] = appendNew(w.byTarget[f], link.Files...)
-				}
+			if _, seen := w.folderReach[link.To]; !link.Folder || seen {
+				continue
+			}
+			w.folderReach[link.To] = link.Files
+			for _, f := range link.Files {
+				w.byTarget[f] = append(w.byTarget[f], link.To)
 			}
 		}
 	}
-	if found := w.byTarget[file]; len(found) > 0 {
-		return found
+	if folders := w.byTarget[file]; len(folders) > 0 {
+		var found []string
+		for _, folder := range folders {
+			found = append(found, w.folderReach[folder]...)
+		}
+		return sortedNames(found)
 	}
 	var found []string
 	for _, f := range w.folderFiles(path.Dir(file)) {
@@ -467,7 +476,7 @@ func (w *radiusWalk) readHeld(file string, st *walkState) {
 		return
 	}
 	inTests := w.roles[file].IsTest()
-	identifiers := w.in.readings.identifiersOf(language, w.in.nowContent[file], w.in.nowReadings[file].testSpans, w.in.question, w.worth(file))
+	identifiers := w.in.readings.identifiersOf(language, language.GrammarOf(file), w.in.nowContent[file], w.in.nowReadings[file].testSpans, w.in.question, w.worth(file))
 	held := func(name string, outside bool) {
 		if i, wanted := w.names[name]; wanted {
 			st.held.add(i)

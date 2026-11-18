@@ -100,3 +100,25 @@ func TestAQuestionOverTheBoundKeepsTheOlderReadingsItUsesAfterNewContent(t *test
 func goKey(content []byte) readingKey {
 	return readingKey{entry: "go", grammar: "go", content: sha256.Sum256(content)}
 }
+
+// One TypeScript entry reads .ts and .tsx with two grammars that split the same content into different units, so the
+// prints of one must not stand for the other: a print per unit is what compareUnits pairs.
+func TestPrintsAreKeptPerGrammar(t *testing.T) {
+	parser, err := parse.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(parser.Close)
+	readings := NewReadings(parser)
+	content := []byte("const a = <string>y;\n\nfunction g() { return 1 }\n\nconst b = 2;\n")
+	question := readings.begin()
+	for _, p := range []string{"a.tsx", "a.ts"} {
+		language, _ := conventions.Default().LanguageOf(p)
+		grammar := language.GrammarOf(p)
+		r := readings.of(language, grammar, content, question, wanted{declarations: true})
+		got := readings.printsOfReading(language, grammar, content, r, question)
+		if len(got.pure.units) != len(r.units) {
+			t.Errorf("%s: %d unit prints for %d units", p, len(got.pure.units), len(r.units))
+		}
+	}
+}
