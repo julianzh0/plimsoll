@@ -73,13 +73,18 @@ const wantLinksNote = "links: imports read from the code; an import is a link on
 const wantFolderNote = "an import of a folder reaches the folder's files, and a package that lies in several folders is reached in each; " +
 	"use between files of one folder or one package needs no import and is not seen"
 
+// linkNumbers are the statistics other than the blast radius, which every answer holds, 0 when no code changed.
+func linkNumbers(f answer.Findings) []answer.Statistic {
+	return slices.DeleteFunc(slices.Clone(f.Statistics), func(s answer.Statistic) bool { return strings.HasPrefix(s.Name, "blast radius") })
+}
+
 func TestLinksCountImportsPerAnalysedLanguage(t *testing.T) {
 	eachLanguage(t, func(t *testing.T, name string, c languageCase) {
 		f := detect(t, same(c.fan(9, c.outside...)))
 		value, before := 9.0, 9.0
 		want := answer.Statistic{Name: "imports followed", Subject: name, Value: &value, Before: &before, Unit: "imports",
 			Note: "of 9 own: 0 ambiguous, 0 not readable, 0 not found; 3 outside"}
-		if len(f.Statistics) == 0 || !sameStatistic(f.Statistics[0], want) {
+		if rows := linkNumbers(f); len(rows) == 0 || !sameStatistic(rows[0], want) {
 			t.Errorf("statistics = %+v, want first %+v", f.Statistics, want)
 		}
 		if len(f.Notes) == 0 || f.Notes[0] != wantLinksNote || len(f.NotAnalysed) != 0 {
@@ -128,7 +133,7 @@ func TestALanguageOverTheLimitIsNotAnalysed(t *testing.T) {
 		sentence := "`" + name + "`: 1 of 9 own imports could not be followed now (0 ambiguous, 0 not readable, 1 not found), " +
 			"over the limit of 10% (links checked against go list and dependency-cruiser, 2026-11); no link numbers for its files"
 		f := detect(t, same(over))
-		if len(f.Statistics) != 0 || len(f.Marks) != 0 || !slices.Equal(f.NotAnalysed, []string{sentence}) {
+		if len(linkNumbers(f)) != 0 || len(f.Marks) != 0 || !slices.Equal(f.NotAnalysed, []string{sentence}) {
 			t.Errorf("over the limit: statistics %+v, marks %+v, not analysed %q; want only %q", f.Statistics, f.Marks, f.NotAnalysed, sentence)
 		}
 		atBase := detect(t, snapshottest.Files(over, c.fan(8)))
@@ -144,7 +149,7 @@ func TestALanguageOverTheLimitIsNotAnalysed(t *testing.T) {
 	maps.Copy(mixed, ts.fan(8, ts.nowhere))
 	f := detect(t, same(mixed))
 	if len(f.NotAnalysed) != 1 || !strings.HasPrefix(f.NotAnalysed[0], "`typescript`: ") ||
-		len(f.Statistics) == 0 || f.Statistics[0].Subject != "go" {
+		len(linkNumbers(f)) == 0 || linkNumbers(f)[0].Subject != "go" {
 		t.Errorf("typescript over beside a sound go tree: not analysed %q, statistics %+v", f.NotAnalysed, f.Statistics)
 	}
 	cs := languageCases()["csharp"]
@@ -152,7 +157,7 @@ func TestALanguageOverTheLimitIsNotAnalysed(t *testing.T) {
 	global["src/Acme/GlobalUsings.cs"] = "global using Acme.ta;\nglobal using System.Linq;\n"
 	wantGlobal := "`csharp`: 1 of 9 own imports could not be followed now (0 ambiguous, 1 not readable, 0 not found), " +
 		"over the limit of 10% (links checked against go list and dependency-cruiser, 2026-11); no link numbers for its files"
-	if f := detect(t, same(global)); len(f.Statistics) != 0 || !slices.Equal(f.NotAnalysed, []string{wantGlobal}) {
+	if f := detect(t, same(global)); len(linkNumbers(f)) != 0 || !slices.Equal(f.NotAnalysed, []string{wantGlobal}) {
 		t.Errorf("a global using of own code: statistics %+v, not analysed %q; want only %q", f.Statistics, f.NotAnalysed, wantGlobal)
 	}
 }
@@ -219,8 +224,7 @@ func TestALanguageWithoutItsPrefixFile(t *testing.T) {
 	}
 	for _, tc := range cases {
 		f := detect(t, snapshottest.Files(tc.base, tc.now))
-		linkNumbers := slices.DeleteFunc(slices.Clone(f.Statistics), func(s answer.Statistic) bool { return strings.HasPrefix(s.Name, "blast radius") })
-		if !slices.Equal(f.NotAnalysed, []string{tc.sentence}) || (len(linkNumbers) > 0) != tc.numbers {
+		if !slices.Equal(f.NotAnalysed, []string{tc.sentence}) || (len(linkNumbers(f)) > 0) != tc.numbers {
 			t.Errorf("%s: not analysed %q, statistics %+v; want %q and numbers %v", tc.name, f.NotAnalysed, f.Statistics, tc.sentence, tc.numbers)
 		}
 	}
@@ -234,7 +238,7 @@ func TestALanguageWithoutItsPrefixFile(t *testing.T) {
 func TestLinksRunWithoutALanguageEntry(t *testing.T) {
 	f := detect(t, same(map[string]string{"bin/a.sh": "echo a\n", "bin/b.sh": "echo b\n"}))
 	if !slices.Equal(f.NotAnalysed, []string{"no file of a language whose imports are read"}) ||
-		len(f.Statistics) != 0 || len(f.Notes) != 0 || len(f.Marks) != 0 {
+		len(linkNumbers(f)) != 0 || len(f.Notes) != 0 || len(f.Marks) != 0 {
 		t.Errorf("shell scripts only: %+v, want one not-analysed entry and nothing else", f)
 	}
 }

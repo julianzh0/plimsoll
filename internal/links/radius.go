@@ -19,9 +19,6 @@ const radiusNote = "blast radius: the files the change did not touch that use, a
 // it could not count.
 func blastRadius(s snapshot.Snapshot, used []snapshot.LanguageImports) (*answer.Radius, []answer.Statistic, []string) {
 	r := s.Radius
-	if len(r.Changed) == 0 && !r.MissingNow {
-		return &answer.Radius{State: answer.RadiusCounted, Paths: []string{}}, nil, nil
-	}
 	languages := map[string]bool{}
 	for _, l := range used {
 		languages[l.Language] = true
@@ -111,12 +108,11 @@ func radiusRows(r *answer.Radius, counts map[snapshot.FileState]int, changed int
 	if r.State == answer.RadiusNotAnalysed {
 		return []answer.Statistic{{Name: "blast radius", Note: "not analysed; " + changedNote}}
 	}
-	value := float64(r.Files)
-	parts := []string{}
+	files := answer.Plural(r.Files, "file")
 	if r.State == answer.RadiusAtLeast {
-		parts = append(parts, "at least")
+		files = "at least " + files
 	}
-	parts = append(parts, count(r.ByName)+" by name, "+count(r.AsWhole)+" as a whole")
+	parts := []string{files, count(r.ByName) + " by name, " + count(r.AsWhole) + " as a whole"}
 	if r.Files > 0 {
 		parts = append(parts, count(r.Product)+" product, "+count(r.Tests)+" test"+otherPart(r.Other))
 	}
@@ -127,7 +123,7 @@ func radiusRows(r *answer.Radius, counts map[snapshot.FileState]int, changed int
 	if r.Unread > 0 {
 		parts = append(parts, answer.Agree(r.Unread, "file it reached has", "files it reached have")+" no content in this clone")
 	}
-	rows := []answer.Statistic{{Name: "blast radius", Value: &value, Unit: "files", Note: strings.Join(parts, "; ")}}
+	rows := []answer.Statistic{{Name: "blast radius", Note: strings.Join(parts, "; ")}}
 	if r.Files > 0 {
 		listed := answer.QuotedList(r.Paths)
 		if r.Omitted > 0 {

@@ -243,7 +243,7 @@ func TestTheBlastRadiusListsItsFilesUpToTheCap(t *testing.T) {
 	if !strings.HasSuffix(rows.Note, " and 2 more") || strings.Count(rows.Note, "`")/2 != 30 {
 		t.Errorf("blast radius files = %q, want 30 paths and 2 more", rows.Note)
 	}
-	if row, _ := statisticNamed(f, "blast radius"); row.Value == nil || *row.Value != 32 {
+	if row, _ := statisticNamed(f, "blast radius"); !strings.HasPrefix(row.Note, "32 files; ") {
 		t.Errorf("blast radius row = %+v, want 32 files", row)
 	}
 }
@@ -363,5 +363,15 @@ func TestALargeSwiftTargetWithManyImportersIsQuick(t *testing.T) {
 	}
 	if !slices.Equal(users, want) {
 		t.Errorf("users = %d files %q..., want the %d importers that call f0", len(users), users[:min(3, len(users))], importers)
+	}
+}
+
+func TestAChangeWithoutCodeHasARadiusOfZero(t *testing.T) {
+	base := map[string]string{"src/a.ts": "export const a = 1;\n", "README.md": "# a\n"}
+	now := clone(base)
+	now["README.md"] += "more\n"
+	row, found := statisticNamed(detect(t, snapshottest.Files(base, now)), "blast radius")
+	if want := "0 files; 0 by name, 0 as a whole; 0 changed code files"; !found || row.Note != want {
+		t.Errorf("blast radius of a change without code = %+v (found %v), want %q", row, found, want)
 	}
 }
