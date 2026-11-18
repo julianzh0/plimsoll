@@ -281,8 +281,10 @@ func clause(link snapshot.Link) string {
 // ruleWording is the sentence of a rule mark, from its fields alone.
 func ruleWording(m answer.Mark) string {
 	folder := answer.Folder(m.Subject.Paths[0])
-	what := "of code under " + answer.Folder(m.Subject.Paths[1])
-	if answer.RuleOf(m.ID) == ruleOnly {
+	var what string
+	if answer.RuleOf(m.ID) == ruleNever {
+		what = "of code under " + answer.Folder(m.Subject.Paths[1])
+	} else {
 		allowed := make([]string, 0, len(m.Subject.Paths))
 		for _, p := range m.Subject.Paths {
 			allowed = append(allowed, answer.Folder(p))

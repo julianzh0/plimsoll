@@ -293,6 +293,12 @@ func TestImportRuleWordingStandingEvidenceAndReport(t *testing.T) {
 			", added by this change; `[imports]` `never` of `.plimsoll.toml` allows none."},
 		{mark(ruleOnly, answer.New, 5, 0, clause, clause), "Code under `src/domain/` has 5 imports of code outside `src/domain/` and `src/adapters/`, none at the base, among them " +
 			clause + " and " + clause + ", added by this change; `[imports]` `only` of `.plimsoll.toml` allows none."},
+		{func() answer.Mark {
+			m := mark(ruleOnly, answer.New, 1, 0, clause)
+			m.Subject.Paths = m.Subject.Paths[:1]
+			return m
+		}(),
+			"Code under `src/domain/` has 1 import of code outside `src/domain/`, none at the base: " + clause + ", added by this change; `[imports]` `only` of `.plimsoll.toml` allows none."},
 		{mark(ruleNever, answer.Touched, 4, 3), "Code under `src/domain/` has 4 imports of code under `src/adapters/`, 3 at the base; this change added none of them; " +
 			"`[imports]` `never` of `.plimsoll.toml` allows none."},
 		{mark(ruleNever, answer.Standing, 3, 3), "Code under `src/domain/` has 3 imports of code under `src/adapters/`, 3 at the base; `[imports]` `never` of `.plimsoll.toml` allows none."},
