@@ -37,8 +37,8 @@ const goDeclarations = `
 `
 
 // goFunctions names what a function is and what counts in it, in the grammar's node kinds.
-func goFunctions() *FunctionKinds {
-	return &FunctionKinds{
+func goFunctions() FunctionKinds {
+	return FunctionKinds{
 		Declared:    []string{"function_declaration", "method_declaration"},
 		Bodies:      []string{"block"},
 		Closures:    []string{"func_literal"},

@@ -66,8 +66,8 @@ const pythonDeclarations = `
 `
 
 // pythonFunctions names what a function is and what counts in it, in the grammar's node kinds.
-func pythonFunctions() *FunctionKinds {
-	return &FunctionKinds{
+func pythonFunctions() FunctionKinds {
+	return FunctionKinds{
 		Declared:     []string{"function_definition"},
 		Bodies:       []string{"block"},
 		Closures:     []string{"lambda"},

@@ -3,6 +3,7 @@ package snapshot
 import (
 	"crypto/sha256"
 	"errors"
+	"slices"
 	"sync"
 
 	"github.com/julianzh0/plimsoll/internal/conventions"
@@ -130,8 +131,8 @@ const syntaxErrorPattern = "\n(ERROR) @error\n"
 // read makes the reading of one file: by the entry's grammar when it names one, and every fact for which the entry
 // has a pattern by that pattern (no entry reads one fact both ways), over the file with its comments and strings
 // blanked when it is parsed. A file the parser cannot read is unread; its patterns still read it. For an entry that
-// reads broken files line by line, a file the grammar cannot read, or reads only with an error, is read by the
-// entry's text patterns alone.
+// reads broken files line by line, the facts of a file the grammar cannot read, or reads only with an error, come from
+// the entry's text patterns alone; its functions still come from the tree (none when the parser read nothing).
 //
 // lasting is false for a failure of the moment (parse.ErrUnavailable): such a reading answers this question and is not
 // kept, so a later question reads the file again.
@@ -145,7 +146,9 @@ func (rs *Readings) read(language conventions.Language, grammar string, content 
 	}
 	result, err := rs.parser.Read(grammar, query+syntaxErrorPattern, content)
 	if err != nil && language.LineReadWhenBroken {
-		return readByText(language, content), !errors.Is(err, parse.ErrUnavailable)
+		r = readByText(language, content)
+		r.functionsUnread = w.functions // the grammar read nothing, so no function either
+		return r, !errors.Is(err, parse.ErrUnavailable)
 	}
 	if err != nil {
 		r = reading{unread: true}
@@ -153,15 +156,18 @@ func (rs *Readings) read(language conventions.Language, grammar string, content 
 	}
 	r = decode(language, result, content)
 	if r.syntaxError && language.LineReadWhenBroken {
-		return readByText(language, content), true
+		// the imports by the text patterns; the functions still from the tree, each flagged where it holds the error
+		r = readByText(language, content)
 	}
-	if w.functions && language.Functions != nil {
+	if w.functions {
 		tree, err := rs.parser.Nodes(grammar, content)
 		if err != nil {
 			r.functionsUnread = true
 			return r, !errors.Is(err, parse.ErrUnavailable)
 		}
-		for _, f := range functionsOf(*language.Functions, language.Tokens, *w.functionRules, tree, content) {
+		functions := functionsOf(language.Functions, language.Tokens, *w.functionRules, tree, content, nil)
+		functions = rs.readRewritten(language, grammar, content, *w.functionRules, functions)
+		for _, f := range functions {
 			if !inSpans(r.testSpans, f.start) {
 				r.functions = append(r.functions, f)
 			}
@@ -177,4 +183,31 @@ func readByText(language conventions.Language, content []byte) reading {
 		r = scan(language.Imports, masked(language.Literals, content))
 	}
 	return r
+}
+
+// readRewritten reads, for a language with macro rules and a file with functions it could not read as written, a
+// copy with those macros rewritten, and takes its functions where the written file gave none it could read. A copy
+// the parser cannot read leaves the functions as they were.
+func (rs *Readings) readRewritten(language conventions.Language, grammar string, content []byte, rules conventions.FunctionRules,
+	functions []function) []function {
+	if len(language.Macros) == 0 || !slices.ContainsFunc(functions, func(f function) bool { return f.broken }) {
+		return functions
+	}
+	rewritten := rewriteMacros(language.Macros, content)
+	if rewritten == nil {
+		return functions
+	}
+	tree, err := rs.parser.Nodes(grammar, rewritten)
+	if err != nil {
+		return functions
+	}
+	var clean []function
+	for _, f := range functions {
+		if !f.broken {
+			clean = append(clean, f)
+		}
+	}
+	// a function read cleanly as written is not measured again on the copy
+	within := func(start, end int) bool { return !overlapsAny(clean, function{start: start, end: end}) }
+	return withRewritten(functions, functionsOf(language.Functions, language.Tokens, rules, tree, rewritten, within))
 }

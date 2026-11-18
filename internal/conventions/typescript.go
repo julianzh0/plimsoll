@@ -86,8 +86,8 @@ const typescriptDeclarations = `
 `
 
 // typescriptFunctions names what a function is and what counts in it, in the grammar's node kinds.
-func typescriptFunctions() *FunctionKinds {
-	return &FunctionKinds{
+func typescriptFunctions() FunctionKinds {
+	return FunctionKinds{
 		Declared:      []string{"function_declaration", "generator_function_declaration", "method_definition"},
 		Bodies:        []string{"statement_block"},
 		Closures:      []string{"arrow_function", "function_expression", "generator_function"},

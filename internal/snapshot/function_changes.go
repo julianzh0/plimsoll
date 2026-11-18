@@ -10,14 +10,14 @@ import (
 	"github.com/julianzh0/plimsoll/internal/conventions"
 )
 
-// measured are the files whose functions are measured on each side, and what is said of the changed product files
-// that are not: minified, or of an entry without function tables.
+// measured are the files whose functions are measured on each side, and the changed product files that are not
+// because they are minified.
 type measured struct {
-	now, base            map[string]bool
-	minified, unmeasured []string
+	now, base map[string]bool
+	minified  []string
 }
 
-// measuredFiles chooses, now, the changed product files whose entry has function tables and that measuredFile admits;
+// measuredFiles chooses, now, the changed product files that measuredFile admits;
 // at the base, their old paths and the changed product files gone since that it admits.
 func measuredFiles(rules conventions.Rules, changes []Change, now, before Tree, nowContent, beforeContent map[string][]byte) measured {
 	m := measured{now: map[string]bool{}, base: map[string]bool{}}
@@ -43,20 +43,17 @@ func measuredFiles(rules conventions.Rules, changes []Change, now, before Tree, 
 		}
 	}
 	slices.Sort(m.minified)
-	slices.Sort(m.unmeasured)
-	m.minified, m.unmeasured = slices.Compact(m.minified), slices.Compact(m.unmeasured)
+	m.minified = slices.Compact(m.minified)
 	return m
 }
 
-// admits says whether a changed file now is measured, and notes a minified file or an entry without function tables.
+// admits says whether a changed file now is measured, and notes a minified file.
 func (m *measured) admits(rules conventions.Rules, f File, content []byte) bool {
 	switch measuredFile(rules, f, content) {
 	case fileMeasured:
 		return true
 	case fileMinified:
 		m.minified = append(m.minified, f.Path)
-	case fileWithoutTables:
-		m.unmeasured = append(m.unmeasured, f.Language)
 	case fileNotProduct:
 	}
 	return false
@@ -69,12 +66,11 @@ const (
 	fileNotProduct fileVerdict = iota
 	fileMeasured
 	fileMinified
-	fileWithoutTables
 )
 
 // measuredFile says whether a code file's functions are measured: product code outside the folders and names the
 // additions skip, the function rules' skipped folders and benchmark names, not minified (more than MinifiedLineBytes
-// bytes a line on average), of an entry with function tables.
+// bytes a line on average), of a language entry (each has function tables).
 func measuredFile(rules conventions.Rules, f File, content []byte) fileVerdict {
 	fr := rules.FunctionRules
 	if f.Role != Product || !mayDeclare(rules.Additions, f.Path) || inFolders(f.Path, fr.SkippedFolders) || benchmark(fr.BenchmarkWords, f.Path) {
@@ -83,12 +79,8 @@ func measuredFile(rules conventions.Rules, f File, content []byte) fileVerdict {
 	if len(content) > fr.MinifiedLineBytes*max(f.Lines, 1) {
 		return fileMinified
 	}
-	language, known := rules.LanguageOf(f.Path)
-	if !known {
+	if _, known := rules.LanguageOf(f.Path); !known {
 		return fileNotProduct
-	}
-	if language.Functions == nil {
-		return fileWithoutTables
 	}
 	return fileMeasured
 }
@@ -149,9 +141,10 @@ func functionChanges(rules conventions.Rules, changes []Change, m measured, miss
 	nowContent, beforeContent map[string][]byte, nowReadings, beforeReadings map[string]reading) Functions {
 	fr := rules.FunctionRules
 	result := Functions{PerMeasure: fr.PerMeasure, Run: fr.Run, MovedShare: fr.MovedShare, CopyShare: fr.CopyShare, MinifiedLineBytes: fr.MinifiedLineBytes, HeaderLines: fr.HeaderLines,
-		Minified: m.minified, Unmeasured: m.unmeasured, Checks: functionChecks}
+		Minified: m.minified, Checks: functionChecks}
 	candidates, pool := collect(rules, changes, m, missing, atBase, nowReadings, beforeReadings, &result)
 	if len(candidates) == 0 {
+		result.sortBrokenIn()
 		return result
 	}
 	run := functionRun{rules: rules, result: &result, pool: pool, now: nowContent, base: beforeContent,
@@ -165,6 +158,7 @@ func functionChanges(rules conventions.Rules, changes []Change, m measured, miss
 		}
 	}
 	run.list(run.notMoved(open), before.Files)
+	result.sortBrokenIn()
 	slices.SortFunc(result.LeftOut, func(a, b LeftOutFunction) int {
 		return cmp.Or(cmp.Compare(a.Path, b.Path), cmp.Compare(a.Name, b.Name), cmp.Compare(a.Occurrence, b.Occurrence))
 	})
@@ -194,7 +188,7 @@ func (r *functionRun) screen(c candidate) (candidate, bool) {
 			g := r.pool[i]
 			r.pool = slices.Delete(r.pool, i, i+1)
 			if g.fn.broken {
-				r.result.Broken++ // its code existed under another name but cannot be compared
+				r.result.unreadable(g.path) // its code existed under another name but cannot be compared
 				return c, false
 			}
 			c.partner(g.path, g.fn)
@@ -320,7 +314,7 @@ func collectFile(rules conventions.Rules, change Change, tracked bool, functions
 	for _, f := range functions {
 		seen[f.name]++
 		if f.broken {
-			result.Broken++
+			result.unreadable(change.Path)
 			continue
 		}
 		c := candidate{file: change, fn: f, change: FunctionChange{Path: change.Path, Name: f.name, Occurrence: seen[f.name],
@@ -331,7 +325,7 @@ func collectFile(rules conventions.Rules, change Change, tracked bool, functions
 		if len(partners) >= seen[f.name] && partners[seen[f.name]-1].broken {
 			// it cannot be compared; it is counted only when it could have crossed as new
 			if c.complex || c.deeper {
-				result.Broken++
+				result.unreadable(cmp.Or(change.From, change.Path))
 			} else {
 				result.Measured++
 			}
@@ -531,4 +525,19 @@ func countFunc[T any](list []T, keep func(T) bool) int {
 		}
 	}
 	return n
+}
+
+// unreadable counts a function the parser could not read, in the file at the path.
+func (f *Functions) unreadable(path string) {
+	f.Broken++
+	if i := slices.IndexFunc(f.BrokenIn, func(c FileCount) bool { return c.Path == path }); i >= 0 {
+		f.BrokenIn[i].Count++
+		return
+	}
+	f.BrokenIn = append(f.BrokenIn, FileCount{Path: path, Count: 1})
+}
+
+// sortBrokenIn puts the file with the most unreadable functions first, then by path.
+func (f *Functions) sortBrokenIn() {
+	slices.SortFunc(f.BrokenIn, func(a, b FileCount) int { return cmp.Or(b.Count-a.Count, cmp.Compare(a.Path, b.Path)) })
 }

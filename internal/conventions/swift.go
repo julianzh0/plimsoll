@@ -43,8 +43,8 @@ const swiftDeclarations = `
 `
 
 // swiftFunctions names what a function is and what counts in it, in the grammar's node kinds.
-func swiftFunctions() *FunctionKinds {
-	return &FunctionKinds{
+func swiftFunctions() FunctionKinds {
+	return FunctionKinds{
 		Declared: []string{"function_declaration", "init_declaration", "deinit_declaration"},
 		Bodies:   []string{"function_body"},
 		Closures: []string{"lambda_literal"},

@@ -35,8 +35,8 @@ const dartDeclarations = `
 `
 
 // dartFunctions names what a function is and what counts in it, in the grammar's node kinds.
-func dartFunctions() *FunctionKinds {
-	return &FunctionKinds{
+func dartFunctions() FunctionKinds {
+	return FunctionKinds{
 		Declared:     []string{"function_signature", "method_signature", "getter_signature", "setter_signature", "constructor_signature", "factory_constructor_signature"},
 		Bodies:       []string{"function_body"},
 		BodyAfter:    true,

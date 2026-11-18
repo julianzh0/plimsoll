@@ -247,8 +247,8 @@ type Language struct {
 	Layout   []Declaration // the standard files and keys in which a project declares its layout; nil for none
 	// Grammar is the tree-sitter grammar that reads the entry's files; "" reads them by the text patterns above.
 	Grammar string
-	// Functions says what a function is and what counts in it, in the grammar's node kinds; nil: functions are not measured.
-	Functions *FunctionKinds
+	// Functions says what a function is and what counts in it, in the grammar's node kinds; every entry has one.
+	Functions FunctionKinds
 	// Tokens splits a function's text into tokens, with the groups ws, com, lit, id and p; set with Functions.
 	Tokens *regexp.Regexp
 	// GrammarBySuffix names another grammar for some of the entry's suffixes.
@@ -270,9 +270,14 @@ type Language struct {
 	//   @type_block  a block whose statements import types only
 	// No fact is read both by a pattern and by the query, except under LineReadWhenBroken.
 	Query string
-	// LineReadWhenBroken reads a file the grammar cannot read without an error by the entry's text patterns instead:
-	// for a language whose files the grammar often misreads (macros), the patterns read every line on its own.
+	// LineReadWhenBroken reads the facts of a file the grammar cannot read without an error (its imports, its
+	// declarations) by the entry's text patterns instead: for a language whose files the grammar often misreads
+	// (macros), the patterns read every line on its own. Its functions still come from the tree.
 	LineReadWhenBroken bool
+	// Macros rewrite, in a copy of a file whose tree holds an error, what the grammar cannot read as a macro is used
+	// (FMT_CONSTEXPR void f(), _In_ const char* p, LIST_FOREACH(x, l, link)); the function walk reads that copy for the
+	// functions it could not read as written. None for a language without a preprocessor.
+	Macros []MacroRule
 	// Declarations is the query that reads the top-level names a file declares, run only on the files a change names,
 	// with these captures:
 	//   @declared.function, @declared.type, @declared.value  the name of a top-level function, type or value
@@ -450,4 +455,11 @@ func (r Rules) TestRule() string {
 		parts = append(parts, "`"+beginning+"*`")
 	}
 	return strings.Join(parts, ", ")
+}
+
+// MacroRule rewrites what its pattern's group "macro" finds: blanked when As is "", else replaced by As padded with
+// spaces (As is never longer than what it replaces). Offsets and line breaks stay where they were.
+type MacroRule struct {
+	Pattern *regexp.Regexp
+	As      string
 }

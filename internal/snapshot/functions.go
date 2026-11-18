@@ -38,6 +38,7 @@ type table struct {
 	declared, bodies, closures, namedClosures, namedBy          kindSet
 	ifs, elseClauses, flatBranches, nesting, logic, parentheses kindSet
 	markup, depthIfs, depth, blocks, switches                   kindSet
+	declarators, names, misreadIn                               kindSet
 	bodyAfter                                                   bool
 	bodyNames                                                   map[string]bool
 	elseKind                                                    int // the index of the kind "else", or -1
@@ -51,6 +52,7 @@ func tableOf(k conventions.FunctionKinds, tree parse.Tree) table {
 		logic: kindsOf(tree, k.Logic), parentheses: kindsOf(tree, k.Parentheses), markup: kindsOf(tree, k.Markup),
 		depthIfs: kindsOf(tree, k.DepthIfs), depth: kindsOf(tree, k.Depth), bodyAfter: k.BodyAfter,
 		blocks: kindsOf(tree, k.Blocks), switches: kindsOf(tree, k.SwitchBlocks), bodyNames: namesOf(k.Bodies),
+		declarators: kindsOf(tree, k.Declarators), names: kindsOf(tree, k.Names), misreadIn: kindsOf(tree, k.MisreadIn),
 		elseKind: slices.Index(tree.Kinds, "else"),
 	}
 }
@@ -97,7 +99,13 @@ func shapeOf(nodes []parse.Node) shape {
 
 func (s shape) endOf(i int) int    { return int(s.end[i]) }
 func (s shape) parentOf(i int) int { return int(s.parent[i]) }
-func (s shape) prevOf(i int) int   { return int(s.prev[i]) }
+
+// parentIn says whether the node at i has a parent of one of the set's kinds.
+func (s shape) parentIn(i int, set kindSet) bool {
+	p := s.parentOf(i)
+	return p >= 0 && set.has(s.nodes[p])
+}
+func (s shape) prevOf(i int) int { return int(s.prev[i]) }
 
 // lineIndex turns byte offsets into lines, from 1.
 type lineIndex []int // the byte offset of each newline
@@ -119,45 +127,84 @@ func (l lineIndex) line(offset int) int {
 
 // functionsOf measures the functions of one file, in text order: every declared function with a body however deep it
 // is declared, and the closures a name binds outside every function. Closures, nested functions and markup add
-// nothing to the function around them.
-func functionsOf(kinds conventions.FunctionKinds, tokens *regexp.Regexp, rules conventions.FunctionRules, tree parse.Tree, content []byte) []function {
-	t := tableOf(kinds, tree)
-	s := shapeOf(tree.Nodes)
-	lines := linesOf(content)
-	var found []function
-	inside := 0 // the end of the outermost function or listed closure seen so far
-	// the tokens of the outermost function seen so far, from its first byte: a function inside takes its part of them,
-	// so the file is tokenized once
-	var outer tokenSpan
+// nothing to the function around them. within, when not nil, says which byte spans are measured: a function outside
+// them is passed over.
+func functionsOf(kinds conventions.FunctionKinds, tokens *regexp.Regexp, rules conventions.FunctionRules, tree parse.Tree, content []byte,
+	within func(start, end int) bool) []function {
+	w := walk{t: tableOf(kinds, tree), s: shapeOf(tree.Nodes), tree: tree, content: content, lines: linesOf(content),
+		tokens: tokens, rules: rules, within: within}
 	for i, n := range tree.Nodes {
-		if !n.Named {
-			continue
-		}
-		if t.declared.has(n) {
-			to, ok := t.functionEnd(s, i)
-			if !ok {
-				continue
-			}
-			f := t.measure(s, i, to, functionName(tree, s, i, content, t.bodyNames), content, lines)
-			if i >= inside {
-				outer = newTokenSpan(tokensOf(tokens, content[f.start:f.end], 0), f.start)
-			}
-			f.repeats = repeatsOf(rules, tree, s, t, i, to, outer, lines)
-			found = append(found, f)
-			inside = max(inside, to)
-			continue
-		}
-		if i >= inside && t.namedClosures.has(n) && s.parentOf(i) >= 0 && t.namedBy.has(tree.Nodes[s.parentOf(i)]) {
-			if name := bindingName(tree, s, i, content); name != "" {
-				f := t.measure(s, i, s.endOf(i), name, content, lines)
-				outer = newTokenSpan(tokensOf(tokens, content[f.start:f.end], 0), f.start)
-				f.repeats = repeatsOf(rules, tree, s, t, i, s.endOf(i), outer, lines)
-				found = append(found, f)
-				inside = s.endOf(i)
-			}
+		switch {
+		case !n.Named:
+		case w.t.declared.has(n) && w.s.parentIn(i, w.t.misreadIn):
+			w.misread(n)
+		case w.t.declared.has(n):
+			w.declared(i)
+		case i >= w.inside && w.t.namedClosures.has(n) && w.s.parentIn(i, w.t.namedBy):
+			w.closure(i)
 		}
 	}
-	return found
+	return w.found
+}
+
+// walk is one file's walk for its functions.
+type walk struct {
+	t       table
+	s       shape
+	tree    parse.Tree
+	content []byte
+	lines   lineIndex
+	tokens  *regexp.Regexp
+	rules   conventions.FunctionRules
+	within  func(start, end int) bool
+	found   []function
+	inside  int // the end of the outermost function or listed closure seen so far
+	// the tokens of the outermost function seen so far, from its first byte: a function inside takes its part of
+	// them, so the file is tokenized once
+	outer tokenSpan
+}
+
+// declared measures the declared function at i, when it has a body and lies within the measured spans.
+func (w *walk) declared(i int) {
+	to, ok := w.t.functionEnd(w.s, i)
+	if !ok || w.within != nil && !w.within(int(w.s.nodes[i].Start), w.t.extent(w.s, i, to)) {
+		return
+	}
+	f := w.t.measure(w.s, i, to, functionName(w.tree, w.s, w.t, i, w.content), w.content, w.lines)
+	if i >= w.inside {
+		w.outer = newTokenSpan(tokensOf(w.tokens, w.content[f.start:f.end], 0), f.start)
+	}
+	f.repeats = repeatsOf(w.rules, w.tree, w.s, w.t, i, to, w.outer, w.lines)
+	w.found = append(w.found, f)
+	w.inside = max(w.inside, to)
+}
+
+// closure measures the closure at i, outside every function, when a name binds it.
+func (w *walk) closure(i int) {
+	n := w.s.nodes[i]
+	if w.within != nil && !w.within(int(n.Start), int(n.End)) {
+		return
+	}
+	name := bindingName(w.tree, w.s, i, w.content)
+	if name == "" {
+		return
+	}
+	f := w.t.measure(w.s, i, w.s.endOf(i), name, w.content, w.lines)
+	w.outer = newTokenSpan(tokensOf(w.tokens, w.content[f.start:f.end], 0), f.start)
+	f.repeats = repeatsOf(w.rules, w.tree, w.s, w.t, i, w.s.endOf(i), w.outer, w.lines)
+	w.found = append(w.found, f)
+	w.inside = w.s.endOf(i)
+}
+
+// misread marks the function around a macro the grammar read as a function inside a body (C++: Q_FOREACH (const T
+// &x, l) { ... }) as unreadable: it is not what it seems, and the copy with macros rewritten reads it.
+func (w *walk) misread(n parse.Node) {
+	for k := len(w.found) - 1; k >= 0; k-- {
+		if f := &w.found[k]; f.start <= int(n.Start) && int(n.End) <= f.end {
+			f.broken = true
+			return
+		}
+	}
 }
 
 // functionEnd is where a declared function ends: after its body, or false when it has none.
@@ -177,12 +224,26 @@ func (t table) functionEnd(s shape, i int) (int, bool) {
 	return 0, false
 }
 
-// functionName is a declared function's name: its name field when it is an identifier (else its kind); else its first
-// named child of an identifier kind; else the name field or the first identifier child of one of its named children;
-// else its kind without "_declaration".
-func functionName(tree parse.Tree, s shape, i int, content []byte, bodyKinds map[string]bool) string {
+// functionName is a declared function's name: its name field when it is an identifier (else its kind); else, through
+// the table's declarators, the identifier or name kind in the innermost one; else its first named child of an
+// identifier kind; else the name field or the first identifier child of one of its named children; else its kind
+// without "_declaration".
+func functionName(tree parse.Tree, s shape, t table, i int, content []byte) string {
 	text := func(k int) string {
-		return strings.Trim(string(content[s.nodes[k].Start:s.nodes[k].End]), "`")
+		// a name node with parts (Store::route, ~Foo) is its tokens, without a comment or literal written inside it; a
+		// name split over lines shows on one line
+		var name strings.Builder
+		for j := k; j < s.endOf(k); j++ {
+			kind := tree.Kinds[s.nodes[j].Kind]
+			if j > k && (strings.Contains(kind, "comment") || strings.HasSuffix(kind, "literal")) {
+				j = s.endOf(j) - 1
+				continue
+			}
+			if s.endOf(j) == j+1 {
+				name.Write(content[s.nodes[j].Start:s.nodes[j].End])
+			}
+		}
+		return strings.Trim(name.String(), "`")
 	}
 	// a type's name (type_identifier) is not the function's: Dart writes the return type before the name
 	identifier := func(k int) bool {
@@ -207,13 +268,28 @@ func functionName(tree parse.Tree, s shape, i int, content []byte, bodyKinds map
 			return strings.TrimSuffix(tree.Kinds[s.nodes[i].Kind], "_declaration")
 		}
 	}
+	declarator := func(k int) (int, bool) { // the first child of k that is a declarator
+		for _, c := range children(k) {
+			if t.declarators.has(s.nodes[c]) {
+				return c, true
+			}
+		}
+		return 0, false
+	}
+	for k, found := declarator(i); found; k, found = declarator(k) {
+		for _, g := range children(k) {
+			if identifier(g) || t.names.has(s.nodes[g]) {
+				return text(g)
+			}
+		}
+	}
 	for _, c := range children(i) {
 		if s.nodes[c].Named && identifier(c) {
 			return text(c)
 		}
 	}
 	for _, c := range children(i) {
-		if kind := tree.Kinds[s.nodes[c].Kind]; !s.nodes[c].Named || bodyKinds[kind] || strings.Contains(kind, "parameter") {
+		if kind := tree.Kinds[s.nodes[c].Kind]; !s.nodes[c].Named || t.bodyNames[kind] || strings.Contains(kind, "parameter") {
 			continue
 		}
 		for _, g := range children(c) {

@@ -192,7 +192,8 @@ defaults at the end of this section.
 plimsoll reads code with [tree-sitter](https://tree-sitter.github.io/) grammars that run inside it, so a comment or a
 string never counts as an import. Each language below names its grammar. The package and namespace lines of Java,
 Kotlin and C# are read by text patterns, since generated files declare them too. Macros often confuse the C and C++
-grammars, so a C/C++ file that its grammar reads only with an error is read line by line instead. A file that would
+grammars, so the includes of a C/C++ file that its grammar reads only with an error are read line by line instead; its
+functions are still read from the tree, and one that holds the error is counted as not measured. A file that would
 need more than 128 MiB to parse is not read, and the answer names it under "not analysed". A changed file in which
 the grammar meets a syntax error, such as an unfinished edit, is named there too, since an import after the error may
 be missed. On a system that forbids executable memory the grammars
@@ -216,7 +217,17 @@ still run, interpreted and about 80 times slower.
   in `include_directories` or `target_include_directories`. Such a file under several folders is ambiguous, and an
   include that a macro names is not readable. Every `#if` branch is read.
 - **Runtime dependencies:** `vcpkg.json`, the top-level `dependencies` without host tools.
-- **Functions:** not measured.
+- **Functions:** functions and, in C++, lambdas; a `goto` counts 1. When a file holds a function the grammar cannot
+  read, a copy with three kinds of macro rewritten is read for those functions only, with every line kept: an
+  attribute-like name where a declaration starts (`FMT_CONSTEXPR`) and an annotation (`_In_`, `_In_reads_(n)`,
+  `__declspec(...)`) are blanked, a loop macro (`LIST_FOREACH(...)`) is read as `while`, and the macros of Qt
+  (`emit`, `Q_D`, `Q_OBJECT`, `foreach`, signal and slot sections) and GLib (`g_autofree`, `g_autoptr`,
+  `G_DEFINE_TYPE`, `G_GNUC_*`) are read as what they expand to. A function still unreadable, as behind `#ifdef`
+  branches that split its braces or another framework's macros, is counted as unreadable and is not
+  measured.
+  Validated like the other languages on 61 blind-read marks of C and C++ agent pull requests (0.72 worth acting on,
+  per-change lower bound 0.61), with two limits: they came from 13 repositories rather than 15, and 5 of 43 macro-heavy
+  repositories kept more than 10% of their functions unreadable.
 
 ### C#
 
@@ -316,7 +327,7 @@ still run, interpreted and about 80 times slower.
 - **Changed together:** each file is one unit.
 - **Added code:** top-level functions, types and exported values; a decorated or annotated declaration, a default
   export, generated code and example projects are left out.
-- **Functions:** measured in every language below except C and C++.
+- **Functions:** measured in every language below.
 
 ## Rules
 

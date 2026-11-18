@@ -24,8 +24,8 @@ const kotlinDeclarations = `
 `
 
 // kotlinFunctions names what a function is and what counts in it, in the grammar's node kinds.
-func kotlinFunctions() *FunctionKinds {
-	return &FunctionKinds{
+func kotlinFunctions() FunctionKinds {
+	return FunctionKinds{
 		Declared:    []string{"function_declaration", "secondary_constructor", "getter", "setter"},
 		Bodies:      []string{"function_body", "statements"},
 		Closures:    []string{"lambda_literal", "anonymous_function"},
