@@ -25,15 +25,21 @@ type sourceFile struct {
 	Imports []string
 }
 
-// Guards the module's promises: no dependency but the MCP SDK and wazero, no network, one place that runs programs, imports point inward.
-func TestGuardRulesNameEachViolation(t *testing.T) {
+// guardCase is one case of the guard: a file of the module, a go.mod, and the violation the guard names.
+type guardCase struct {
+	name  string
+	file  sourceFile
+	goMod string
+	want  string // "" means no violation
+}
+
+// againstTheImportDirection is what the guard says of an import of the module's own code that its table forbids.
+const againstTheImportDirection = "against the import direction"
+
+// guardCases are the guard's cases.
+func guardCases() []guardCase {
 	const cleanMod = "module " + module + "\n\ngo 1.27.4\n"
-	cases := []struct {
-		name  string
-		file  sourceFile
-		goMod string
-		want  string // "" means no violation
-	}{
+	return []guardCase{
 		{"a third-party import", sourceFile{"internal/answer/a.go", []string{"github.com/x/y"}}, cleanMod, "outside the standard library"},
 		{"a network package", sourceFile{"internal/answer/a.go", []string{"net/http"}}, cleanMod, "a network package"},
 		{"a network package in a test", sourceFile{"internal/answer/a_test.go", []string{"net"}}, cleanMod, "a network package"},
@@ -60,7 +66,11 @@ func TestGuardRulesNameEachViolation(t *testing.T) {
 		{"the snapshot using the parser", sourceFile{"internal/snapshot/a.go", []string{module + "/internal/parse"}}, cleanMod, ""},
 		{"a detector using the parser", sourceFile{"internal/links/a.go", []string{module + "/internal/parse"}}, cleanMod, "against the import direction"},
 	}
-	for _, tc := range cases {
+}
+
+// Guards the module's promises: no dependency but the MCP SDK and wazero, no network, one place that runs programs, imports point inward.
+func TestGuardRulesNameEachViolation(t *testing.T) {
+	for _, tc := range guardCases() {
 		t.Run(tc.name, func(t *testing.T) {
 			got := violations(module, tc.goMod, []sourceFile{tc.file})
 			if tc.want == "" {
@@ -145,7 +155,7 @@ func violations(module, goMod string, files []sourceFile) []string {
 				found = append(found, file.Path+" imports os/exec: it runs programs outside internal/gitrepo")
 			case strings.HasPrefix(imported, module+"/"):
 				if !isTest && !mayImport(table, folder, strings.TrimPrefix(imported, module+"/")) {
-					found = append(found, file.Path+" imports "+imported+", against the import direction")
+					found = append(found, file.Path+" imports "+imported+", "+againstTheImportDirection)
 				}
 			case imported == mcpSDK || strings.HasPrefix(imported, mcpSDK+"/"):
 				if !isTest && folder != "internal/mcpserver" {
@@ -177,6 +187,28 @@ func mayImport(table map[string][]string, folder, target string) bool {
 func moduleSources(t *testing.T, root string) []sourceFile {
 	t.Helper()
 	var files []sourceFile
+	for name, content := range moduleFiles(t, root) {
+		if !strings.HasSuffix(name, ".go") {
+			continue
+		}
+		parsed, err := parser.ParseFile(token.NewFileSet(), name, content, parser.ImportsOnly)
+		if err != nil {
+			t.Fatalf("reading the imports of %s: %v", name, err)
+		}
+		file := sourceFile{Path: name}
+		for _, spec := range parsed.Imports {
+			file.Imports = append(file.Imports, strings.Trim(spec.Path.Value, `"`))
+		}
+		files = append(files, file)
+	}
+	return files
+}
+
+// moduleFiles are the module's Go files and its go.mod, by path from the root, outside the folders that hold no
+// source of it.
+func moduleFiles(t *testing.T, root string) map[string]string {
+	t.Helper()
+	files := map[string]string{}
 	fileSystem := os.DirFS(root)
 	err := fs.WalkDir(fileSystem, ".", func(name string, entry fs.DirEntry, err error) error {
 		if err != nil {
@@ -189,23 +221,12 @@ func moduleSources(t *testing.T, root string) []sourceFile {
 			}
 			return nil
 		}
-		if !strings.HasSuffix(name, ".go") {
+		if !strings.HasSuffix(name, ".go") && name != "go.mod" {
 			return nil
 		}
 		content, err := fs.ReadFile(fileSystem, name)
-		if err != nil {
-			return err
-		}
-		parsed, err := parser.ParseFile(token.NewFileSet(), name, content, parser.ImportsOnly)
-		if err != nil {
-			return err
-		}
-		file := sourceFile{Path: name}
-		for _, spec := range parsed.Imports {
-			file.Imports = append(file.Imports, strings.Trim(spec.Path.Value, `"`))
-		}
-		files = append(files, file)
-		return nil
+		files[name] = string(content)
+		return err
 	})
 	if err != nil {
 		t.Fatalf("reading the module's sources: %v", err)

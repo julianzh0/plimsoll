@@ -21,7 +21,9 @@ a file crossed 1,000 lines, a planning document got committed, a setting is defi
 import closed a ring of files that import each other. It is built for coding agents and speaks the Model Context Protocol (MCP).
 
 It is not a score or a grade, not a dashboard, and not a linter: it writes nothing into the repositories it reads,
-stores nothing, and never says what to do.
+stores nothing, and never says what to do. The one rule a repository may add is about its imports (a folder that
+imports no other, or only some): plimsoll reports a break as information, never as a gate or an exit code, and it
+checks only that part of an architecture test, never outside packages or anything that is not an import.
 
 ## Why plimsoll
 
@@ -53,7 +55,8 @@ Six detectors look at a change from different sides:
 - **Hotspots** (`hotspots`): the files changed most often, weighed by their size.
 - **Hidden coupling** (`co-change`): files that keep changing together in the same commits.
 - **Wiring** (`links`): who imports whom, import rings, folders that depend on each other in a circle, product code
-  that imports test code, how far a change reaches, and the code a change added that nothing uses.
+  that imports test code, imports that break a rule the repository declares, how far a change reaches, and the code a
+  change added that nothing uses.
 
 Each detector compares now with a base you choose, such as `main`, so old debt stays quiet and new growth stands out.
 
@@ -342,12 +345,14 @@ still run, interpreted and about 80 times slower.
 | `process.planning-file:<path>` | a file under a planning or review path is tracked now and was not at the base | repositories hold no planning records |
 | `process.doc-churn:repository` | over the commits since the base, documentation churn is above product plus test churn | documentation above code |
 | `process.limit-change:<key>` | `.plimsoll.toml` sets a limit to another value now than at the base, so a change that raised a limit to clear a mark says so | any change |
-| `process.declaration-change:<key>` | `.plimsoll.toml` declares other values under a key of `[layout]`, `[ignore]` or `[defaults]`, or other entries in `[acknowledged]` (the key is then `acknowledged`), now than at the base; editing only a reason is no change | any change |
+| `process.declaration-change:<key>` | `.plimsoll.toml` declares other values under a key of `[layout]`, `[ignore]`, `[imports]` or `[defaults]`, or other entries in `[acknowledged]` (the key is then `acknowledged`), now than at the base; editing only a reason is no change | any change |
 | `settings.defined-twice:<NAME>` | a name on two or more lines of `.env.example` that are not commented out (candidate) | plimsoll's rule: one name, one setting |
 | `settings.compose-only:<NAME>` | a compose `environment` key that takes its value from the host (no value, or `$`) and that `.env.example` does not name (candidate) | the three lists agree |
 | `co-change.pair:<a>+<b>` | two code files changed together in at least 5 usable commits and did not at the base (new), or their share of the commits that touched either rose by at least 0.1 (grown). The mark shows that share and comes after every other mark | 5 shared commits, plimsoll's rule |
 | `links.test-import:<path>` | a product file has an import of test code now and had none at the base (new), or has more (grown), and the change added one of these imports (candidate) | product code imports no test code |
 | `links.cycle:<path>` | two or more files import each other in a ring, by imports that are not type-only, and did not at the base (new), or the ring has more files (grown), and the change added one of its imports. The path is the ring's smallest (candidate) | files do not import each other in a ring |
+| `links.never:<folder>-><folder>` | product code under the first folder imports code under the second, against a `never` rule of `.plimsoll.toml`, and the change wrote one of these imports: new when there were none at the base, grown otherwise, also when the count did not rise. More than at the base without one the change wrote is touched (candidate) | the repository's own rule in `.plimsoll.toml` |
+| `links.only:<folder>` | product code under the folder imports code outside it and outside the folders its `only` rule names, and the change wrote one of these imports; new, grown and touched as for `never` (candidate) | the repository's own rule in `.plimsoll.toml` |
 | `links.folder-cycle:<folder>` | two or more folders directly under one folder depend on each other in a cycle, through imports between product files below them, and none of them did at the base (new), or the cycle has more folders (grown), and the change added one of the imports between them. The folder is the cycle's smallest (candidate) | the Acyclic Dependencies Principle (Robert C. Martin) |
 
 Something over its limit at the base and no longer over it is reported as resolved. Something over it on both
@@ -391,6 +396,10 @@ files = ["SPEC.md", "*.generated.go"]       # names of files plimsoll leaves out
 [defaults]
 base = "main"                               # the base of a question that names none
 
+[imports]
+never = ["src/domain -> src/adapters"]      # code under the first folder imports none under the second
+only = ["src/domain -> src/shared"]         # code under the first folder imports only there and in itself
+
 [acknowledged]                              # standing items reviewed and kept on purpose, each with a reason
 "process.planning-file:SPEC.md" = "a lasting specification, not a plan"
 ```
@@ -404,6 +413,7 @@ base = "main"                               # the base of a question that names 
 | `folders` under `[ignore]` | Folders, as paths from the root, whose files plimsoll leaves out: no code, no planning record, no documentation it reads |
 | `files` under `[ignore]` | File names, with the same patterns as `test_files`, of files plimsoll leaves out wherever they lie |
 | an entry of `[acknowledged]` | A mark identifier exactly as an answer printed it, and a reason: a standing item with that identifier is listed under "Acknowledged" in `report` instead of "Standing", and `status` counts such items in one line. The item is still measured and counted; when it grows, or a new item gets its identifier, it shows as usual. Function marks never stand, so they are not acknowledged. The reason is required and never printed |
+| `never`, `only` under `[imports]` | Import rules, each `"<folder> -> <folder>"` (below) |
 | `base` | The branch, remote branch or tag a question without a base compares with. A remote branch is named with its remote (`origin/main`): `main` alone finds no remote branch. A branch of the name comes before a remote branch, and a remote branch before a tag |
 
 The function limits cannot be set in the file: they are the ones the measurement was read against.
@@ -422,10 +432,48 @@ plain name (letters, digits, `_`, `-`, parts joined by `.`) is counted there, no
 tracked file, or that is no plain path or file-name pattern, is named there too and not used. A question without a
 base whose repository declares no usable default base is refused with one sentence that says why.
 
+#### Import rules
+
+A rule is one text `"<folder> -> <folder>"`: two folders from the root, in the form of `test_folders`, joined by one
+`->`. Product code under the first folder is the importing side; test code and other code never are.
+
+- `never = ["a -> b"]`: code under `a` imports no code under `b`. An import breaks the rule when every code file it
+  reaches lies under `b`. The two folders differ and neither lies inside the other.
+- `only = ["a -> b", "a -> c"]`: code under `a` imports code only under `a` itself and under the folders its entries
+  name; every entry with the same first folder belongs to one rule. An import breaks the rule when none of the code
+  files it reaches lies there, so a folder created later is outside until an entry names it.
+- Rules are checked each on its own, and each has one mark. `only = ["a -> s"]` with `never = ["a -> s/internal"]`
+  allows `s` except `s/internal`. A `never` whose target the same folder's `only` rule already leaves out repeats it,
+  and one import then gives two marks.
+- An import counts once per importing file and target, type-only imports included. The mark names up to two imports
+  the change added, by file and line.
+- A break already at the base is standing, also when the rule was declared in this change. A break made only by
+  moving a file into the folder, or by an import that only became readable, is touched. A file renamed inside the
+  folder keeps its imports and stays standing.
+- A rule whose folder holds no product code, whose `never` target holds no code, or whose folder holds only files
+  whose imports are not read, checks nothing and says so first under "not analysed". A value that is not in this
+  form is counted there, never printed.
+
+A rule sees the links plimsoll reads, nothing else: an import of an outside package, a use through a third file
+(one that only passes imports on), and an import that is ambiguous, not found or built at run time are not seen. Per
+language, besides:
+
+| Language | A rule does not see |
+|---|---|
+| Go | modules behind `replace` or `go.work` (they count as outside) |
+| Java, Kotlin | a class written with its full name and no import |
+| C# | use of the same or a parent namespace, which needs no `using`; what a `global using` serves |
+| Swift | use between two folders of one target; a rule whose folder lies inside a target that also holds code outside it |
+| TypeScript, JavaScript | aliases inherited from an extended file; any tsconfig other than the root one; `import()` and `require()` with a computed name |
+| Python | `import_module()` with a computed name |
+| Dart | nothing beyond the common list |
+| Rust | a path written in code without `use`; a module named by a `path` attribute |
+| C, C++ | an include folder only the build knows; an include a macro names; C++ modules |
+
 ## Guarantees
 
 - **trust**: plimsoll never changes a repository it reads. It runs only read-only git commands, takes no lock, starts no file monitor, runs no filter and fetches nothing from a remote. Tests: `internal/gitrepo/history_integration_test.go::TestIntegrationReadLeavesTheRepositoryUnchanged`, `internal/gitrepo/history_integration_test.go::TestIntegrationReadFetchesNothingFromARemote`, `cmd/plimsoll/tools_integration_test.go::TestIntegrationAnswersAreRepeatableAndLeaveNoTrace`
-- **trust**: no answer shows the content of a file or the value of a setting: only names, paths, line numbers and counts, and, from the repository's own `.plimsoll.toml`, its limits, the declared values that are plain paths, file-name patterns or branch names, key and table names that are plain names, and acknowledged mark identifiers in their strict form (letters, digits and the punctuation of paths, functions and pairs; never a space or a quote); never the reason of an acknowledged entry; and function names. Documentation and configuration files are read for their words alone, to see whether they name code a change added, and root licence files for the names of their copyright holders. Content plimsoll does not need is never read. Tests: `internal/snapshot/facts_test.go::TestBuildReadsSettingNamesNeverValues`, `internal/snapshot/links_test.go::TestBuildKeepsNoImportText`, `internal/links/links_test.go::TestNoLinksLineHoldsImportText`, `internal/snapshot/settings_test.go::TestBuildReadsComposeEnvironmentKeys`, `internal/shape/explain_test.go::TestExplainHoldsNoFileContentOrSettingValue`, `internal/gitrepo/reader_integration_test.go::TestIntegrationReadLeavesUnwantedAndBinaryContentUnread`, `internal/answer/layout_test.go::TestLayoutLinesHoldNoValueFromOutsideTheRepository`, `internal/answer/samples_test.go::TestNoAnswerPrintsADeclaredValueOutsideItsForm`, `internal/snapshot/ownfile_test.go::TestBuildReadsTheAcknowledgedTableOfTheOwnFile`, `internal/links/additions_test.go::TestAddedCodeRowsGroupNamesByFileAndReason`, `internal/snapshot/functions_test.go::TestBuildKeepsNoFunctionText`
+- **trust**: no answer shows the content of a file or the value of a setting: only names, paths, line numbers and counts, and, from the repository's own `.plimsoll.toml`, its limits, the declared values that are plain paths, file-name patterns or branch names, import rules rebuilt from their two plain paths, key and table names that are plain names, and acknowledged mark identifiers in their strict form (letters, digits and the punctuation of paths, functions and pairs; never a space or a quote); never the reason of an acknowledged entry; and function names. Documentation and configuration files are read for their words alone, to see whether they name code a change added, and root licence files for the names of their copyright holders. Content plimsoll does not need is never read. Tests: `internal/snapshot/facts_test.go::TestBuildReadsSettingNamesNeverValues`, `internal/snapshot/links_test.go::TestBuildKeepsNoImportText`, `internal/links/links_test.go::TestNoLinksLineHoldsImportText`, `internal/snapshot/settings_test.go::TestBuildReadsComposeEnvironmentKeys`, `internal/shape/explain_test.go::TestExplainHoldsNoFileContentOrSettingValue`, `internal/gitrepo/reader_integration_test.go::TestIntegrationReadLeavesUnwantedAndBinaryContentUnread`, `internal/answer/layout_test.go::TestLayoutLinesHoldNoValueFromOutsideTheRepository`, `internal/answer/samples_test.go::TestNoAnswerPrintsADeclaredValueOutsideItsForm`, `internal/snapshot/ownfile_test.go::TestBuildReadsTheAcknowledgedTableOfTheOwnFile`, `internal/snapshot/ownfile_test.go::TestBuildReadsTheImportRulesOfTheOwnFile`, `internal/conventions/rules_test.go::TestOwnValuesAreBroughtToTheirForm`, `internal/links/additions_test.go::TestAddedCodeRowsGroupNamesByFileAndReason`, `internal/snapshot/functions_test.go::TestBuildKeepsNoFunctionText`
 - **idempotency**: the same question about the same repository state gives the same answer, in the same process or a new one, whatever the user's git configuration. The history and the file readings kept between questions answer as a fresh read does, also for questions answered at the same time. Tests: `cmd/plimsoll/tools_integration_test.go::TestIntegrationAnswersAreRepeatableAndLeaveNoTrace`, `internal/snapshot/readings_test.go::TestKeptReadingsEqualFreshOnes`, `internal/gitrepo/history_integration_test.go::TestIntegrationKeptHistoryEqualsAFreshRead`, `internal/gitrepo/history_integration_test.go::TestIntegrationReadsAtTheSameTimeShareOneReader`, `internal/gitrepo/history_test.go::TestQuestionsAtTheSameTimeShareOneHistoryRead`, `internal/gitrepo/history_integration_test.go::TestIntegrationReadIsTheSameEverywhere`
 - **ordering**: new and grown marks come in one order (new before grown, exact before candidate, the farthest past its limit first, then by identifier, at most two of one detector before the others). `status` shows at most five, and the report's sections follow the detector list. Tests: `internal/answer/mark_test.go::TestOrderPutsNewExactAndFarthestFirstWithTwoPerDetector`, `internal/answer/assemble_test.go::TestStatusShowsFiveMarksAndStaysInsideFortyLines`, `cmd/plimsoll/detectors_test.go::TestDetectorsAreListedInReportOrder`
 - **cleanup**: a SIGTERM or the end of its input ends the server with exit status 0. Tests: `cmd/plimsoll/main_e2e_test.go::TestE2EProgramAnswersAndEndsOnASignal`, `cmd/plimsoll/main_e2e_test.go::TestE2EEndOfInputEndsTheProcess`
@@ -493,7 +541,7 @@ internal/process/                # the process detector: planning files, documen
 internal/settings/               # the settings audit
 internal/hotspots/               # the files changed most often times their size
 internal/cochange/               # pairs of files that change together
-internal/links/                  # import links: reach, product code importing test code, rings
+internal/links/                  # import links: reach, product code importing test code, rings, declared import rules
 internal/mcpserver/              # the only code that knows MCP, through the official MCP Go SDK
 internal/parse/                  # the only code that knows WebAssembly: runs the tree-sitter grammars through wazero
 internal/parse/grammars/         # the grammar modules, their pins, the C shim and the build script
