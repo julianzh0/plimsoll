@@ -113,6 +113,8 @@ func unusableClause(d snapshot.Declared) string {
 	case d.Name == "":
 		return Agree(d.Unusable, "value is absolute, leaves the repository or holds a pattern; it is not used",
 			"values are absolute, leave the repository or hold a pattern; they are not used")
+	case d.Form != "":
+		return Agree(d.Unusable, "value is no "+d.Form+"; it is not used", "values are no "+d.Form+"; they are not used")
 	case d.AsWritten:
 		return Agree(d.Unusable, "value is no plain file-name pattern; it is not used", "values are no plain file-name patterns; they are not used")
 	}

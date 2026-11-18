@@ -19,6 +19,9 @@ type Layout struct {
 	// OwnBase the default base it declares now, if any.
 	Own     []Declared
 	OwnBase []Declared
+	// Rules are the import-rule keys of the repository's own file that hold a value now, in the order of the rules;
+	// their values in use are the rules as rebuilt.
+	Rules []Declared
 }
 
 // Declared is one declared key and what became of its values.
@@ -34,6 +37,7 @@ type Declared struct {
 	Unusable         int              // values that are absolute, leave the repository or hold a pattern
 	ShadowedBy       string           // the file the tool reads instead, tracked now; then no value is looked at
 	Unmatched        []string         // values that match no tracked path of either side, in file order
+	Form             string           // what a usable value looks like, for a key whose values are no paths or patterns
 }
 
 // KeyState is what one side's file says about a declared key.
@@ -198,6 +202,14 @@ func ownLayout(layout Layout, rules conventions.Rules, now ownFile, tracked []st
 	for _, k := range rules.OwnKeys {
 		values, read := now.values[k.Key]
 		if !read || len(values)+now.unusable[k.Key] == 0 {
+			continue
+		}
+		if k.Holds.ImportRule() {
+			d := Declared{File: rules.OwnFile, Table: k.Table, Key: k.Key, Name: k.Name, AsWritten: true, Now: KeyRead, Unusable: now.unusable[k.Key], Form: k.Holds.Shape()}
+			for _, value := range values {
+				d.InUse = append(d.InUse, DeclaredFolder{Path: value})
+			}
+			layout.Rules = append(layout.Rules, d)
 			continue
 		}
 		if k.Holds.Single() {

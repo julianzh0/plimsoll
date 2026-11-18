@@ -124,6 +124,11 @@ func TestLayoutSaysWhatIsDeclaredAndWhatIsNotUsed(t *testing.T) {
 			lines{ownGaps: []string{"`.plimsoll.toml` `test_folders`: 1 value is no plain path from the root; it is not used"}}},
 		{"own: one unusable name", ownWith(ownFiles(), func(d *snapshot.Declared) { d.Unusable = 1 }),
 			lines{ownGaps: []string{"`.plimsoll.toml` `test_files`: 1 value is no plain file-name pattern; it is not used"}}},
+		{"own: import rules in use, and two outside their form", snapshot.Layout{Own: []snapshot.Declared{{File: ".plimsoll.toml", Table: "imports", Key: "never",
+			Name: "`never` import rules", AsWritten: true, Now: snapshot.KeyRead, Unusable: 2, Form: conventions.NeverImportRules.Shape(),
+			InUse: []snapshot.DeclaredFolder{{Path: "src/domain -> src/adapters"}}}}},
+			lines{ownNotes: []string{"`never` import rules declared in `.plimsoll.toml` (`[imports]` `never`): `src/domain -> src/adapters`"},
+				ownGaps: []string{"`.plimsoll.toml` `never`: 2 values are no import rule of the form `folder -> folder` (two different folders from the root, neither inside the other); they are not used"}}},
 		{"a shadowing file alone", snapshot.Layout{Shadowing: []string{"pytest.ini"}},
 			lines{testGaps: []string{"`pytest.ini` is not read: test folders and roots declared there are not seen"}}},
 		{"a shadowed root key", func() snapshot.Layout {
