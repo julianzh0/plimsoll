@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 360" width="960" height="360" role="img" aria-labelledby="t d">
+  <title id="t">How plimsoll works</title>
+  <desc id="d">A coding agent changes code and asks plimsoll what the change did. plimsoll reads the repository with git, compares it with the base and answers with a few measured findings, each with a way to check it.</desc>
+  <style>
+    .sans { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .title { font-size: 17px; font-weight: 600; fill: #1f2937; }
+    .text { font-size: 13.5px; fill: #374151; }
+    .small { font-size: 12px; fill: #6b7280; }
+    .step { font-size: 12px; font-weight: 700; fill: #ffffff; }
+    .label { font-size: 12.5px; fill: #4b5563; font-style: italic; }
+    .mark { font-size: 13px; fill: #111827; }
+    .verify { font-size: 11.5px; fill: #6b7280; }
+  </style>
+  <rect x="0" y="0" width="960" height="360" rx="14" fill="#ffffff"/>
+  <rect x="0.5" y="0.5" width="959" height="359" rx="14" fill="none" stroke="#e5e7eb"/>
+
+  <!-- 1 the agent -->
+  <rect x="28" y="96" width="210" height="168" rx="12" fill="#f3f4f6" stroke="#d1d5db"/>
+  <circle cx="52" cy="122" r="12" fill="#1f3a5f"/><text x="52" y="126" text-anchor="middle" class="sans step">1</text>
+  <text x="72" y="127" class="sans title">Your agent</text>
+  <text x="48" y="160" class="sans text">changes code:</text>
+  <text x="48" y="182" class="mono text">"small fix,</text>
+  <text x="48" y="202" class="mono text"> 3 files"</text>
+  <text x="48" y="238" class="sans small">Claude Code, Codex,</text>
+  <text x="48" y="254" class="sans small">OpenCode, any MCP client</text>
+
+  <!-- arrow 1 -->
+  <line x1="244" y1="180" x2="300" y2="180" stroke="#9ca3af" stroke-width="2"/>
+  <path d="M300 174 L310 180 L300 186 Z" fill="#9ca3af"/>
+  <text x="277" y="166" text-anchor="middle" class="sans label">asks</text>
+
+  <!-- 2 plimsoll -->
+  <rect x="316" y="96" width="210" height="168" rx="12" fill="#eef2f7" stroke="#1f3a5f"/>
+  <circle cx="340" cy="122" r="12" fill="#1f3a5f"/><text x="340" y="126" text-anchor="middle" class="sans step">2</text>
+  <text x="360" y="127" class="sans title">plimsoll</text>
+  <text x="336" y="160" class="sans text">reads git, compares the</text>
+  <text x="336" y="180" class="sans text">change with <tspan class="mono">main</tspan>,</text>
+  <text x="336" y="200" class="sans text">measures against limits</text>
+  <text x="336" y="238" class="sans small">read-only · local · no network</text>
+  <text x="336" y="254" class="sans small">same answer on every machine</text>
+
+  <!-- arrow 2 -->
+  <line x1="532" y1="180" x2="588" y2="180" stroke="#9ca3af" stroke-width="2"/>
+  <path d="M588 174 L598 180 L588 186 Z" fill="#9ca3af"/>
+  <text x="565" y="166" text-anchor="middle" class="sans label">answers</text>
+
+  <!-- 3 findings -->
+  <rect x="604" y="40" width="330" height="282" rx="12" fill="#ffffff" stroke="#e8742a" stroke-width="1.5"/>
+  <circle cx="628" cy="66" r="12" fill="#e8742a"/><text x="628" y="70" text-anchor="middle" class="sans step">3</text>
+  <text x="648" y="71" class="sans title">A few measured findings</text>
+
+  <text x="624" y="108" class="sans mark">● New dependency <tspan class="mono">cronet_http</tspan></text>
+  <text x="638" y="126" class="sans verify">check: compare pubspec.yaml at the base and now</text>
+
+  <text x="624" y="164" class="sans mark">● <tspan class="mono">runSearch</tspan> got hard to read:</text>
+  <text x="638" y="182" class="sans mark">cognitive complexity 22 → 46</text>
+  <text x="638" y="200" class="sans verify">check: read lines 388–627, nests 7 deep at 576</text>
+
+  <text x="624" y="238" class="sans mark">● An import ring grew: 74 → 77 files</text>
+  <text x="638" y="256" class="sans verify">check: app_list_tile.dart line 9 and 20 more</text>
+
+  <text x="624" y="300" class="sans small">Real answer for Obtainium's last 30 commits</text>
+</svg>

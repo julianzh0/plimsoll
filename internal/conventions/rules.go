@@ -151,11 +151,23 @@ const (
 	IgnoredFolderPaths
 	// IgnoredFileNames are file-name patterns of files plimsoll leaves out.
 	IgnoredFileNames
+	// NeverImportRules are import rules "a -> b": product code under folder a imports no code under folder b.
+	NeverImportRules
+	// OnlyImportRules are import rules "a -> b": product code under folder a imports code only under a itself and
+	// under the folders its rules of this kind name.
+	OnlyImportRules
 )
 
 // OwnValueLength is the longest value an own key may hold: the longest tracked folder path of sixteen repositories is
 // 109 characters, the longest file name 72 (2026-11-16).
 const OwnValueLength = 200
+
+// importArrow joins the two folders of an import rule, as it is written and as an answer prints it.
+const importArrow = "->"
+
+// importRuleLength is the longest import rule as written: two folders at OwnValueLength, each with a leading "./"
+// and a trailing "/", joined by the arrow with up to three spaces on each side.
+const importRuleLength = 2*(OwnValueLength+len("./")+len("/")) + 2*len(" -> ")
 
 // MarkIDLength is the longest mark identifier the acknowledged table may hold: a pair names two paths, and the
 // longest tracked path of the 193 local validation clones is 257 characters, so a pair identifier stays under 530.
@@ -171,7 +183,7 @@ const ReasonLength = 200
 // NOTE: a path with a space or a letter outside ASCII has no identifier in this form, so its item cannot be
 // acknowledged (279 code files of the validation clones, 257 of them for a space). Upgrade: print such identifiers
 // quoted, then admit the quote's content.
-var markID = regexp.MustCompile(`^[a-z]+(?:-[a-z]+)*\.[a-z]+(?:-[a-z]+)*:[A-Za-z0-9._\-+/:#~@$()\[\],=]+$`)
+var markID = regexp.MustCompile(`^[a-z]+(?:-[a-z]+)*\.[a-z]+(?:-[a-z]+)*:[A-Za-z0-9._\-+/:#~@$()\[\],=>]+$`)
 
 // MarkID says whether an acknowledged entry's identifier has the form of a mark identifier, within its cap.
 func MarkID(id string) bool {
@@ -195,6 +207,9 @@ var (
 // Form brings a value as written to the form an answer may print, and says whether it has that form: a folder loses
 // one leading "./" and one trailing "/", and "." or "./" is the root.
 func (v OwnValue) Form(value string) (formed string, usable bool) {
+	if v.ImportRule() {
+		return v.importRuleForm(value)
+	}
 	if value == "" || len(value) > OwnValueLength {
 		return "", false
 	}
@@ -210,10 +225,15 @@ func (v OwnValue) Form(value string) (formed string, usable bool) {
 		}
 		return value, true
 	}
+	return folderForm(value)
+}
+
+// folderForm is a folder path from the root without one leading "./" and one trailing "/"; "." or "./" is the root.
+func folderForm(value string) (string, bool) {
 	if value == "." || value == "./" {
 		return ".", true
 	}
-	formed = strings.TrimSuffix(strings.TrimPrefix(value, "./"), "/")
+	formed := strings.TrimSuffix(strings.TrimPrefix(value, "./"), "/")
 	if !ownFolder.MatchString(formed) {
 		return "", false
 	}
@@ -224,6 +244,53 @@ func (v OwnValue) Form(value string) (formed string, usable bool) {
 	}
 	return formed, true
 }
+
+// importRuleForm brings an import rule to "a -> b", rebuilt from its two folders so that nothing else of the value
+// as written is kept: one arrow, two folders from the root other than the root itself, each within OwnValueLength.
+// Under NeverImportRules the two folders differ and neither lies under the other.
+func (v OwnValue) importRuleForm(value string) (string, bool) {
+	if len(value) > importRuleLength {
+		return "", false
+	}
+	from, to, _ := strings.Cut(value, importArrow) // a second arrow, or none, leaves an end outside the folder form
+	var ends [2]string
+	for i, end := range []string{from, to} {
+		formed, usable := folderForm(strings.Trim(end, " \t"))
+		if !usable || formed == "." || len(formed) > OwnValueLength {
+			return "", false
+		}
+		ends[i] = formed
+	}
+	if v == NeverImportRules && (ends[0] == ends[1] || strings.HasPrefix(ends[0], ends[1]+"/") || strings.HasPrefix(ends[1], ends[0]+"/")) {
+		return "", false
+	}
+	return ImportRule(ends[0], ends[1]), true
+}
+
+// ImportRule prints an import rule from its two folders.
+func ImportRule(from, to string) string { return from + " " + importArrow + " " + to }
+
+// ImportRuleEnds are the two folders of an import rule in its form.
+func ImportRuleEnds(rule string) (from, to string) {
+	from, to, _ = strings.Cut(rule, " "+importArrow+" ")
+	return from, to
+}
+
+// Shape says what a usable value of an import rule kind looks like, as the sentence on unusable values names it;
+// "" for any other kind.
+func (v OwnValue) Shape() string {
+	switch v {
+	case NeverImportRules:
+		return "import rule of the form `folder -> folder` (two different folders from the root, neither inside the other)"
+	case OnlyImportRules:
+		return "import rule of the form `folder -> folder` (two folders from the root)"
+	case TestFolderPaths, TestFileNames, BaseName, IgnoredFolderPaths, IgnoredFileNames:
+	}
+	return ""
+}
+
+// ImportRule says whether the values are import rules.
+func (v OwnValue) ImportRule() bool { return v == NeverImportRules || v == OnlyImportRules }
 
 // Pattern says whether the values are file-name patterns rather than folders.
 func (v OwnValue) Pattern() bool { return v == TestFileNames || v == IgnoredFileNames }
@@ -388,6 +455,8 @@ func Default() Rules {
 			{Table: "defaults", Key: "base", Name: "default base", Holds: BaseName},
 			{Table: "ignore", Key: "folders", Name: "ignored folders", Holds: IgnoredFolderPaths},
 			{Table: "ignore", Key: "files", Name: "ignored files", Holds: IgnoredFileNames},
+			{Table: "imports", Key: "never", Name: "`never` import rules", Holds: NeverImportRules},
+			{Table: "imports", Key: "only", Name: "`only` import rules", Holds: OnlyImportRules},
 		},
 		LimitKeys: []LimitKey{
 			{Key: "file_lines", Name: "file-size limit", Unit: "lines"},

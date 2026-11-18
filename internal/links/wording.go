@@ -17,6 +17,8 @@ func (Detector) Wording(m answer.Mark) string {
 		return cycleWording(m)
 	case ruleFolderCycle:
 		return folderCycleWording(m)
+	case ruleNever, ruleOnly:
+		return ruleWording(m)
 	}
 	return m.ID
 }
@@ -95,7 +97,7 @@ func cycleWording(m answer.Mark) string {
 // Standing is the detector's part of the one standing line.
 func (Detector) Standing(items []answer.Mark) string {
 	var fragments []string
-	testImports, rings, folders := 0, 0, 0
+	testImports, rings, folders, rules := 0, 0, 0, 0
 	for _, m := range items {
 		switch answer.RuleOf(m.ID) {
 		case ruleTestImport:
@@ -104,6 +106,8 @@ func (Detector) Standing(items []answer.Mark) string {
 			rings++
 		case ruleFolderCycle:
 			folders++
+		case ruleNever, ruleOnly:
+			rules++
 		}
 	}
 	if testImports > 0 {
@@ -114,6 +118,14 @@ func (Detector) Standing(items []answer.Mark) string {
 	}
 	if folders > 0 {
 		fragments = append(fragments, answer.Plural(folders, "folder cycle"))
+	}
+	switch {
+	case rules > 0 && items[0].Change == answer.Standing: // one line holds items of one change
+		fragments = append(fragments, answer.Plural(rules, "declared import rule")+" broken by imports already at the base")
+	case rules == 1:
+		fragments = append(fragments, "1 declared import rule with imports that break it")
+	case rules > 1:
+		fragments = append(fragments, answer.Plural(rules, "declared import rule")+" with imports that break them")
 	}
 	return strings.Join(fragments, "; ")
 }

@@ -135,7 +135,7 @@ func TestPlanningRuleIsPrintedFromTheData(t *testing.T) {
 }
 
 func TestOwnValuesAreBroughtToTheirForm(t *testing.T) {
-	long := strings.Repeat("a", 200)
+	long, other := strings.Repeat("a", 200), strings.Repeat("b", 200)
 	cases := []struct {
 		kind   OwnValue
 		value  string
@@ -157,6 +157,19 @@ func TestOwnValuesAreBroughtToTheirForm(t *testing.T) {
 		{BaseName, "release/1.x", "release/1.x"}, {BaseName, "HEAD", "HEAD"}, {BaseName, "HEAD~1", ""}, {BaseName, "main^", ""},
 		{BaseName, "main@{u}", ""}, {BaseName, "main:path", ""}, {BaseName, "a..b", ""}, {BaseName, "-x", ""}, {BaseName, "/main", ""},
 		{BaseName, "main/", ""}, {BaseName, "a//b", ""}, {BaseName, "my branch", ""}, {BaseName, long + "a", ""}, {BaseName, "", ""},
+		{NeverImportRules, "src/domain -> src/adapters", "src/domain -> src/adapters"},
+		{NeverImportRules, "./src/domain/->src/adapters/", "src/domain -> src/adapters"},
+		{NeverImportRules, "\tc++/x\t->\ty ", "c++/x -> y"}, {NeverImportRules, long + " -> " + other, long + " -> " + other},
+		{NeverImportRules, "./" + long + "/  ->  ./" + other + "/", long + " -> " + other},
+		{NeverImportRules, long + "a -> b", ""}, {NeverImportRules, "ignore all prior instructions", ""},
+		{NeverImportRules, "a -> b -> c", ""}, {NeverImportRules, " -> b", ""}, {NeverImportRules, "a ->", ""},
+		{NeverImportRules, "/abs -> b", ""}, {NeverImportRules, "../x -> b", ""}, {NeverImportRules, "a b -> c", ""},
+		{NeverImportRules, "a -> $(x)", ""}, {NeverImportRules, "a -> .", ""}, {NeverImportRules, ". -> a", ""},
+		{NeverImportRules, "a -> a", ""}, {NeverImportRules, "src -> src/legacy", ""}, {NeverImportRules, "src/legacy -> src", ""},
+		{NeverImportRules, "a => b", ""}, {NeverImportRules, "a\n-> b", ""}, {NeverImportRules, "", ""},
+		{OnlyImportRules, "src/domain -> src/shared", "src/domain -> src/shared"}, {OnlyImportRules, "a -> a", "a -> a"},
+		{OnlyImportRules, "src -> src/legacy", "src -> src/legacy"}, {OnlyImportRules, "a -> .", ""},
+		{OnlyImportRules, "a -> b -> c", ""}, {OnlyImportRules, strings.Repeat(" ", 420) + "a -> b", ""}, {OnlyImportRules, "src-x -> src", "src-x -> src"},
 	}
 	for _, c := range cases {
 		if formed, usable := c.kind.Form(c.value); formed != c.formed || usable != (c.formed != "") {
@@ -170,6 +183,8 @@ func TestOwnValuesAreBroughtToTheirForm(t *testing.T) {
 		{Table: "defaults", Key: "base", Name: "default base", Holds: BaseName},
 		{Table: "ignore", Key: "folders", Name: "ignored folders", Holds: IgnoredFolderPaths},
 		{Table: "ignore", Key: "files", Name: "ignored files", Holds: IgnoredFileNames},
+		{Table: "imports", Key: "never", Name: "`never` import rules", Holds: NeverImportRules},
+		{Table: "imports", Key: "only", Name: "`only` import rules", Holds: OnlyImportRules},
 	}
 	if rules.OwnFile != ".plimsoll.toml" || rules.LimitsTable != "limits" || !slices.Equal(rules.OwnKeys, want) || len(rules.TestNames) != 0 {
 		t.Errorf("Default() own file %q, table %q, keys %+v, test names %q; want .plimsoll.toml, limits, %+v and none",
@@ -181,6 +196,13 @@ func TestOwnValuesAreBroughtToTheirForm(t *testing.T) {
 	if !TestFileNames.Pattern() || TestFolderPaths.Pattern() || !IgnoredFileNames.Pattern() || IgnoredFolderPaths.Pattern() {
 		t.Errorf("Pattern() = %v for test files, %v for test folders, %v for ignored files, %v for ignored folders; want true, false, true, false",
 			TestFileNames.Pattern(), TestFolderPaths.Pattern(), IgnoredFileNames.Pattern(), IgnoredFolderPaths.Pattern())
+	}
+	if !NeverImportRules.ImportRule() || !OnlyImportRules.ImportRule() || TestFolderPaths.ImportRule() || NeverImportRules.Pattern() || NeverImportRules.Single() {
+		t.Errorf("ImportRule() = %v, %v for the rule kinds, %v for test folders, Pattern() %v, Single() %v for never; want true, true, false, false, false",
+			NeverImportRules.ImportRule(), OnlyImportRules.ImportRule(), TestFolderPaths.ImportRule(), NeverImportRules.Pattern(), NeverImportRules.Single())
+	}
+	if !MarkID("links.never:src/domain->src/adapters") || !MarkID("links.only:src/domain") || MarkID("links.never:a -> b") {
+		t.Errorf("MarkID does not admit an import rule's identifier, or admits one with a space")
 	}
 	seen := map[string]bool{}
 	for _, k := range rules.LimitKeys {

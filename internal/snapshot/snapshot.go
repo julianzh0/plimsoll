@@ -27,6 +27,8 @@ type Snapshot struct {
 	OwnFile        string
 	DeclaredLimits []DeclaredLimit
 	Declarations   []DeclaredValues
+	// ImportRules are the import rules now's own file declares; they apply to both sides.
+	ImportRules []ImportRule
 	// Acknowledged is what now's own file acknowledges: the mark identifiers whose entries apply, and its problems.
 	Acknowledged        Acknowledged
 	OwnFileProblems     []string

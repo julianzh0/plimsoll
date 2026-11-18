@@ -236,8 +236,8 @@ func swiftCase() languageCase {
 		declare("testTarget", name+"Tests", "Tests/"+name+"Tests")
 		declare("target", name+"Support", "Tests/"+name)
 	}
-	for _, folder := range []string{"a", "b", "c", "d", "a/deep", "adapters", "domain"} {
-		for _, name := range []string{"u", "v", "w", "x", "y", "z", "db", "http", "order", "policy"} {
+	for _, folder := range []string{"a", "b", "c", "d", "a/deep", "adapters", "domain", "domain/t", "shared", "other", "fresh"} {
+		for _, name := range []string{"n", "o", "s", "u", "v", "w", "x", "y", "z", "db", "http", "order", "policy"} {
 			declare("target", strings.ReplaceAll(folder, "/", "_")+"_"+name, "Sources/"+folder+"/"+name)
 		}
 	}

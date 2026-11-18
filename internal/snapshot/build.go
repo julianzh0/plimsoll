@@ -26,6 +26,8 @@ func Build(source Source, rules conventions.Rules, readings *Readings) Snapshot 
 	ownNow, ownBefore := readOwnFile(rules, nowContent), readOwnFile(rules, beforeContent)
 	tracked := trackedPaths(nowContent, beforeContent)
 	layout := ownLayout(declaredLayout(rules, nowContent, beforeContent, tracked), rules, ownNow, tracked)
+	importRules, ruleRecords := importRules(rules, ownNow)
+	layout.Rules = ruleRecords
 	rules = withLayout(rules, layout)
 	rules = withSharedSuffixes(rules, source.Now)
 	limits, declaredLimits := declaredLimits(rules, ownNow, ownBefore)
@@ -79,6 +81,7 @@ func Build(source Source, rules conventions.Rules, readings *Readings) Snapshot 
 		OwnFile:             rules.OwnFile,
 		DeclaredLimits:      declaredLimits,
 		Declarations:        declaredValues(rules, ownNow, ownBefore),
+		ImportRules:         importRules,
 		OwnFileProblems:     ownNow.problems,
 		Acknowledged:        Acknowledged{Table: rules.AcknowledgedTable, IDs: ownNow.ack.applied, Problems: ownNow.ack.problems()},
 		OwnFileUnreadAtBase: ownBefore.unreadable,

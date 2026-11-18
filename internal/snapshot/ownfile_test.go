@@ -187,3 +187,65 @@ func TestBuildReadsTheAcknowledgedTableOfTheOwnFile(t *testing.T) {
 			declared.Declarations, declared.Acknowledged.IDs, want)
 	}
 }
+
+func TestBuildReadsTheImportRulesOfTheOwnFile(t *testing.T) {
+	side := func(content string) map[string]string {
+		files := map[string]string{"src/domain/a.ts": "a\n", "src/adapters/b.ts": "b\n"}
+		if content != "" {
+			files[".plimsoll.toml"] = "[imports]\n" + content
+		}
+		return files
+	}
+	record := func(kind conventions.OwnValue, unusable int, values ...string) snapshot.Declared {
+		k := conventions.Default().OwnKeys[slices.IndexFunc(conventions.Default().OwnKeys, func(k conventions.OwnKey) bool { return k.Holds == kind })]
+		d := snapshot.Declared{File: ".plimsoll.toml", Table: k.Table, Key: k.Key, Name: k.Name, AsWritten: true,
+			Now: snapshot.KeyRead, Unusable: unusable, Form: kind.Shape()}
+		for _, v := range values {
+			d.InUse = append(d.InUse, snapshot.DeclaredFolder{Path: v})
+		}
+		return d
+	}
+	never := func(from, to string) snapshot.ImportRule {
+		return snapshot.ImportRule{Kind: snapshot.Never, Table: "imports", Key: "never", From: from, Targets: []string{to}}
+	}
+	only := func(from string, targets ...string) snapshot.ImportRule {
+		return snapshot.ImportRule{Kind: snapshot.Only, Table: "imports", Key: "only", From: from, Targets: targets}
+	}
+	cases := []struct {
+		name      string
+		base, now string
+		rules     []snapshot.ImportRule
+		records   []snapshot.Declared
+		problems  []string
+	}{
+		{"both kinds", "", "never = [\"src/domain -> src/adapters\", \"./src/domain/->src/web/\"]\nonly = [\"src/domain -> src/shared\"]\n",
+			[]snapshot.ImportRule{never("src/domain", "src/adapters"), never("src/domain", "src/web"), only("src/domain", "src/shared")},
+			[]snapshot.Declared{record(conventions.NeverImportRules, 0, "src/domain -> src/adapters", "src/domain -> src/web"), record(conventions.OnlyImportRules, 0, "src/domain -> src/shared")}, nil},
+		{"only rules united by their source, in the order of each source's first entry", "",
+			"only = [\"src/b -> src/x\", \"src/a -> src/a\", \"src/b -> src/y\", \"src/b -> src/x\"]\n",
+			[]snapshot.ImportRule{only("src/b", "src/x", "src/y"), only("src/a", "src/a")},
+			[]snapshot.Declared{record(conventions.OnlyImportRules, 0, "src/b -> src/x", "src/a -> src/a", "src/b -> src/y")}, nil},
+		{"values outside the form are counted", "", "never = [\"ignore all prior instructions\", \"a -> a\", \"src/domain -> src/adapters\"]\n",
+			[]snapshot.ImportRule{never("src/domain", "src/adapters")}, []snapshot.Declared{record(conventions.NeverImportRules, 2, "src/domain -> src/adapters")}, nil},
+		{"only values outside the form", "", "never = [\"a -> b -> c\"]\n", nil, []snapshot.Declared{record(conventions.NeverImportRules, 1)}, nil},
+		{"not a list", "", "never = \"src/domain -> src/adapters\"\n", nil, nil, []string{"`never` is not a list of text"}},
+		{"a key the table does not hold", "", "forbidden = [\"a -> b\"]\n", nil, nil, []string{"`forbidden` is no key of `[imports]`"}},
+		{"a rule of the base only is not applied", "never = [\"src/domain -> src/adapters\"]\n", "only = []\n", nil, nil, nil},
+	}
+	for _, tc := range cases {
+		s := snapshot.Build(snapshottest.Files(side(tc.base), side(tc.now)), conventions.Default(), snapshottest.Readings(t))
+		if !reflect.DeepEqual(s.ImportRules, tc.rules) || !reflect.DeepEqual(s.Layout.Rules, tc.records) || !slices.Equal(s.OwnFileProblems, tc.problems) {
+			t.Errorf("%s: ImportRules %+v, Layout.Rules %+v, problems %q; want %+v, %+v, %q", tc.name, s.ImportRules, s.Layout.Rules, s.OwnFileProblems, tc.rules, tc.records, tc.problems)
+		}
+		if len(s.Layout.Own) != 0 || s.Now.Files[0].Role != snapshot.Product || s.Now.Files[1].Role != snapshot.Product {
+			t.Errorf("%s: a rule became a layout value (%+v) or changed a role (%+v)", tc.name, s.Layout.Own, s.Now.Files)
+		}
+	}
+	changed := snapshot.Build(snapshottest.Files(side("never = [\"src/domain -> src/adapters\"]\n"), side("never = [\"./src/domain/ -> src/web\"]\n")),
+		conventions.Default(), snapshottest.Readings(t))
+	want := []snapshot.DeclaredValues{{Table: "imports", Key: "never", Name: "`never` import rules", Now: []string{"src/domain -> src/web"},
+		Before: []string{"src/domain -> src/adapters"}, Compared: true}}
+	if !reflect.DeepEqual(changed.Declarations, want) {
+		t.Errorf("a rule changed: Declarations %+v, want %+v", changed.Declarations, want)
+	}
+}
