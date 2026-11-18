@@ -440,11 +440,15 @@ func radiusLine(r Radius) string {
 	return files + verb + " (" + r.Split() + ")"
 }
 
-// Split is the radius's parts: "<n> product, <n> test", and ", <n> other" when there are others.
-func (r Radius) Split() string {
-	split := Count(float64(r.Product)) + " product, " + Count(float64(r.Tests)) + " test"
-	if r.Other > 0 {
-		split += ", " + Count(float64(r.Other)) + " other"
+// Split is the radius's parts by role.
+func (r Radius) Split() string { return RoleSplit(r.Product, r.Tests, r.Other) }
+
+// RoleSplit says how many files are product, test and other code: "<n> product, <n> test", and ", <n> other" when
+// there are others.
+func RoleSplit(product, tests, other int) string {
+	split := Count(float64(product)) + " product, " + Count(float64(tests)) + " test"
+	if other > 0 {
+		split += ", " + Count(float64(other)) + " other"
 	}
 	return split
 }

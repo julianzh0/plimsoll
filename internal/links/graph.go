@@ -189,7 +189,7 @@ func (g graph) ringLinks(members []string) []snapshot.Link {
 func (g graph) importers(path string) []string {
 	var found []string
 	for _, link := range g.to[path] {
-		if !link.Declares {
+		if link.Uses() {
 			found = append(found, link.From)
 		}
 	}

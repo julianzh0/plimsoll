@@ -13,7 +13,8 @@ const perDetectorFirst = 2
 // epsilon absorbs floating-point error in a rise: 3.8 - 3.7 is a little less than 0.1.
 const epsilon = 1e-9
 
-// ID builds a mark's identifier. It is the only place that builds one, and it is never parsed back.
+// ID builds a mark's identifier, "<detector>.<rule>:<subject>". It is the only place that builds one; DetectorOf, RuleOf and
+// RuleKindOf read its parts back.
 func ID(detector, rule, subject string) string {
 	return Kind(detector, rule) + ":" + subject
 }

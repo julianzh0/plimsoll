@@ -18,23 +18,20 @@ const importersNote = "importers of the change: untouched files that import a ch
 	"distance; a deleted or renamed file counts the importers of its old path; the share is of the product code files " +
 	"whose imports are read"
 
-// importersOf are the distinct importers of some files, sorted, and how many of them the set holds.
-func importersOf(g graph, files []string, left map[string]bool) (outside []string, inside int) {
+// importersOf are the distinct importers of some files that the set left out does not hold, sorted.
+func importersOf(g graph, files []string, left map[string]bool) []string {
 	seen := map[string]bool{}
+	var outside []string
 	for _, file := range files {
 		for _, importer := range g.importers(file) {
-			switch {
-			case seen[importer]:
-			case left[importer]:
-				inside++
-			default:
+			if !seen[importer] && !left[importer] {
 				outside = append(outside, importer)
 			}
 			seen[importer] = true
 		}
 	}
 	slices.Sort(outside)
-	return outside, inside
+	return outside
 }
 
 // atBase is a count at the base for a file now, through its base path; nil when the file did not exist there.
@@ -164,7 +161,7 @@ func mostDirectRows(now graph, changed []string, touched map[string]bool) []answ
 	}
 	var ranked []importerRow
 	for _, subject := range subjects {
-		if importers, _ := importersOf(now, group[subject], touched); len(importers) > 0 {
+		if importers := importersOf(now, group[subject], touched); len(importers) > 0 {
 			ranked = append(ranked, importerRow{subject, importers})
 		}
 	}
@@ -205,11 +202,7 @@ func rolesOf(g graph, files []string) roles {
 // split names how many importers are product, test and other code.
 func split(g graph, importers []string) string {
 	r := rolesOf(g, importers)
-	parts := []string{count(r.product) + " product", count(r.test) + " test"}
-	if r.other > 0 {
-		parts = append(parts, count(r.other)+" other")
-	}
-	return strings.Join(parts, ", ")
+	return answer.RoleSplit(r.product, r.test, r.other)
 }
 
 // mostImportsRows are the files that import the most own targets now, with their count at the base.
@@ -271,11 +264,11 @@ func namedRows(s snapshot.Snapshot, now, before graph) []answer.Statistic {
 			row.Note = "its language is not analysed"
 		default:
 			counted = append(counted, p)
-			importers, _ := importersOf(now, []string{p}, named)
+			importers := importersOf(now, []string{p}, named)
 			value := float64(len(importers))
 			row.Value, row.Unit, row.Note = &value, "files", split(now, importers)
 			row.Before = atBase(s, before, p, func(basePath string) int {
-				importersBefore, _ := importersOf(before, []string{basePath}, named)
+				importersBefore := importersOf(before, []string{basePath}, named)
 				return len(importersBefore)
 			})
 		}
@@ -285,8 +278,8 @@ func namedRows(s snapshot.Snapshot, now, before graph) []answer.Statistic {
 	for _, p := range counted {
 		countedAtBase = append(countedAtBase, s.BasePath(p))
 	}
-	importers, _ := importersOf(now, counted, named)
-	importersBefore, _ := importersOf(before, countedAtBase, named)
+	importers := importersOf(now, counted, named)
+	importersBefore := importersOf(before, countedAtBase, named)
 	value, valueBefore := float64(len(importers)), float64(len(importersBefore))
 	note := count(len(s.Named)) + " named"
 	if notFound > 0 {

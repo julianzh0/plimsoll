@@ -349,15 +349,12 @@ func ruleEvidence(s snapshot.Snapshot, m answer.Mark, now, before graph) []strin
 // ruleID is the identifier of a rule's mark.
 func ruleID(r snapshot.ImportRule) string {
 	if r.Kind == snapshot.Only {
-		return ruleKind(r) + ":" + r.From
+		return answer.ID(name, ruleOnly, r.From)
 	}
-	return ruleKind(r) + ":" + r.From + "->" + r.Targets[0]
+	return answer.ID(name, ruleNever, r.From+"->"+r.Targets[0])
 }
 
 // ruleKind is the kind of a rule's mark: "links.only" or "links.never".
 func ruleKind(r snapshot.ImportRule) string {
-	if r.Kind == snapshot.Only {
-		return answer.Kind(name, ruleOnly)
-	}
-	return answer.Kind(name, ruleNever)
+	return answer.RuleKindOf(ruleID(r))
 }

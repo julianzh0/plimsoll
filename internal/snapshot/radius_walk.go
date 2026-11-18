@@ -46,11 +46,9 @@ func newWalk(in radiusInput) *radiusWalk {
 			w.touched[ch.From], w.nowPath[ch.From] = true, ch.Path
 		}
 	}
-	// The links detector's graph applies the same rule (a module's declaration is no use of it); the two cannot
-	// share code across the detector boundary and must agree.
 	for _, link := range in.now.Links.List {
 		for _, file := range link.Files {
-			if !link.Declares {
+			if link.Uses() {
 				w.to[file] = append(w.to[file], link.From)
 			}
 		}
@@ -58,7 +56,7 @@ func newWalk(in radiusInput) *radiusWalk {
 	}
 	for _, link := range in.before.Links.List {
 		for _, file := range link.Files {
-			if w.touched[file] && !link.Declares {
+			if w.touched[file] && link.Uses() {
 				w.toBase[file] = append(w.toBase[file], link.From)
 			}
 		}

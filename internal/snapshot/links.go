@@ -56,6 +56,10 @@ type Link struct {
 	Added    bool     // the change wrote the statement of this import; set on the links of now only
 }
 
+// Uses says whether the importing file uses what the link reaches: a module's declaration in its parent is
+// containment, not use, so it makes no importer and no user.
+func (l Link) Uses() bool { return !l.Declares }
+
 // kind is what became of one import statement.
 type kind int
 

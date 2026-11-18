@@ -147,9 +147,9 @@ func (p printPair) pick(surface bool) prints {
 // printsOf tokenizes a content once and gives its prints; withAll adds those with no import left out.
 func printsOf(language conventions.Language, content []byte, units []unit, imports []span, withAll bool) printPair {
 	toks := tokensOf(language.Tokens, content, 1)
-	starts := lineStarts(content)
+	newlines := linesOf(content)
 	hash := func(lo, hi int, skip []span, context string) uint64 {
-		return hashTokens(language, content, starts, toks[lo:hi], skip, context)
+		return hashTokens(language, content, newlines, toks[lo:hi], skip, context)
 	}
 	n := len(toks)
 	unitSpans := make([]span, 0, len(units))
@@ -177,20 +177,9 @@ func printsOf(language conventions.Language, content []byte, units []unit, impor
 	return p
 }
 
-// lineStarts are the offsets where the lines of a content start, the first line's at index 1.
-func lineStarts(content []byte) []int {
-	starts := []int{0, 0}
-	for i, c := range content {
-		if c == '\n' {
-			starts = append(starts, i+1)
-		}
-	}
-	return starts
-}
-
 // hashTokens hashes, after a context, the tokens in no span of skip, with the layout the language reads as code: a
 // line break before a token on a new line, and the line's indentation.
-func hashTokens(language conventions.Language, content []byte, starts []int, toks []token, skip []span, context string) uint64 {
+func hashTokens(language conventions.Language, content []byte, newlines lineIndex, toks []token, skip []span, context string) uint64 {
 	h := fnv.New64a()
 	_, _ = h.Write([]byte(context)) // a hash's Write never fails
 	skipped := make([]bool, len(toks))
@@ -210,7 +199,7 @@ func hashTokens(language conventions.Language, content []byte, starts []int, tok
 				_, _ = h.Write([]byte{'\n'})
 			}
 			if language.LayoutCode.Indentation {
-				_, _ = h.Write(content[starts[t.line]:t.start])
+				_, _ = h.Write(content[lineOffset(newlines, len(content), t.line):t.start])
 			}
 			line = t.line
 		}
