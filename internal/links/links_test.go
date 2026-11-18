@@ -866,3 +866,32 @@ func TestMostDirectImportersIsOneRowPerGoPackage(t *testing.T) {
 		t.Errorf("two changed files of one Go package: most direct importers = %+v, want one row for the package", rows)
 	}
 }
+
+func TestTheRingRuleRunsWhereItsLanguagesLinksAreUsed(t *testing.T) {
+	c := languageCases()["typescript"]
+	ta := c.product("ta")
+	ruleOf := func(base map[string]string) (ran, couldNot []string) {
+		now := clone(base)
+		now[ta] += alteration
+		f := detect(t, snapshottest.Files(base, now))
+		return f.RanRules, f.CouldNotRun
+	}
+	if ran, couldNot := ruleOf(c.fan(2)); !slices.Contains(ran, "links.cycle") || slices.Contains(couldNot, "links.cycle") {
+		t.Errorf("a counted change in a used language: ran %q, could not run %q; want links.cycle ran", ran, couldNot)
+	}
+	if ran, couldNot := ruleOf(c.fan(8, c.nowhere)); slices.Contains(ran, "links.cycle") || !slices.Contains(couldNot, "links.cycle") {
+		t.Errorf("a change in a language whose links are not used: ran %q, could not run %q; want links.cycle could not run", ran, couldNot)
+	}
+	commented := c.fan(2)
+	now := clone(commented)
+	now["README.md"] = "a\n"
+	if f := detect(t, snapshottest.Files(commented, now)); slices.Contains(f.RanRules, "links.cycle") || slices.Contains(f.CouldNotRun, "links.cycle") {
+		t.Errorf("no code file changed: ran %q, could not run %q; want neither", f.RanRules, f.CouldNotRun)
+	}
+	// The same gate beside a rule declared over Go folders, whose links are used: the rule is checked.
+	gated := c.fan(8, c.nowhere)
+	maps.Copy(gated, languageCases()["go"].ruled([]string{"domain -> adapters"}, nil, "domain/x>shared/s", "adapters/y"))
+	if ran, couldNot := ruleOf(gated); !slices.Contains(ran, "links.never") || !slices.Contains(couldNot, "links.cycle") {
+		t.Errorf("the gate beside a checked Go rule: ran %q, could not run %q; want links.never ran, links.cycle could not", ran, couldNot)
+	}
+}

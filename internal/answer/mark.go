@@ -15,7 +15,27 @@ const epsilon = 1e-9
 
 // ID builds a mark's identifier. It is the only place that builds one, and it is never parsed back.
 func ID(detector, rule, subject string) string {
-	return detector + "." + rule + ":" + subject
+	return Kind(detector, rule) + ":" + subject
+}
+
+// Kind is the kind of a detector's rule, the identifiers' part before the subject: "<detector>.<rule>".
+func Kind(detector, rule string) string {
+	return detector + "." + rule
+}
+
+// RuleKindOf is the kind of an identifier: "<detector>.<rule>".
+func RuleKindOf(id string) string {
+	kind, _, _ := strings.Cut(id, ":")
+	return kind
+}
+
+// Ran adds a rule to the rules that ran, or to those that could not run.
+func (f *Findings) Ran(kind string, ran bool) {
+	if ran {
+		f.RanRules = append(f.RanRules, kind)
+	} else {
+		f.CouldNotRun = append(f.CouldNotRun, kind)
+	}
 }
 
 // Reading is one side of a rule: whether its condition holds there, and its value.

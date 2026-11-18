@@ -61,6 +61,7 @@ func (Detector) Detect(s snapshot.Snapshot) answer.Findings {
 		if now.test() == 0 {
 			f.NotAnalysed = append(f.NotAnalysed, "no test code recognized by: "+s.TestRule)
 		}
+		f.Ran(answer.Kind(name, ruleRatio), true)
 		f.Statistics = append(f.Statistics, stat("test ratio", "", now.ratio(), before.ratio(), before.product > 0, "ratio"))
 		f.Marks = append(f.Marks, ratioMark(s, now, before)...)
 		if now.ratio() > s.Limits.TestRatio.Value {
@@ -73,6 +74,9 @@ func (Detector) Detect(s snapshot.Snapshot) answer.Findings {
 	f.Statistics = append(f.Statistics, functionRows(s.Functions)...)
 	f.Summaries = append(f.Summaries, functionSummary(s.Functions)...)
 	f.NotAnalysed = append(f.NotAnalysed, functionsNotAnalysed(s.Functions)...)
+	if s.Functions.Files > 0 || len(s.Functions.Unread) > 0 {
+		f.Ran(answer.Kind(name, ruleComplexity), s.Functions.Files > 0)
+	}
 
 	switch {
 	case slices.Contains(s.Now.Broken, snapshot.SettingsFile):
@@ -95,7 +99,11 @@ func (Detector) Detect(s snapshot.Snapshot) answer.Findings {
 	if len(s.Now.Manifests) == 0 {
 		f.NotAnalysed = append(f.NotAnalysed, "no known dependency manifest, at the root or as a project file outside test and other code, so no dependency count")
 	}
+	if slices.ContainsFunc(s.Now.Broken, func(p string) bool { return p != snapshot.SettingsFile }) {
+		f.Ran(answer.Kind(name, ruleDependencies), false) // a known manifest could not be read now
+	}
 	for _, manifest := range s.Now.Manifests {
+		f.Ran(answer.Kind(name, ruleDependencies), !slices.Contains(s.Before.Broken, manifest.Path))
 		if slices.Contains(s.Before.Broken, manifest.Path) {
 			f.NotAnalysed = append(f.NotAnalysed, fmt.Sprintf("`%s` could not be read at the base, so no dependencies were compared", manifest.Path))
 			continue

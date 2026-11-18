@@ -33,6 +33,7 @@ func withRules(f answer.Findings, s snapshot.Snapshot, now, before graph) answer
 	broken, brokenAtBase := 0.0, 0.0
 	for _, r := range s.ImportRules {
 		_, partly, nothing := checkOf(s, r, now)
+		f.Ran(answer.RuleKindOf(ruleID(r)), nothing == "")
 		if nothing != "" {
 			f.NotAnalysedFirst = append(f.NotAnalysedFirst, ruleLead(r)+": "+nothing+", so the rule checks nothing")
 			continue

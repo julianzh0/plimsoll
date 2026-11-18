@@ -109,3 +109,18 @@ func TestNoSettingsFileStopsTheAudit(t *testing.T) {
 		t.Errorf("no .env.example: %+v", f)
 	}
 }
+
+func TestDefinedTwiceRunsOnAReadSettingsFileAndCannotOnAnUnreadOne(t *testing.T) {
+	read := snapshottest.Files(map[string]string{".env.example": "A=1\n"}, map[string]string{".env.example": "A=2\n"})
+	if _, f := detect(t, read); !slices.Equal(f.RanRules, []string{"settings.defined-twice"}) || len(f.CouldNotRun) != 0 {
+		t.Errorf("a read .env.example: ran %q, could not run %q", f.RanRules, f.CouldNotRun)
+	}
+	unread := snapshottest.Files(map[string]string{".env.example": "A=1\n"}, map[string]string{".env.example": "A=1\n"})
+	unread.Now[0].Content, unread.Now[0].Binary = nil, true
+	if _, f := detect(t, unread); !slices.Equal(f.CouldNotRun, []string{"settings.defined-twice"}) || len(f.RanRules) != 0 {
+		t.Errorf("an unread .env.example: ran %q, could not run %q", f.RanRules, f.CouldNotRun)
+	}
+	if _, f := detect(t, snapshottest.Files(nil, map[string]string{"a.txt": "a\n"})); len(f.RanRules)+len(f.CouldNotRun) != 0 {
+		t.Errorf("no .env.example: ran %q, could not run %q; want neither", f.RanRules, f.CouldNotRun)
+	}
+}
