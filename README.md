@@ -46,6 +46,19 @@ only reads: no network, no telemetry, nothing written into your repository, noth
 on real agent pull requests before it was allowed into the short answer, and marks that failed that test show only
 in the full report. MIT licensed. It works next to your linters and CI, not instead of them. [Guarantees and their tests](docs/guarantees.md).
 
+## Speed
+
+The first question on a repository takes a few seconds; every later one, also after an edit, is much faster
+(about a quarter of a second on a few thousand files), because plimsoll keeps what it has read in memory while it runs. Measured with plimsoll 0.7.0 on an
+Apple M6 (12 cores, 32 GB) against the last 30 commits, while other work was running:
+
+| Repository | Files | First question | Later questions | Peak memory |
+|---|--:|--:|--:|--:|
+| [Obtainium](https://github.com/ImranR98/Obtainium) | 320 | 2.2 s | 0.17 s | 0.2 GB |
+| [LocalSend](https://github.com/localsend/localsend) | 1,037 | 2.2 s | 0.19 s | 0.3 GB |
+| [nlohmann/json](https://github.com/nlohmann/json) | 1,674 | 10 s | 0.25 s | 0.75 GB |
+| [swc](https://github.com/swc-project/swc) | 83,143 | 36 s | 5.1 s | 2.3 GB |
+
 ## Install
 
 macOS and Linux, amd64 and arm64:
