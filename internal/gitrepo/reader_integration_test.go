@@ -82,6 +82,27 @@ func TestIntegrationReadSeesTheTrackedFilesOfBothSides(t *testing.T) {
 	}
 }
 
+func TestIntegrationReadNamesTheBasesTrackedLinks(t *testing.T) {
+	repo := gitrepotest.New(t)
+	repo.Commit(gitrepotest.Commit{Message: "target", Files: map[string]string{"notes.txt": "x\n"}})
+	if err := os.Symlink("notes.txt", filepath.Join(repo.Dir, "FINAL.md")); err != nil {
+		t.Fatal(err)
+	}
+	repo.Git("add", "FINAL.md")
+	repo.Git("commit", "-q", "-m", "a link")
+	base := strings.TrimSpace(repo.Git("rev-parse", "HEAD"))
+	repo.Git("rm", "-q", "FINAL.md")
+	repo.Commit(gitrepotest.Commit{Message: "a file where the link was", Files: map[string]string{"FINAL.md": "done\n"}})
+
+	src, err := read(t, repo.Dir, base)
+	if err != nil {
+		t.Fatalf("Read = %v", err)
+	}
+	if !reflect.DeepEqual(src.BaseOther, []string{"FINAL.md"}) || content(src.Before, "FINAL.md") != "<absent>" {
+		t.Errorf("Read.BaseOther = %q, Before FINAL.md %q; want [FINAL.md] and no entry", src.BaseOther, content(src.Before, "FINAL.md"))
+	}
+}
+
 func TestIntegrationReadLeavesOutTheFilesOfADeletedFolder(t *testing.T) {
 	repo := gitrepotest.New(t, gitrepotest.Commit{Message: "base", Files: map[string]string{
 		"a.ts": "x\n", "lib/b.ts": "x\n", "lib/notes.md": "# notes\n", "lib/deep/c.ts": "x\n"}})

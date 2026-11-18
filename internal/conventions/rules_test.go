@@ -224,3 +224,24 @@ func TestOwnValuesAreBroughtToTheirForm(t *testing.T) {
 		seen[k.Key] = true
 	}
 }
+
+func TestNoteWordFindsWorkingNoteNames(t *testing.T) {
+	rules := Default()
+	cases := []struct {
+		path, word string // word "" is no working-note name
+	}{
+		{"IMPLEMENTATION_SUMMARY.md", "summary"}, {"docs/fix-status.md", "status"}, {"FinalStatus.md", "final"},
+		{"SUMMARY_FINAL.md", "summary"}, {"PHASE3_COMPLETE.md", "phase3"}, {"notes/task6-store-layer.md", "task6"},
+		{"NEXT_STEPS.md", "next steps"}, {"work-log.md", "work log"}, {"HANDOFF.md", "handoff"}, {"a/scratch.mdx", "scratch"},
+		{"runtime-flags-analysis-summary.md", "analysis"}, {"implementationSummary.md", "summary"},
+		{"SUMMARY.md", ""}, {"REPORT.md", ""}, {"docs/plan.md", ""}, {"RELEASE_NOTES.md", ""}, {"TODO.md", ""},
+		{"README.md", ""}, {"summary-2.md", ""}, {"PHASE.md", ""}, {"IMPLEMENTATION_SUMMARY.txt", ""},
+		{"FINAL.MD", ""}, {"examples/FINAL_REPORT.md", ""}, {".github/ISSUE_TEMPLATE/bug_report.md", ""},
+		{"pkg/templates/status-report.md", ""}, {"fınal.md", ""}, {"next-plan-steps.md", "plan"},
+	}
+	for _, c := range cases {
+		if word, found := rules.NoteWord(c.path); word != c.word || found != (c.word != "") {
+			t.Errorf("NoteWord(%q) = %q, %v; want %q, %v", c.path, word, found, c.word, c.word != "")
+		}
+	}
+}

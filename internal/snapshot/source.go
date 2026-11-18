@@ -14,11 +14,14 @@ type Source struct {
 	Unreadable   []string
 	// Missing are the paths whose content a partial clone lacks in some commit; their lines and history are not read.
 	Missing []string
-	Before  []Entry  // tracked regular files at the base; Content only for wanted, changed paths
-	Now     []Entry  // tracked regular files in the working tree; Content only for wanted paths
-	Changes []Change // every tracked file that differs between the base and the working tree
-	Since   []string // the commits in base..head, newest first
-	Commits []Commit // the whole non-merge history, newest first
+	Before  []Entry // tracked regular files at the base; Content only for wanted, changed paths
+	// BaseOther are the tracked paths at the base that are no regular file (links, submodules): a file at such a path
+	// now was not added by the change.
+	BaseOther []string
+	Now       []Entry  // tracked regular files in the working tree; Content only for wanted paths
+	Changes   []Change // every tracked file that differs between the base and the working tree
+	Since     []string // the commits in base..head, newest first
+	Commits   []Commit // the whole non-merge history, newest first
 }
 
 // Entry is one tracked file on one side.

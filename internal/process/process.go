@@ -42,6 +42,9 @@ func (Detector) Detect(s snapshot.Snapshot) answer.Findings {
 		Notes:      planningNotes(s),
 		Marks:      slices.Concat(planningMarks(s), limitMarks(s), declarationMarks(s)),
 	}
+	if slices.ContainsFunc(f.Marks, func(m answer.Mark) bool { return answer.RuleOf(m.ID) == rulePlanning && len(m.Subject.Names) > 0 }) {
+		f.Notes = append(f.Notes, "working-note words in the name of an added Markdown file: "+s.NoteRule)
+	}
 	if note := limitsNote(s); note != "" {
 		f.Notes = append(f.Notes, note)
 	}
@@ -91,17 +94,19 @@ func planningMarks(s snapshot.Snapshot) []answer.Mark {
 	for _, path := range s.Now.Planning {
 		basePath := s.BasePath(path)
 		seenAtBase[basePath] = true
-		marks = append(marks, planningMark(path, atBase[basePath], true)...)
+		marks = append(marks, planningMark(path, atBase[basePath], true, s.PlanningMatches[path].Word)...)
 	}
 	for _, path := range s.Before.Planning {
 		if !seenAtBase[path] && !now[path] {
-			marks = append(marks, planningMark(path, true, false)...)
+			marks = append(marks, planningMark(path, true, false, "")...)
 		}
 	}
 	return marks
 }
 
-func planningMark(path string, atBase, now bool) []answer.Mark {
+// planningMark is the mark of one planning file; word is the working-note word of an added file's name, for which the
+// mark is a candidate (a name is an inference, a path a measurement).
+func planningMark(path string, atBase, now bool, word string) []answer.Mark {
 	reading := func(tracked bool) answer.Reading {
 		if tracked {
 			return answer.Reading{Holds: true, Value: 1}
@@ -119,6 +124,10 @@ func planningMark(path string, atBase, now bool) []answer.Mark {
 		Confidence: answer.Exact,
 		Measured:   answer.Measured{Value: reading(now).Value, LimitSource: planningSource, Unit: "tracked files"},
 		Hint:       "list the tracked files under the planning and review paths at the base and now.",
+	}
+	if word != "" {
+		m.Subject.Names, m.Confidence = []string{word}, answer.Candidate
+		m.Hint = "read the file and say whether it is a note about this change or a document the project keeps."
 	}
 	if atBase {
 		one := 1.0

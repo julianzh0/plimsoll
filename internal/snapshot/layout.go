@@ -233,7 +233,7 @@ func ownLayout(layout Layout, rules conventions.Rules, now ownFile, tracked []st
 			switch {
 			case why == HeldEveryName || why == HeldRepositoryRoot:
 				d.Held = append(d.Held, HeldFolder{Path: value, Why: why})
-			case !slices.ContainsFunc(tracked, func(p string) bool { return matches(pattern, value, p) }):
+			case !slices.ContainsFunc(tracked, func(p string) bool { return matches(pattern, planning, value, p) }):
 				d.Unmatched = append(d.Unmatched, value)
 			case why != 0:
 				d.Held = append(d.Held, HeldFolder{Path: value, Why: why})
@@ -250,9 +250,13 @@ func ownLayout(layout Layout, rules conventions.Rules, now ownFile, tracked []st
 	return layout
 }
 
-// matches says whether a tracked path lies under a declared folder or bears a declared file name.
-func matches(pattern bool, value, filePath string) bool {
-	if pattern {
+// matches says whether a tracked path lies under a declared folder or bears a declared file name; a planning file name
+// matches without regard to case.
+func matches(pattern, planning bool, value, filePath string) bool {
+	switch {
+	case pattern && planning:
+		return nameMatchesFolded(value, filePath)
+	case pattern:
 		return nameMatches(value, filePath)
 	}
 	_, in := under(filePath, value)

@@ -227,7 +227,7 @@ func planningMatch(rules conventions.Rules, filePath string) (PlanningMatch, boo
 		}
 	}
 	for _, pattern := range rules.PlanningNames {
-		if nameMatches(pattern, filePath) {
+		if nameMatchesFolded(pattern, filePath) {
 			return declaredMatch(rules, pattern, conventions.PlanningFileNames), true
 		}
 	}
@@ -269,6 +269,12 @@ func entryOf(filePath string, entries []string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// nameMatchesFolded is nameMatches without regard to case, for the planning names a repository declares: one pattern
+// covers every spelling of a working note's name.
+func nameMatchesFolded(pattern, filePath string) bool {
+	return nameMatches(strings.ToLower(pattern), strings.ToLower(filePath))
 }
 
 // nameMatches says whether a path's file name matches a file-name pattern of path.Match.

@@ -41,9 +41,11 @@ type Snapshot struct {
 	Layout              Layout // what the project declares in its own standard files, for both sides
 	TestRule            string // how test code was recognized, as an answer prints it
 	PlanningRule        string // the planning and review paths, as an answer prints them
+	NoteRule            string // the working-note words of added file names, as an answer prints them
 	// PlanningMatches is, per planning file of either side, the entry it matches.
 	PlanningMatches map[string]PlanningMatch
-	Unverified      []Extension // code extensions without a proven language
+	renamedFrom     map[string]string // the old name per new name of a renamed file; nil for a snapshot built by hand
+	Unverified      []Extension       // code extensions without a proven language
 	Untracked       int
 	Submodules      []string
 	Unreadable      []string
@@ -62,6 +64,8 @@ type Snapshot struct {
 // entry, or a value that the own file declares under Table and Key ("" for a default).
 type PlanningMatch struct {
 	Entry, Table, Key string
+	// Word is the working-note word of an added file's name (conventions.Rules.NoteWord); then Entry is empty.
+	Word string
 }
 
 // Tree is one side of the repository.
@@ -248,6 +252,12 @@ func (h History) Touches() map[string]Touches {
 
 // BasePath is the path a file had at the base: its old name when a change renamed it, else the path itself.
 func (s Snapshot) BasePath(path string) string {
+	if s.renamedFrom != nil {
+		if from, renamed := s.renamedFrom[path]; renamed {
+			return from
+		}
+		return path
+	}
 	for _, change := range s.Changes {
 		if change.Path == path && change.From != "" {
 			return change.From

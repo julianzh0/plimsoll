@@ -76,7 +76,7 @@ func TestPlanningFileMarks(t *testing.T) {
 func TestADeclaredPlanningFolderMarksItsFiles(t *testing.T) {
 	declaring := func(own string) snapshot.Source {
 		base := map[string]string{"src/a.ts": "x\n"}
-		now := map[string]string{"src/a.ts": "x\n", "backlog/US-12.md": "x\n", "notes/auth.plan.md": "x\n", "docs/PLAN.md": "x\n"}
+		now := map[string]string{"src/a.ts": "x\n", "backlog/US-12.md": "x\n", "notes/auth.idea.md": "x\n", "docs/PLAN.md": "x\n"}
 		if own != "" {
 			base[".plimsoll.toml"], now[".plimsoll.toml"] = own, own
 		}
@@ -87,9 +87,9 @@ func TestADeclaredPlanningFolderMarksItsFiles(t *testing.T) {
 	if _, f := detect(t, declaring("")); len(marksOf(f, rulePlanning)) != 1 {
 		t.Errorf("without a declaration: planning marks %v, want docs/PLAN.md alone", marksOf(f, rulePlanning))
 	}
-	s, f := detect(t, declaring("[layout]\nplanning_folders = [\"backlog\", \"a b\"]\nplanning_files = [\"*.plan.md\"]\n"))
+	s, f := detect(t, declaring("[layout]\nplanning_folders = [\"backlog\", \"a b\"]\nplanning_files = [\"*.idea.md\"]\n"))
 	for path, want := range map[string]string{
-		"notes/auth.plan.md": "matches `*.plan.md`, declared in `.plimsoll.toml` (`[layout]` `planning_files`)",
+		"notes/auth.idea.md": "matches `*.idea.md`, declared in `.plimsoll.toml` (`[layout]` `planning_files`)",
 		"docs/PLAN.md":       "matches `PLAN.md`, a default planning and review path",
 	} {
 		if evidence := (Detector{}).Explain(s, marksOf(f, rulePlanning)[path]); !slices.Contains(evidence, want) {
@@ -104,6 +104,29 @@ func TestADeclaredPlanningFolderMarksItsFiles(t *testing.T) {
 	}
 	if want := "`.plimsoll.toml` `planning_folders`: 1 value is no plain path from the root; it is not used"; !slices.Contains(f.NotAnalysed, want) {
 		t.Errorf("not analysed = %q, want %q", f.NotAnalysed, want)
+	}
+}
+
+func TestAnAddedWorkingNoteNameIsACandidate(t *testing.T) {
+	base, now := map[string]string{"src/a.ts": "x\n"}, map[string]string{"src/a.ts": "x\n", "docs/FIX_SUMMARY.md": "x\n"}
+	s, f := detect(t, snapshottest.Files(base, now))
+	m := marksOf(f, rulePlanning)["docs/FIX_SUMMARY.md"]
+	if m.Change != answer.New || m.Confidence != answer.Candidate || !slices.Equal(m.Subject.Names, []string{"summary"}) {
+		t.Fatalf("mark of docs/FIX_SUMMARY.md = %+v, want a new candidate naming summary", m)
+	}
+	want := "`docs/FIX_SUMMARY.md` is a Markdown file this change added whose name holds the working-note word `summary`; it may be a planning or review record (plimsoll's rule: repositories hold no planning records)."
+	if got := (Detector{}).Wording(m); got != want {
+		t.Errorf("Wording = %q, want %q", got, want)
+	}
+	if evidence := (Detector{}).Explain(s, m); !slices.Contains(evidence, "its name holds the working-note word `summary`") {
+		t.Errorf("Explain = %q, want the word", evidence)
+	}
+	note := "working-note words in the name of an added Markdown file: " + conventions.Default().NoteRule()
+	if !slices.Contains(f.Notes, note) {
+		t.Errorf("notes = %q, want %q", f.Notes, note)
+	}
+	if _, without := detect(t, snapshottest.Files(base, map[string]string{"src/a.ts": "y\n"})); slices.ContainsFunc(without.Notes, func(n string) bool { return strings.HasPrefix(n, "working-note words") }) {
+		t.Errorf("notes without a name mark = %q, want no word note", without.Notes)
 	}
 }
 
@@ -223,9 +246,9 @@ func TestAChangeToTheRepositorysOwnFileIsMarked(t *testing.T) {
 			[]string{"This change altered the test files declared in `.plimsoll.toml`: added `*IT.java`, `*_spec.rb`; 2 declared now, 0 at the base."}},
 		{"a key removed", ruleDeclarationChange, layout("test_folders = [\"checks\"]\n"), "[limits]\nfile_lines = 1500\n",
 			[]string{"This change altered the test folders declared in `.plimsoll.toml`: removed 1; 0 declared now, 1 at the base."}},
-		{"planning paths declared", ruleDeclarationChange, "", layout("planning_folders = [\"backlog\"]\nplanning_files = [\"*.plan.md\"]\n"), []string{
+		{"planning paths declared", ruleDeclarationChange, "", layout("planning_folders = [\"backlog\"]\nplanning_files = [\"*.idea.md\"]\n"), []string{
 			"This change altered the planning folders declared in `.plimsoll.toml`: added `backlog`; 1 declared now, 0 at the base.",
-			"This change altered the planning files declared in `.plimsoll.toml`: added `*.plan.md`; 1 declared now, 0 at the base.",
+			"This change altered the planning files declared in `.plimsoll.toml`: added `*.idea.md`; 1 declared now, 0 at the base.",
 		}},
 		{"reordered", ruleDeclarationChange, layout("test_folders = [\"a\", \"b\"]\n"), layout("test_folders = [\"b\", \"a\"]\n"), nil},
 		{"written another way", ruleDeclarationChange, layout("test_folders = [\"checks/\"]\n"), layout("test_folders = [\"./checks\"]\n"), nil},

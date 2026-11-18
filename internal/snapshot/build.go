@@ -60,6 +60,9 @@ func Build(source Source, rules conventions.Rules, readings *Readings) Snapshot 
 	}
 	now.Broken = unreadableNow
 	now.Planning, before.Planning = planningFiles(rules, now.Paths), planningFiles(rules, before.Paths)
+	renamedFrom := renames(source.Changes)
+	notes := noteFiles(rules, now.Paths, baseNames(beforeEntries, source.BaseOther), renamedFrom)
+	now.Planning = slices.Sorted(slices.Values(append(now.Planning, slices.Collect(maps.Keys(notes))...)))
 	now.Compose, before.Compose = composeFiles(rules, source.Now), composeFiles(rules, beforeEntries)
 	before.Links = links(rules, beforeContent, before, beforeReadings, nil)
 	atBase := map[string]bool{}
@@ -93,7 +96,9 @@ func Build(source Source, rules conventions.Rules, readings *Readings) Snapshot 
 		Layout:              layout,
 		TestRule:            rules.TestRule(),
 		PlanningRule:        rules.PlanningRule(),
-		PlanningMatches:     planningMatches(rules, now.Planning, before.Planning),
+		NoteRule:            rules.NoteRule(),
+		PlanningMatches:     planningMatches(rules, notes, now.Planning, before.Planning),
+		renamedFrom:         renamedFrom,
 		Unverified:          unverified(now.Files),
 		Untracked:           source.Untracked,
 		Submodules:          source.Submodules,
@@ -137,14 +142,57 @@ func unparsed(sides ...map[string]reading) []string {
 }
 
 // planningMatches are the entries the planning files of both sides match.
-func planningMatches(rules conventions.Rules, sides ...[]string) map[string]PlanningMatch {
+func planningMatches(rules conventions.Rules, notes map[string]string, sides ...[]string) map[string]PlanningMatch {
 	matches := map[string]PlanningMatch{}
 	for _, paths := range sides {
 		for _, p := range paths {
+			if word, isNote := notes[p]; isNote {
+				matches[p] = PlanningMatch{Word: word}
+				continue
+			}
 			matches[p], _ = planningMatch(rules, p)
 		}
 	}
 	return matches
+}
+
+// noteFiles are the files the change added whose name makes them a working note, each with its word: tracked now,
+// at no tracked path of the base and not the new name of a rename, outside the planning and measurement paths, skipped
+// folders and [ignore]. A file tracked at the base is never one, so a name match is always new.
+func noteFiles(rules conventions.Rules, nowPaths []string, atBase map[string]bool, renamedFrom map[string]string) map[string]string {
+	notes := map[string]string{}
+	for _, p := range nowPaths {
+		if _, renamed := renamedFrom[p]; atBase[p] || renamed || recordPath(rules, p) || leftOut(rules, p) {
+			continue
+		}
+		if word, found := rules.NoteWord(p); found {
+			notes[p] = word
+		}
+	}
+	return notes
+}
+
+// baseNames are the tracked paths of the base, of every kind.
+func baseNames(entries []Entry, other []string) map[string]bool {
+	names := map[string]bool{}
+	for _, e := range entries {
+		names[e.Path] = true
+	}
+	for _, p := range other {
+		names[p] = true
+	}
+	return names
+}
+
+// renames are the old names of the renamed files, by their new names.
+func renames(changes []Change) map[string]string {
+	from := map[string]string{}
+	for _, c := range changes {
+		if c.From != "" {
+			from[c.Path] = c.From
+		}
+	}
+	return from
 }
 
 // planningFiles are the paths that lie under a planning or review path.

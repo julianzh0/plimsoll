@@ -60,15 +60,16 @@ type Rules struct {
 	// AcknowledgedTable is the table of the own file whose keys are mark identifiers the repository acknowledges, each
 	// with a reason; AcknowledgedName is what an answer calls its entries.
 	AcknowledgedTable, AcknowledgedName string
-	TestNames                           []string // file-name patterns of test code; empty in the shared rules
-	IgnoredPaths                        []string // folders, as paths from the repository root, whose files are left out; empty in the shared rules
-	IgnoredNames                        []string // file-name patterns of files left out; empty in the shared rules
-	PlanningPaths                       []string // planning and review records: an entry ending in "/" is a folder, at the root when it is one name, at any depth when it is a chain; any other a file-name pattern
-	PlanningFolders                     []string // planning folders a repository declares, as paths from the root; empty in the shared rules
-	PlanningNames                       []string // file-name patterns of planning files a repository declares; empty in the shared rules
-	MeasurementPaths                    []string // measurement records, in the syntax of PlanningPaths
-	ComposeFiles                        []string // file-name patterns of compose files, read for their environment keys
-	Limits                              Limits   // the shared defaults
+	TestNames                           []string  // file-name patterns of test code; empty in the shared rules
+	IgnoredPaths                        []string  // folders, as paths from the repository root, whose files are left out; empty in the shared rules
+	IgnoredNames                        []string  // file-name patterns of files left out; empty in the shared rules
+	PlanningPaths                       []string  // planning and review records: an entry ending in "/" is a folder, at the root when it is one name, at any depth when it is a chain; any other a file-name pattern
+	PlanningFolders                     []string  // planning folders a repository declares, as paths from the root; empty in the shared rules
+	PlanningNames                       []string  // file-name patterns of planning files a repository declares; empty in the shared rules
+	NoteNames                           NoteNames // the words that make an added Markdown file's name a working note
+	MeasurementPaths                    []string  // measurement records, in the syntax of PlanningPaths
+	ComposeFiles                        []string  // file-name patterns of compose files, read for their environment keys
+	Limits                              Limits    // the shared defaults
 	// ReportOnly are the kinds of mark that report lists and status only counts, as "<detector>.<rule>": kinds
 	// outside reviewers or a blind reading judged too noisy to show on every change.
 	ReportOnly []string
@@ -486,6 +487,7 @@ func Default() Rules {
 			"REQUIREMENTS.md", "SPEC.md", "PLAN.md", "*_PLAN.md",
 		},
 		MeasurementPaths: []string{"docs/qualification/", "evidence/"},
+		NoteNames:        defaultNoteNames(),
 		ComposeFiles:     []string{"compose*.yml", "compose*.yaml", "docker-compose*.yml", "docker-compose*.yaml"},
 		// A commit that touches more files says little about which files belong together (requirements, R-16).
 		CommitPaths: 20,

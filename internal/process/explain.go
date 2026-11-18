@@ -37,6 +37,9 @@ func (Detector) Explain(s snapshot.Snapshot, m answer.Mark) []string {
 		atBase = "tracked at the base: yes"
 	}
 	match := s.PlanningMatches[path]
+	if match.Word != "" {
+		return append(lines, atBase, fmt.Sprintf("its name holds the working-note word `%s`", match.Word))
+	}
 	if match.Key == "" {
 		return append(lines, atBase, fmt.Sprintf("matches `%s`, a default planning and review path", match.Entry))
 	}

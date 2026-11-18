@@ -107,7 +107,7 @@ func (r *Reader) Read(ctx context.Context, repository, base string, wants snapsh
 		return snapshot.Source{}, err
 	}
 	var absent []string
-	if source.Before, absent, err = before(run, source.Base, source.Changes, wants); err != nil {
+	if source.Before, source.BaseOther, absent, err = before(run, source.Base, source.Changes, wants); err != nil {
 		return snapshot.Source{}, err
 	}
 	source.Missing = slices.Compact(slices.Sorted(slices.Values(append(missing, absent...))))
@@ -385,12 +385,12 @@ func readFile(root *os.Root, path string, wants snapshot.Wants) ([]byte, error) 
 	return append(head[:n:n], rest...), nil
 }
 
-// before lists the tracked files at the base and reads, in one batch, only the wanted files that changed. absent are
-// the wanted files whose content a partial clone lacks.
-func before(run runner, base string, changes []snapshot.Change, wants snapshot.Wants) (entries []snapshot.Entry, absent []string, err error) {
+// before lists the tracked files at the base and reads, in one batch, only the wanted files that changed. other are
+// the tracked paths that are no regular file; absent the wanted files whose content a partial clone lacks.
+func before(run runner, base string, changes []snapshot.Change, wants snapshot.Wants) (entries []snapshot.Entry, other, absent []string, err error) {
 	output, err := run(nil, "ls-tree", "-r", "-z", "--full-tree", base)
 	if err != nil {
-		return nil, nil, gitFailed(err)
+		return nil, nil, nil, gitFailed(err)
 	}
 	changed := map[string]bool{}
 	for _, change := range changes {
@@ -403,6 +403,7 @@ func before(run runner, base string, changes []snapshot.Change, wants snapshot.W
 	objects := map[string]string{}
 	for _, tracked := range parseTracked(output, 2) {
 		if !regular(tracked.mode) {
+			other = append(other, tracked.path)
 			continue
 		}
 		entries = append(entries, snapshot.Entry{Path: tracked.path})
@@ -412,16 +413,16 @@ func before(run runner, base string, changes []snapshot.Change, wants snapshot.W
 		}
 	}
 	if len(wanted) == 0 {
-		return entries, nil, nil
+		return entries, other, nil, nil
 	}
 	slices.Sort(wanted)
 	batch, err := run([]byte(strings.Join(slices.Compact(wanted), "\n")+"\n"), "cat-file", "--batch")
 	if err != nil {
-		return nil, nil, gitFailed(err)
+		return nil, nil, nil, gitFailed(err)
 	}
 	contents, err := parseBatch(batch)
 	if err != nil {
-		return nil, nil, gitFailed(err)
+		return nil, nil, nil, gitFailed(err)
 	}
 	for i := range entries {
 		object, found := objects[entries[i].Path]
@@ -439,7 +440,7 @@ func before(run runner, base string, changes []snapshot.Change, wants snapshot.W
 		}
 		entries[i].Content = content
 	}
-	return entries, absent, nil
+	return entries, other, absent, nil
 }
 
 // missingContent finds, in a partial clone, the paths whose content some commit of the head's history lacks: the

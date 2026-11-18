@@ -14,6 +14,9 @@ func (Detector) Wording(m answer.Mark) string {
 		path := m.Subject.Paths[0]
 		switch m.Change {
 		case answer.New:
+			if len(m.Subject.Names) > 0 {
+				return fmt.Sprintf("`%s` is a Markdown file this change added whose name holds the working-note word `%s`; it may be a planning or review record (plimsoll's rule: repositories hold no planning records).", path, m.Subject.Names[0])
+			}
 			return fmt.Sprintf("`%s` is a planning or review record this change added to the repository (plimsoll's rule: repositories hold no planning records); keep it outside the repository.", path)
 		case answer.Resolved:
 			return fmt.Sprintf("`%s` is no longer tracked; it lay under a planning or review path at the base.", path)

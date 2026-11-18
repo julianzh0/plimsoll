@@ -161,7 +161,7 @@ func TestBuildReadsWhatAProjectDeclares(t *testing.T) {
 				Now: snapshot.KeyRead, InUse: []snapshot.DeclaredFolder{{Path: "main"}}}}}},
 		{"own: an empty list", both(owning("test_folders = []\n", "src/a.py")), snapshot.Layout{}},
 		{"own: planning keys apart, a code folder applied", both(owning("planning_folders = [\".\", \"backlog/\", \"src\", \"nowhere\", \"a b\"]\nplanning_files = [\"*\", \"*.plan.md\"]\n",
-			"backlog/US-12.md", "src/app/__init__.py", "docs/x/auth.plan.md")),
+			"backlog/US-12.md", "src/app/__init__.py", "docs/x/AUTH.PLAN.md")),
 			snapshot.Layout{Planning: []snapshot.Declared{planningFolders, planningFiles}}},
 		{"own: beside pytest", both(pytestAndOwn),
 			snapshot.Layout{TestFolders: []snapshot.Declared{testpaths("tests")}, Own: []snapshot.Declared{own("test_folders", "test folders", false, "checks")}}},

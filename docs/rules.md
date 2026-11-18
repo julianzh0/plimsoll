@@ -75,6 +75,32 @@ lies. A repository adds its own with `planning_folders` and `planning_files` (be
 | `.planning/phases/`, `.planning/quick/`, `.planning/research/`, `.planning/threads/`, `.planning/todos/`, `.planning/debug/`, `.planning/seeds/`, `.planning/codebase/`, `.planning/ui-reviews/` | GSD: the folders its pull-request filter leaves out of review; its project files (`STATE.md`, `ROADMAP.md`, `PROJECT.md`) stay ([PR branch filtering](https://github.com/open-gsd/gsd-core/blob/main/docs/features/pr-branch-filtering.md)) |
 | `REQUIREMENTS.md`, `SPEC.md`, `PLAN.md`, `*_PLAN.md` | requirement, spec and plan files written for one change |
 
+#### Working-note names
+
+A Markdown file (`.md`, `.mdx`) that a change adds outside these paths, the measurement paths, skipped folders and
+`[ignore]`, is also a planning or review record when its name holds a working-note word. That mark is a candidate (a
+name is an inference), shows once, in the change that adds the file, and never stands; it changes no churn row or
+count. A file tracked at the base, or the new name of a rename git detects, is not added. The name is split into words
+at `_`, `-`, `.`, spaces and a change from a lower-case letter or digit to an upper-case one; words compare in any case
+(ASCII letters only), and the answer names the first matching word from the left.
+
+| Words | When |
+|---|---|
+| `handoff`, `handover`, `worklog`, `scratch`, `complete`, `completion`, `final`, `session` | on their own (`HANDOFF.md`, `FinalStatus.md`) |
+| `phase`, `task` | with a number in the same word (`PHASE3_COMPLETE.md`, `task6-notes.md`) |
+| `next steps`, `work log` | side by side (`NEXT_STEPS.md`) |
+| `summary`, `status`, `report`, `plan`, `analysis`, `findings`, `investigation`, `verification`, `results`, `progress`, `checklist` | beside a second word: alone they also name lasting files, such as a book's `SUMMARY.md` (`IMPLEMENTATION_SUMMARY.md`, `fix-status.md`) |
+
+Files in folders named `.changeset`, `.github`, `.claude`, `.cursor`, `templates`, `template`, `fixtures`,
+`__fixtures__`, `examples`, `example` or `snippets` are never working notes by name.
+
+The list was set from the names agents leave most often (GitHub-wide counts, agent tools' own rules and user reports)
+and measured blind before it was set: on 80 agent pull requests from 80 repositories, 72 of its marks were working
+notes; on 2,200 commits of human projects it fired on none. A word joins only after the same check: its marks read
+blind on agent pull requests no earlier check has read, and its rate on human commits. A repository adds its own names
+with `planning_files`; a rename that git cannot detect (beyond 1,000 changed paths, or a source a partial clone lacks)
+reads as an addition.
+
 Something over its limit at the base and no longer over it is reported as resolved. Something over it on both
 sides that did not grow is standing. The function rules look only at the files a change touched, so they have no
 standing and no resolved items. A function is named by its path and name, and a second function of the same name in
@@ -133,7 +159,7 @@ only = ["src/domain -> src/shared"]         # code under the first folder import
 | `test_folders` | Folders, as paths from the root, whose code files count as test code, beside the defaults |
 | `test_files` | File names of code files that count as test code wherever they lie: `*` is any run of characters, `?` one |
 | `planning_folders` | Folders, as paths from the root, whose files are planning or review records, beside the default paths |
-| `planning_files` | File names, with the same patterns as `test_files`, of planning or review records wherever they lie |
+| `planning_files` | File names, with the same patterns as `test_files` but without regard to case, of planning or review records wherever they lie |
 | `folders` under `[ignore]` | Folders, as paths from the root, whose files plimsoll leaves out: no code, no planning record, no documentation it reads |
 | `files` under `[ignore]` | File names, with the same patterns as `test_files`, of files plimsoll leaves out wherever they lie |
 | an entry of `[acknowledged]` | A mark identifier exactly as an answer printed it, and a reason: a standing item with that identifier is listed under "Acknowledged" in `report` instead of "Standing", and `status` counts such items in one line. The item is still measured and counted; when it grows, or a new item gets its identifier, it shows as usual. Function marks never stand, so they are not acknowledged. The reason is required and never printed |

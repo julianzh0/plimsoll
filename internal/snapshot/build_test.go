@@ -311,13 +311,38 @@ func TestBuildListsPlanningAndReviewFiles(t *testing.T) {
 		t.Errorf("Build.PlanningRule = %q, want the rules' own", s.PlanningRule)
 	}
 
-	files[".plimsoll.toml"] = "[layout]\nplanning_folders = [\"backlog\", \"docs/notes\"]\nplanning_files = [\"*.plan.md\"]\n"
-	for _, p := range []string{"backlog/US-12.md", "docs/notes/a.md", "docs/x/auth.plan.md", "backlog-old/a.md", "src/backlog/a.md", "x/docs/notes/a.md", "node_modules/x/a.plan.md"} {
+	files[".plimsoll.toml"] = "[layout]\nplanning_folders = [\"backlog\", \"docs/notes\"]\nplanning_files = [\"*.idea.md\"]\n"
+	for _, p := range []string{"backlog/US-12.md", "docs/notes/a.md", "docs/x/Login.IDEA.md", "backlog-old/a.md", "src/backlog/a.md", "x/docs/notes/a.md", "node_modules/x/a.idea.md"} {
 		files[p] = "x\n"
 	}
-	declared := slices.Sorted(slices.Values(append(slices.Clone(planning), "backlog/US-12.md", "docs/notes/a.md", "docs/x/auth.plan.md")))
+	declared := slices.Sorted(slices.Values(append(slices.Clone(planning), "backlog/US-12.md", "docs/notes/a.md", "docs/x/Login.IDEA.md")))
 	if got := snapshot.Build(snapshottest.Files(nil, files), conventions.Default(), snapshottest.Readings(t)).Now.Planning; !slices.Equal(got, declared) {
 		t.Errorf("Build(declared planning paths).Now.Planning = %q, want %q", got, declared)
+	}
+}
+
+func TestBuildListsAddedWorkingNoteNames(t *testing.T) {
+	base := map[string]string{"src/a.ts": "x\n", "OLD_STATUS_REPORT.md": "x\n", "notes.md": "x\n"}
+	now := map[string]string{
+		"src/a.ts": "x\n", "OLD_STATUS_REPORT.md": "x\n", "IMPLEMENTATION_SUMMARY.md": "x\n", "docs/fix-status.md": "x\n",
+		"README.md": "x\n", "evidence/RESULTS_SUMMARY.md": "x\n", "FIX_SUMMARY.md": "x\n", "FINAL.md": "x\n", "docs/plans/x.md": "x\n",
+	}
+	source := snapshottest.Files(base, now)
+	source.Changes = append(source.Changes, snapshot.Change{Path: "FIX_SUMMARY.md", From: "notes.md"}) // a rename git detects
+	source.BaseOther = []string{"FINAL.md"}                                                            // a symlink at the base
+	s := snapshot.Build(source, conventions.Default(), snapshottest.Readings(t))
+	want := []string{"IMPLEMENTATION_SUMMARY.md", "docs/fix-status.md", "docs/plans/x.md"}
+	if !slices.Equal(s.Now.Planning, want) || len(s.Before.Planning) != 0 {
+		t.Errorf("Build.Now.Planning = %q, Before %q; want %q and none", s.Now.Planning, s.Before.Planning, want)
+	}
+	if m := s.PlanningMatches["docs/fix-status.md"]; m.Word != "status" || m.Entry != "" {
+		t.Errorf("PlanningMatches[docs/fix-status.md] = %+v, want the word status", m)
+	}
+	if m := s.PlanningMatches["docs/plans/x.md"]; m.Entry != "docs/plans/" || m.Word != "" {
+		t.Errorf("PlanningMatches[docs/plans/x.md] = %+v, want the path docs/plans/", m)
+	}
+	if s.BasePath("FIX_SUMMARY.md") != "notes.md" {
+		t.Errorf("BasePath(FIX_SUMMARY.md) = %q, want notes.md", s.BasePath("FIX_SUMMARY.md"))
 	}
 }
 
