@@ -294,7 +294,7 @@ func readAll(root *os.Root, files []trackedEntry, wants snapshot.Wants) []fileRe
 	var folders []string
 	inFolder := map[string][]int{}
 	for i, f := range files {
-		if f.mode == modeSubmodule || !regular(f.mode) {
+		if !regular(f.mode) {
 			continue
 		}
 		folder := path.Dir(f.path)
@@ -323,7 +323,7 @@ func readFolder(root *os.Root, folder string, indexes []int, files []trackedEntr
 		sub, err := root.OpenRoot(folder)
 		if err != nil {
 			for _, i := range indexes {
-				read[i] = fileRead{wanted: wants.Path(files[i].path) || wants.Words != nil && wants.Words(files[i].path), err: err}
+				read[i] = missing(files[i].path, wants, err)
 			}
 			return
 		}
@@ -338,11 +338,24 @@ func readFolder(root *os.Root, folder string, indexes []int, files []trackedEntr
 // readTracked reads one tracked file through the root of its folder.
 func readTracked(dir *os.Root, filePath string, wants snapshot.Wants) fileRead {
 	name := path.Base(filePath)
-	if wants.Path(filePath) || wants.Words != nil && wants.Words(filePath) {
+	if wanted(filePath, wants) {
 		content, err := readFile(dir, name, wants)
 		return fileRead{wanted: true, content: content, err: err}
 	}
 	_, err := dir.Lstat(name)
+	return missing(filePath, wants, err)
+}
+
+func wanted(filePath string, wants snapshot.Wants) bool {
+	return wants.Path(filePath) || wants.Words != nil && wants.Words(filePath)
+}
+
+// missing is what an error reaching a tracked file means: a wanted file that cannot be read is unreadable; a file the
+// snapshot does not read counts as gone only when it does not exist, and is kept otherwise.
+func missing(filePath string, wants snapshot.Wants, err error) fileRead {
+	if wanted(filePath, wants) {
+		return fileRead{wanted: true, err: err}
+	}
 	if !errors.Is(err, os.ErrNotExist) {
 		err = nil
 	}
