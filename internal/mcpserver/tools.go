@@ -17,13 +17,14 @@ import (
 // The descriptions say what each tool returns and which of the three to use for which need, in plain words, never at
 // what moment of a task to ask; the output schema already lists the answer's parts, so they are not repeated here.
 const (
-	statusDescription = "The short answer about what a change did to a git repository since `base`: at most five new or grown " +
+	statusDescription = "The short answer about what a change did to a git repository since `base`: the areas it made worse, " +
+		"better or could not analyse and the files outside the change that use what it altered (its blast radius), at most five new or grown " +
 		"marks, each with its limit and a way to check it, then one line each counting the marks shown only in " +
 		"`report`, the items the change touched but did not create, added code without a use, and the standing " +
 		"marks. A mark is one measured finding; a standing mark was already over its limit at `base`. Use this " +
 		"for the short answer; use `report` for every mark and number, and `explain` for the evidence behind one " +
 		"mark."
-	reportDescription = "The full answer about what a change did to a git repository since `base`: every mark, every measured " +
+	reportDescription = "The full answer about what a change did to a git repository since `base`: the same areas and blast radius, every mark, every measured " +
 		"number with its value at `base`, the standing marks one by one, those the repository acknowledges in its" +
 		" .plimsoll.toml (acknowledging is done in that file, not through a tool), the footprint of the change, " +
 		"and what was not analysed. Use this when the five marks of `status` are not enough or you need the " +

@@ -61,6 +61,22 @@ What it could not see is always named under "not analysed".
 | `links.only:<folder>` | product code under the folder imports code outside it and outside the folders its `only` rule names, and the change wrote one of these imports; new, grown and touched as for `never` (candidate) | the repository's own rule in `.plimsoll.toml` |
 | `links.folder-cycle:<folder>` | two or more folders directly under one folder depend on each other in a cycle, through imports between product files below them, and none of them did at the base (new), or the cycle has more folders (grown), and the change added one of the imports between them. The folder is the cycle's smallest (candidate) | the Acyclic Dependencies Principle (Robert C. Martin) |
 
+### The headline
+
+`status` and `report` start, after their first line, with the change per area and its blast radius. An area is
+worse when a change made a new or grown mark of a kind that decides it; not analysed when none of its deciding rules
+ran (nothing to check, or what they read could not be read); better when it passes and a mark of a deciding kind was
+resolved. Report-only kinds never move an area.
+
+| Area | Deciding kinds | Other kinds of the area |
+|---|---|---|
+| size | `shape.test-ratio` | `shape.file-size` |
+| dependencies | `shape.dependencies` | |
+| wiring | `links.cycle`, `links.never`, `links.only` | `links.test-import`, `links.folder-cycle`, `co-change.pair` |
+| functions | `shape.function-complexity` | `shape.function-nesting` |
+| settings | `settings.defined-twice` | `settings.compose-only`, `shape.settings` |
+| process | `process.planning-file`, `process.limit-change`, `process.declaration-change` | `process.doc-churn` |
+
 ### Planning and review paths
 
 A file is a planning or review record when it lies under one of these paths or bears one of these names. A folder

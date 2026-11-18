@@ -131,8 +131,8 @@ Then ask your agent, for example: *"Use plimsoll to check what this branch did t
 
 | Tool | Returns |
 |---|---|
-| `status(repository, base?)` | at most five new or grown marks, one line that counts the marks shown in `report` only, one that counts what the change touched but did not create, one that counts added code without a use, the standing line, one that counts the standing items the repository acknowledges, the footprint and what was not analysed |
-| `report(repository, base?, files?)` | everything measured, in a fixed layout, the touched items included. Standing items of one kind past five are counted by folder in the text, and `structuredContent` holds them all. With `files`, also the files that import each named file |
+| `status(repository, base?)` | the areas the change made worse, better or could not analyse and its blast radius, at most five new or grown marks, one line that counts the marks shown in `report` only, one that counts what the change touched but did not create, one that counts added code without a use, the standing line, one that counts the standing items the repository acknowledges, the footprint and what was not analysed |
+| `report(repository, base?, files?)` | the same areas and blast radius, then everything measured, in a fixed layout, the touched items included. Standing items of one kind past five are counted by folder in the text, and `structuredContent` holds them all. With `files`, also the files that import each named file |
 | `explain(repository, base?, mark)` | the evidence of one mark, computed again and capped |
 
 Without `base`, a question compares with the default base the repository declares in `.plimsoll.toml`, and the
