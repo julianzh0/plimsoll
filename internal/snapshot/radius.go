@@ -2,7 +2,6 @@ package snapshot
 
 import (
 	"bytes"
-	"hash/fnv"
 	"path"
 	"regexp"
 	"slices"
@@ -225,12 +224,13 @@ func (w *radiusWalk) state(language conventions.Language, nowPath, basePath stri
 	}
 	nowReading, baseReading := w.in.nowReadings[nowPath], w.in.beforeReadings[basePath]
 	if slices.Contains(language.SurfaceFiles, path.Base(either(nowPath, basePath))) {
-		nowReading.pureImports, baseReading.pureImports = nil, nil // what the package offers: no import is pure
+		// what the package offers: no import is pure
+		nowReading.prints, baseReading.prints = nowReading.printsAll, baseReading.printsAll
 	}
 	switch {
 	case basePath == "":
 		return NothingAltered, "", nil // a new file
-	case nowPath != "" && sameCode(language, nowContent, baseContent, nowReading, baseReading):
+	case nowPath != "" && sameCode(nowReading, baseReading):
 		return NothingAltered, "", nil
 	case nowPath == "":
 		if reason := unreadUnits(baseReading); reason != "" {
@@ -247,7 +247,7 @@ func (w *radiusWalk) state(language conventions.Language, nowPath, basePath stri
 			return AsAWhole, reason, nil
 		}
 	}
-	return compareUnits(language, nowContent, baseContent, nowReading, baseReading)
+	return compareUnits(nowReading, baseReading)
 }
 
 // unreadUnits is why a reading's units cannot be compared, or "". A syntax error is not one: a unit that holds it is.
@@ -262,17 +262,17 @@ func unreadUnits(r reading) string {
 }
 
 // compareUnits pairs the units of both sides by fingerprint, position ignored.
-func compareUnits(language conventions.Language, nowContent, baseContent []byte, now, base reading) (FileState, string, []string) {
-	if remainder(language, nowContent, now) != remainder(language, baseContent, base) {
+func compareUnits(now, base reading) (FileState, string, []string) {
+	if now.prints.remainder != base.prints.remainder {
 		return AsAWhole, ReasonRemainder, nil
 	}
 	nowPrints := map[uint64]int{}
-	for _, u := range now.units {
-		nowPrints[unitPrint(language, nowContent, u, now.pureImports)]++
+	for _, print := range now.prints.units {
+		nowPrints[print]++
 	}
 	var names []string
-	for _, u := range base.units {
-		if print := unitPrint(language, baseContent, u, base.pureImports); nowPrints[print] > 0 {
+	for i, u := range base.units {
+		if print := base.prints.units[i]; nowPrints[print] > 0 {
 			nowPrints[print]--
 			continue
 		}
@@ -299,14 +299,6 @@ func compareUnits(language conventions.Language, nowContent, baseContent []byte,
 	return ByName, "", sortedNames(names)
 }
 
-// unitPrint is a unit's fingerprint: all its tokens, or, for a container, its head without the units inside it.
-func unitPrint(language conventions.Language, content []byte, u unit, imports []span) uint64 {
-	if u.inner == nil {
-		return fingerprint(language, content, u.start, u.end, u.context, nil)
-	}
-	return fingerprint(language, content, u.start, u.end, u.context, slices.Concat(u.inner, imports))
-}
-
 var identifier = regexp.MustCompile(`^[\p{L}_][\p{L}\p{N}_]*$`)
 
 func sortedNames(names []string) []string {
@@ -314,51 +306,10 @@ func sortedNames(names []string) []string {
 	return slices.Compact(names)
 }
 
-// sameCode says whether two contents hold the same code tokens: all of them, or, when both were parsed, those outside
-// pure imports.
-func sameCode(language conventions.Language, nowContent, baseContent []byte, now, base reading) bool {
-	if fingerprint(language, nowContent, 0, len(nowContent), "", nil) == fingerprint(language, baseContent, 0, len(baseContent), "", nil) {
-		return true
-	}
-	if !now.unitsRead || !base.unitsRead {
-		return false
-	}
-	return fingerprint(language, nowContent, 0, len(nowContent), "", now.pureImports) ==
-		fingerprint(language, baseContent, 0, len(baseContent), "", base.pureImports)
-}
-
-// remainder is the fingerprint of a reading's tokens outside its units and pure imports.
-func remainder(language conventions.Language, content []byte, r reading) uint64 {
-	outside := slices.Clone(r.pureImports)
-	for _, u := range r.units {
-		outside = append(outside, span{start: u.start, end: u.end - 1})
-	}
-	return fingerprint(language, content, 0, len(content), "", outside)
-}
-
-// fingerprint hashes, after a context, the code tokens of content[start:end] that lie in no span of skip, with the
-// layout the language reads as code: a line break before a token on a new line, and the line's indentation.
-func fingerprint(language conventions.Language, content []byte, start, end int, context string, skip []span) uint64 {
-	h := fnv.New64a()
-	_, _ = h.Write([]byte(context)) // a hash's Write never fails
-	text := content[start:end]
-	line := 0
-	for t := range eachToken(language.Tokens, text, 1) {
-		if inSpans(skip, start+t.start) {
-			continue
-		}
-		if t.line != line {
-			if language.LayoutCode.LineBreaks && line > 0 {
-				_, _ = h.Write([]byte{'\n'})
-			}
-			if language.LayoutCode.Indentation {
-				_, _ = h.Write(text[lineStart(text, t.line):t.start])
-			}
-			line = t.line
-		}
-		writeUint64(h, t.hash)
-	}
-	return h.Sum64()
+// sameCode says whether two readings hold the same code tokens: all of them, or, when both were read for their units,
+// those outside pure imports.
+func sameCode(now, base reading) bool {
+	return now.prints.whole == base.prints.whole || now.unitsRead && base.unitsRead && now.prints.code == base.prints.code
 }
 
 // seed puts the first items of one changed file on the walk.

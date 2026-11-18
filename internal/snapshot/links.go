@@ -124,9 +124,11 @@ type reading struct {
 	// units are the file's comparison units and pure imports (US-63), when it was read with its declarations.
 	units       []unit
 	pureImports []span
-	unitsRead   bool   // the grammar read the file for its units, with or without errors
-	errors      []span // where the grammar met a syntax error
-	testSpans   []span // the test code inside the file, by the entry's blocks
+	unitsRead   bool // the grammar read the file for its units, with or without errors
+	// prints are the fingerprints of its code with its pure imports left out, printsAll with none left out.
+	prints, printsAll prints
+	errors            []span // where the grammar met a syntax error
+	testSpans         []span // the test code inside the file, by the entry's blocks
 	// functions are the file's measured functions, when it was read with them; functionsUnread when the walk failed.
 	functions       []function
 	functionsUnread bool

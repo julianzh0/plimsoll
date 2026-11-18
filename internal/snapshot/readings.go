@@ -164,6 +164,9 @@ func (rs *Readings) read(language conventions.Language, grammar string, content 
 		r = readByText(language, content)
 		r.units, r.pureImports, r.unitsRead, r.errors = tree.units, tree.pureImports, tree.unitsRead, tree.errors
 	}
+	if w.declarations && language.Tokens != nil {
+		r.prints, r.printsAll = printsOf(language, content, r.units, r.pureImports)
+	}
 	if w.functions {
 		tree, err := rs.parser.Nodes(grammar, content)
 		if err != nil {
