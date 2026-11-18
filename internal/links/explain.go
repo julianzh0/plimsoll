@@ -54,7 +54,7 @@ func (Detector) Explain(s snapshot.Snapshot, m answer.Mark) []string {
 	case ruleFolderCycle:
 		return folderEvidence(m, now, before)
 	case ruleNever, ruleOnly:
-		return ruleEvidence(s, m, languages, now, before)
+		return ruleEvidence(s, m, now, before)
 	}
 	return nil
 }

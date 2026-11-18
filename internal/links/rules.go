@@ -28,11 +28,11 @@ const (
 // withRules adds what the declared import rules show: their marks, their row and notes, and what they cannot check.
 // The line of a rule that checks nothing goes first in the answer's "not analysed"; the rule lines come first among
 // the detector's own.
-func withRules(f answer.Findings, s snapshot.Snapshot, languages []snapshot.LanguageImports, now, before graph) answer.Findings {
+func withRules(f answer.Findings, s snapshot.Snapshot, now, before graph) answer.Findings {
 	var notAnalysed []string
 	broken, brokenAtBase := 0.0, 0.0
 	for _, r := range s.ImportRules {
-		_, partly, nothing := checkOf(s, r, languages)
+		_, partly, nothing := checkOf(s, r, now)
 		if nothing != "" {
 			f.NotAnalysedFirst = append(f.NotAnalysedFirst, ruleLead(r)+": "+nothing+", so the rule checks nothing")
 			continue
@@ -79,11 +79,7 @@ func entryLead(r snapshot.ImportRule, target string) string {
 // imports are read, what says that some others are not, and what says that the rule checks nothing, or "": when no
 // product code lies under its folder, when a never rule's target holds no code, or when no product file under its
 // folder has its imports read.
-func checkOf(s snapshot.Snapshot, r snapshot.ImportRule, languages []snapshot.LanguageImports) (importers int, partly, nothing string) {
-	used := map[string]bool{}
-	for _, l := range languages {
-		used[l.Language] = true
-	}
+func checkOf(s snapshot.Snapshot, r snapshot.ImportRule, now graph) (importers int, partly, nothing string) {
 	products, overLimit := 0, 0
 	var suffixes, languagesOver []string // what the product files whose imports are not read are
 	for _, file := range s.Now.Files {
@@ -92,7 +88,7 @@ func checkOf(s snapshot.Snapshot, r snapshot.ImportRule, languages []snapshot.La
 		}
 		products++
 		switch {
-		case used[file.Language]:
+		case now.analysed(file.Path):
 			importers++
 		case file.Language == "":
 			suffixes = append(suffixes, path.Ext(file.Path))
@@ -170,7 +166,7 @@ func lies(file, folder string) bool { return strings.HasPrefix(file, folder+"/")
 // 0.07 s to a status of nowinandroid (715 files) and vapor (898 files), measured 2026-11-18. Upgrade: index the files
 // by folder once per side when a repository with far more files declares that many rules.
 func breaking(r snapshot.ImportRule, tree snapshot.Tree, g graph) []snapshot.Link {
-	allowed := append([]string{r.From}, r.Targets...)
+	allowed := r.Allowed()
 	var found []snapshot.Link
 	for _, file := range tree.Files {
 		if file.Role != snapshot.Product || !lies(file.Path, r.From) {
@@ -303,7 +299,7 @@ func ruleWording(m answer.Mark) string {
 
 // ruleEvidence names the rule, its numbers and every import that breaks it, by file and line; for a resolved rule,
 // those of the base.
-func ruleEvidence(s snapshot.Snapshot, m answer.Mark, languages []snapshot.LanguageImports, now, before graph) []string {
+func ruleEvidence(s snapshot.Snapshot, m answer.Mark, now, before graph) []string {
 	at := slices.IndexFunc(s.ImportRules, func(r snapshot.ImportRule) bool { return ruleID(r) == m.ID })
 	if at < 0 {
 		return nil
@@ -313,15 +309,12 @@ func ruleEvidence(s snapshot.Snapshot, m answer.Mark, languages []snapshot.Langu
 	if r.Kind == snapshot.Never {
 		lines = append(lines, "rule: `"+r.Entry(r.Targets[0])+"` ("+ruleSource(s, r)+")")
 	} else {
-		allowed, entries := []string{r.From}, []string{}
+		var entries []string
 		for _, target := range r.Targets {
-			if !slices.Contains(allowed, target) {
-				allowed = append(allowed, target)
-			}
 			entries = append(entries, "`"+r.Entry(target)+"`")
 		}
 		lines = append(lines, fmt.Sprintf("rule: code under %s imports only code under %s (`[%s]` `%s`: %s)", answer.Folder(r.From),
-			folderList(allowed), r.Table, r.Key, strings.Join(entries, ", ")))
+			folderList(r.Allowed()), r.Table, r.Key, strings.Join(entries, ", ")))
 	}
 	nowImports, baseImports := breaking(r, s.Now, now), breaking(r, s.Before, before)
 	lines = append(lines, fmt.Sprintf("imports that break it now: %d; at the base: %d", len(nowImports), len(baseImports)))
@@ -332,7 +325,7 @@ func ruleEvidence(s snapshot.Snapshot, m answer.Mark, languages []snapshot.Langu
 	for _, link := range shown {
 		lines = append(lines, prefix+linkLine(link, verb))
 	}
-	importers, partly, _ := checkOf(s, r, languages)
+	importers, partly, _ := checkOf(s, r, now)
 	lines = append(lines, fmt.Sprintf("searched: the imports of the %s under %s; test code and other code are not importers",
 		answer.Plural(importers, "product file"), answer.Folder(r.From)))
 	if partly != "" {

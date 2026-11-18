@@ -33,10 +33,10 @@ func guardAsRules(files map[string]string) string {
 		switch {
 		case allowed == nil:
 		case len(allowed) == 0:
-			only = append(only, `"`+folder+" -> "+folder+`"`)
+			only = append(only, `"`+conventions.ImportRule(folder, folder)+`"`)
 		default:
 			for _, target := range allowed {
-				only = append(only, `"`+folder+" -> "+target+`"`)
+				only = append(only, `"`+conventions.ImportRule(folder, target)+`"`)
 			}
 		}
 	}
@@ -46,7 +46,7 @@ func guardAsRules(files map[string]string) string {
 		}
 		from, to := path.Dir(c.file.Path), strings.TrimPrefix(c.file.Imports[0], module+"/")
 		if holdsCode(from) && holdsCode(to) {
-			never = append(never, `"`+from+" -> "+to+`"`)
+			never = append(never, `"`+conventions.ImportRule(from, to)+`"`)
 		}
 	}
 	return "[imports]\nnever = [" + strings.Join(never, ", ") + "]\nonly = [" + strings.Join(only, ", ") + "]\n"

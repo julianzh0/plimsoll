@@ -17,6 +17,9 @@ type ImportRule struct {
 // Entry prints the rule's entry for one of its targets, as the file declares it in its form: "a -> b".
 func (r ImportRule) Entry(target string) string { return conventions.ImportRule(r.From, target) }
 
+// Allowed are the folders an Only rule lets its folder import: its own first, then its targets, each once.
+func (r ImportRule) Allowed() []string { return appendNew([]string{r.From}, r.Targets...) }
+
 // ImportRuleKind is what an import rule says about the imports of its folder.
 type ImportRuleKind int
 
