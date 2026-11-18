@@ -251,3 +251,29 @@ func TestTheBlastRadiusListsItsFilesUpToTheCap(t *testing.T) {
 		t.Errorf("blast radius row = %+v, want 32 files", row)
 	}
 }
+
+func TestAChangedFileWhoseContentIsMissingLeavesTheRadiusNotAnalysed(t *testing.T) {
+	c := languageCases()["typescript"]
+	k := codeOf("typescript")
+	a, b := c.product("a"), c.product("b")
+	base := c.tree(map[string]string{a: k.declare("Run", 1), b: c.importing(b, []string{a}) + k.use("Run")})
+	now := maps.Clone(base)
+	now[a] = k.declare("Run", 2)
+	source := snapshottest.Files(base, now)
+	for i, e := range source.Before {
+		if e.Path == a {
+			source.Before[i].Content = nil // the partial clone lacks a's old content
+		}
+	}
+	source.Missing = []string{a}
+	if r := detect(t, source).Radius; r == nil || r.State != answer.RadiusNotAnalysed {
+		t.Errorf("only a changed, its old content missing: radius = %+v, want not analysed", r)
+	}
+	other := maps.Clone(now)
+	other[b] = c.importing(b, []string{a}) + k.use("Run") + k.declare("More", 1)
+	source = snapshottest.Files(base, other)
+	source.Missing = []string{c.product("unrelated")}
+	if r := detect(t, source).Radius; r == nil || r.State != answer.RadiusCounted {
+		t.Errorf("a missing path that is no tracked code file: radius = %+v, want counted", r)
+	}
+}

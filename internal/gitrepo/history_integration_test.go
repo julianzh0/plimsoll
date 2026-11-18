@@ -246,6 +246,9 @@ func TestIntegrationAPartialCloneIsReadAroundItsMissingContent(t *testing.T) {
 		return commits, slices.DeleteFunc(slices.Clone(source.Changes), func(c snapshot.Change) bool { return c.Path == "data/big.txt" })
 	}
 	fullCommits, fullChanges := without(full)
+	// the missing file changed: it is listed, with no lines counted
+	fullChanges = append(fullChanges, snapshot.Change{Path: "data/big.txt"})
+	slices.SortFunc(fullChanges, func(a, b snapshot.Change) int { return strings.Compare(a.Path, b.Path) })
 	if !reflect.DeepEqual(partial.Commits, fullCommits) || !reflect.DeepEqual(partial.Changes, fullChanges) {
 		t.Errorf("partial clone: commits %+v, changes %+v; want the full clone's without data/big.txt: %+v, %+v", partial.Commits, partial.Changes, fullCommits, fullChanges)
 	}

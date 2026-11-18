@@ -103,6 +103,9 @@ func (r *Reader) Read(ctx context.Context, repository, base string, wants snapsh
 	if source.Changes, err = changes(run, source.Base, exclude); err != nil {
 		return snapshot.Source{}, err
 	}
+	if source.Changes, err = withMissingChanges(run, source.Base, missing, source.Changes); err != nil {
+		return snapshot.Source{}, err
+	}
 	if source.Now, err = now(run, top, wants, &source); err != nil {
 		return snapshot.Source{}, err
 	}
@@ -236,6 +239,33 @@ func changes(run runner, base string, exclude []string) ([]snapshot.Change, erro
 		}
 		changes = append(changes, change)
 	}
+	return changes, nil
+}
+
+// withMissingChanges adds the changed paths whose content the partial clone lacks, with no lines counted: their
+// lines cannot be counted, but that they changed is known from the trees alone, so no answer reads them as unchanged.
+func withMissingChanges(run runner, base string, missing []string, changes []snapshot.Change) ([]snapshot.Change, error) {
+	if len(missing) == 0 {
+		return changes, nil
+	}
+	output, err := run(nil, "diff-index", "--name-only", "-z", "--no-renames", base)
+	if err != nil {
+		return nil, gitFailed(err)
+	}
+	listed := map[string]bool{}
+	for _, c := range changes {
+		listed[c.Path], listed[c.From] = true, true
+	}
+	isMissing := map[string]bool{}
+	for _, p := range missing {
+		isMissing[p] = true
+	}
+	for _, p := range fields(output) {
+		if isMissing[p] && !listed[p] {
+			changes = append(changes, snapshot.Change{Path: p})
+		}
+	}
+	slices.SortFunc(changes, func(a, b snapshot.Change) int { return strings.Compare(a.Path, b.Path) })
 	return changes, nil
 }
 
