@@ -43,7 +43,7 @@ func TestAFullCacheDropsOnlyReadingsNoLaterQuestionUsed(t *testing.T) {
 	readings.of(language, "go", c, second, wanted{})
 	readings.end(second)
 	kept := func(content []byte) bool {
-		_, found := readings.kept[readingKey{entry: language.Name, grammar: "go", content: sha256.Sum256(content)}]
+		_, found := readings.kept[goKey(content)]
 		return found
 	}
 	if !kept(a) || kept(b) || !kept(c) {
@@ -87,14 +87,16 @@ func TestAQuestionOverTheBoundKeepsTheOlderReadingsItUsesAfterNewContent(t *test
 	readings.of(language, "go", a, first, wanted{})
 	readings.of(language, "go", b, first, wanted{})
 	readings.end(first)
-	keyOf := func(content []byte) readingKey {
-		return readingKey{entry: language.Name, grammar: "go", content: sha256.Sum256(content)}
-	}
-	before := readings.kept[keyOf(b)]
+	before := readings.kept[goKey(b)]
 	second := readings.begin()
 	readings.of(language, "go", edited, second, wanted{})
 	readings.of(language, "go", b, second, wanted{})
-	if after := readings.kept[keyOf(b)]; after != before {
+	if after := readings.kept[goKey(b)]; after != before {
 		t.Errorf("of(b) in a second question after new content = a new reading, want the one the first question made")
 	}
+}
+
+// goKey is the key of a Go file's plain reading.
+func goKey(content []byte) readingKey {
+	return readingKey{entry: "go", grammar: "go", content: sha256.Sum256(content)}
 }

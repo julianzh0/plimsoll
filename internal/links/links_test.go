@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"maps"
 	"path"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -475,9 +476,9 @@ func (c languageCase) testFile(at string, targets ...string) string {
 	return c.importing(at, targets) + c.testBody + "\n"
 }
 
-// reachBase is the base tree of the reach tests: b, c, the test of b and a second test file import a; u imports
+// importersBase is the base tree of the importer tests: b, c, the test of b and a second test file import a; u imports
 // old; p imports ten further files, so one import that leads nowhere stays under the guard's limit.
-func (c languageCase) reachBase() map[string]string {
+func (c languageCase) importersBase() map[string]string {
 	a, old := c.product("a"), c.product("old")
 	files := map[string]string{
 		a: c.importing(a, nil), old: c.importing(old, nil),
@@ -495,10 +496,10 @@ func (c languageCase) reachBase() map[string]string {
 	return c.tree(files)
 }
 
-func TestReachCountsImportersTheChangeDidNotTouch(t *testing.T) {
+func TestImportersOfTheChangeCountDirectAndAtAnyDistance(t *testing.T) {
 	eachLanguage(t, func(t *testing.T, name string, c languageCase) {
 		a := c.product("a")
-		base := c.reachBase()
+		base := c.importersBase()
 		now := clone(base)
 		now[a] += "// changed\n"
 		now[c.product("c")] += "// changed\n"
@@ -509,51 +510,80 @@ func TestReachCountsImportersTheChangeDidNotTouch(t *testing.T) {
 		withNewBase := clone(base)
 		withNewBase[c.product("e")] = withNew[c.product("e")]
 		for _, s := range detect(t, snapshottest.Files(withNewBase, withNew)).Statistics {
-			if s.Name == "widest reach" && strings.HasPrefix(c.product("d"), strings.TrimSuffix(s.Subject, "/")) && s.Before != nil {
-				t.Errorf("a file new since the base has a widest-reach row with a value at the base: %+v", s)
+			if s.Name == "most direct importers" && strings.HasPrefix(c.product("d"), strings.TrimSuffix(s.Subject, "/")) && s.Before != nil {
+				t.Errorf("a file new since the base has a most-direct-importers row with a value at the base: %+v", s)
 			}
 		}
-		f := detect(t, snapshottest.Files(base, now))
-		reach, _ := statisticNamed(f, "reach of the change")
-		if !sameStatistic(reach, answer.Statistic{Name: "reach of the change",
-			Note: "3 files; 3 changed code files; 1 product, 2 test; 2 more importers are part of the change"}) {
-			t.Errorf("reach = %+v", reach)
+		chained, chainedNow := clone(base), clone(now)
+		chained[c.product("e")] = c.importing(c.product("e"), []string{c.product("b")})
+		chainedNow[c.product("e")] = chained[c.product("e")]
+		r, _ := statisticNamed(detect(t, snapshottest.Files(chained, chainedNow)), "importers of the change")
+		// a, c and d changed and old deleted: b, two tests and u (which imported old) directly, e behind b
+		want := regexp.MustCompile(`^4 files directly, 5 at any distance; 4 changed code files; directly 2 product, 2 test; ` +
+			`at any distance 3 product, 2 test; in [^;]+; 3 of 1[78] product code files; 2 more importers are part of the change$`)
+		if r.Value != nil || !want.MatchString(r.Note) {
+			t.Errorf("importers of the change = %+v, want %s", r, want)
 		}
-		var widest []answer.Statistic
+		editedB := clone(chained)
+		editedB[a] += "// changed\n"
+		editedB[c.product("b")] += "// changed\n"
+		renamedB := clone(chained)
+		delete(renamedB, c.product("b"))
+		renamedB[c.product("b2")] = chained[c.product("b")]
+		renamedB[a] += "// changed\n"
+		moved := snapshottest.Files(chained, renamedB)
+		moved.Changes = append(moved.Changes, snapshot.Change{Path: c.product("b2"), From: c.product("b")})
+		// e imports b: a changed file, or a path the rename removed; either way it counts directly beside c and the tests
+		for label, changed := range map[string]snapshot.Source{"a and b changed": snapshottest.Files(chained, editedB), "a changed and b renamed": moved} {
+			if r, _ := statisticNamed(detect(t, changed), "importers of the change"); !strings.HasPrefix(r.Note, "4 files directly, 4 at any distance; 2 changed code files; ") {
+				t.Errorf("%s: importers of the change = %q, want c, two tests and e directly", label, r.Note)
+			}
+		}
+		// old deleted and its importer u renamed by the same change: u counts as part of the change under its path now
+		renamedU := clone(now)
+		delete(renamedU, c.product("u"))
+		renamedU[c.product("u2")] = base[c.product("u")]
+		withRenamedU := snapshottest.Files(base, renamedU)
+		withRenamedU.Changes = append(withRenamedU.Changes, snapshot.Change{Path: c.product("u2"), From: c.product("u")})
+		if r, _ := statisticNamed(detect(t, withRenamedU), "importers of the change"); !strings.HasPrefix(r.Note, "3 files directly, ") ||
+			!strings.HasSuffix(r.Note, "; 3 more importers are part of the change") {
+			t.Errorf("old deleted and u renamed: importers of the change = %q, want b and two tests directly, u among the change", r.Note)
+		}
+		f := detect(t, snapshottest.Files(base, now))
+		var most []answer.Statistic
 		for _, s := range f.Statistics {
-			if s.Name == "widest reach" {
-				widest = append(widest, s)
+			if s.Name == "most direct importers" {
+				most = append(most, s)
 			}
 		}
 		wantSubject := a
 		if c.byFolder {
 			wantSubject = path.Dir(a) + "/"
 		}
-		if len(widest) != 1 || !sameStatistic(widest[0], answer.Statistic{Name: "widest reach", Subject: wantSubject, Note: "3 files; 1 product, 2 test"}) {
-			t.Errorf("widest reach = %+v, want one row for %s", widest, a)
+		if len(most) != 1 || !sameStatistic(most[0], answer.Statistic{Name: "most direct importers", Subject: wantSubject, Note: "3 files; 1 product, 2 test"}) {
+			t.Errorf("most direct importers = %+v, want one row for %s", most, a)
 		}
-		if !slices.Contains(f.Notes, "reach: files that import the changed files directly and that the change did not touch; "+
-			"importers behind a file that only passes imports on are not followed") {
-			t.Errorf("notes = %q, want the reach note", f.Notes)
+		if !slices.Contains(f.Notes, importersNote) {
+			t.Errorf("notes = %q, want the importers note", f.Notes)
 		}
-		unchanged, _ := statisticNamed(detect(t, same(base)), "reach of the change")
-		if !sameStatistic(unchanged, answer.Statistic{Name: "reach of the change", Note: "0 files; 0 changed code files"}) {
-			t.Errorf("an unchanged tree: reach = %+v", unchanged)
+		unchanged, _ := statisticNamed(detect(t, same(base)), "importers of the change")
+		if !sameStatistic(unchanged, answer.Statistic{Name: "importers of the change", Note: "0 files directly, 0 at any distance; 0 changed code files"}) {
+			t.Errorf("an unchanged tree: importers of the change = %+v", unchanged)
 		}
 		if name == "go" {
 			testOnly := clone(base)
 			testOnly[c.test("b")] += "// changed\n"
-			if r, _ := statisticNamed(detect(t, snapshottest.Files(base, testOnly)), "reach of the change"); r.Value != nil || r.Note != "0 files; 1 changed code file" {
-				t.Errorf("a changed Go test file alone: reach = %+v, want 0 and one changed code file", r)
+			if r, _ := statisticNamed(detect(t, snapshottest.Files(base, testOnly)), "importers of the change"); r.Value != nil || r.Note != "0 files directly, 0 at any distance; 1 changed code file" {
+				t.Errorf("a changed Go test file alone: importers of the change = %+v, want 0 and one changed code file", r)
 			}
 		}
 		if name == "typescript" {
 			withIndex, nowIndex := clone(base), clone(now)
 			withIndex["src/index.ts"] = "export * from \"./a.ts\";\n"
 			nowIndex["src/index.ts"] = withIndex["src/index.ts"]
-			r, _ := statisticNamed(detect(t, snapshottest.Files(withIndex, nowIndex)), "reach of the change")
-			if r.Value != nil || !strings.HasPrefix(r.Note, "4 files; ") || !strings.HasSuffix(r.Note, "; 1 only passes imports on") {
-				t.Errorf("an untouched index file among the importers: reach = %+v", r)
+			r, _ := statisticNamed(detect(t, snapshottest.Files(withIndex, nowIndex)), "importers of the change")
+			if r.Value != nil || !strings.HasPrefix(r.Note, "5 files directly, ") {
+				t.Errorf("an untouched index file among the importers: importers of the change = %+v", r)
 			}
 		}
 		changedMany := clone(base)
@@ -562,7 +592,7 @@ func TestReachCountsImportersTheChangeDidNotTouch(t *testing.T) {
 		}
 		var rows []string
 		for _, s := range detect(t, snapshottest.Files(base, changedMany)).Statistics {
-			if s.Name == "widest reach" {
+			if s.Name == "most direct importers" {
 				rows = append(rows, s.Subject)
 			}
 		}
@@ -573,7 +603,7 @@ func TestReachCountsImportersTheChangeDidNotTouch(t *testing.T) {
 			return file
 		}
 		if want := []string{subject(c.product("pa")), subject(c.product("pb")), subject(c.product("pc"))}; !slices.Equal(rows, want) {
-			t.Errorf("four changed files with one importer each: widest reach = %q, want %q", rows, want)
+			t.Errorf("four changed files with one importer each: most direct importers = %q, want %q", rows, want)
 		}
 	})
 }
@@ -706,10 +736,10 @@ func TestNamedFilesGetTheirImporters(t *testing.T) {
 		})
 		f := Detector{}.Detect(withNamed(t, same(tree), "README.md", a, "src/nope"))
 		two, one := 2.0, 1.0
-		if reach, _ := statisticNamed(f, "reach of the named files"); !sameStatistic(reach, answer.Statistic{
-			Name: "reach of the named files", Value: &two, Before: &two, Unit: "files", Note: "3 named, 1 not found; 1 product, 1 test",
+		if reach, _ := statisticNamed(f, "importers of the named files"); !sameStatistic(reach, answer.Statistic{
+			Name: "importers of the named files", Value: &two, Before: &two, Unit: "files", Note: "3 named, 1 not found; 1 product, 1 test",
 		}) {
-			t.Errorf("reach of the named files = %+v", reach)
+			t.Errorf("importers of the named files = %+v", reach)
 		}
 		var rows []answer.Statistic
 		for _, s := range f.Statistics {
@@ -731,11 +761,11 @@ func TestNamedFilesGetTheirImporters(t *testing.T) {
 			}
 		}
 		both := Detector{}.Detect(withNamed(t, same(tree), a, b))
-		if reach, _ := statisticNamed(both, "reach of the named files"); reach.Value == nil || *reach.Value != one {
-			t.Errorf("a and b named: reach = %+v, want the test of b only", reach)
+		if reach, _ := statisticNamed(both, "importers of the named files"); reach.Value == nil || *reach.Value != one {
+			t.Errorf("a and b named: importers of the named files = %+v, want the test of b only", reach)
 		}
-		if _, has := statisticNamed(Detector{}.Detect(withNamed(t, same(tree))), "reach of the named files"); has {
-			t.Errorf("no file named: a reach row of named files")
+		if _, has := statisticNamed(Detector{}.Detect(withNamed(t, same(tree))), "importers of the named files"); has {
+			t.Errorf("no file named: a row of importers of the named files")
 		}
 		over := c.fan(8, c.nowhere)
 		overFindings := Detector{}.Detect(withNamed(t, same(over), c.product("a")))
@@ -743,7 +773,7 @@ func TestNamedFilesGetTheirImporters(t *testing.T) {
 		if row.Value != nil || row.Note != "its language is not analysed" {
 			t.Errorf("a named file of a language over the limit = %+v", row)
 		}
-		if summary, _ := statisticNamed(overFindings, "reach of the named files"); summary.Value != nil || summary.Before != nil {
+		if summary, _ := statisticNamed(overFindings, "importers of the named files"); summary.Value != nil || summary.Before != nil {
 			t.Errorf("no named file could be counted: summary = %+v, want no number", summary)
 		}
 	})
@@ -806,7 +836,7 @@ func TestNoLinksLineHoldsImportText(t *testing.T) {
 	}
 }
 
-func TestWidestReachIsOneRowPerGoPackage(t *testing.T) {
+func TestMostDirectImportersIsOneRowPerGoPackage(t *testing.T) {
 	golang := languageCases()["go"]
 	s1, s2, u := "internal/s/one.go", "internal/s/two.go", golang.product("u")
 	base := golang.tree(map[string]string{s1: "package s\n", s2: "package s\n", u: golang.importing(u, []string{s1})})
@@ -815,11 +845,11 @@ func TestWidestReachIsOneRowPerGoPackage(t *testing.T) {
 	now[s2] += "// changed\n"
 	var rows []answer.Statistic
 	for _, s := range detect(t, snapshottest.Files(base, now)).Statistics {
-		if s.Name == "widest reach" {
+		if s.Name == "most direct importers" {
 			rows = append(rows, s)
 		}
 	}
-	if len(rows) != 1 || !sameStatistic(rows[0], answer.Statistic{Name: "widest reach", Subject: "internal/s/", Note: "1 file; 1 product, 0 test"}) {
-		t.Errorf("two changed files of one Go package: widest reach = %+v, want one row for the package", rows)
+	if len(rows) != 1 || !sameStatistic(rows[0], answer.Statistic{Name: "most direct importers", Subject: "internal/s/", Note: "1 file; 1 product, 0 test"}) {
+		t.Errorf("two changed files of one Go package: most direct importers = %+v, want one row for the package", rows)
 	}
 }

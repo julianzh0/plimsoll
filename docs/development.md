@@ -48,7 +48,7 @@ internal/process/                # the process detector: planning files, documen
 internal/settings/               # the settings audit
 internal/hotspots/               # the files changed most often times their size
 internal/cochange/               # pairs of files that change together
-internal/links/                  # import links: reach, product code importing test code, rings, declared import rules
+internal/links/                  # import links: importers of the change, product code importing test code, rings, declared import rules
 internal/mcpserver/              # the only code that knows MCP, through the official MCP Go SDK
 internal/parse/                  # the only code that knows WebAssembly: runs the tree-sitter grammars through wazero
 internal/parse/grammars/         # the grammar modules, their pins, the C shim and the build script

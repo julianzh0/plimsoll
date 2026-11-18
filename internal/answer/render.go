@@ -343,22 +343,31 @@ func standingList(text *strings.Builder, standing []Mark, w Wording) {
 }
 
 // inFolders counts items by the first two folders of their first path, the largest first: ", in `src/` 3,
-// `docs/plans/` 1"; "" when they have no path. Two levels keep a tree of records per story as one count.
+// `docs/plans/` 1"; "" when they have no path.
 func inFolders(items []Mark) string {
-	counts := map[string]int{}
+	var paths []string
 	for _, m := range items {
-		if len(m.Subject.Paths) == 0 {
-			continue
+		if len(m.Subject.Paths) > 0 {
+			paths = append(paths, m.Subject.Paths[0])
 		}
-		folders := strings.Split(path.Dir(m.Subject.Paths[0]), "/")
+	}
+	if len(paths) == 0 {
+		return ""
+	}
+	return ", in " + InFolders(paths)
+}
+
+// InFolders counts paths by their first two folders, the largest first, the first three named and the rest counted:
+// "`src/` 3, `docs/plans/` 1, 2 in other folders". Two levels keep a tree of records per story as one count.
+func InFolders(paths []string) string {
+	counts := map[string]int{}
+	for _, p := range paths {
+		folders := strings.Split(path.Dir(p), "/")
 		folder := "`" + strings.Join(folders[:min(len(folders), groupLevels)], "/") + "/`"
 		if folder == "`./`" {
 			folder = "the root"
 		}
 		counts[folder]++
-	}
-	if len(counts) == 0 {
-		return ""
 	}
 	folders := slices.SortedFunc(maps.Keys(counts), func(a, b string) int { return cmp.Or(cmp.Compare(counts[b], counts[a]), strings.Compare(a, b)) })
 	parts := make([]string, 0, reportFolders+1)
@@ -373,5 +382,5 @@ func inFolders(items []Mark) string {
 	if others > 0 {
 		parts = append(parts, fmt.Sprintf("%d in other folders", others))
 	}
-	return ", in " + strings.Join(parts, ", ")
+	return strings.Join(parts, ", ")
 }

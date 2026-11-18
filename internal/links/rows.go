@@ -2,6 +2,7 @@ package links
 
 import (
 	"cmp"
+	"maps"
 	"path"
 	"slices"
 	"strings"
@@ -13,8 +14,9 @@ import (
 // shown is how many files the ranked rows name.
 const shown = 3
 
-const reachNote = "reach: files that import the changed files directly and that the change did not touch; " +
-	"importers behind a file that only passes imports on are not followed"
+const importersNote = "importers of the change: the files that import a changed code file, directly or through other " +
+	"files at any distance, that the change did not touch; a deleted or renamed file counts the files that imported its old path; " +
+	"the share of product code is over the product code files whose language's imports are read"
 
 // importersOf are the distinct importers of some files, sorted, and how many of them the set holds.
 func importersOf(g graph, files []string, left map[string]bool) (outside []string, inside int) {
@@ -45,43 +47,111 @@ func atBase(s snapshot.Snapshot, before graph, file string, count func(path stri
 	return &value
 }
 
-// reachRows are the reach of the change and the changed files with the widest reach. The changed files are the code
-// files of the analysed languages that a change names on each side; their importers that the change touched are
-// counted apart.
-func reachRows(s snapshot.Snapshot, now graph) []answer.Statistic {
-	touched := map[string]bool{}
+// importers of the change: the direct ones, those behind them at any distance, and the files the change touched
+// among them. The changed files are the code files of the analysed languages that a change names now; a deleted or
+// renamed file adds the files that imported its base path at the base and exist now, under their path now.
+type changeImporters struct {
+	changedNow    []string        // the changed code files now, sorted
+	touched       map[string]bool // the paths a change names, on either side
+	changed       int             // changed code files now, and deleted or renamed-away ones at the base
+	direct, total []string        // untouched, sorted
+	inside        int             // importers the change touched
+}
+
+func importersOfChange(s snapshot.Snapshot, now, before graph) changeImporters {
+	r := changeImporters{touched: map[string]bool{}}
+	nowPath := map[string]string{} // base path -> path now, for the files a change renamed
 	for _, ch := range s.Changes {
-		touched[ch.Path] = true
+		r.touched[ch.Path] = true
 		if ch.From != "" {
-			touched[ch.From] = true
+			r.touched[ch.From], nowPath[ch.From] = true, ch.Path
 		}
 	}
-	changed := func(g graph) []string {
-		return slices.DeleteFunc(slices.Clone(g.files), func(file string) bool { return !touched[file] })
+	for _, file := range now.files {
+		if r.touched[file] {
+			r.changedNow = append(r.changedNow, file)
+		}
 	}
-	changedNow := changed(now)
-	outside, inside := importersOf(now, changedNow, touched)
-	parts := []string{answer.Plural(len(outside), "file"), answer.Plural(len(changedNow), "changed code file")}
-	if len(outside) > 0 {
-		parts = append(parts, split(now, outside))
+	r.changed = len(r.changedNow)
+	reached, inside := map[string]bool{}, map[string]bool{}
+	var frontier []string
+	reach := func(file string) {
+		if reached[file] || inside[file] {
+			return
+		}
+		if r.touched[file] {
+			inside[file] = true
+		} else {
+			reached[file] = true
+		}
+		frontier = append(frontier, file)
 	}
-	if inside > 0 {
-		parts = append(parts, answer.Agree(inside, "more importer is", "more importers are")+" part of the change")
+	for _, file := range r.changedNow {
+		for _, link := range now.to[file] {
+			reach(link.From)
+		}
 	}
-	passing := slices.DeleteFunc(slices.Clone(outside), func(file string) bool { return !slices.Contains(s.Now.Links.PassOn, file) })
-	if len(passing) > 0 {
-		parts = append(parts, answer.Agree(len(passing), "only passes", "only pass")+" imports on")
+	for _, file := range before.files {
+		if !r.touched[file] || now.analysed(file) {
+			continue // unchanged, or still here under the same path
+		}
+		if renamed, found := nowPath[file]; !found || !now.analysed(renamed) {
+			r.changed++ // deleted, or renamed out of the analysed languages; a renamed file is counted under its path now
+		}
+		for _, link := range before.to[file] {
+			importer := link.From
+			if moved, renamed := nowPath[importer]; renamed {
+				importer = moved
+			}
+			if now.has(importer) {
+				reach(importer)
+			}
+		}
+	}
+	r.direct = slices.Sorted(maps.Keys(reached))
+	r.inside = len(inside)
+	for len(frontier) > 0 {
+		file := frontier[0]
+		frontier = frontier[1:]
+		for _, link := range now.to[file] {
+			reach(link.From)
+		}
+	}
+	r.total = slices.Sorted(maps.Keys(reached))
+	return r
+}
+
+// importerRows are the importers of the change and the changed files with the most direct importers.
+func importerRows(s snapshot.Snapshot, now, before graph) []answer.Statistic {
+	r := importersOfChange(s, now, before)
+	parts := []string{
+		answer.Plural(len(r.direct), "file") + " directly, " + count(len(r.total)) + " at any distance",
+		answer.Plural(r.changed, "changed code file"),
+	}
+	if len(r.direct) > 0 {
+		parts = append(parts, "directly "+split(now, r.direct))
+	}
+	if len(r.total) > len(r.direct) {
+		parts = append(parts, "at any distance "+split(now, r.total))
+	}
+	if len(r.total) > 0 {
+		parts = append(parts, "in "+answer.InFolders(r.total))
+		if products := rolesOf(now, now.files).product; products > 0 {
+			parts = append(parts, count(rolesOf(now, r.total).product)+" of "+answer.Plural(products, "product code file"))
+		}
+	}
+	if r.inside > 0 {
+		parts = append(parts, answer.Agree(r.inside, "more importer is", "more importers are")+" part of the change")
 	}
 	// A sentence, not a number compared with the base: importers the change adds are touched by it, so they count on
 	// neither side, and the value at the base would differ only through renames and deletions.
-	rows := []answer.Statistic{{Name: "reach of the change", Note: strings.Join(parts, "; ")}}
-
-	return append(rows, widestRows(now, changedNow, touched)...)
+	rows := []answer.Statistic{{Name: "importers of the change", Note: strings.Join(parts, "; ")}}
+	return append(rows, mostDirectRows(now, r.changedNow, r.touched)...)
 }
 
-// widestRows give each changed file its importers that the change did not touch. Where a language imports folders,
+// mostDirectRows give each changed file its importers that the change did not touch. Where a language imports folders,
 // every file of a folder has the same importers, so the folder is one row.
-func widestRows(now graph, changed []string, touched map[string]bool) []answer.Statistic {
+func mostDirectRows(now graph, changed []string, touched map[string]bool) []answer.Statistic {
 	var subjects []string
 	group := map[string][]string{}
 	for _, file := range changed {
@@ -95,21 +165,21 @@ func widestRows(now graph, changed []string, touched map[string]bool) []answer.S
 		group[subject] = append(group[subject], file)
 	}
 	slices.Sort(subjects)
-	type reach struct {
+	type importerRow struct {
 		subject   string
 		importers []string
 	}
-	var ranked []reach
+	var ranked []importerRow
 	for _, subject := range subjects {
 		if importers, _ := importersOf(now, group[subject], touched); len(importers) > 0 {
-			ranked = append(ranked, reach{subject, importers})
+			ranked = append(ranked, importerRow{subject, importers})
 		}
 	}
-	slices.SortStableFunc(ranked, func(a, b reach) int { return cmp.Compare(len(b.importers), len(a.importers)) })
+	slices.SortStableFunc(ranked, func(a, b importerRow) int { return cmp.Compare(len(b.importers), len(a.importers)) })
 	var rows []answer.Statistic
 	for _, r := range ranked[:min(shown, len(ranked))] {
 		rows = append(rows, answer.Statistic{
-			Name: "widest reach", Subject: r.subject, Note: answer.Plural(len(r.importers), "file") + "; " + split(now, r.importers),
+			Name: "most direct importers", Subject: r.subject, Note: answer.Plural(len(r.importers), "file") + "; " + split(now, r.importers),
 		})
 	}
 	return rows
@@ -121,22 +191,30 @@ func top(rows []answer.Statistic) []answer.Statistic {
 	return rows[:min(shown, len(rows))]
 }
 
-// split names how many importers are product, test and other code.
-func split(g graph, importers []string) string {
-	product, test, other := 0, 0, 0
-	for _, importer := range importers {
-		switch role := g.roles[importer]; {
+// roles counts files by role.
+type roles struct{ product, test, other int }
+
+func rolesOf(g graph, files []string) roles {
+	var r roles
+	for _, file := range files {
+		switch role := g.roles[file]; {
 		case role == snapshot.Product:
-			product++
+			r.product++
 		case role.IsTest():
-			test++
+			r.test++
 		default:
-			other++
+			r.other++
 		}
 	}
-	parts := []string{count(product) + " product", count(test) + " test"}
-	if other > 0 {
-		parts = append(parts, count(other)+" other")
+	return r
+}
+
+// split names how many importers are product, test and other code.
+func split(g graph, importers []string) string {
+	r := rolesOf(g, importers)
+	parts := []string{count(r.product) + " product", count(r.test) + " test"}
+	if r.other > 0 {
+		parts = append(parts, count(r.other)+" other")
 	}
 	return strings.Join(parts, ", ")
 }
@@ -170,7 +248,7 @@ func newFileRows(s snapshot.Snapshot, now, before graph) []answer.Statistic {
 	return rows
 }
 
-// namedRows are the reach of the files the caller named, then one row per named path: its importers that are not
+// namedRows are the importers of the files the caller named, then one row per named path: its importers that are not
 // named, or why it has no number.
 func namedRows(s snapshot.Snapshot, now, before graph) []answer.Statistic {
 	if len(s.Named) == 0 {
@@ -224,7 +302,7 @@ func namedRows(s snapshot.Snapshot, now, before graph) []answer.Statistic {
 	if len(importers) > 0 {
 		note += "; " + split(now, importers)
 	}
-	summary := answer.Statistic{Name: "reach of the named files", Note: note}
+	summary := answer.Statistic{Name: "importers of the named files", Note: note}
 	if len(counted) > 0 {
 		summary.Value, summary.Before, summary.Unit = &value, &valueBefore, "files"
 	}

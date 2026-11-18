@@ -55,7 +55,7 @@ func (Detector) Detect(s snapshot.Snapshot) answer.Findings {
 
 // withLinks adds what the links of the analysed languages show: the rows, the marks and the notes.
 func withLinks(f answer.Findings, s snapshot.Snapshot, languages []snapshot.LanguageImports, now, before graph) answer.Findings {
-	f.Notes = append(f.Notes, linksNote, reachNote)
+	f.Notes = append(f.Notes, linksNote, importersNote)
 	if slices.ContainsFunc(languages, func(l snapshot.LanguageImports) bool { return l.Folders }) {
 		f.Notes = append(f.Notes, folderNote)
 	}
@@ -64,7 +64,7 @@ func withLinks(f answer.Findings, s snapshot.Snapshot, languages []snapshot.Lang
 		f.Statistics = append(f.Statistics, followedRow(now, before, atBase))
 	}
 	f.Marks = testImportMarks(s, now, before)
-	f.Statistics = append(f.Statistics, reachRows(s, now)...)
+	f.Statistics = append(f.Statistics, importerRows(s, now, before)...)
 	nowRings, baseRings := now.rings(false), before.rings(false)
 	if slices.ContainsFunc(languages, func(l snapshot.LanguageImports) bool { return l.NoRings == "" }) {
 		basePath := func(file string) []string { return []string{s.BasePath(file)} }
