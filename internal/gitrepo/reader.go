@@ -263,8 +263,8 @@ func now(run runner, top string, wants snapshot.Wants, source *snapshot.Source) 
 		}
 		entry := snapshot.Entry{Path: tracked.path}
 		switch r := read[i]; {
-		case errors.Is(r.err, os.ErrNotExist):
-			continue // tracked, but deleted in the working tree
+		case errors.Is(r.err, os.ErrNotExist), errors.Is(r.err, errNotRegular):
+			continue // tracked, but deleted in the working tree or replaced there by a link
 		case r.err != nil:
 			source.Unreadable = append(source.Unreadable, tracked.path)
 		case !r.wanted:
@@ -335,9 +335,16 @@ func readFolder(root *os.Root, folder string, indexes []int, files []trackedEntr
 	}
 }
 
-// readTracked reads one tracked file through the root of its folder.
+// errNotRegular is a tracked path whose working-tree entry is no regular file (a link put in its place).
+var errNotRegular = errors.New("not a regular file in the working tree")
+
+// readTracked reads one tracked file through the root of its folder. A path whose working-tree entry is no regular
+// file is not read: it is not a file of the working tree, as the index alone would claim.
 func readTracked(dir *os.Root, filePath string, wants snapshot.Wants) fileRead {
 	name := path.Base(filePath)
+	if info, err := dir.Lstat(name); err == nil && !info.Mode().IsRegular() {
+		return fileRead{err: errNotRegular}
+	}
 	if wanted(filePath, wants) {
 		content, err := readFile(dir, name, wants)
 		return fileRead{wanted: true, content: content, err: err}

@@ -24,6 +24,8 @@ const (
 
 const (
 	planningSource = "plimsoll's rule: repositories hold no planning records"
+	// noteSource is the rule of a mark that a working-note name makes.
+	noteSource     = "plimsoll's rule: notes about one change do not belong in the merged repository"
 	docChurnSource = "documentation above code"
 )
 
@@ -144,7 +146,7 @@ func planningMark(path string, atBase, now bool, word string) []answer.Mark {
 		Hint:       "list the tracked files under the planning and review paths at the base and now.",
 	}
 	if word != "" {
-		m.Subject.Names, m.Confidence = []string{word}, answer.Candidate
+		m.Subject.Names, m.Confidence, m.Measured.LimitSource = []string{word}, answer.Candidate, noteSource
 		m.Hint = "read the file and say whether it is a note about this change or a document the project keeps."
 	}
 	if atBase {

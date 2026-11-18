@@ -133,12 +133,13 @@ func TestBuildReadsWhatAProjectDeclares(t *testing.T) {
 	ownFolders.Held = []snapshot.HeldFolder{{Path: ".", Why: snapshot.HeldRepositoryRoot}, {Path: "src", Why: snapshot.HeldPackageRoot}}
 	ownFolders.Unmatched, ownFolders.Unusable = []string{"nowhere", "Checks"}, 1
 	ownFiles.Held = []snapshot.HeldFolder{{Path: "*", Why: snapshot.HeldEveryName}, {Path: "**", Why: snapshot.HeldEveryName}}
-	ownFiles.Unmatched, ownFiles.Unusable = []string{"*_nope.rb", "checks"}, 1
+	ownFiles.Unmatched, ownFiles.Unusable = []string{"*_nope.rb", "checks", "*.CHECK.ts"}, 1
 	planningFolders := own("planning_folders", "planning folders", false, "backlog", "src")
 	planningFolders.Held = []snapshot.HeldFolder{{Path: ".", Why: snapshot.HeldRepositoryRoot}}
 	planningFolders.Unmatched, planningFolders.Unusable = []string{"nowhere"}, 1
 	planningFiles := own("planning_files", "planning files", true, "*.plan.md")
 	planningFiles.Held = []snapshot.HeldFolder{{Path: "*", Why: snapshot.HeldEveryName}}
+	planningFiles.Unmatched = []string{"*.nope.md"}
 	pytestAndOwn := owning("test_folders = [\"checks\"]\n", "checks/h.py", "tests/test_a.py")
 	pytestAndOwn["pyproject.toml"] = pytestTable + "testpaths = [\"tests\"]\n"
 	ownCases := []struct {
@@ -148,8 +149,8 @@ func TestBuildReadsWhatAProjectDeclares(t *testing.T) {
 	}{
 		{"own: in use", both(owning("test_folders = [\"checks\", \"tools/harness\"]\ntest_files = [\"*.check.ts\"]\n", "checks/h.py", "tools/harness/run.py", "src/a.check.ts")),
 			snapshot.Layout{Own: []snapshot.Declared{own("test_folders", "test folders", false, "checks", "tools/harness"), own("test_files", "test files", true, "*.check.ts")}}},
-		{"own: held, unmatched, unusable", both(owning("test_folders = [\".\", \"src\", \"nowhere\", \"Checks\", \"a b\", \"tests\"]\ntest_files = [\"*\", \"**\", \"*_nope.rb\", \"checks\", \"a/b\"]\n",
-			"src/app/__init__.py", "tests/test_a.py", "checks/h.py")),
+		{"own: held, unmatched, unusable", both(owning("test_folders = [\".\", \"src\", \"nowhere\", \"Checks\", \"a b\", \"tests\"]\ntest_files = [\"*\", \"**\", \"*_nope.rb\", \"checks\", \"a/b\", \"*.CHECK.ts\"]\n",
+			"src/app/__init__.py", "tests/test_a.py", "checks/h.py", "src/a.check.ts")),
 			snapshot.Layout{Own: []snapshot.Declared{ownFolders, ownFiles}}},
 		{"own: no guard for a folder holding test folders", both(owning("test_folders = [\"pkg\"]\n", "pkg/core.py", "pkg/tests/test_core.py")),
 			snapshot.Layout{Own: []snapshot.Declared{own("test_folders", "test folders", false, "pkg")}}},
@@ -160,7 +161,7 @@ func TestBuildReadsWhatAProjectDeclares(t *testing.T) {
 			snapshot.Layout{OwnBase: []snapshot.Declared{{File: ".plimsoll.toml", Table: "defaults", Key: "base", Name: "default base", AsWritten: true,
 				Now: snapshot.KeyRead, InUse: []snapshot.DeclaredFolder{{Path: "main"}}}}}},
 		{"own: an empty list", both(owning("test_folders = []\n", "src/a.py")), snapshot.Layout{}},
-		{"own: planning keys apart, a code folder applied", both(owning("planning_folders = [\".\", \"backlog/\", \"src\", \"nowhere\", \"a b\"]\nplanning_files = [\"*\", \"*.plan.md\"]\n",
+		{"own: planning keys apart, a code folder applied", both(owning("planning_folders = [\".\", \"backlog/\", \"src\", \"nowhere\", \"a b\"]\nplanning_files = [\"*\", \"*.plan.md\", \"*.nope.md\"]\n",
 			"backlog/US-12.md", "src/app/__init__.py", "docs/x/AUTH.PLAN.md")),
 			snapshot.Layout{Planning: []snapshot.Declared{planningFolders, planningFiles}}},
 		{"own: beside pytest", both(pytestAndOwn),

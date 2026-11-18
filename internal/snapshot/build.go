@@ -162,8 +162,11 @@ func planningMatches(rules conventions.Rules, notes map[string]string, sides ...
 func noteFiles(rules conventions.Rules, nowPaths []string, atBase map[string]bool, renamedFrom map[string]string) map[string]string {
 	notes := map[string]string{}
 	for _, p := range nowPaths {
+		if _, renamed := renamedFrom[p]; atBase[p] || renamed {
+			continue
+		}
 		word, found := rules.NoteWord(p)
-		if _, renamed := renamedFrom[p]; !found || atBase[p] || renamed || recordPath(rules, p) || leftOut(rules, p) {
+		if !found || recordPath(rules, p) || leftOut(rules, p) {
 			continue
 		}
 		notes[p] = word

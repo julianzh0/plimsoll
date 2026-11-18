@@ -47,7 +47,7 @@ What it could not see is always named under "not analysed".
 | `shape.settings:.env.example` | a setting was added since the base | any addition |
 | `shape.function-complexity:<path>:<function>` | a function of a product file the change touched has a cognitive complexity over its limit now and is new, or was at or under it at the base and rose by 8 or more; and it nests control flow 4 levels deep, or holds a block of at least 4 statements and 40 tokens that the change wrote twice inside it. Left out: code the change moved or split out of another function, code found in a file at the base, files from another project (by their header or a vendor folder with a licence), benchmarks, generated and minified files. At most three per change, the largest rise first (candidate) | 25, plimsoll's rule, read blind on agent pull requests; counted as SonarQube's cognitive complexity |
 | `shape.function-nesting:<path>:<function>` | a function of a product file the change touched nests control flow 4 or more levels deep now and deeper than at the base (new), or was that deep and got deeper (grown). The same code is left out; at most three per change (candidate). In `report` only | 4 levels, CodeScene's threshold for deep nesting |
-| `process.planning-file:<path>` | a file under a planning or review path (below, and those `.plimsoll.toml` declares) is tracked now and was not at the base | repositories hold no planning records |
+| `process.planning-file:<path>` | a file under a planning or review path (below, and those `.plimsoll.toml` declares) is tracked now and was not at the base; or a Markdown file the change added has a working-note name (below; candidate) | repositories hold no planning records; for a name, notes about one change do not belong in the merged repository |
 | `process.doc-churn:repository` | over the commits since the base, documentation churn is above product plus test churn | documentation above code |
 | `process.limit-change:<key>` | `.plimsoll.toml` sets a limit to another value now than at the base, so a change that raised a limit to clear a mark says so | any change |
 | `process.declaration-change:<key>` | `.plimsoll.toml` declares other values under a key of `[layout]`, `[ignore]`, `[imports]` or `[defaults]`, or other entries in `[acknowledged]` (the key is then `acknowledged`), now than at the base; editing only a reason is no change | any change |
@@ -79,8 +79,8 @@ lies. A repository adds its own with `planning_folders` and `planning_files` (be
 
 A Markdown file (`.md`, `.mdx`) that a change adds outside these paths, the measurement paths, skipped folders and
 `[ignore]`, is also a planning or review record when its name holds a working-note word. That mark is a candidate (a
-name is an inference), shows once, in the change that adds the file, and never stands; it changes no churn row or
-count. A file tracked at the base, or the new name of a rename git detects, is not added. The name is split into words
+name is an inference), shows once, in the change that adds the file, and never stands; it counts in "tracked planning
+and review files" of that answer but changes no churn row and no record flag. A file tracked at the base, or the new name of a rename git detects, is not added. The name is split into words
 at `_`, `-`, `.`, spaces and a change from a lower-case letter or digit to an upper-case one; words compare in any case
 (ASCII letters only), and the answer names the first matching word from the left.
 

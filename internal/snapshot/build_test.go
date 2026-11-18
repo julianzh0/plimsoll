@@ -326,6 +326,7 @@ func TestBuildListsAddedWorkingNoteNames(t *testing.T) {
 	now := map[string]string{
 		"src/a.ts": "x\n", "OLD_STATUS_REPORT.md": "x\n", "IMPLEMENTATION_SUMMARY.md": "x\n", "docs/fix-status.md": "x\n",
 		"README.md": "x\n", "evidence/RESULTS_SUMMARY.md": "x\n", "FIX_SUMMARY.md": "x\n", "FINAL.md": "x\n", "docs/plans/x.md": "x\n",
+		"node_modules/x/FINAL_STATUS.md": "x\n", "vendored/STATUS_REPORT.md": "x\n", ".plimsoll.toml": "[ignore]\nfolders = [\"vendored\"]\n",
 	}
 	source := snapshottest.Files(base, now)
 	source.Changes = append(source.Changes, snapshot.Change{Path: "FIX_SUMMARY.md", From: "notes.md"}) // a rename git detects
@@ -343,6 +344,10 @@ func TestBuildListsAddedWorkingNoteNames(t *testing.T) {
 	}
 	if s.BasePath("FIX_SUMMARY.md") != "notes.md" {
 		t.Errorf("BasePath(FIX_SUMMARY.md) = %q, want notes.md", s.BasePath("FIX_SUMMARY.md"))
+	}
+	byHand := snapshot.Snapshot{Changes: []snapshot.Change{{Path: "b.md", From: "a.md"}}}
+	if byHand.BasePath("b.md") != "a.md" || byHand.BasePath("c.md") != "c.md" {
+		t.Errorf("BasePath on a snapshot made without Build = %q, %q; want a.md, c.md", byHand.BasePath("b.md"), byHand.BasePath("c.md"))
 	}
 }
 

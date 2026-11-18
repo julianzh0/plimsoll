@@ -103,6 +103,26 @@ func TestIntegrationReadNamesTheBasesTrackedLinks(t *testing.T) {
 	}
 }
 
+func TestIntegrationReadLeavesOutALinkInTheWorkingTree(t *testing.T) {
+	repo := gitrepotest.New(t)
+	base := repo.Commit(gitrepotest.Commit{Message: "base", Files: map[string]string{"notes.txt": "x\n"}})
+	repo.Write("FINAL.md", "done\n")
+	repo.Git("add", "FINAL.md")
+	if err := os.Remove(filepath.Join(repo.Dir, "FINAL.md")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("notes.txt", filepath.Join(repo.Dir, "FINAL.md")); err != nil {
+		t.Fatal(err)
+	}
+	src, err := read(t, repo.Dir, base)
+	if err != nil {
+		t.Fatalf("Read = %v", err)
+	}
+	if content(src.Now, "FINAL.md") != "<absent>" {
+		t.Errorf("Read.Now holds FINAL.md, a link in the working tree; want no entry")
+	}
+}
+
 func TestIntegrationReadLeavesOutTheFilesOfADeletedFolder(t *testing.T) {
 	repo := gitrepotest.New(t, gitrepotest.Commit{Message: "base", Files: map[string]string{
 		"a.ts": "x\n", "lib/b.ts": "x\n", "lib/notes.md": "# notes\n", "lib/deep/c.ts": "x\n"}})
