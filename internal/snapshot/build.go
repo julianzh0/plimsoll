@@ -80,6 +80,7 @@ func Build(source Source, rules conventions.Rules, readings *Readings) Snapshot 
 		DeclaredLimits:      declaredLimits,
 		Declarations:        declaredValues(rules, ownNow, ownBefore),
 		OwnFileProblems:     ownNow.problems,
+		Acknowledged:        Acknowledged{Table: rules.AcknowledgedTable, IDs: ownNow.ack.applied, Problems: ownNow.ack.problems()},
 		OwnFileUnreadAtBase: ownBefore.unreadable,
 		Before:              before,
 		Now:                 now,

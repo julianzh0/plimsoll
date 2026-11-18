@@ -3,6 +3,7 @@ package snapshot_test
 import (
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/julianzh0/plimsoll/internal/conventions"
@@ -122,5 +123,67 @@ func TestTheOwnFileIgnoresFoldersAndFiles(t *testing.T) {
 	plain := snapshot.Build(snapshottest.Files(nil, map[string]string{"SPEC.md": "x\n", "src/app.groovy": "x\n"}), conventions.Default(), snapshottest.Readings(t))
 	if !slices.Equal(plain.Now.Planning, []string{"SPEC.md"}) {
 		t.Errorf("Build(no own file).Now.Planning = %q, want SPEC.md by the defaults", plain.Now.Planning)
+	}
+}
+
+func TestBuildReadsTheAcknowledgedTableOfTheOwnFile(t *testing.T) {
+	long := strings.Repeat("ü", 200)
+	pair := "co-change.pair:src/store.ts+tests/fakes/store.ts"
+	cases := []struct {
+		name     string
+		now      string
+		ids      []string
+		problems []string
+	}{
+		{"identifiers as printed, a reason with an apostrophe",
+			"[acknowledged]\n\"process.planning-file:SPEC.md\" = \"a lasting spec, it's ours\" # kept\n" +
+				"  \"" + pair + "\" = 'they share a schema'\n\"shape.file-size:src/pages/[id]/a=b#c.tsx\" = \"routes\"\n",
+			[]string{"process.planning-file:SPEC.md", pair, "shape.file-size:src/pages/[id]/a=b#c.tsx"}, nil},
+		{"a malformed line between two good ones",
+			"[acknowledged]\n\"links.cycle:src/a.ts\" = \"x\"\nlinks.cycle:src/b.ts = \"y\"\n\"settings.defined-twice:POOL\" = \"z\"\n",
+			[]string{"links.cycle:src/a.ts", "settings.defined-twice:POOL"}, []string{"1 line is no `\"identifier\" = \"reason\"` entry; it is not applied"}},
+		{"identifiers not in their form",
+			"[acknowledged]\n\"shape.file-size:a b.ts\" = \"x\"\n\"Shape.file-size:a.ts\" = \"x\"\n\"shape.file-size:\" = \"x\"\n",
+			nil, []string{"3 identifiers are no plain mark identifiers; they are not applied"}},
+		{"no reason, a blank one, a number, text after the string",
+			"[acknowledged]\n\"links.cycle:a\" =\n\"links.cycle:b\" = \"  \"\n\"links.cycle:c\" = 3\n\"links.cycle:d\" = \"x\" y\n",
+			nil, []string{"`links.cycle:a` has no reason written as text on its line; it is not applied",
+				"`links.cycle:b` has no reason written as text on its line; it is not applied",
+				"`links.cycle:c` has no reason written as text on its line; it is not applied",
+				"`links.cycle:d` has no reason written as text on its line; it is not applied"}},
+		{"a reason of 200 characters and one of 201",
+			"[acknowledged]\n\"links.cycle:a\" = \"" + long + "\"\n\"links.cycle:b\" = \"" + long + "x\"\n",
+			[]string{"links.cycle:a"}, []string{"the reason of `links.cycle:b` is longer than 200 characters; it is not applied"}},
+		{"a quoted identifier without = and one identifier out of form, a reason with an escaped quote",
+			"[acknowledged]\n\"links.cycle:a\" \"x\"\n\"Links.cycle:b\" = \"x\"\n\"links.cycle:c\" = \"say \\\"so\\\" here\"\n",
+			[]string{"links.cycle:c"}, []string{"1 line is no `\"identifier\" = \"reason\"` entry; it is not applied",
+				"1 identifier is no plain mark identifier; it is not applied"}},
+		{"set twice, the first entry unusable",
+			"[acknowledged]\n\"links.cycle:a\" = \"\"\n\"links.cycle:a\" = \"x\"\n",
+			nil, []string{"`links.cycle:a` has no reason written as text on its line; it is not applied", "`links.cycle:a` is set twice; its first entry decides"}},
+	}
+	for _, tc := range cases {
+		s := snapshot.Build(snapshottest.Files(nil, map[string]string{"src/a.ts": "a\n", ".plimsoll.toml": tc.now}), conventions.Default(), snapshottest.Readings(t))
+		if !slices.Equal(s.Acknowledged.IDs, tc.ids) || !slices.Equal(s.Acknowledged.Problems, tc.problems) || len(s.OwnFileProblems) != 0 {
+			t.Errorf("%s: ids %q, problems %q, file problems %q; want %q, %q, none", tc.name, s.Acknowledged.IDs, s.Acknowledged.Problems, s.OwnFileProblems, tc.ids, tc.problems)
+		}
+	}
+
+	declared := snapshot.Build(snapshottest.Files(
+		map[string]string{"src/a.ts": "a\n", ".plimsoll.toml": "[acknowledged]\n\"links.cycle:a\" = \"x\"\n\"links.cycle:b\" = \"\"\n"},
+		map[string]string{"src/a.ts": "a\n", ".plimsoll.toml": "[acknowledged]\n\"links.cycle:a\" = \"\"\n\"links.cycle:b\" = \"y\"\n"}),
+		conventions.Default(), snapshottest.Readings(t))
+	want := []snapshot.DeclaredValues{{Table: "acknowledged", Key: "acknowledged", Name: "acknowledged items",
+		Now: []string{"links.cycle:a", "links.cycle:b"}, Before: []string{"links.cycle:a", "links.cycle:b"}, Whole: true, Compared: true}}
+	removed := snapshot.Build(snapshottest.Files(
+		map[string]string{"src/a.ts": "a\n", ".plimsoll.toml": "[acknowledged]\n\"links.cycle:a\" = \"x\"\n"},
+		map[string]string{"src/a.ts": "a\n", ".plimsoll.toml": "[limits]\nfile_lines = 1500\n"}),
+		conventions.Default(), snapshottest.Readings(t))
+	if want := []snapshot.DeclaredValues{{Table: "acknowledged", Key: "acknowledged", Name: "acknowledged items", Before: []string{"links.cycle:a"}, Whole: true, Compared: true}}; !reflect.DeepEqual(removed.Declarations, want) {
+		t.Errorf("the table removed: Declarations %+v, want %+v", removed.Declarations, want)
+	}
+	if !reflect.DeepEqual(declared.Declarations, want) || !slices.Equal(declared.Acknowledged.IDs, []string{"links.cycle:b"}) {
+		t.Errorf("reasons edited on both sides: Declarations %+v, applied %q; want %+v (the identifiers in their form, whatever their reason), [links.cycle:b]",
+			declared.Declarations, declared.Acknowledged.IDs, want)
 	}
 }

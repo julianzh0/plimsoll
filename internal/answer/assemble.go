@@ -44,9 +44,16 @@ func Assemble(q Question, version string, s snapshot.Snapshot, results []Result)
 		NotAnalysed: []NotAnalysed{},
 	}
 	var standing []Mark
+	acknowledged := map[string]bool{} // the table's identifiers; true once a detector returned an item with it
+	for _, id := range s.Acknowledged.IDs {
+		acknowledged[id] = false
+	}
 	for _, result := range results {
 		a.Detectors = append(a.Detectors, result.Detector)
 		for _, m := range result.Findings.Marks {
+			if _, listed := acknowledged[m.ID]; listed {
+				acknowledged[m.ID] = true
+			}
 			if (m.Change == New || m.Change == Grown) && reportOnly(s.ReportOnly, m) {
 				a.ReportOnly = append(a.ReportOnly, m)
 				continue
@@ -79,10 +86,19 @@ func Assemble(q Question, version string, s snapshot.Snapshot, results []Result)
 		}
 	}
 	for _, m := range standing {
-		if !shownAsMark(a.Marks, m.Subject) {
+		_, listed := acknowledged[m.ID]
+		switch {
+		case shownAsMark(a.Marks, m.Subject):
+		case listed:
+			a.Acknowledged = append(a.Acknowledged, m)
+		default:
 			a.Standing = append(a.Standing, m)
 		}
 	}
+	if len(a.Acknowledged) > 0 {
+		a.AcknowledgedIn = s.OwnFile
+	}
+	a.NotAnalysed = append(a.NotAnalysed, acknowledgedNotAnalysed(s, acknowledged)...)
 	a.Counts.Resolved = len(a.Resolved)
 	a.Marks = Order(a.Marks)
 	if q == Status && len(a.Marks) > statusMarks {
@@ -178,9 +194,14 @@ func QuotedList(names []string) string { return strings.Join(Quoted(names), ", "
 
 // Added are the values now that before does not hold, each once, in the order of now: what a change added.
 func Added(before, now []string) []string {
+	seen := make(map[string]bool, len(before)+len(now))
+	for _, value := range before {
+		seen[value] = true
+	}
 	var added []string
 	for _, value := range now {
-		if !slices.Contains(before, value) && !slices.Contains(added, value) {
+		if !seen[value] {
+			seen[value] = true
 			added = append(added, value)
 		}
 	}
@@ -209,4 +230,20 @@ func declaredIn(s snapshot.Snapshot) string {
 		return s.OwnFile
 	}
 	return ""
+}
+
+// acknowledgedNotAnalysed are the "not analysed" entries of the acknowledged table: its problems, then each entry
+// whose identifier no detector returned for this question (stale against this base), in file order.
+func acknowledgedNotAnalysed(s snapshot.Snapshot, returned map[string]bool) []NotAnalysed {
+	prefix := fmt.Sprintf("`%s` `[%s]`: ", s.OwnFile, s.Acknowledged.Table)
+	var entries []NotAnalysed
+	for _, problem := range s.Acknowledged.Problems {
+		entries = append(entries, NotAnalysed{Detector: repositoryEntry, What: prefix + problem})
+	}
+	for _, id := range s.Acknowledged.IDs {
+		if !returned[id] {
+			entries = append(entries, NotAnalysed{Detector: repositoryEntry, What: prefix + fmt.Sprintf("`%s` matches no item of this answer; it acknowledges nothing", id)})
+		}
+	}
+	return entries
 }

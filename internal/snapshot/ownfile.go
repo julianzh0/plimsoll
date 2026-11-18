@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/julianzh0/plimsoll/internal/conventions"
 )
@@ -17,6 +18,7 @@ import (
 type DeclaredValues struct {
 	Table, Key, Name string
 	Now, Before      []string
+	Whole            bool // a whole table whose keys are the values; Key is then the table's name
 	Compared         bool
 	UnreadAtBase     bool
 }
@@ -30,6 +32,68 @@ type ownFile struct {
 	unread     map[string]bool     // text keys whose value could not be read
 	single     map[string]string   // per key that holds one name and could not be used: its problem phrase
 	problems   []string            // what the file says that is not read: phrases, sorted, each once
+	ack        acknowledged        // its acknowledged table
+}
+
+// acknowledged is what one side's acknowledged table says: the identifiers in their form, each once, the first of
+// them whose entry has a usable reason (applied), and its problem phrases.
+type acknowledged struct {
+	inForm, applied    []string
+	seen               map[string]bool // the identifiers in inForm
+	noEntry, notInForm int
+	named              []string // phrases that name an identifier in its form, in file order
+}
+
+// readAcknowledged reads one line of the acknowledged table: a quoted identifier, `=`, a quoted reason, and nothing
+// else. The identifier is kept byte for byte; the reason is only checked.
+func (a *acknowledged) read(line string) {
+	id, rest, ok := quotedString(strings.TrimSpace(line))
+	rest, assigns := strings.CutPrefix(strings.TrimLeft(rest, " \t"), "=")
+	switch {
+	case !ok || !assigns:
+		a.noEntry++
+		return
+	case !conventions.MarkID(id):
+		a.notInForm++
+		return
+	case a.seen[id]:
+		a.named = append(a.named, fmt.Sprintf("`%s` is set twice; its first entry decides", id))
+		return
+	}
+	if a.seen == nil {
+		a.seen = map[string]bool{}
+	}
+	a.seen[id] = true
+	a.inForm = append(a.inForm, id)
+	reason, after, ok := quotedString(strings.TrimSpace(rest))
+	switch {
+	case !ok || strings.TrimSpace(after) != "" || strings.TrimSpace(reason) == "":
+		a.named = append(a.named, fmt.Sprintf("`%s` has no reason written as text on its line; it is not applied", id))
+	case utf8.RuneCountInString(reason) > conventions.ReasonLength:
+		a.named = append(a.named, fmt.Sprintf("the reason of `%s` is longer than %d characters; it is not applied", id, conventions.ReasonLength))
+	default:
+		a.applied = append(a.applied, id)
+	}
+}
+
+// problems are the table's phrases: counted lines and identifiers first, then the named ones in file order.
+func (a acknowledged) problems() []string {
+	var phrases []string
+	if a.noEntry > 0 {
+		phrases = append(phrases, counted(a.noEntry, "line is no `\"identifier\" = \"reason\"` entry; it is", "lines are no `\"identifier\" = \"reason\"` entries; they are")+" not applied")
+	}
+	if a.notInForm > 0 {
+		phrases = append(phrases, counted(a.notInForm, "identifier is no plain mark identifier; it is", "identifiers are no plain mark identifiers; they are")+" not applied")
+	}
+	return append(phrases, a.named...)
+}
+
+// counted puts a count before the singular or the plural phrase.
+func counted(n int, one, many string) string {
+	if n == 1 {
+		return "1 " + one
+	}
+	return fmt.Sprintf("%d %s", n, many)
 }
 
 // readOwnFile reads one side's own file in one pass: its limits and its text keys. A table, a key or a value it does
@@ -45,7 +109,7 @@ func readOwnFile(rules conventions.Rules, content map[string][]byte) ownFile {
 		o.unreadable, o.problems = true, []string{"it could not be read"}
 		return o
 	}
-	known := map[string]bool{rules.LimitsTable: true}
+	known := map[string]bool{rules.LimitsTable: true, rules.AcknowledgedTable: true}
 	for _, k := range rules.OwnKeys {
 		known[k.Table] = true
 	}
@@ -64,6 +128,10 @@ func readOwnFile(rules conventions.Rules, content map[string][]byte) ownFile {
 		}
 		code := uncommented(lines[i])
 		if strings.TrimSpace(code) == "" {
+			continue
+		}
+		if table == rules.AcknowledgedTable {
+			o.ack.read(code)
 			continue
 		}
 		name, value, assigns := strings.Cut(code, "=")
@@ -236,6 +304,12 @@ func declaredValues(rules conventions.Rules, now, before ownFile) []DeclaredValu
 			Table: k.Table, Key: k.Key, Name: k.Name, Now: nowValues, Before: beforeValues,
 			Compared:     !now.unreadable && !before.unreadable && !now.unread[k.Key] && !before.unread[k.Key],
 			UnreadAtBase: before.unread[k.Key],
+		})
+	}
+	if len(now.ack.inForm) > 0 || len(before.ack.inForm) > 0 {
+		declared = append(declared, DeclaredValues{
+			Table: rules.AcknowledgedTable, Key: rules.AcknowledgedTable, Name: rules.AcknowledgedName,
+			Now: now.ack.inForm, Before: before.ack.inForm, Whole: true, Compared: !now.unreadable && !before.unreadable,
 		})
 	}
 	return declared

@@ -160,10 +160,21 @@ func declarationMarks(s snapshot.Snapshot) []answer.Mark {
 			Subject:    answer.Subject{Kind: "file", Paths: []string{s.OwnFile}, Names: added},
 			Confidence: answer.Exact,
 			Measured:   answer.Measured{Value: float64(len(d.Now)), Before: &before, LimitSource: "any change", Unit: d.Name},
-			Hint:       fmt.Sprintf("compare `[%s]` `%s` of `%s` at the base and now.", d.Table, d.Key, s.OwnFile),
+			Hint:       declarationHint(d, s.OwnFile),
 		})
 	}
 	return marks
+}
+
+// declaredNamed is how many added values a declaration's sentence names before it counts the rest: a table of
+// acknowledged items can hold hundreds.
+const declaredNamed = 5
+
+func declarationHint(d snapshot.DeclaredValues, ownFile string) string {
+	if d.Whole {
+		return fmt.Sprintf("compare the `[%s]` table of `%s` at the base and now.", d.Table, ownFile)
+	}
+	return fmt.Sprintf("compare `[%s]` `%s` of `%s` at the base and now.", d.Table, d.Key, ownFile)
 }
 
 // notCompared are the "not analysed" entries for a declaration the base side could not give.

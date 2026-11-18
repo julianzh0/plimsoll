@@ -1,6 +1,7 @@
 package process
 
 import (
+	"fmt"
 	"reflect"
 	"slices"
 	"strings"
@@ -193,6 +194,14 @@ func TestAChangeToTheRepositorysOwnFileIsMarked(t *testing.T) {
 		{"the default base changed", ruleDeclarationChange, "[defaults]\nbase = \"main\"\n", "[defaults]\nbase = \"develop\"\n",
 			[]string{"This change altered the default base declared in `.plimsoll.toml`: added `develop`, removed 1; 1 declared now, 1 at the base."}},
 		{"not read at the base", ruleDeclarationChange, layout("test_folders = 3\n"), layout("test_folders = [\"checks\"]\n"), nil},
+		{"six ignored files, five named", ruleDeclarationChange, "", "[ignore]\nfiles = [\"a.x\", \"b.x\", \"c.x\", \"d.x\", \"e.x\", \"f.x\"]\n",
+			[]string{"This change altered the ignored files declared in `.plimsoll.toml`: added `a.x`, `b.x`, `c.x`, `d.x`, `e.x` and 1 more; 6 declared now, 0 at the base."}},
+		{"seven acknowledged items, five named", ruleDeclarationChange, "[acknowledged]\n\"links.cycle:z\" = \"x\"\n",
+			"[acknowledged]\n" + acknowledgedLines("a", "b", "c", "d", "e", "f", "g"),
+			[]string{"This change altered the acknowledged items declared in `.plimsoll.toml`: added `links.cycle:a`, `links.cycle:b`, `links.cycle:c`, `links.cycle:d`, `links.cycle:e` and 2 more, removed 1; 7 declared now, 1 at the base."}},
+		{"a table added", ruleDeclarationChange, "", "[acknowledged]\n" + acknowledgedLines("a"),
+			[]string{"This change altered the acknowledged items declared in `.plimsoll.toml`: added `links.cycle:a`; 1 declared now, 0 at the base."}},
+		{"a reason edited", ruleDeclarationChange, "[acknowledged]\n\"links.cycle:a\" = \"x\"\n", "[acknowledged]\n\"links.cycle:a\" = \"\"\n", nil},
 	}
 	for _, tc := range cases {
 		s, f := detect(t, snapshottest.Files(files(tc.base), files(tc.now)))
@@ -235,6 +244,14 @@ func TestAChangeToTheRepositorysOwnFileIsMarked(t *testing.T) {
 		t.Errorf("the evidence = %q, want %q", got, evidence)
 	}
 
+	s, f = detect(t, snapshottest.Files(files("[acknowledged]\n"+acknowledgedLines("a", "z")), files("[acknowledged]\n"+acknowledgedLines("a", "b", "c"))))
+	at := slices.IndexFunc(f.Marks, func(m answer.Mark) bool { return m.ID == "process.declaration-change:acknowledged" })
+	tableEvidence := []string{"`.plimsoll.toml` `[acknowledged]` at the base: 2 entries", "`.plimsoll.toml` `[acknowledged]` now: 3 entries",
+		"added: `links.cycle:b`", "added: `links.cycle:c`", "removed: `links.cycle:z`"}
+	if at < 0 || f.Marks[at].Hint != "compare the `[acknowledged]` table of `.plimsoll.toml` at the base and now." || !slices.Equal((Detector{}).Explain(s, f.Marks[at]), tableEvidence) {
+		t.Errorf("the acknowledged table changed: marks %+v; want its own mark with the table's hint and evidence %q", f.Marks, tableEvidence)
+	}
+
 	_, f = detect(t, snapshottest.Files(files(layout("test_folders = 3\n")), files(layout("test_folders = [\"checks\"]\n"))))
 	if entry := "`.plimsoll.toml`: `test_folders` could not be read at the base, so a change to it is not marked"; !slices.Contains(f.NotAnalysed, entry) {
 		t.Errorf("a key not read at the base: not analysed %q, want %q", f.NotAnalysed, entry)
@@ -261,4 +278,13 @@ func TestAChangeToTheRepositorysOwnFileIsMarked(t *testing.T) {
 	if !slices.Contains(f.Notes, note) || !slices.Contains(f.NotAnalysed, problem) {
 		t.Errorf("notes %q, not analysed %q; want %q and %q", f.Notes, f.NotAnalysed, note, problem)
 	}
+}
+
+// acknowledgedLines are entries of the acknowledged table for the import rings of the given files.
+func acknowledgedLines(files ...string) string {
+	var lines strings.Builder
+	for _, f := range files {
+		fmt.Fprintf(&lines, "\"links.cycle:%s\" = \"one ring on purpose\"\n", f)
+	}
+	return lines.String()
 }

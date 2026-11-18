@@ -23,10 +23,12 @@ type Snapshot struct {
 	// limits it sets on either side, Declarations the text keys it declares on either side, and OwnFileProblems what
 	// the file says now that is not read, each a phrase. OwnFileUnreadAtBase says the file could not be read at the
 	// base, so a change to its declarations is not compared.
-	BaseDeclared        bool // the question named no base; Base is the one the repository declares
-	OwnFile             string
-	DeclaredLimits      []DeclaredLimit
-	Declarations        []DeclaredValues
+	BaseDeclared   bool // the question named no base; Base is the one the repository declares
+	OwnFile        string
+	DeclaredLimits []DeclaredLimit
+	Declarations   []DeclaredValues
+	// Acknowledged is what now's own file acknowledges: the mark identifiers whose entries apply, and its problems.
+	Acknowledged        Acknowledged
 	OwnFileProblems     []string
 	OwnFileUnreadAtBase bool
 	Before              Tree
@@ -322,4 +324,13 @@ type Functions struct {
 type FileCount struct {
 	Path  string
 	Count int
+}
+
+// Acknowledged is the table of now's own file that acknowledges standing items: Table is its name, IDs the
+// identifiers of the entries that apply, in file order, each once, and Problems its phrases, complete in themselves:
+// counted lines and identifiers first, then named ones in file order. A reason is never kept.
+type Acknowledged struct {
+	Table    string
+	IDs      []string
+	Problems []string
 }

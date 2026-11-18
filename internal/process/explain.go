@@ -66,6 +66,9 @@ func declarationEvidence(s snapshot.Snapshot, m answer.Mark) []string {
 		return nil
 	}
 	d := s.Declarations[at]
+	if d.Whole {
+		return tableEvidence(s.OwnFile, d)
+	}
 	side := func(values []string) string {
 		if len(values) == 0 {
 			return "not set"
@@ -81,6 +84,28 @@ func declarationEvidence(s snapshot.Snapshot, m answer.Mark) []string {
 	}
 	if removed := answer.Added(d.Now, d.Before); len(removed) > 0 {
 		lines = append(lines, "removed: "+answer.QuotedList(removed))
+	}
+	return lines
+}
+
+// tableEvidence gives a whole table's entries on both sides by count, then each identifier added or removed on a
+// line of its own, so the evidence cap applies to a long table.
+func tableEvidence(ownFile string, d snapshot.DeclaredValues) []string {
+	entries := func(values []string) string {
+		if len(values) == 0 {
+			return "no entry"
+		}
+		return answer.Agree(len(values), "entry", "entries")
+	}
+	lines := []string{
+		fmt.Sprintf("`%s` `[%s]` at the base: %s", ownFile, d.Table, entries(d.Before)),
+		fmt.Sprintf("`%s` `[%s]` now: %s", ownFile, d.Table, entries(d.Now)),
+	}
+	for _, id := range answer.Added(d.Before, d.Now) {
+		lines = append(lines, fmt.Sprintf("added: `%s`", id))
+	}
+	for _, id := range answer.Added(d.Now, d.Before) {
+		lines = append(lines, fmt.Sprintf("removed: `%s`", id))
 	}
 	return lines
 }

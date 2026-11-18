@@ -44,17 +44,11 @@ func stringArray(text string) (items []string, closed bool) {
 		case ']':
 			return items, true
 		case '"', '\'':
-			end := i + 1
-			for end < len(text) && text[end] != c && text[end] != '\n' {
-				if c == '"' && text[end] == '\\' {
-					end++
-				}
-				end++
-			}
-			if end >= len(text) || text[end] != c {
+			item, rest, ok := quotedString(text[i:])
+			if !ok {
 				return items, false
 			}
-			items, i = append(items, text[i+1:end]), end
+			items, i = append(items, item), len(text)-len(rest)-1
 		default:
 			return items, false
 		}
@@ -169,4 +163,23 @@ func tomlString(content []byte, table, key string) string {
 		return ""
 	}
 	return values[0]
+}
+
+// quotedString reads the basic or literal string that text starts with, on one line, and gives its content as
+// written (no escape is decoded) and the text after its closing quote. In a basic string a backslash takes the next
+// character with it, so an escaped quote does not end it.
+func quotedString(text string) (content, rest string, ok bool) {
+	if text == "" || text[0] != '"' && text[0] != '\'' {
+		return "", text, false
+	}
+	quote := text[0]
+	for end := 1; end < len(text) && text[end] != '\n'; end++ {
+		switch {
+		case quote == '"' && text[end] == '\\':
+			end++
+		case text[end] == quote:
+			return text[1:end], text[end+1:], true
+		}
+	}
+	return "", text, false
 }
