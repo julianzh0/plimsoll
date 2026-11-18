@@ -144,7 +144,7 @@ func (rs *Readings) read(language conventions.Language, grammar string, content 
 	}
 	query := language.Query
 	if w.declarations {
-		query += language.Declarations
+		query += language.Declarations + language.Units
 	}
 	result, err := rs.parser.Read(grammar, query+syntaxErrorPattern, content)
 	if err != nil && language.LineReadWhenBroken {

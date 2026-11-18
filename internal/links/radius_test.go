@@ -1,0 +1,193 @@
+package links
+
+import (
+	"fmt"
+	"maps"
+	"slices"
+	"strings"
+	"testing"
+
+	"github.com/julianzh0/plimsoll/internal/conventions"
+	"github.com/julianzh0/plimsoll/internal/snapshot"
+	"github.com/julianzh0/plimsoll/internal/snapshot/snapshottest"
+)
+
+// code writes, per language, a declaration of a function or type name whose body gives variant, a use of name, and
+// a comment that mentions name. In the JVM languages and C# a name is a class, the only top-level unit.
+type code struct {
+	declare func(name string, variant int) string
+	use     func(name string) string
+	comment func(name string) string
+}
+
+func codeOf(language string) code {
+	slash := func(name string) string { return "// " + name + " is mentioned here\n" }
+	switch language {
+	case "typescript":
+		return code{func(n string, v int) string { return fmt.Sprintf("export function %s() { return %d; }\n", n, v) },
+			func(n string) string { return fmt.Sprintf("export const use%s = %s();\n", n, n) }, slash}
+	case "python":
+		return code{func(n string, v int) string { return fmt.Sprintf("def %s():\n    return %d\n", n, v) },
+			func(n string) string { return fmt.Sprintf("use_%s = %s()\n", n, n) },
+			func(n string) string { return "# " + n + " is mentioned here\n" }}
+	case "dart":
+		return code{func(n string, v int) string { return fmt.Sprintf("int %s() {\n  return %d;\n}\n", n, v) },
+			func(n string) string { return fmt.Sprintf("final use%s = %s();\n", n, n) }, slash}
+	case "go":
+		return code{func(n string, v int) string { return fmt.Sprintf("func %s() int { return %d }\n", n, v) },
+			func(n string) string { return fmt.Sprintf("var _ = %s\n", n) }, slash}
+	case "rust":
+		return code{func(n string, v int) string { return fmt.Sprintf("pub fn %s() -> u8 { %d }\n", n, v) },
+			func(n string) string { return fmt.Sprintf("pub fn use_%s() -> u8 { %s() }\n", n, n) }, slash}
+	case "java", "csharp":
+		return code{func(n string, v int) string { return fmt.Sprintf("class %s { int V() { return %d; } }\n", n, v) },
+			func(n string) string { return fmt.Sprintf("class Use%s { int x = %s.V(); }\n", n, n) }, slash}
+	case "kotlin":
+		return code{func(n string, v int) string { return fmt.Sprintf("fun %s() = %d\n", n, v) },
+			func(n string) string { return fmt.Sprintf("val use%s = %s()\n", n, n) }, slash}
+	case "swift":
+		return code{func(n string, v int) string { return fmt.Sprintf("func %s() -> Int { return %d }\n", n, v) },
+			func(n string) string { return fmt.Sprintf("let use%s = %s()\n", n, n) }, slash}
+	case "c", "cpp":
+		return code{func(n string, v int) string { return fmt.Sprintf("int %s(void) { return %d; }\n", n, v) },
+			func(n string) string { return fmt.Sprintf("int use_%s(void) { return %s(); }\n", n, n) }, slash}
+	}
+	return code{}
+}
+
+// radiusOf builds a snapshot and gives each changed file as "<path> <state>" and the untouched users' paths.
+func radiusOf(t *testing.T, source snapshot.Source) (states, users []string) {
+	t.Helper()
+	r := snapshot.Build(source, conventions.Default(), snapshottest.Readings(t)).Radius
+	for _, c := range r.Changed {
+		states = append(states, fmt.Sprintf("%s %d %s", cmpOr(c.Path, c.BasePath), c.State, c.Reason))
+	}
+	for _, u := range r.Users {
+		users = append(users, u.Path)
+	}
+	return states, users
+}
+
+func cmpOr(a, b string) string {
+	if a != "" {
+		return a
+	}
+	return b
+}
+
+func TestTheBlastRadiusCountsTheFilesThatUseANameTheChangeAlteredOrRemoved(t *testing.T) {
+	eachLanguage(t, func(t *testing.T, name string, c languageCase) {
+		k := codeOf(name)
+		a, b, d, e := c.product("a"), c.product("b"), c.product("d"), c.product("e")
+		head := c.importing(a, nil)
+		base := c.tree(map[string]string{
+			a: head + k.declare("Run", 1) + k.declare("Other", 1),
+			b: c.importing(b, []string{a}) + k.use("Run"),
+			d: c.importing(d, []string{a}) + k.use("Other"),
+			e: c.importing(e, []string{a}) + k.comment("Run"),
+		})
+		cases := []struct {
+			label   string
+			changed string
+			state   snapshot.FileState
+			users   []string
+		}{
+			{"a comment", head + k.comment("Run") + k.declare("Run", 1) + k.declare("Other", 1), snapshot.NothingAltered, nil},
+			{"an added declaration", head + k.declare("Run", 1) + k.declare("Other", 1) + k.declare("Added", 1), snapshot.NothingAltered, nil},
+			{"declarations reordered", head + k.declare("Other", 1) + k.declare("Run", 1), snapshot.NothingAltered, nil},
+			{"Run's body", head + k.declare("Run", 2) + k.declare("Other", 1), snapshot.ByName, []string{b}},
+			{"Run removed", head + k.declare("Other", 1), snapshot.ByName, []string{b}},
+		}
+		for _, cs := range cases {
+			now := maps.Clone(base)
+			now[a] = cs.changed
+			states, users := radiusOf(t, snapshottest.Files(base, now))
+			if len(states) != 1 || !strings.HasPrefix(states[0], fmt.Sprintf("%s %d ", a, cs.state)) || !slices.Equal(users, cs.users) {
+				t.Errorf("%s: radius = %q, users %q; want %s in state %d, users %q", cs.label, states, users, a, cs.state, cs.users)
+			}
+		}
+	})
+}
+
+func TestTheBlastRadiusCarriesNamesAndCountsWholeFilesWhereNamesCannotBeRead(t *testing.T) {
+	eachLanguage(t, func(t *testing.T, name string, c languageCase) {
+		k := codeOf(name)
+		a, b, d, f, g := c.product("a"), c.product("b"), c.product("d"), c.product("f"), c.product("g")
+		head := c.importing(a, nil)
+		base := c.tree(map[string]string{
+			a: head + k.declare("Run", 1),
+			b: c.importing(b, []string{a}) + k.use("Run"),
+			d: c.importing(d, []string{a}) + k.declare("Unrelated", 1),
+			f: c.importing(f, []string{b}) + k.use("Run"),
+			g: c.importing(g, []string{b}) + k.declare("Elsewhere", 1),
+		})
+		check := func(label string, now map[string]string, wantState snapshot.FileState, wantUsers []string) {
+			t.Helper()
+			states, users := radiusOf(t, snapshottest.Files(base, now))
+			if len(states) != 1 || !strings.HasPrefix(states[0], fmt.Sprintf("%s %d ", a, wantState)) || !slices.Equal(users, wantUsers) {
+				t.Errorf("%s: radius = %q, users %q; want %s in state %d, users %q", label, states, users, a, wantState, wantUsers)
+			}
+		}
+		changedBody := maps.Clone(base)
+		changedBody[a] = head + k.declare("Run", 2)
+		// b uses Run and passes it on: f, which imports b and holds Run, counts; g, which imports b, does not
+		check("Run's body", changedBody, snapshot.ByName, []string{b, f})
+
+		broken := maps.Clone(base)
+		broken[a] = head + k.declare("Run", 2) + "}}} (((\n"
+		// its declarations cannot be read: every importer counts, none behind them
+		check("a syntax error", broken, snapshot.AsAWhole, []string{b, d})
+
+		brokenBoth, brokenComment := maps.Clone(base), maps.Clone(base)
+		brokenBoth[a] = head + k.declare("Run", 1) + "}}} (((\n"
+		brokenComment[a] = head + k.comment("Run") + k.declare("Run", 1) + "}}} (((\n"
+		states, users := radiusOf(t, snapshottest.Files(brokenBoth, brokenComment))
+		if len(states) != 1 || !strings.HasPrefix(states[0], fmt.Sprintf("%s %d ", a, snapshot.NothingAltered)) || len(users) != 0 {
+			t.Errorf("a comment in a file the parser cannot read: radius = %q, users %q; want nothing altered", states, users)
+		}
+
+		deleted := maps.Clone(base)
+		delete(deleted, a)
+		// a is gone with its folder or path: the files that imported it count whole
+		check("a deleted", deleted, snapshot.Deleted, []string{b, d})
+	})
+}
+
+func TestTheBlastRadiusAsksTheFilesThatNeedNoImport(t *testing.T) {
+	cases := []struct {
+		language string
+		base     map[string]string
+		changed  string
+		now      string
+		users    []string
+	}{
+		{"go", map[string]string{"go.mod": "module example.com/m\n",
+			"internal/a/a.go":     "package a\n\nfunc Run() int { return 1 }\n",
+			"internal/a/peer.go":  "package a\n\nvar x = Run()\n",
+			"internal/a/other.go": "package a\n\nvar y = 2\n"},
+			"internal/a/a.go", "package a\n\nfunc Run() int { return 2 }\n", []string{"internal/a/peer.go"}},
+		{"java", map[string]string{
+			"src/main/java/com/acme/a/A.java":     "package com.acme.a;\n\npublic class A { int v() { return 1; } }\n",
+			"src/main/java/com/acme/a/Peer.java":  "package com.acme.a;\n\nclass Peer { int x = new A().v(); }\n",
+			"src/test/java/com/acme/a/ATest.java": "package com.acme.a;\n\nclass ATest { A a; }\n",
+			"src/main/java/com/acme/b/Other.java": "package com.acme.b;\n\nclass Other { int A = 1; }\n"},
+			"src/main/java/com/acme/a/A.java", "package com.acme.a;\n\npublic class A { int v() { return 2; } }\n",
+			[]string{"src/main/java/com/acme/a/Peer.java", "src/test/java/com/acme/a/ATest.java"}},
+		{"c", map[string]string{
+			"src/codec.c": "#include \"codec.h\"\n\nint encode(int x) { return x; }\n",
+			"src/codec.h": "#pragma once\nint encode(int x);\n",
+			"src/main.c":  "#include \"codec.h\"\n\nint main(void) { return encode(1); }\n",
+			"src/other.c": "#include \"codec.h\"\n\nint other(void) { return 0; }\n"},
+			"src/codec.c", "#include \"codec.h\"\n\nint encode(int x) { return x + 1; }\n", []string{"src/codec.h", "src/main.c"}},
+	}
+	for _, c := range cases {
+		t.Run(c.language, func(t *testing.T) {
+			now := maps.Clone(c.base)
+			now[c.changed] = c.now
+			_, users := radiusOf(t, snapshottest.Files(c.base, now))
+			if !slices.Equal(users, c.users) {
+				t.Errorf("users = %q, want %q", users, c.users)
+			}
+		})
+	}
+}

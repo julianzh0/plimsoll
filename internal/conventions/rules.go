@@ -388,6 +388,12 @@ type Language struct {
 	//   @implicit a declared name a runtime or framework calls without its being written (a default export, a
 	//             decorated class); its declaration is never listed
 	Declarations string
+	// Units is the query of the comparison units of the blast radius, read with Declarations (units.go).
+	Units string
+	// Layout says which of a file's layout is code, for comparing a changed file's units.
+	LayoutCode LayoutCode
+	// Peers says which files use the file's declarations without an import of it.
+	Peers Peers
 	// Loaded are the files a framework of the language loads by convention: their declarations are no added code.
 	Loaded []Convention
 	// Library says when a file is part of a published library, whose exported declarations are no added code; nil
@@ -516,7 +522,7 @@ func Default() Rules {
 			ImportsNotFollowed: Limit{Value: 0.10, Source: "links checked against go list and dependency-cruiser, 2026-11"},
 		},
 		// One entry per language, each in its own file. A new language is one file and one line here.
-		Languages: []Language{typescriptLanguage(), goLanguage(), pythonLanguage(), dartLanguage(), javaLanguage(), kotlinLanguage(), rustLanguage(), csharpLanguage(), swiftLanguage(), cLanguage(), cppLanguage()},
+		Languages: withUnits([]Language{typescriptLanguage(), goLanguage(), pythonLanguage(), dartLanguage(), javaLanguage(), kotlinLanguage(), rustLanguage(), csharpLanguage(), swiftLanguage(), cLanguage(), cppLanguage()}),
 	}
 }
 

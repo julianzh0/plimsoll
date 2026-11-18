@@ -57,7 +57,9 @@ type Snapshot struct {
 	SyntaxErrors   []string // changed code files whose reading on either side met a syntax error; sorted, each once
 	// Functions are the functions of the changed product files that the change made complex or nested deeper.
 	Functions Functions
-	Named     []string // the files the caller named, cleaned, sorted, each once; nil when none
+	// Radius is the state of each changed code file and the files that use what it altered or removed (US-63).
+	Radius Radius
+	Named  []string // the files the caller named, cleaned, sorted, each once; nil when none
 }
 
 // PlanningMatch is the entry of the planning and review paths that a file matches, as an answer prints it: a default

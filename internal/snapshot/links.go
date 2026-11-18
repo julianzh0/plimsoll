@@ -121,7 +121,10 @@ type reading struct {
 	parsed      bool // the entry's grammar read the file
 	// declarations are the top-level names the file declares outside its test code, when it was read with them.
 	declarations []topName
-	testSpans    []span // the test code inside the file, by the entry's blocks
+	// units are the file's comparison units and pure imports (US-63), when it was read with its declarations.
+	units       []unit
+	pureImports []span
+	testSpans   []span // the test code inside the file, by the entry's blocks
 	// functions are the file's measured functions, when it was read with them; functionsUnread when the walk failed.
 	functions       []function
 	functionsUnread bool

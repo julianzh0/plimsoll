@@ -110,6 +110,8 @@ func Build(source Source, rules conventions.Rules, readings *Readings) Snapshot 
 		Additions:           additions(rules, source.Changes, now, atBase, source.Now, nowReadings, beforeReadings),
 		SyntaxErrors:        syntaxErrors(changed, nowReadings, beforeReadings),
 		Functions:           functionChanges(rules, source.Changes, measured, source.Missing, atBase, now, before, nowContent, beforeContent, nowReadings, beforeReadings),
+		Radius: blastRadius(radiusInput{rules: rules, changes: source.Changes, nowContent: nowContent, baseContent: beforeContent,
+			now: now, before: before, nowReadings: nowReadings, beforeReadings: beforeReadings, missing: source.Missing}),
 	}
 }
 
