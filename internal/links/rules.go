@@ -110,8 +110,12 @@ func checkOf(s snapshot.Snapshot, r snapshot.ImportRule, languages []snapshot.La
 		return 0, "", fmt.Sprintf("the imports of %s under %s are not read or not followed (%s)", answer.Plural(products, "product file"),
 			answer.Folder(r.From), named(slices.Concat(suffixes, languagesOver)))
 	case overLimit > 0:
-		partly = fmt.Sprintf("%d of the %s under %s are not checked, because their imports are not followed (%s)",
-			overLimit, answer.Plural(products, "product file"), answer.Folder(r.From), named(languagesOver))
+		verb := "are"
+		if overLimit == 1 {
+			verb = "is"
+		}
+		partly = fmt.Sprintf("%d of the %s under %s %s not checked, because their imports are not followed (%s)",
+			overLimit, answer.Plural(products, "product file"), answer.Folder(r.From), verb, named(languagesOver))
 	}
 	return importers, partly, ""
 }

@@ -200,7 +200,7 @@ func TestImportRulesSayWhatTheyCannotCheck(t *testing.T) {
 	python := map[string]string{"src/app/__init__.py": "", "src/domain/a.ts": "export const a = 1;\n", "src/adapters/b.ts": "export const b = 1;\n",
 		"src/domain/c.py": "import app.gone\nimport app.lost\n"}
 	f := detect(t, same(own(never, python)))
-	want := lead + "1 of the 2 product files under `src/domain/` are not checked, because their imports are not followed (`python`)"
+	want := lead + "1 of the 2 product files under `src/domain/` is not checked, because their imports are not followed (`python`)"
 	if len(f.NotAnalysedFirst) != 0 || len(f.NotAnalysed) == 0 || f.NotAnalysed[0] != want {
 		t.Errorf("a language over the limit beside one that is read: first %q, then %q; want %q first among links'", f.NotAnalysedFirst, f.NotAnalysed, want)
 	}
