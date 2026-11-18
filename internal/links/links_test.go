@@ -481,6 +481,9 @@ func (c languageCase) testFile(at string, targets ...string) string {
 	return c.importing(at, targets) + c.testBody + "\n"
 }
 
+// alteration is a line that changes the code outside any declaration in every language: the change's importers count.
+const alteration = "\nchanged(\n"
+
 // importersBase is the base tree of the importer tests: b, c, the test of b and a second test file import a; u imports
 // old; p imports ten further files, so one import that leads nowhere stays under the guard's limit.
 func (c languageCase) importersBase() map[string]string {
@@ -506,8 +509,8 @@ func TestImportersOfTheChangeCountDirectAndAtAnyDistance(t *testing.T) {
 		a := c.product("a")
 		base := c.importersBase()
 		now := clone(base)
-		now[a] += "// changed\n"
-		now[c.product("c")] += "// changed\n"
+		now[a] += alteration
+		now[c.product("c")] += alteration
 		now[c.product("d")] = c.importing(c.product("d"), []string{a})
 		delete(now, c.product("old"))
 		withNew := clone(now)
@@ -515,7 +518,7 @@ func TestImportersOfTheChangeCountDirectAndAtAnyDistance(t *testing.T) {
 		withNewBase := clone(base)
 		withNewBase[c.product("e")] = withNew[c.product("e")]
 		for _, s := range detect(t, snapshottest.Files(withNewBase, withNew)).Statistics {
-			if s.Name == "most direct importers" && strings.HasPrefix(c.product("d"), strings.TrimSuffix(s.Subject, "/")) && s.Before != nil {
+			if s.Name == "direct importers of" && strings.HasPrefix(c.product("d"), strings.TrimSuffix(s.Subject, "/")) && s.Before != nil {
 				t.Errorf("a file new since the base has a most-direct-importers row with a value at the base: %+v", s)
 			}
 		}
@@ -524,24 +527,24 @@ func TestImportersOfTheChangeCountDirectAndAtAnyDistance(t *testing.T) {
 		chainedNow[c.product("e")] = chained[c.product("e")]
 		r, _ := statisticNamed(detect(t, snapshottest.Files(chained, chainedNow)), "importers of the change")
 		// a, c and d changed and old deleted: b, two tests and u (which imported old) directly, e behind b
-		want := regexp.MustCompile(`^4 files directly, 5 at any distance; 4 changed code files; directly 2 product, 2 test; ` +
-			`at any distance 3 product, 2 test; in [^;]+; 3 of 1[78] product code files; 2 more importers are part of the change$`)
+		want := regexp.MustCompile(`^4 files directly \(2 product, 2 test\), 5 at any distance \(3 product, 2 test\); ` +
+			`in [^;]+; 3 of 1[78] product code files; 2 more importers are files the change touched$`)
 		if r.Value != nil || !want.MatchString(r.Note) {
 			t.Errorf("importers of the change = %+v, want %s", r, want)
 		}
 		editedB := clone(chained)
-		editedB[a] += "// changed\n"
-		editedB[c.product("b")] += "// changed\n"
+		editedB[a] += alteration
+		editedB[c.product("b")] += alteration
 		renamedB := clone(chained)
 		delete(renamedB, c.product("b"))
 		renamedB[c.product("b2")] = chained[c.product("b")]
-		renamedB[a] += "// changed\n"
+		renamedB[a] += alteration
 		moved := snapshottest.Files(chained, renamedB)
 		moved.Changes = append(moved.Changes, snapshot.Change{Path: c.product("b2"), From: c.product("b")})
 		// e imports b: a changed file, or a path the rename removed; either way it counts directly beside c and the tests
 		cases := map[string]snapshot.Source{"a and b changed": snapshottest.Files(chained, editedB), "a changed and b renamed": moved}
 		for label, changed := range cases {
-			if r, _ := statisticNamed(detect(t, changed), "importers of the change"); !strings.HasPrefix(r.Note, "4 files directly, 4 at any distance; 2 changed code files; ") {
+			if r, _ := statisticNamed(detect(t, changed), "importers of the change"); !strings.HasPrefix(r.Note, "4 files directly (2 product, 2 test), 4 at any distance; ") {
 				t.Errorf("%s: importers of the change = %q, want c, two tests and e directly", label, r.Note)
 			}
 		}
@@ -551,14 +554,14 @@ func TestImportersOfTheChangeCountDirectAndAtAnyDistance(t *testing.T) {
 		renamedU[c.product("u2")] = base[c.product("u")]
 		withRenamedU := snapshottest.Files(base, renamedU)
 		withRenamedU.Changes = append(withRenamedU.Changes, snapshot.Change{Path: c.product("u2"), From: c.product("u")})
-		if r, _ := statisticNamed(detect(t, withRenamedU), "importers of the change"); !strings.HasPrefix(r.Note, "3 files directly, ") ||
-			!strings.HasSuffix(r.Note, "; 3 more importers are part of the change") {
+		if r, _ := statisticNamed(detect(t, withRenamedU), "importers of the change"); !strings.HasPrefix(r.Note, "3 files directly (1 product, 2 test), ") ||
+			!strings.HasSuffix(r.Note, "; 3 more importers are files the change touched") {
 			t.Errorf("old deleted and u renamed: importers of the change = %q, want b and two tests directly, u among the change", r.Note)
 		}
 		f := detect(t, snapshottest.Files(base, now))
 		var most []answer.Statistic
 		for _, s := range f.Statistics {
-			if s.Name == "most direct importers" {
+			if s.Name == "direct importers of" {
 				most = append(most, s)
 			}
 		}
@@ -566,21 +569,25 @@ func TestImportersOfTheChangeCountDirectAndAtAnyDistance(t *testing.T) {
 		if c.byFolder {
 			wantSubject = path.Dir(a) + "/"
 		}
-		if len(most) != 1 || !sameStatistic(most[0], answer.Statistic{Name: "most direct importers", Subject: wantSubject, Note: "3 files; 1 product, 2 test"}) {
+		if len(most) != 1 || !sameStatistic(most[0], answer.Statistic{Name: "direct importers of", Subject: wantSubject, Note: "3 files; 1 product, 2 test"}) {
 			t.Errorf("most direct importers = %+v, want one row for %s", most, a)
 		}
-		if !slices.Contains(f.Notes, importersNote) {
+		if !slices.ContainsFunc(f.Notes, func(n string) bool { return strings.HasPrefix(n, importersNote) }) {
 			t.Errorf("notes = %q, want the importers note", f.Notes)
 		}
-		unchanged, _ := statisticNamed(detect(t, same(base)), "importers of the change")
-		if !sameStatistic(unchanged, answer.Statistic{Name: "importers of the change", Note: "0 files directly, 0 at any distance; 0 changed code files"}) {
-			t.Errorf("an unchanged tree: importers of the change = %+v", unchanged)
+		if unchanged, found := statisticNamed(detect(t, same(base)), "importers of the change"); found {
+			t.Errorf("an unchanged tree: importers of the change = %+v, want none", unchanged)
+		}
+		commented := clone(base)
+		commented[a] += codeOf(name).comment("a")
+		if r, found := statisticNamed(detect(t, snapshottest.Files(base, commented)), "importers of the change"); found {
+			t.Errorf("a changed comment alone: importers of the change = %+v, want none: it altered nothing", r)
 		}
 		if name == "go" {
 			testOnly := clone(base)
-			testOnly[c.test("b")] += "// changed\n"
-			if r, _ := statisticNamed(detect(t, snapshottest.Files(base, testOnly)), "importers of the change"); r.Value != nil || r.Note != "0 files directly, 0 at any distance; 1 changed code file" {
-				t.Errorf("a changed Go test file alone: importers of the change = %+v, want 0 and one changed code file", r)
+			testOnly[c.test("b")] += alteration
+			if r, _ := statisticNamed(detect(t, snapshottest.Files(base, testOnly)), "importers of the change"); r.Value != nil || r.Note != "0 files directly, 0 at any distance" {
+				t.Errorf("a changed Go test file alone: importers of the change = %+v, want 0", r)
 			}
 		}
 		if name == "typescript" {
@@ -588,17 +595,17 @@ func TestImportersOfTheChangeCountDirectAndAtAnyDistance(t *testing.T) {
 			withIndex["src/index.ts"] = "export * from \"./a.ts\";\n"
 			nowIndex["src/index.ts"] = withIndex["src/index.ts"]
 			r, _ := statisticNamed(detect(t, snapshottest.Files(withIndex, nowIndex)), "importers of the change")
-			if r.Value != nil || !strings.HasPrefix(r.Note, "5 files directly, ") {
+			if r.Value != nil || !strings.HasPrefix(r.Note, "5 files directly (3 product, 2 test), ") {
 				t.Errorf("an untouched index file among the importers: importers of the change = %+v", r)
 			}
 		}
 		changedMany := clone(base)
 		for _, target := range []string{"pa", "pb", "pc", "pd"} {
-			changedMany[c.product(target)] += "// changed\n"
+			changedMany[c.product(target)] += alteration
 		}
 		var rows []string
 		for _, s := range detect(t, snapshottest.Files(base, changedMany)).Statistics {
-			if s.Name == "most direct importers" {
+			if s.Name == "direct importers of" {
 				rows = append(rows, s.Subject)
 			}
 		}
@@ -847,15 +854,15 @@ func TestMostDirectImportersIsOneRowPerGoPackage(t *testing.T) {
 	s1, s2, u := "internal/s/one.go", "internal/s/two.go", golang.product("u")
 	base := golang.tree(map[string]string{s1: "package s\n", s2: "package s\n", u: golang.importing(u, []string{s1})})
 	now := clone(base)
-	now[s1] += "// changed\n"
-	now[s2] += "// changed\n"
+	now[s1] += alteration
+	now[s2] += alteration
 	var rows []answer.Statistic
 	for _, s := range detect(t, snapshottest.Files(base, now)).Statistics {
-		if s.Name == "most direct importers" {
+		if s.Name == "direct importers of" {
 			rows = append(rows, s)
 		}
 	}
-	if len(rows) != 1 || !sameStatistic(rows[0], answer.Statistic{Name: "most direct importers", Subject: "internal/s/", Note: "1 file; 1 product, 0 test"}) {
+	if len(rows) != 1 || !sameStatistic(rows[0], answer.Statistic{Name: "direct importers of", Subject: "internal/s/", Note: "1 file; 1 product, 0 test"}) {
 		t.Errorf("two changed files of one Go package: most direct importers = %+v, want one row for the package", rows)
 	}
 }

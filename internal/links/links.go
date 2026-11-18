@@ -39,11 +39,11 @@ func (Detector) Detect(s snapshot.Snapshot) answer.Findings {
 	f := answer.Findings{NotAnalysed: notAnalysed}
 	now, before := graphsOf(s, languages)
 	if len(languages) > 0 {
-		f = withLinks(f, s, languages, now, before)
+		f = withLinks(f, s, languages, now, before, altered(s.Radius))
 	}
 	radius, rows, notCounted := blastRadius(s, languages)
 	f.Radius, f.Statistics, f.NotAnalysed = radius, append(rows, f.Statistics...), append(f.NotAnalysed, notCounted...)
-	if len(s.Radius.Changed) > 0 {
+	if altered(s.Radius) {
 		f.Notes = append(f.Notes, radiusNote)
 	}
 	f = withRules(f, s, now, before)
@@ -59,8 +59,16 @@ func (Detector) Detect(s snapshot.Snapshot) answer.Findings {
 }
 
 // withLinks adds what the links of the analysed languages show: the rows, the marks and the notes.
-func withLinks(f answer.Findings, s snapshot.Snapshot, languages []snapshot.LanguageImports, now, before graph) answer.Findings {
-	f.Notes = append(f.Notes, linksNote, importersNote)
+// The importers of the change are left out when every changed code file altered nothing: they are no files to check.
+func withLinks(f answer.Findings, s snapshot.Snapshot, languages []snapshot.LanguageImports, now, before graph, altered bool) answer.Findings {
+	f.Notes = append(f.Notes, linksNote)
+	if altered {
+		note := importersNote
+		if slices.ContainsFunc(languages, func(l snapshot.LanguageImports) bool { return l.Language == "rust" }) {
+			note += rustModNote
+		}
+		f.Notes = append(f.Notes, note)
+	}
 	if slices.ContainsFunc(languages, func(l snapshot.LanguageImports) bool { return l.Folders }) {
 		f.Notes = append(f.Notes, folderNote)
 	}
@@ -69,7 +77,9 @@ func withLinks(f answer.Findings, s snapshot.Snapshot, languages []snapshot.Lang
 		f.Statistics = append(f.Statistics, followedRow(now, before, atBase))
 	}
 	f.Marks = testImportMarks(s, now, before)
-	f.Statistics = append(f.Statistics, importerRows(s, now, before)...)
+	if altered {
+		f.Statistics = append(f.Statistics, importerRows(s, now, before)...)
+	}
 	nowRings, baseRings := now.rings(false), before.rings(false)
 	if slices.ContainsFunc(languages, func(l snapshot.LanguageImports) bool { return l.NoRings == "" }) {
 		basePath := func(file string) []string { return []string{s.BasePath(file)} }

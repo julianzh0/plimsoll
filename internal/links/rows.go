@@ -14,10 +14,12 @@ import (
 // shown is how many files the ranked rows name.
 const shown = 3
 
-const importersNote = "importers of the change: the files that import a changed code file, directly or through other " +
-	"files at any distance, that the change did not touch; a deleted or renamed file counts the files that imported its old path; " +
-	"the share of product code is over the product code files whose language's imports are read; " +
-	"a module declared in its parent's file (Rust `mod x;`) makes the parent no importer"
+const importersNote = "importers of the change: untouched files that import a changed code file, directly or at any " +
+	"distance; a deleted or renamed file counts the importers of its old path; the share is of the product code files " +
+	"whose imports are read"
+
+// rustModNote is added to the importers note where Rust's links are used.
+const rustModNote = "; a parent file that only declares a module (Rust `mod x;`) is no importer of it"
 
 // importersOf are the distinct importers of some files, sorted, and how many of them the set holds.
 func importersOf(g graph, files []string, left map[string]bool) (outside []string, inside int) {
@@ -54,7 +56,6 @@ func atBase(s snapshot.Snapshot, before graph, file string, count func(path stri
 type changeImporters struct {
 	changedNow    []string        // the changed code files now, sorted
 	touched       map[string]bool // the paths a change names, on either side
-	changed       int             // changed code files now, and deleted or renamed-away ones at the base
 	direct, total []string        // untouched, sorted
 	inside        int             // importers the change touched
 }
@@ -73,7 +74,6 @@ func importersOfChange(s snapshot.Snapshot, now, before graph) changeImporters {
 			r.changedNow = append(r.changedNow, file)
 		}
 	}
-	r.changed = len(r.changedNow)
 	reached, inside := map[string]bool{}, map[string]bool{}
 	var frontier []string
 	reach := func(file string) {
@@ -95,9 +95,6 @@ func importersOfChange(s snapshot.Snapshot, now, before graph) changeImporters {
 	for _, file := range before.files {
 		if !r.touched[file] || now.analysed(file) {
 			continue // unchanged, or still here under the same path
-		}
-		if renamed, found := nowPath[file]; !found || !now.analysed(renamed) {
-			r.changed++ // deleted, or renamed out of the analysed languages; a renamed file is counted under its path now
 		}
 		for _, importer := range before.importers(file) {
 			if moved, renamed := nowPath[importer]; renamed {
@@ -124,16 +121,15 @@ func importersOfChange(s snapshot.Snapshot, now, before graph) changeImporters {
 // importerRows are the importers of the change and the changed files with the most direct importers.
 func importerRows(s snapshot.Snapshot, now, before graph) []answer.Statistic {
 	r := importersOfChange(s, now, before)
-	parts := []string{
-		answer.Plural(len(r.direct), "file") + " directly, " + count(len(r.total)) + " at any distance",
-		answer.Plural(r.changed, "changed code file"),
-	}
+	direct := answer.Plural(len(r.direct), "file") + " directly"
 	if len(r.direct) > 0 {
-		parts = append(parts, "directly "+split(now, r.direct))
+		direct += " (" + split(now, r.direct) + ")"
 	}
+	total := count(len(r.total)) + " at any distance"
 	if len(r.total) > len(r.direct) {
-		parts = append(parts, "at any distance "+split(now, r.total))
+		total += " (" + split(now, r.total) + ")"
 	}
+	parts := []string{direct + ", " + total}
 	if len(r.total) > 0 {
 		parts = append(parts, "in "+answer.InFolders(r.total))
 		if products := rolesOf(now, now.files).product; products > 0 {
@@ -141,7 +137,7 @@ func importerRows(s snapshot.Snapshot, now, before graph) []answer.Statistic {
 		}
 	}
 	if r.inside > 0 {
-		parts = append(parts, answer.Agree(r.inside, "more importer is", "more importers are")+" part of the change")
+		parts = append(parts, answer.Agree(r.inside, "more importer is a file", "more importers are files")+" the change touched")
 	}
 	// A sentence, not a number compared with the base: importers the change adds are touched by it, so they count on
 	// neither side, and the value at the base would differ only through renames and deletions.
@@ -179,7 +175,7 @@ func mostDirectRows(now graph, changed []string, touched map[string]bool) []answ
 	var rows []answer.Statistic
 	for _, r := range ranked[:min(shown, len(ranked))] {
 		rows = append(rows, answer.Statistic{
-			Name: "most direct importers", Subject: r.subject, Note: answer.Plural(len(r.importers), "file") + "; " + split(now, r.importers),
+			Name: "direct importers of", Subject: r.subject, Note: answer.Plural(len(r.importers), "file") + "; " + split(now, r.importers),
 		})
 	}
 	return rows

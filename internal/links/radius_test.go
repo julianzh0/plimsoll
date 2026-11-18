@@ -231,20 +231,23 @@ func TestTheBlastRadiusListsItsFilesUpToTheCap(t *testing.T) {
 		base[user] = c.importing(user, []string{a}) + k.use("Run")
 		want = append(want, user)
 	}
+	for _, test := range []string{"__tests__/t0.ts", "__tests__/t1.ts"} { // before the product files in path order
+		base[test] = c.importing(test, []string{a}) + k.use("Run")
+	}
 	base = c.tree(base)
 	now := maps.Clone(base)
 	now[a] = k.declare("Run", 2)
 	f := detect(t, snapshottest.Files(base, now))
 	r := f.Radius
-	if r == nil || r.Files != 32 || !slices.Equal(r.Paths, want[:30]) || r.Omitted != 2 || r.ByName != 32 || r.Product != 32 {
-		t.Fatalf("radius = %+v, want 32 by name, the first 30 paths and 2 omitted", r)
+	if r == nil || r.Files != 34 || !slices.Equal(r.Paths, want[:30]) || r.Omitted != 4 || r.ByName != 34 || r.Product != 32 || r.Tests != 2 {
+		t.Fatalf("radius = %+v, want 34 by name, the first 30 product paths and 4 omitted", r)
 	}
 	rows, _ := statisticNamed(f, "blast radius files")
-	if !strings.HasSuffix(rows.Note, " and 2 more") || strings.Count(rows.Note, "`")/2 != 30 {
-		t.Errorf("blast radius files = %q, want 30 paths and 2 more", rows.Note)
+	if !strings.HasSuffix(rows.Note, " and 4 more (2 product, 2 test)") || strings.Count(rows.Note, "`")/2 != 30 {
+		t.Errorf("blast radius files = %q, want 30 product paths and 4 more", rows.Note)
 	}
-	if row, _ := statisticNamed(f, "blast radius"); !strings.HasPrefix(row.Note, "32 files; ") {
-		t.Errorf("blast radius row = %+v, want 32 files", row)
+	if row, _ := statisticNamed(f, "blast radius"); !strings.HasPrefix(row.Note, "34 files (32 product, 2 test); ") {
+		t.Errorf("blast radius row = %+v, want 34 files", row)
 	}
 }
 
@@ -332,7 +335,7 @@ func TestAModuleDeclarationAloneMakesNoImporterOrUser(t *testing.T) {
 	if f.Radius == nil || !slices.Equal(f.Radius.Paths, []string{"src/main.rs"}) {
 		t.Errorf("radius = %+v, want main.rs, which re-exports run, and not lib.rs, which only declares the module", f.Radius)
 	}
-	if r, _ := statisticNamed(f, "importers of the change"); !strings.HasPrefix(r.Note, "1 file directly, ") {
+	if r, _ := statisticNamed(f, "importers of the change"); !strings.HasPrefix(r.Note, "1 file directly (1 product, 0 test), ") {
 		t.Errorf("importers of the change = %q, want main.rs alone", r.Note)
 	}
 }
@@ -371,7 +374,32 @@ func TestAChangeWithoutCodeHasARadiusOfZero(t *testing.T) {
 	now := clone(base)
 	now["README.md"] += "more\n"
 	row, found := statisticNamed(detect(t, snapshottest.Files(base, now)), "blast radius")
-	if want := "0 files; 0 by name, 0 as a whole; 0 changed code files"; !found || row.Note != want {
+	if want := "0 files; no code file changed"; !found || row.Note != want {
 		t.Errorf("blast radius of a change without code = %+v (found %v), want %q", row, found, want)
+	}
+}
+
+// A radius of zero with a changed file not counted is no all-clear; the importers note names Rust's module rule only
+// where Rust's links are used.
+func TestAnIncompleteZeroSaysSoAndTheRustRuleOnlyWithRust(t *testing.T) {
+	c := languageCases()["typescript"]
+	k := codeOf("typescript")
+	a, b, gone := c.product("a"), c.product("b"), c.product("gone")
+	base := c.tree(map[string]string{a: k.declare("Run", 1), b: c.importing(b, []string{a}), gone: k.declare("Gone", 1)})
+	now := maps.Clone(base)
+	now[a] += k.comment("Run")
+	now[gone] = k.declare("Gone", 2)
+	source := snapshottest.Files(base, now)
+	for i, e := range source.Before {
+		if e.Path == gone {
+			source.Before[i].Content = nil // the partial clone lacks gone's old content
+		}
+	}
+	f := detect(t, source)
+	if row, _ := statisticNamed(f, "blast radius"); !strings.HasPrefix(row.Note, "0 files found, an incomplete count; ") {
+		t.Errorf("blast radius = %q, want an incomplete count, not at least 0", row.Note)
+	}
+	if slices.ContainsFunc(f.Notes, func(n string) bool { return strings.Contains(n, "Rust") }) {
+		t.Errorf("notes of a TypeScript tree = %q, want no Rust rule", f.Notes)
 	}
 }
