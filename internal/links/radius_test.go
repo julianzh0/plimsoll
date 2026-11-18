@@ -323,3 +323,21 @@ func TestTheBlastRadiusAddsNoNameItReadFromCode(t *testing.T) {
 		}
 	})
 }
+
+func TestAModuleDeclarationAloneMakesNoImporterOrUser(t *testing.T) {
+	base := map[string]string{
+		"Cargo.toml":  "[package]\nname = \"app\"\n",
+		"src/lib.rs":  "mod a;\n",
+		"src/a.rs":    "pub fn run() -> u8 { 1 }\n",
+		"src/main.rs": "mod a;\npub use a::run;\n",
+	}
+	now := maps.Clone(base)
+	now["src/a.rs"] = "pub fn run() -> u8 { 2 }\n"
+	f := detect(t, snapshottest.Files(base, now))
+	if f.Radius == nil || !slices.Equal(f.Radius.Paths, []string{"src/main.rs"}) {
+		t.Errorf("radius = %+v, want main.rs, which re-exports run, and not lib.rs, which only declares the module", f.Radius)
+	}
+	if r, _ := statisticNamed(f, "importers of the change"); !strings.HasPrefix(r.Note, "1 file directly, ") {
+		t.Errorf("importers of the change = %q, want main.rs alone", r.Note)
+	}
+}

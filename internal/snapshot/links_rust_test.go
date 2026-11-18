@@ -78,24 +78,24 @@ func TestBuildFollowsRustImportsToFiles(t *testing.T) {
 	check("the sample", snapshot.Build(snapshottest.Load(t, "testdata/rust"), conventions.Default(), snapshottest.Readings(t)).Now.Links,
 		entry(27, 3, 0, 0, snapshot.PrefixRead),
 		[]snapshot.Link{
-			link(member+"lib.rs", 1, member+"disk.rs"), link(member+"lib.rs", 3, member+"disk.rs"),
+			modLink(member+"lib.rs", 1, member+"disk.rs"), link(member+"lib.rs", 3, member+"disk.rs"),
 			link("src/cli.rs", 1, bin),
-			link(lib, 5, "src/config.rs"), link(lib, 6, model), link(lib, 7, store), link(lib, 9, model), link(lib, 10, memory),
-			link(bin, 1, "src/cli.rs"), link(bin, 3, "src/config.rs"), link(bin, 3, lib), link(bin, 3, store), link(bin, 4, member+"lib.rs"),
+			modLink(lib, 5, "src/config.rs"), modLink(lib, 6, model), modLink(lib, 7, store), link(lib, 9, model), link(lib, 10, memory),
+			modLink(bin, 1, "src/cli.rs"), link(bin, 3, "src/config.rs"), link(bin, 3, lib), link(bin, 3, store), link(bin, 4, member+"lib.rs"),
 			link(memory, 1, store), link(memory, 2, model), link(memory, 2, store), link(memory, 19, model),
-			link(store, 1, memory), link(store, 3, lib),
+			modLink(store, 1, memory), link(store, 3, lib),
 			link("tests/common/mod.rs", 1, lib),
-			link("tests/notes.rs", 1, "tests/common/mod.rs"), link("tests/notes.rs", 3, memory), link("tests/notes.rs", 3, store),
+			modLink("tests/notes.rs", 1, "tests/common/mod.rs"), link("tests/notes.rs", 3, memory), link("tests/notes.rs", 3, store),
 		}, []string{member + "lib.rs"})
 
 	// The tree: design 5.5, row by row. Line 14 of lib.rs names a.rs once and a/sub.rs twice: one link each.
 	a, sub, deep, common := "src/a.rs", "src/a/sub.rs", "src/inline/deep.rs", "tests/common/mod.rs"
 	wantTree := []snapshot.Link{
-		link("core/src/lib.rs", 1, "core/src/util.rs"),
-		link(a, 1, sub), link(a, 2, lib), link(a, 4, sub), link(a, 5, lib), link(a, 9, lib),
-		link(lib, 1, a), link(lib, 5, deep), link(lib, 6, a), link(lib, 7, deep), link(lib, 9, a), link(lib, 10, sub),
+		modLink("core/src/lib.rs", 1, "core/src/util.rs"),
+		modLink(a, 1, sub), link(a, 2, lib), link(a, 4, sub), link(a, 5, lib), link(a, 9, lib),
+		modLink(lib, 1, a), modLink(lib, 5, deep), link(lib, 6, a), link(lib, 7, deep), link(lib, 9, a), link(lib, 10, sub),
 		link(lib, 11, "core/src/util.rs"), link(lib, 14, a), link(lib, 14, sub), link(lib, 15, "core/src/lib.rs"),
-		link(common, 1, "tests/it.rs"), link("tests/it.rs", 1, common), link("tests/it.rs", 2, a), link("tests/it.rs", 3, common),
+		link(common, 1, "tests/it.rs"), modLink("tests/it.rs", 1, common), link("tests/it.rs", 2, a), link("tests/it.rs", 3, common),
 	}
 	got := linksOf(t, rustTree())
 	check("the tree", got, entry(23, 3, 1, 2, snapshot.PrefixRead), wantTree, []string{"core/src/lib.rs"})
@@ -120,26 +120,26 @@ func TestBuildFollowsRustImportsToFiles(t *testing.T) {
 	// A package without a library: its name leads nowhere of its own.
 	check("a binary alone", linksOf(t, map[string]string{
 		"Cargo.toml": "[package]\nname = \"tool\"\n", "src/main.rs": "use tool::x;\nmod cli;\n", "src/cli.rs": "use crate::run;\n",
-	}), entry(2, 1, 0, 0, snapshot.PrefixRead), []snapshot.Link{link("src/cli.rs", 1, "src/main.rs"), link("src/main.rs", 2, "src/cli.rs")}, nil)
+	}), entry(2, 1, 0, 0, snapshot.PrefixRead), []snapshot.Link{link("src/cli.rs", 1, "src/main.rs"), modLink("src/main.rs", 2, "src/cli.rs")}, nil)
 
 	// A module that two crate roots declare: its crate paths agree, its parent does not. A file of one mod line
 	// only passes imports on.
 	check("a module of two tests", linksOf(t, map[string]string{
 		"tests/a.rs": "mod common;\n", "tests/b.rs": "mod common;\n", "tests/common/mod.rs": "use crate::common::x;\nuse super::y;\n",
-	}), entry(3, 0, 1, 0, snapshot.PrefixAbsent), []snapshot.Link{link("tests/a.rs", 1, common), link("tests/b.rs", 1, common)},
+	}), entry(3, 0, 1, 0, snapshot.PrefixAbsent), []snapshot.Link{modLink("tests/a.rs", 1, common), modLink("tests/b.rs", 1, common)},
 		[]string{"tests/a.rs", "tests/b.rs"})
 
 	// A package table without a name names no crate; the links by crate, self and super need none.
 	check("a package without a name", linksOf(t, map[string]string{
 		"Cargo.toml": "[package]\nversion = \"1\"\n", "src/lib.rs": "mod a;\n", "src/a.rs": "use crate::X;\n",
-	}), entry(2, 0, 0, 0, snapshot.PrefixAbsent), []snapshot.Link{link("src/a.rs", 1, "src/lib.rs"), link("src/lib.rs", 1, "src/a.rs")},
+	}), entry(2, 0, 0, 0, snapshot.PrefixAbsent), []snapshot.Link{link("src/a.rs", 1, "src/lib.rs"), modLink("src/lib.rs", 1, "src/a.rs")},
 		[]string{"src/lib.rs"})
 
 	// A comment inside a group, holding a comma, is no part of a path; a character of several bytes before a macro
 	// body moves no line.
 	group := map[string]string{"src/c/mod.rs": "mod d;\nmod e;\n", "src/c/d.rs": "", "src/c/e.rs": "", "src/m.rs": ""}
-	wantGroup := []snapshot.Link{link("src/c/mod.rs", 1, "src/c/d.rs"), link("src/c/mod.rs", 2, "src/c/e.rs"),
-		link(lib, 1, "src/c/mod.rs"), link(lib, 2, "src/c/d.rs"), link(lib, 2, "src/c/e.rs"), link(lib, 6, "src/m.rs")}
+	wantGroup := []snapshot.Link{modLink("src/c/mod.rs", 1, "src/c/d.rs"), modLink("src/c/mod.rs", 2, "src/c/e.rs"),
+		modLink(lib, 1, "src/c/mod.rs"), link(lib, 2, "src/c/d.rs"), link(lib, 2, "src/c/e.rs"), modLink(lib, 6, "src/m.rs")}
 	for _, text := range []string{
 		"mod c;\nuse crate::c::{d /* , */, e};\n// " + strings.Repeat("é ", 14) + "\nx! {\n\n    mod m;\n}\n",
 		"mod c;\nuse crate::c::{d, // y, z\n e};\n// —\nx! {\n    mod m;\n}\n",
@@ -153,4 +153,11 @@ func TestBuildFollowsRustImportsToFiles(t *testing.T) {
 	// A brace that never closes: the inline module runs to the end of the file.
 	check("a module that does not close", linksOf(t, map[string]string{"src/lib.rs": "mod a {\n    use super::b;\nmod c;\n"}),
 		entry(1, 0, 0, 1, snapshot.PrefixAbsent), nil, nil)
+}
+
+// modLink is the link of a module declared in its own file (`mod x;`): containment, not use.
+func modLink(from string, line int, to string) snapshot.Link {
+	l := link(from, line, to)
+	l.Declares = true
+	return l
 }

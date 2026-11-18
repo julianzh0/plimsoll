@@ -192,13 +192,15 @@ func newWalk(in radiusInput) *radiusWalk {
 	}
 	for _, link := range in.now.Links.List {
 		for _, file := range link.Files {
-			w.to[file] = append(w.to[file], link.From)
+			if !link.Declares { // a module's declaration in its parent is containment, not use
+				w.to[file] = append(w.to[file], link.From)
+			}
 		}
 		w.reaches[link.From] = w.reaches[link.From] || len(link.Files) > 0
 	}
 	for _, link := range in.before.Links.List {
 		for _, file := range link.Files {
-			if w.touched[file] { // only a changed file's base importers are asked
+			if w.touched[file] && !link.Declares { // only a changed file's base importers are asked
 				w.toBase[file] = append(w.toBase[file], link.From)
 			}
 		}

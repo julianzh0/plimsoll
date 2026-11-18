@@ -16,7 +16,8 @@ const shown = 3
 
 const importersNote = "importers of the change: the files that import a changed code file, directly or through other " +
 	"files at any distance, that the change did not touch; a deleted or renamed file counts the files that imported its old path; " +
-	"the share of product code is over the product code files whose language's imports are read"
+	"the share of product code is over the product code files whose language's imports are read; " +
+	"a module declared in its parent's file (Rust `mod x;`) makes the parent no importer"
 
 // importersOf are the distinct importers of some files, sorted, and how many of them the set holds.
 func importersOf(g graph, files []string, left map[string]bool) (outside []string, inside int) {
@@ -87,8 +88,8 @@ func importersOfChange(s snapshot.Snapshot, now, before graph) changeImporters {
 		frontier = append(frontier, file)
 	}
 	for _, file := range r.changedNow {
-		for _, link := range now.to[file] {
-			reach(link.From)
+		for _, importer := range now.importers(file) {
+			reach(importer)
 		}
 	}
 	for _, file := range before.files {
@@ -98,8 +99,7 @@ func importersOfChange(s snapshot.Snapshot, now, before graph) changeImporters {
 		if renamed, found := nowPath[file]; !found || !now.analysed(renamed) {
 			r.changed++ // deleted, or renamed out of the analysed languages; a renamed file is counted under its path now
 		}
-		for _, link := range before.to[file] {
-			importer := link.From
+		for _, importer := range before.importers(file) {
 			if moved, renamed := nowPath[importer]; renamed {
 				importer = moved
 			}
@@ -113,8 +113,8 @@ func importersOfChange(s snapshot.Snapshot, now, before graph) changeImporters {
 	for len(frontier) > 0 {
 		file := frontier[0]
 		frontier = frontier[1:]
-		for _, link := range now.to[file] {
-			reach(link.From)
+		for _, importer := range now.importers(file) {
+			reach(importer)
 		}
 	}
 	r.total = slices.Sorted(maps.Keys(reached))

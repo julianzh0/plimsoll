@@ -51,6 +51,7 @@ type Link struct {
 	Folder   bool     // To is a folder
 	Files    []string // the code files the import reaches, sorted: To itself, or the folder's files
 	TypeOnly bool     // the statement imports types only
+	Declares bool     // the statement declares a module in its own file (Rust `mod x;`): containment, not use
 	Added    bool     // the change wrote the statement of this import; set on the links of now only
 }
 
@@ -283,7 +284,8 @@ func (s side) resolveAll(language conventions.Language, own prefix, from string,
 			// A grouped statement gives several targets on one line, and two of them may reach one file.
 			repeated := slices.ContainsFunc(found, func(l Link) bool { return l.Line == st.line && l.To == t.to && l.TypeOnly == st.typeOnly })
 			if len(files) > 0 && !repeated {
-				found = append(found, Link{From: from, Line: st.line, To: t.to, Folder: t.folder, Files: files, TypeOnly: st.typeOnly, Added: base.added(from, t.to, st)})
+				found = append(found, Link{From: from, Line: st.line, To: t.to, Folder: t.folder, Files: files, TypeOnly: st.typeOnly,
+					Declares: strings.HasPrefix(st.spec, "mod "), Added: base.added(from, t.to, st)})
 			}
 		}
 	}

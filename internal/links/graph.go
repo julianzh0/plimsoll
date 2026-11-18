@@ -184,11 +184,14 @@ func (g graph) ringLinks(members []string) []snapshot.Link {
 	return found
 }
 
-// importers are the files with a link that reaches a code file, sorted.
+// importers are the files with a link that reaches a code file, sorted; a module's declaration in its parent (Rust
+// `mod x;`) is containment, not use, and makes no importer.
 func (g graph) importers(path string) []string {
 	var found []string
 	for _, link := range g.to[path] {
-		found = append(found, link.From)
+		if !link.Declares {
+			found = append(found, link.From)
+		}
 	}
 	slices.Sort(found)
 	return slices.Compact(found)
