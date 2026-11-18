@@ -71,7 +71,7 @@ lies. A repository adds its own with `planning_folders` and `planning_files` (be
 | `docs/superpowers/` | the superpowers skills' specs and plans |
 | `docs/stories/`, `docs/plans/`, `docs/specs/` | per-change stories, plans and specs |
 | `.claude/plans/` | Claude Code's plan folder when it is pointed into the project (`plansDirectory`) |
-| `.cursor/plans/` | Cursor's Plan Mode, a plan saved to the workspace ([Plan Mode](https://cursor.com/docs/agent/plan-mode)) |
+| `.cursor/plans/` | Cursor's Plan Mode, a plan saved to the workspace ([Plan Mode](https://cursor.com/docs/agent/plan-mode); the folder is named in [Best practices for coding with agents](https://cursor.com/blog/agent-best-practices)) |
 | `.planning/phases/`, `.planning/quick/`, `.planning/research/`, `.planning/threads/`, `.planning/todos/`, `.planning/debug/`, `.planning/seeds/`, `.planning/codebase/`, `.planning/ui-reviews/` | GSD: the folders its pull-request filter leaves out of review; its project files (`STATE.md`, `ROADMAP.md`, `PROJECT.md`) stay ([PR branch filtering](https://github.com/open-gsd/gsd-core/blob/main/docs/features/pr-branch-filtering.md)) |
 | `REQUIREMENTS.md`, `SPEC.md`, `PLAN.md`, `*_PLAN.md` | requirement, spec and plan files written for one change |
 
