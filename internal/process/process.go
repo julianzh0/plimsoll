@@ -42,7 +42,7 @@ func (Detector) Detect(s snapshot.Snapshot) answer.Findings {
 		Notes:      planningNotes(s),
 		Marks:      slices.Concat(planningMarks(s), limitMarks(s), declarationMarks(s)),
 	}
-	if slices.ContainsFunc(f.Marks, func(m answer.Mark) bool { return answer.RuleOf(m.ID) == rulePlanning && len(m.Subject.Names) > 0 }) {
+	if slices.ContainsFunc(s.Now.Planning, func(p string) bool { return s.PlanningMatches[p].Word != "" }) {
 		f.Notes = append(f.Notes, "working-note words in the name of an added Markdown file: "+s.NoteRule)
 	}
 	if note := limitsNote(s); note != "" {

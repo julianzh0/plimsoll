@@ -141,17 +141,17 @@ func unparsed(sides ...map[string]reading) []string {
 	return slices.Compact(found)
 }
 
-// planningMatches are the entries the planning files of both sides match.
+// planningMatches are the entries the planning files of both sides match; a working note added by name matches its
+// word.
 func planningMatches(rules conventions.Rules, notes map[string]string, sides ...[]string) map[string]PlanningMatch {
 	matches := map[string]PlanningMatch{}
 	for _, paths := range sides {
 		for _, p := range paths {
-			if word, isNote := notes[p]; isNote {
-				matches[p] = PlanningMatch{Word: word}
-				continue
-			}
 			matches[p], _ = planningMatch(rules, p)
 		}
+	}
+	for p, word := range notes {
+		matches[p] = PlanningMatch{Word: word}
 	}
 	return matches
 }
@@ -162,12 +162,11 @@ func planningMatches(rules conventions.Rules, notes map[string]string, sides ...
 func noteFiles(rules conventions.Rules, nowPaths []string, atBase map[string]bool, renamedFrom map[string]string) map[string]string {
 	notes := map[string]string{}
 	for _, p := range nowPaths {
-		if _, renamed := renamedFrom[p]; atBase[p] || renamed || recordPath(rules, p) || leftOut(rules, p) {
+		word, found := rules.NoteWord(p)
+		if _, renamed := renamedFrom[p]; !found || atBase[p] || renamed || recordPath(rules, p) || leftOut(rules, p) {
 			continue
 		}
-		if word, found := rules.NoteWord(p); found {
-			notes[p] = word
-		}
+		notes[p] = word
 	}
 	return notes
 }

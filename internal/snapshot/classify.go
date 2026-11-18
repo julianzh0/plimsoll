@@ -274,7 +274,7 @@ func entryOf(filePath string, entries []string) (string, bool) {
 // nameMatchesFolded is nameMatches without regard to case, for the planning names a repository declares: one pattern
 // covers every spelling of a working note's name.
 func nameMatchesFolded(pattern, filePath string) bool {
-	return nameMatches(strings.ToLower(pattern), strings.ToLower(filePath))
+	return nameMatches(strings.ToLower(pattern), strings.ToLower(path.Base(filePath)))
 }
 
 // nameMatches says whether a path's file name matches a file-name pattern of path.Match.

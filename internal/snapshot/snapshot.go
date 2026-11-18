@@ -44,7 +44,7 @@ type Snapshot struct {
 	NoteRule            string // the working-note words of added file names, as an answer prints them
 	// PlanningMatches is, per planning file of either side, the entry it matches.
 	PlanningMatches map[string]PlanningMatch
-	renamedFrom     map[string]string // the old name per new name of a renamed file; nil for a snapshot built by hand
+	renamedFrom     map[string]string // the old name per new name of a renamed file, made once by Build
 	Unverified      []Extension       // code extensions without a proven language
 	Untracked       int
 	Submodules      []string
@@ -252,16 +252,8 @@ func (h History) Touches() map[string]Touches {
 
 // BasePath is the path a file had at the base: its old name when a change renamed it, else the path itself.
 func (s Snapshot) BasePath(path string) string {
-	if s.renamedFrom != nil {
-		if from, renamed := s.renamedFrom[path]; renamed {
-			return from
-		}
-		return path
-	}
-	for _, change := range s.Changes {
-		if change.Path == path && change.From != "" {
-			return change.From
-		}
+	if from, renamed := s.renamedFrom[path]; renamed {
+		return from
 	}
 	return path
 }
