@@ -1,6 +1,6 @@
 # Agent instructions
 
-Project behaviour and commands are in `README.md`. These are the rules that are not obvious from the code.
+Project behaviour is in `README.md` and `docs/`; commands are in `docs/development.md`. These are the rules that are not obvious from the code.
 
 ## Before finishing
 
@@ -33,4 +33,4 @@ Run `make fix`, then `make qa`. New or changed tests must also pass `make flake 
 ## References
 
 - The functional and non-functional requirements are in `projects/requirements/requirements.md`. The `projects/` folder is local and not in Git.
-- The full project structure is explained in `README.md`
+- The full project structure is explained in `docs/development.md`
