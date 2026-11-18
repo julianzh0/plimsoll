@@ -166,6 +166,9 @@ func lies(file, folder string) bool { return strings.HasPrefix(file, folder+"/")
 // breaking are the imports of one side that break a rule, one per importing file and target, by file, line and target.
 // A pair is type-only when every statement of it is, and added when the change wrote one of them; it carries its
 // first line.
+// NOTE: every rule walks the files of both sides, so the work grows with rules times files: 1,000 rules added at most
+// 0.07 s to a status of nowinandroid (715 files) and vapor (898 files), measured 2026-11-18. Upgrade: index the files
+// by folder once per side when a repository with far more files declares that many rules.
 func breaking(r snapshot.ImportRule, tree snapshot.Tree, g graph) []snapshot.Link {
 	allowed := append([]string{r.From}, r.Targets...)
 	var found []snapshot.Link
