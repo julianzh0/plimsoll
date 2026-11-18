@@ -435,11 +435,14 @@ func TestAStatusWithoutMarksSaysWhatItLeftToTheLinesBelow(t *testing.T) {
 	}
 }
 
-func TestChangedFilesInSkippedFoldersComeFirstUnderNotAnalysed(t *testing.T) {
+func TestWhatComesFirstUnderNotAnalysed(t *testing.T) {
 	s := sample()
 	s.SkippedChanges = []string{"`single_include/` (2 files)"}
-	text := Render(Assemble(Status, "0.1.0", s, []Result{{"shape", findings()}}), wording())
-	if want := "Not analysed: changed files in folders plimsoll skips (generated, vendored or built), not counted: `single_include/` (2 files);"; !strings.Contains(text, want) {
+	early := Findings{NotAnalysed: []string{"one", "two", "three", "four", "five"}}
+	late := Findings{NotAnalysed: []string{"six"}, NotAnalysedFirst: []string{"a declared rule checks nothing"}}
+	text := Render(Assemble(Status, "0.1.0", s, []Result{{"shape", early}, {"links", late}}), wording())
+	if want := "Not analysed: changed files in folders plimsoll skips (generated, vendored or built), not counted: `single_include/` (2 files); " +
+		"a declared rule checks nothing; one; two; three"; !strings.Contains(text, want) {
 		t.Errorf("Render(status) =\n%s\nwant the not-analysed line to start with %q", text, want)
 	}
 }

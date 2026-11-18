@@ -53,6 +53,8 @@ func (Detector) Explain(s snapshot.Snapshot, m answer.Mark) []string {
 		return append(lines, "type-only imports are left out")
 	case ruleFolderCycle:
 		return folderEvidence(m, now, before)
+	case ruleNever, ruleOnly:
+		return ruleEvidence(s, m, languages, now, before)
 	}
 	return nil
 }

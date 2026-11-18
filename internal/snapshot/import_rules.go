@@ -14,6 +14,9 @@ type ImportRule struct {
 	Targets []string
 }
 
+// Entry prints the rule's entry for one of its targets, as the file declares it in its form: "a -> b".
+func (r ImportRule) Entry(target string) string { return conventions.ImportRule(r.From, target) }
+
 // ImportRuleKind is what an import rule says about the imports of its folder.
 type ImportRuleKind int
 

@@ -44,6 +44,7 @@ func Assemble(q Question, version string, s snapshot.Snapshot, results []Result)
 		NotAnalysed: []NotAnalysed{},
 	}
 	var standing []Mark
+	var first []NotAnalysed
 	acknowledged := map[string]bool{} // the table's identifiers; true once a detector returned an item with it
 	for _, id := range s.Acknowledged.IDs {
 		acknowledged[id] = false
@@ -74,6 +75,9 @@ func Assemble(q Question, version string, s snapshot.Snapshot, results []Result)
 			}
 		}
 		a.Summaries = append(a.Summaries, result.Findings.Summaries...)
+		for _, what := range result.Findings.NotAnalysedFirst {
+			first = append(first, NotAnalysed{Detector: result.Detector, What: what})
+		}
 		for _, what := range result.Findings.NotAnalysed {
 			a.NotAnalysed = append(a.NotAnalysed, NotAnalysed{Detector: result.Detector, What: what})
 		}
@@ -105,7 +109,7 @@ func Assemble(q Question, version string, s snapshot.Snapshot, results []Result)
 		a.More = len(a.Marks) - statusMarks
 		a.Marks = a.Marks[:statusMarks]
 	}
-	a.NotAnalysed = append(a.NotAnalysed, repositoryNotAnalysed(s)...)
+	a.NotAnalysed = nonNil(slices.Concat(first, a.NotAnalysed, repositoryNotAnalysed(s)))
 	if len(s.SkippedChanges) > 0 {
 		// First: it says what the footprint above leaves out.
 		skipped := NotAnalysed{Detector: repositoryEntry, What: "changed files in folders plimsoll skips (generated, vendored or built), not counted: " +
