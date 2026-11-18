@@ -65,7 +65,7 @@ func TestImportRuleMarksInEachLanguage(t *testing.T) {
 					}
 				case "links.only:" + u + "/domain":
 					gotOnly = m.Measured.Value
-					if !slices.Equal(m.Subject.Paths, []string{u + "/domain"}) || m.Measured.LimitSource != "`[imports]` `only` of `.plimsoll.toml`" {
+					if !slices.Equal(m.Subject.Paths, []string{u + "/domain", u + "/shared"}) || m.Measured.LimitSource != "`[imports]` `only` of `.plimsoll.toml`" {
 						t.Errorf("%s: only mark %+v", label, m)
 					}
 				default:
@@ -130,6 +130,8 @@ func TestImportRulesCompareWithTheBase(t *testing.T) {
 			answer.Touched, 1, 0, 0},
 		{"an importer renamed inside the folder", moved("domain/x", "domain/w", tree("domain/x>adapters/y"), tree("domain/w>adapters/y")),
 			answer.Standing, 1, 1, 0},
+		{"an allowed import before a breaking one", snapshottest.Files(tree("domain/x", "domain/z", "adapters/y"), tree("domain/x>domain/z", "domain/x>adapters/y")),
+			answer.New, 1, 0, 1},
 		{"a second statement for the same target", snapshottest.Files(tree("domain/x", "adapters/y"), c.tree(map[string]string{
 			".plimsoll.toml": tree()[".plimsoll.toml"], "src/adapters/y.ts": "export const y = 1;\n",
 			"src/domain/x.ts": "import \"../adapters/y.ts\";\nimport { y } from \"../adapters/y.ts\";\n"})), answer.New, 1, 0, 1},
@@ -140,6 +142,12 @@ func TestImportRulesCompareWithTheBase(t *testing.T) {
 			*marks[0].Measured.Before != tc.atBase || len(marks[0].Subject.Names) != tc.names {
 			t.Errorf("%s: marks %+v, want one %s of %v, %v at the base, naming %d", tc.name, marks, tc.change, tc.value, tc.atBase, tc.names)
 		}
+	}
+	mixed := c.tree(map[string]string{".plimsoll.toml": tree()[".plimsoll.toml"], "src/adapters/y.ts": "export type Y = number;\nexport const y = 1;\n",
+		"src/domain/x.ts": "import type { Y } from \"../adapters/y.ts\";\nimport { y } from \"../adapters/y.ts\";\n"})
+	if marks := marksOf(detect(t, snapshottest.Files(tree("domain/x", "adapters/y"), mixed)), ruleNever); len(marks) != 1 ||
+		!slices.Equal(marks[0].Subject.Names, []string{"`src/domain/x.ts` line 1 importing `src/adapters/y.ts`"}) {
+		t.Errorf("a type-only and a value import of one file: marks %+v, want one clause without \", type-only\"", marks)
 	}
 	typeOnly := c.tree(map[string]string{".plimsoll.toml": tree()[".plimsoll.toml"], "src/adapters/y.ts": "export type Y = number;\n",
 		"src/domain/x.ts": "import type { Y } from \"../adapters/y.ts\";\n"})
@@ -184,6 +192,14 @@ func TestImportRulesSayWhatTheyCannotCheck(t *testing.T) {
 		{"imports not followed", own(never, notFollowed), own(never, notFollowed),
 			[]string{lead + "the imports of 1 product file under `src/domain/` are not read or not followed (`typescript`), so the rule checks nothing"}, nil},
 		{"a file of no language", own(never, mixed), own(never, mixed), nil, nil},
+		{"an only rule whose folder holds no code", own("only = [\"src/gone -> src/domain\"]\n", both), own("only = [\"src/gone -> src/domain\"]\n", both),
+			[]string{"`[imports]` `only` rule of `src/gone/`: `src/gone/` matches no product code, so the rule checks nothing"}, nil},
+		{"the folder holds test code only", own(never, map[string]string{"src/domain/a.test.ts": "test(\"x\", () => {});\n", "src/adapters/b.ts": "export const b = 1;\n"}),
+			own(never, map[string]string{"src/domain/a.test.ts": "test(\"x\", () => {});\n", "src/adapters/b.ts": "export const b = 1;\n"}),
+			[]string{lead + "`src/domain/` matches no product code, so the rule checks nothing"}, nil},
+		{"the folder holds files of no language only", own(never, map[string]string{"src/domain/b.groovy": "class B {}\n", "src/domain/c.groovy": "class C {}\n", "src/adapters/b.ts": "export const b = 1;\n"}),
+			own(never, map[string]string{"src/domain/b.groovy": "class B {}\n", "src/domain/c.groovy": "class C {}\n", "src/adapters/b.ts": "export const b = 1;\n"}),
+			[]string{lead + "the imports of 2 product files under `src/domain/` are not read or not followed (`.groovy`), so the rule checks nothing"}, nil},
 		{"an only entry without code", own("only = [\"src/domain -> src/shared\", \"src/domain -> src/adapters\"]\n", both),
 			own("only = [\"src/domain -> src/shared\", \"src/domain -> src/adapters\"]\n", both), nil,
 			[]string{"`[imports]` `only` rule `src/domain -> src/shared`: `src/shared/` matches no code"}},
@@ -204,20 +220,26 @@ func TestImportRulesSayWhatTheyCannotCheck(t *testing.T) {
 	if len(f.NotAnalysedFirst) != 0 || len(f.NotAnalysed) == 0 || f.NotAnalysed[0] != want {
 		t.Errorf("a language over the limit beside one that is read: first %q, then %q; want %q first among links'", f.NotAnalysedFirst, f.NotAnalysed, want)
 	}
+	python["src/domain/a.ts"] = "import \"../adapters/b.ts\";\n"
+	s := snapshot.Build(snapshottest.Files(own(never, map[string]string{}), own(never, python)), conventions.Default(), snapshottest.Readings(t))
+	marks := marksOf(Detector{}.Detect(s), ruleNever)
+	if len(marks) != 1 || !slices.Contains(Detector{}.Explain(s, marks[0]), strings.TrimPrefix(want, lead)) {
+		t.Errorf("a rule checked in part: marks %+v; want one whose evidence says what is not checked", marks)
+	}
 }
 
 func TestImportRuleWordingStandingEvidenceAndReport(t *testing.T) {
 	c := languageCases()["typescript"]
-	rules := c.ruled([]string{"domain -> adapters"}, []string{"domain -> shared"})[".plimsoll.toml"]
+	rules := c.ruled([]string{"domain -> adapters", "domain -> other"}, []string{"domain -> shared"})[".plimsoll.toml"]
 	tree := func(files map[string]string) map[string]string {
 		files[".plimsoll.toml"] = rules
 		return c.tree(files)
 	}
 	base := tree(map[string]string{"src/domain/x.ts": "export const x = 1;\n", "src/adapters/y.ts": "export const y = 1;\n",
-		"src/shared/s.ts": "export const s = 1;\n", "src/domain/w.ts": "import \"../adapters/y.ts\";\n"})
+		"src/shared/s.ts": "export const s = 1;\n", "src/domain/w.ts": "import \"../adapters/y.ts\";\n", "src/other/o.ts": "export const o = 1;\n"})
 	now := tree(map[string]string{"src/domain/x.ts": "import \"../adapters/y.ts\";\nimport type { S } from \"../shared/s.ts\";\n",
 		"src/adapters/y.ts": base["src/adapters/y.ts"], "src/shared/s.ts": base["src/shared/s.ts"], "src/domain/w.ts": base["src/domain/w.ts"],
-		"src/domain/v.ts": "import \"../adapters/y.ts\";\n"})
+		"src/domain/v.ts": "import \"../adapters/y.ts\";\n", "src/other/o.ts": base["src/other/o.ts"]})
 	s := snapshot.Build(snapshottest.Files(base, now), conventions.Default(), snapshottest.Readings(t))
 	f := Detector{}.Detect(s)
 	marks := marksOf(f, ruleNever)
@@ -226,7 +248,7 @@ func TestImportRuleWordingStandingEvidenceAndReport(t *testing.T) {
 	}
 	m := marks[0]
 	if want := "Code under `src/domain/` has 3 imports of code under `src/adapters/`, 1 at the base, among them `src/domain/v.ts` line 1 importing " +
-		"`src/adapters/y.ts` and `src/domain/x.ts` line 1 importing `src/adapters/y.ts`, added by this change; `[imports]` `never` of `.plimsoll.toml` declares that it has none."; Detector.Wording(Detector{}, m) != want {
+		"`src/adapters/y.ts` and `src/domain/x.ts` line 1 importing `src/adapters/y.ts`, added by this change; `[imports]` `never` of `.plimsoll.toml` allows none."; Detector.Wording(Detector{}, m) != want {
 		t.Errorf("grown: Wording = %q\nwant %q", Detector.Wording(Detector{}, m), want)
 	}
 	if want := []string{
@@ -240,12 +262,18 @@ func TestImportRuleWordingStandingEvidenceAndReport(t *testing.T) {
 	}; !slices.Equal(Detector{}.Explain(s, m), want) {
 		t.Errorf("Explain = %q\nwant %q", Detector{}.Explain(s, m), want)
 	}
+	only := marksOf(f, ruleOnly)
+	if len(only) != 1 || !slices.Equal(Detector{}.Explain(s, only[0])[:2], []string{
+		"rule: code under `src/domain/` imports only code under `src/domain/`, `src/shared/` (`[imports]` `only`: `src/domain -> src/shared`)",
+		"imports that break it now: 3; at the base: 1"}) {
+		t.Errorf("the only rule: marks %+v; want one whose evidence names its allowed folders and numbers", only)
+	}
 	two := 2.0
 	if row, _ := statisticNamed(f, "import rules with imports that break them"); !sameStatistic(row, answer.Statistic{Name: "import rules with imports that break them",
-		Value: &two, Before: &two, Unit: "rules", Note: "of 2 declared in `.plimsoll.toml`"}) {
+		Value: &two, Before: &two, Unit: "rules", Note: "of the 3 rules made of the 3 entries in `.plimsoll.toml`"}) {
 		t.Errorf("row %+v", row)
 	}
-	for _, note := range []string{importRulesNote, "`never` import rules declared in `.plimsoll.toml` (`[imports]` `never`): `src/domain -> src/adapters`",
+	for _, note := range []string{importRulesNote, "`never` import rules declared in `.plimsoll.toml` (`[imports]` `never`): `src/domain -> src/adapters`, `src/domain -> src/other`",
 		"`only` import rules declared in `.plimsoll.toml` (`[imports]` `only`): `src/domain -> src/shared`"} {
 		if !slices.Contains(f.Notes, note) {
 			t.Errorf("notes %q lack %q", f.Notes, note)
@@ -253,9 +281,6 @@ func TestImportRuleWordingStandingEvidenceAndReport(t *testing.T) {
 	}
 	mark := func(rule string, change answer.Change, value, before float64, names ...string) answer.Mark {
 		paths := []string{"src/domain", "src/adapters"}
-		if rule == ruleOnly {
-			paths = paths[:1]
-		}
 		return answer.Mark{ID: "links." + rule + ":x", Change: change, Subject: answer.Subject{Kind: "rule", Paths: paths, Names: names},
 			Measured: answer.Measured{Value: value, Before: &before, LimitSource: "`[imports]` `" + rule + "` of `.plimsoll.toml`"}}
 	}
@@ -265,27 +290,28 @@ func TestImportRuleWordingStandingEvidenceAndReport(t *testing.T) {
 		want string
 	}{
 		{mark(ruleNever, answer.New, 1, 0, clause), "Code under `src/domain/` has 1 import of code under `src/adapters/`, none at the base: " + clause +
-			", added by this change; `[imports]` `never` of `.plimsoll.toml` declares that it has none."},
-		{mark(ruleOnly, answer.New, 5, 0, clause, clause), "Code under `src/domain/` has 5 imports of code outside `src/domain/` and the folders its rule names, none at the base, among them " +
-			clause + " and " + clause + ", added by this change; `[imports]` `only` of `.plimsoll.toml` declares that it has none."},
+			", added by this change; `[imports]` `never` of `.plimsoll.toml` allows none."},
+		{mark(ruleOnly, answer.New, 5, 0, clause, clause), "Code under `src/domain/` has 5 imports of code outside `src/domain/` and `src/adapters/`, none at the base, among them " +
+			clause + " and " + clause + ", added by this change; `[imports]` `only` of `.plimsoll.toml` allows none."},
 		{mark(ruleNever, answer.Touched, 4, 3), "Code under `src/domain/` has 4 imports of code under `src/adapters/`, 3 at the base; this change added none of them; " +
-			"`[imports]` `never` of `.plimsoll.toml` declares that it has none."},
-		{mark(ruleNever, answer.Standing, 3, 3), "Code under `src/domain/` has 3 imports of code under `src/adapters/`, 3 at the base; `[imports]` `never` of `.plimsoll.toml` declares that it has none."},
-		{mark(ruleOnly, answer.Resolved, 0, 3), "Code under `src/domain/` has no import of code outside `src/domain/` and the folders its rule names now; it had 3 at the base."},
+			"`[imports]` `never` of `.plimsoll.toml` allows none."},
+		{mark(ruleNever, answer.Standing, 3, 3), "Code under `src/domain/` has 3 imports of code under `src/adapters/`, 3 at the base; `[imports]` `never` of `.plimsoll.toml` allows none."},
+		{mark(ruleOnly, answer.Resolved, 0, 3), "Code under `src/domain/` has no import of code outside `src/domain/` and `src/adapters/` now; it had 3 at the base."},
 	} {
 		if got := (Detector{}).Wording(tc.m); got != tc.want {
 			t.Errorf("Wording(%s) = %q\nwant %q", tc.m.Change, got, tc.want)
 		}
 	}
 	standing := []answer.Mark{mark(ruleNever, answer.Standing, 1, 1)}
-	if got := (Detector{}).Standing(standing); got != "1 declared import rule with imports that break it" {
+	if got := (Detector{}).Standing(standing); got != "1 declared import rule broken by imports already at the base" {
 		t.Errorf("Standing(one) = %q", got)
 	}
-	if got := (Detector{}).Standing(append(standing, mark(ruleOnly, answer.Standing, 1, 1))); got != "2 declared import rules with imports that break them" {
+	if got := (Detector{}).Standing(append(standing, mark(ruleOnly, answer.Standing, 1, 1))); got != "2 declared import rules broken by imports already at the base" {
 		t.Errorf("Standing(two) = %q", got)
 	}
 	clean := tree(map[string]string{"src/domain/x.ts": "import type { S } from \"../shared/s.ts\";\n", "src/adapters/y.ts": base["src/adapters/y.ts"],
-		"src/shared/s.ts": base["src/shared/s.ts"], "src/domain/w.ts": "export const w = 1;\n", "src/domain/v.ts": "export const v = 1;\n"})
+		"src/shared/s.ts": base["src/shared/s.ts"], "src/domain/w.ts": "export const w = 1;\n", "src/domain/v.ts": "export const v = 1;\n",
+		"src/other/o.ts": base["src/other/o.ts"]})
 	resolved := snapshot.Build(snapshottest.Files(now, clean), conventions.Default(), snapshottest.Readings(t))
 	found := Detector{}.Detect(resolved)
 	if only := marksOf(found, ruleOnly); len(only) != 1 || only[0].Change != answer.Resolved {

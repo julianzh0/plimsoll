@@ -1,7 +1,6 @@
 package links
 
 import (
-	"cmp"
 	"fmt"
 	"path"
 	"slices"
@@ -55,11 +54,28 @@ func withRules(f answer.Findings, s snapshot.Snapshot, now, before graph) answer
 	f.NotAnalysed = slices.Concat(notAnalysed, answer.OwnNotUsed(s.Layout.Rules), f.NotAnalysed)
 	if len(s.ImportRules) > 0 {
 		f.Statistics = append(f.Statistics, answer.Statistic{Name: importRulesRow, Value: &broken, Before: &brokenAtBase, Unit: "rules",
-			Note: fmt.Sprintf("of %d declared in `%s`", len(s.ImportRules), s.OwnFile)})
+			Note: fmt.Sprintf("of the %s made of the %s in `%s`", answer.Plural(len(s.ImportRules), "rule"), entriesShown(entries(s.ImportRules)), s.OwnFile)})
 		f.Notes = append(f.Notes, importRulesNote)
 	}
 	f.Notes = append(f.Notes, answer.OwnNotes(s.Layout.Rules)...)
 	return f
+}
+
+// entries counts the entries the rules were made of: a never rule is one, an only rule one per target.
+func entries(rules []snapshot.ImportRule) int {
+	n := 0
+	for _, r := range rules {
+		n += len(r.Targets)
+	}
+	return n
+}
+
+// entriesShown prints a number of entries.
+func entriesShown(n int) string {
+	if n == 1 {
+		return "1 entry"
+	}
+	return answer.Count(float64(n)) + " entries"
 }
 
 // ruleLead names a rule at the start of a sentence: a never rule by its entry, an only rule by its folder.
@@ -126,9 +142,6 @@ func gone(folder string, heldAtBase bool, none string) string {
 
 // targetsWithoutCode are the lines of an only rule's entries whose folder holds no code now: they allow nothing.
 func targetsWithoutCode(s snapshot.Snapshot, r snapshot.ImportRule) []string {
-	if r.Kind != snapshot.Only {
-		return nil
-	}
 	var lines []string
 	for _, target := range r.Targets {
 		if !holdsCode(s.Now, target, false) {
@@ -159,7 +172,8 @@ func named(what []string) string {
 // lies says whether a file lies under a folder: the folder's names are the path's first names.
 func lies(file, folder string) bool { return strings.HasPrefix(file, folder+"/") }
 
-// breaking are the imports of one side that break a rule, one per importing file and target, by file, line and target.
+// breaking are the imports of one side that break a rule, one per importing file and target, by file, line and target
+// as the graph holds them.
 // A pair is type-only when every statement of it is, and added when the change wrote one of them; it carries its
 // first line.
 // NOTE: every rule walks the files of both sides, so the work grows with rules times files: 1,000 rules added at most
@@ -187,9 +201,6 @@ func breaking(r snapshot.ImportRule, tree snapshot.Tree, g graph) []snapshot.Lin
 			found[i].Added = found[i].Added || link.Added
 		}
 	}
-	slices.SortStableFunc(found, func(a, b snapshot.Link) int {
-		return cmp.Or(strings.Compare(a.From, b.From), cmp.Compare(a.Line, b.Line), strings.Compare(a.To, b.To))
-	})
 	return found
 }
 
@@ -238,9 +249,9 @@ func ruleMark(s snapshot.Snapshot, r snapshot.ImportRule, nowImports []snapshot.
 	default:
 		return answer.Mark{}, false
 	}
-	paths := []string{r.From}
+	paths := r.Allowed() // an only rule's folder and the folders it allows
 	if r.Kind == snapshot.Never {
-		paths = append(paths, r.Targets[0])
+		paths = []string{r.From, r.Targets[0]}
 	}
 	source := ruleSource(s, r)
 	return answer.Mark{
@@ -270,9 +281,13 @@ func clause(link snapshot.Link) string {
 // ruleWording is the sentence of a rule mark, from its fields alone.
 func ruleWording(m answer.Mark) string {
 	folder := answer.Folder(m.Subject.Paths[0])
-	what := "of code outside " + folder + " and the folders its rule names"
-	if answer.RuleOf(m.ID) == ruleNever {
-		what = "of code under " + answer.Folder(m.Subject.Paths[1])
+	what := "of code under " + answer.Folder(m.Subject.Paths[1])
+	if answer.RuleOf(m.ID) == ruleOnly {
+		allowed := make([]string, 0, len(m.Subject.Paths))
+		for _, p := range m.Subject.Paths {
+			allowed = append(allowed, answer.Folder(p))
+		}
+		what = "of code outside " + joined(allowed, "and")
 	}
 	count, atBase := int(m.Measured.Value), int(*m.Measured.Before)
 	if m.Change == answer.Resolved {
@@ -294,7 +309,7 @@ func ruleWording(m answer.Mark) string {
 		sentence += "; this change added none of them"
 	case answer.Resolved, answer.Standing:
 	}
-	return sentence + "; " + m.Measured.LimitSource + " declares that it has none."
+	return sentence + "; " + m.Measured.LimitSource + " allows none."
 }
 
 // ruleEvidence names the rule, its numbers and every import that breaks it, by file and line; for a resolved rule,

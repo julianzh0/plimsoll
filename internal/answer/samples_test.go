@@ -262,7 +262,7 @@ func TestTheSamplesShowEveryRuleAndChange(t *testing.T) {
 		"is no plain file-name pattern", "This change altered the test folders declared", "what it does not set keeps plimsoll's default",
 		"(declared in `.plimsoll.toml`)", "This change altered the default base declared in `.plimsoll.toml`",
 		"levels deep at line", "nested deeper",
-		"declares that it has none", "so the rule checks nothing", "is no import rule of the form", "declared import rules with imports that break them",
+		"allows none", "so the rule checks nothing", "is no import rule of the form", "declared import rules broken by imports already at the base",
 		"This change altered the `never` import rules declared in `.plimsoll.toml`", "`never` import rules declared in `.plimsoll.toml`",
 	} {
 		if !strings.Contains(texts.String(), phrase) {
