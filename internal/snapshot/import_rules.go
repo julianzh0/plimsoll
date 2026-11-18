@@ -1,8 +1,6 @@
 package snapshot
 
 import (
-	"slices"
-
 	"github.com/julianzh0/plimsoll/internal/conventions"
 )
 
@@ -27,26 +25,31 @@ const (
 )
 
 // importRules are the import rules now's own file declares, in the order of its keys: a Never rule per entry, an
-// Only rule per source folder, in the order of the source's first entry.
-func importRules(rules conventions.Rules, now ownFile) []ImportRule {
-	var found []ImportRule
+// Only rule per source folder, in the order of the source's first entry. records are one per key that holds a value
+// now, its values in use being the rules as rebuilt.
+func importRules(rules conventions.Rules, now ownFile) (found []ImportRule, records []Declared) {
+	onlyAt := map[string]int{} // an Only rule's source -> its index in found
 	for _, k := range rules.OwnKeys {
-		if !k.Holds.ImportRule() {
+		values := now.values[k.Key]
+		if !k.Holds.ImportRule() || len(values)+now.unusable[k.Key] == 0 {
 			continue
 		}
-		kind := Never
-		if k.Holds == conventions.OnlyImportRules {
-			kind = Only
-		}
-		for _, value := range now.values[k.Key] {
+		record := Declared{File: rules.OwnFile, Table: k.Table, Key: k.Key, Name: k.Name, AsWritten: true, Now: KeyRead, Unusable: now.unusable[k.Key], Form: k.Holds.Shape()}
+		for _, value := range values {
+			record.InUse = append(record.InUse, DeclaredFolder{Path: value})
 			from, to := conventions.ImportRuleEnds(value)
-			at := slices.IndexFunc(found, func(r ImportRule) bool { return kind == Only && r.Kind == Only && r.From == from })
-			if at < 0 {
-				found = append(found, ImportRule{Kind: kind, Table: k.Table, Key: k.Key, From: from})
-				at = len(found) - 1
+			if k.Holds == conventions.NeverImportRules {
+				found = append(found, ImportRule{Kind: Never, Table: k.Table, Key: k.Key, From: from, Targets: []string{to}})
+				continue
+			}
+			at, known := onlyAt[from]
+			if !known {
+				at, onlyAt[from] = len(found), len(found)
+				found = append(found, ImportRule{Kind: Only, Table: k.Table, Key: k.Key, From: from})
 			}
 			found[at].Targets = appendNew(found[at].Targets, to)
 		}
+		records = append(records, record)
 	}
-	return found
+	return found, records
 }

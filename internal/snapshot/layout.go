@@ -204,12 +204,7 @@ func ownLayout(layout Layout, rules conventions.Rules, now ownFile, tracked []st
 		if !read || len(values)+now.unusable[k.Key] == 0 {
 			continue
 		}
-		if k.Holds.ImportRule() {
-			d := Declared{File: rules.OwnFile, Table: k.Table, Key: k.Key, Name: k.Name, AsWritten: true, Now: KeyRead, Unusable: now.unusable[k.Key], Form: k.Holds.Shape()}
-			for _, value := range values {
-				d.InUse = append(d.InUse, DeclaredFolder{Path: value})
-			}
-			layout.Rules = append(layout.Rules, d)
+		if k.Holds.ImportRule() { // import rules name no layout; importRules reads them
 			continue
 		}
 		if k.Holds.Single() {

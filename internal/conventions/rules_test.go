@@ -198,8 +198,8 @@ func TestOwnValuesAreBroughtToTheirForm(t *testing.T) {
 			TestFileNames.Pattern(), TestFolderPaths.Pattern(), IgnoredFileNames.Pattern(), IgnoredFolderPaths.Pattern())
 	}
 	if !NeverImportRules.ImportRule() || !OnlyImportRules.ImportRule() || TestFolderPaths.ImportRule() || NeverImportRules.Pattern() || NeverImportRules.Single() {
-		t.Errorf("ImportRule() = %v, %v for the rule kinds, %v for test folders; want true, true, false",
-			NeverImportRules.ImportRule(), OnlyImportRules.ImportRule(), TestFolderPaths.ImportRule())
+		t.Errorf("ImportRule() = %v, %v for the rule kinds, %v for test folders, Pattern() %v, Single() %v for never; want true, true, false, false, false",
+			NeverImportRules.ImportRule(), OnlyImportRules.ImportRule(), TestFolderPaths.ImportRule(), NeverImportRules.Pattern(), NeverImportRules.Single())
 	}
 	if !MarkID("links.never:src/domain->src/adapters") || !MarkID("links.only:src/domain") || MarkID("links.never:a -> b") {
 		t.Errorf("MarkID does not admit an import rule's identifier, or admits one with a space")

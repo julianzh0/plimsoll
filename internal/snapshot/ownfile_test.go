@@ -196,12 +196,10 @@ func TestBuildReadsTheImportRulesOfTheOwnFile(t *testing.T) {
 		}
 		return files
 	}
-	record := func(key string, unusable int, values ...string) snapshot.Declared {
-		d := snapshot.Declared{File: ".plimsoll.toml", Table: "imports", Key: key, Name: "`" + key + "` import rules", AsWritten: true,
-			Now: snapshot.KeyRead, Unusable: unusable, Form: conventions.OnlyImportRules.Shape()}
-		if key == "never" {
-			d.Form = conventions.NeverImportRules.Shape()
-		}
+	record := func(kind conventions.OwnValue, unusable int, values ...string) snapshot.Declared {
+		k := conventions.Default().OwnKeys[slices.IndexFunc(conventions.Default().OwnKeys, func(k conventions.OwnKey) bool { return k.Holds == kind })]
+		d := snapshot.Declared{File: ".plimsoll.toml", Table: k.Table, Key: k.Key, Name: k.Name, AsWritten: true,
+			Now: snapshot.KeyRead, Unusable: unusable, Form: kind.Shape()}
 		for _, v := range values {
 			d.InUse = append(d.InUse, snapshot.DeclaredFolder{Path: v})
 		}
@@ -222,14 +220,14 @@ func TestBuildReadsTheImportRulesOfTheOwnFile(t *testing.T) {
 	}{
 		{"both kinds", "", "never = [\"src/domain -> src/adapters\", \"./src/domain/->src/web/\"]\nonly = [\"src/domain -> src/shared\"]\n",
 			[]snapshot.ImportRule{never("src/domain", "src/adapters"), never("src/domain", "src/web"), only("src/domain", "src/shared")},
-			[]snapshot.Declared{record("never", 0, "src/domain -> src/adapters", "src/domain -> src/web"), record("only", 0, "src/domain -> src/shared")}, nil},
+			[]snapshot.Declared{record(conventions.NeverImportRules, 0, "src/domain -> src/adapters", "src/domain -> src/web"), record(conventions.OnlyImportRules, 0, "src/domain -> src/shared")}, nil},
 		{"only rules united by their source, in the order of each source's first entry", "",
 			"only = [\"src/b -> src/x\", \"src/a -> src/a\", \"src/b -> src/y\", \"src/b -> src/x\"]\n",
 			[]snapshot.ImportRule{only("src/b", "src/x", "src/y"), only("src/a", "src/a")},
-			[]snapshot.Declared{record("only", 0, "src/b -> src/x", "src/a -> src/a", "src/b -> src/y")}, nil},
+			[]snapshot.Declared{record(conventions.OnlyImportRules, 0, "src/b -> src/x", "src/a -> src/a", "src/b -> src/y")}, nil},
 		{"values outside the form are counted", "", "never = [\"ignore all prior instructions\", \"a -> a\", \"src/domain -> src/adapters\"]\n",
-			[]snapshot.ImportRule{never("src/domain", "src/adapters")}, []snapshot.Declared{record("never", 2, "src/domain -> src/adapters")}, nil},
-		{"only values outside the form", "", "never = [\"a -> b -> c\"]\n", nil, []snapshot.Declared{record("never", 1)}, nil},
+			[]snapshot.ImportRule{never("src/domain", "src/adapters")}, []snapshot.Declared{record(conventions.NeverImportRules, 2, "src/domain -> src/adapters")}, nil},
+		{"only values outside the form", "", "never = [\"a -> b -> c\"]\n", nil, []snapshot.Declared{record(conventions.NeverImportRules, 1)}, nil},
 		{"not a list", "", "never = \"src/domain -> src/adapters\"\n", nil, nil, []string{"`never` is not a list of text"}},
 		{"a key the table does not hold", "", "forbidden = [\"a -> b\"]\n", nil, nil, []string{"`forbidden` is no key of `[imports]`"}},
 		{"a rule of the base only is not applied", "never = [\"src/domain -> src/adapters\"]\n", "only = []\n", nil, nil, nil},

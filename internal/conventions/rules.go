@@ -162,9 +162,9 @@ const (
 // 109 characters, the longest file name 72 (2026-11-16).
 const OwnValueLength = 200
 
-// ImportRuleLength is the longest import rule as written: two folders at OwnValueLength, each with a leading "./"
+// importRuleLength is the longest import rule as written: two folders at OwnValueLength, each with a leading "./"
 // and a trailing "/", and the arrow with room for the spaces around it.
-const ImportRuleLength = 2*(OwnValueLength+len("./")+len("/")) + 2*len(" -> ")
+const importRuleLength = 2*(OwnValueLength+len("./")+len("/")) + 2*len(" -> ")
 
 // importArrow joins the two folders of an import rule, as it is written and as an answer prints it.
 const importArrow = "->"
@@ -250,7 +250,7 @@ func folderForm(value string) (string, bool) {
 // Under NeverImportRules the two folders differ and neither lies under the other.
 func (v OwnValue) importRuleForm(value string) (string, bool) {
 	from, to, found := strings.Cut(value, importArrow)
-	if len(value) > ImportRuleLength || !found || strings.Contains(to, importArrow) {
+	if len(value) > importRuleLength || !found || strings.Contains(to, importArrow) {
 		return "", false
 	}
 	var ends [2]string
