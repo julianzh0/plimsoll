@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -249,8 +250,10 @@ func now(run runner, top string, wants snapshot.Wants, source *snapshot.Source) 
 		return nil, gitFailed(err)
 	}
 	defer func() { _ = root.Close() }()
+	files := parseTracked(output, 1)
+	read := readAll(root, files, wants)
 	var entries []snapshot.Entry
-	for _, tracked := range parseTracked(output, 1) {
+	for i, tracked := range files {
 		if tracked.mode == modeSubmodule {
 			source.Submodules = append(source.Submodules, tracked.path)
 			continue
@@ -259,24 +262,91 @@ func now(run runner, top string, wants snapshot.Wants, source *snapshot.Source) 
 			continue
 		}
 		entry := snapshot.Entry{Path: tracked.path}
-		if wants.Path(tracked.path) || wants.Words != nil && wants.Words(tracked.path) {
-			content, readErr := readFile(root, tracked.path, wants)
-			switch {
-			case errors.Is(readErr, os.ErrNotExist):
-				continue // tracked, but deleted in the working tree
-			case readErr != nil:
-				source.Unreadable = append(source.Unreadable, tracked.path)
-			case content == nil:
-				entry.Binary = true
-			default:
-				entry.Content = content
-			}
-		} else if _, statErr := root.Lstat(tracked.path); errors.Is(statErr, os.ErrNotExist) {
-			continue
+		switch r := read[i]; {
+		case errors.Is(r.err, os.ErrNotExist):
+			continue // tracked, but deleted in the working tree
+		case r.err != nil:
+			source.Unreadable = append(source.Unreadable, tracked.path)
+		case !r.wanted:
+		case r.content == nil:
+			entry.Binary = true
+		default:
+			entry.Content = r.content
 		}
 		entries = append(entries, entry)
 	}
 	return entries, nil
+}
+
+// fileRead is what reading one tracked file found: its content when the snapshot wants it, else only whether it
+// exists (err holds os.ErrNotExist when it does not).
+type fileRead struct {
+	wanted  bool
+	content []byte
+	err     error
+}
+
+// readAll reads the regular tracked files of the working tree, one goroutine per processor, each taking every n-th
+// folder: a folder is opened once and its files by name, since opening a path through the root opens each of its
+// folders again (swc, 83,143 files: 5.9 s by one reader opening paths). The results keep the order of the files.
+func readAll(root *os.Root, files []trackedEntry, wants snapshot.Wants) []fileRead {
+	read := make([]fileRead, len(files))
+	var folders []string
+	inFolder := map[string][]int{}
+	for i, f := range files {
+		if f.mode == modeSubmodule || !regular(f.mode) {
+			continue
+		}
+		folder := path.Dir(f.path)
+		if _, seen := inFolder[folder]; !seen {
+			folders = append(folders, folder)
+		}
+		inFolder[folder] = append(inFolder[folder], i)
+	}
+	workers := runtime.GOMAXPROCS(0)
+	var group sync.WaitGroup
+	for worker := range workers {
+		group.Go(func() {
+			for n := worker; n < len(folders); n += workers {
+				readFolder(root, folders[n], inFolder[folders[n]], files, wants, read)
+			}
+		})
+	}
+	group.Wait()
+	return read
+}
+
+// readFolder reads the files at the given indexes, which all lie in folder, through one root opened on it.
+func readFolder(root *os.Root, folder string, indexes []int, files []trackedEntry, wants snapshot.Wants, read []fileRead) {
+	dir := root
+	if folder != "." {
+		sub, err := root.OpenRoot(folder)
+		if err != nil {
+			for _, i := range indexes {
+				read[i] = fileRead{wanted: wants.Path(files[i].path) || wants.Words != nil && wants.Words(files[i].path), err: err}
+			}
+			return
+		}
+		defer func() { _ = sub.Close() }()
+		dir = sub
+	}
+	for _, i := range indexes {
+		read[i] = readTracked(dir, files[i].path, wants)
+	}
+}
+
+// readTracked reads one tracked file through the root of its folder.
+func readTracked(dir *os.Root, filePath string, wants snapshot.Wants) fileRead {
+	name := path.Base(filePath)
+	if wants.Path(filePath) || wants.Words != nil && wants.Words(filePath) {
+		content, err := readFile(dir, name, wants)
+		return fileRead{wanted: true, content: content, err: err}
+	}
+	_, err := dir.Lstat(name)
+	if !errors.Is(err, os.ErrNotExist) {
+		err = nil
+	}
+	return fileRead{err: err}
 }
 
 // readFile reads a file through the root. It returns nil content for a binary file and an empty slice for an
