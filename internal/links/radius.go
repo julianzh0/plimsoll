@@ -1,6 +1,7 @@
 package links
 
 import (
+	"cmp"
 	"slices"
 	"strings"
 
@@ -13,9 +14,6 @@ const radiusNote = "blast radius: the files the change did not touch that use, a
 	"through its header), and the importers of a changed file whose changed code has no name plimsoll reads; " +
 	"a changed comment, an added declaration and a re-indented line outside Python alter nothing; a docstring is code; " +
 	"a name used through an alias is not seen"
-
-// reasonLinksNotUsed is why a changed file of a language whose links are not used is not counted.
-const reasonLinksNotUsed = "its language's imports are not used"
 
 // blastRadius counts the radius of the change over the languages whose links are used, and names the changed files
 // it could not count.
@@ -32,20 +30,25 @@ func blastRadius(s snapshot.Snapshot, used []snapshot.LanguageImports) (*answer.
 		return slices.ContainsFunc(u.Languages, func(l string) bool { return languages[l] })
 	}
 	counts := map[snapshot.FileState]int{}
-	notCounted := map[string][]string{} // reason -> paths
+	var generated []string // the changed files left out for a reason no other "not analysed" entry names
 	for _, c := range r.Changed {
-		state, reason := c.State, c.Reason
+		state := c.State
 		if state != snapshot.NothingAltered && state != snapshot.NotCounted && !languages[c.Language] {
-			state, reason = snapshot.NotCounted, reasonLinksNotUsed
+			state = snapshot.NotCounted // its language's links are not used; the gate's own sentence names it
 		}
 		counts[state]++
-		if state == snapshot.NotCounted {
-			p := c.Path
-			if p == "" {
-				p = c.BasePath
-			}
-			notCounted[reason] = append(notCounted[reason], p)
+		if state == snapshot.NotCounted && c.Reason == snapshot.ReasonGenerated {
+			generated = append(generated, cmp.Or(c.Path, c.BasePath))
 		}
+	}
+	var notAnalysed []string
+	if len(generated) > 0 {
+		notAnalysed = []string{"the blast radius leaves out " + answer.Plural(len(generated), "changed code file") +
+			" (generated): " + named(generated)}
+	}
+	if len(r.Changed) > 0 && counts[snapshot.NotCounted] == len(r.Changed) {
+		radius := &answer.Radius{State: answer.RadiusNotAnalysed, Paths: []string{}}
+		return radius, radiusRows(radius, counts, len(r.Changed)), notAnalysed
 	}
 	radius := &answer.Radius{Paths: []string{}}
 	for _, u := range r.Users {
@@ -53,10 +56,9 @@ func blastRadius(s snapshot.Snapshot, used []snapshot.LanguageImports) (*answer.
 			continue
 		}
 		radius.Files++
-		switch {
-		case u.ByName:
+		if u.ByName {
 			radius.ByName++
-		default:
+		} else {
 			radius.AsWhole++
 		}
 		switch {
@@ -83,16 +85,11 @@ func blastRadius(s snapshot.Snapshot, used []snapshot.LanguageImports) (*answer.
 			radius.Unread++
 		}
 	}
-	counted := len(r.Changed) - counts[snapshot.NotCounted]
-	switch {
-	case len(r.Changed) > 0 && counted == 0:
-		radius = &answer.Radius{State: answer.RadiusNotAnalysed, Paths: []string{}}
-	case counts[snapshot.NotCounted] > 0 || radius.Unread > 0 || r.MissingNow:
+	radius.State = answer.RadiusCounted
+	if counts[snapshot.NotCounted] > 0 || radius.Unread > 0 || r.MissingNow {
 		radius.State = answer.RadiusAtLeast
-	default:
-		radius.State = answer.RadiusCounted
 	}
-	return radius, radiusRows(radius, counts, len(r.Changed)), notCountedSentences(notCounted)
+	return radius, radiusRows(radius, counts, len(r.Changed)), notAnalysed
 }
 
 // radiusRows are the report rows of the radius: its number with its parts, and the files it lists.
@@ -132,7 +129,7 @@ func radiusRows(r *answer.Radius, counts map[snapshot.FileState]int, changed int
 	}
 	rows := []answer.Statistic{{Name: "blast radius", Value: &value, Unit: "files", Note: strings.Join(parts, "; ")}}
 	if r.Files > 0 {
-		listed := "`" + strings.Join(r.Paths, "`, `") + "`"
+		listed := answer.QuotedList(r.Paths)
 		if r.Omitted > 0 {
 			listed += " and " + count(r.Omitted) + " more"
 		}
@@ -146,23 +143,4 @@ func otherPart(n int) string {
 		return ""
 	}
 	return ", " + count(n) + " other"
-}
-
-// notCountedSentences name the changed code files the radius could not count for a reason no other entry of "not
-// analysed" says already: skipped folders, missing content and languages whose imports are not used have their own.
-func notCountedSentences(byReason map[string][]string) []string {
-	var sentences []string
-	for _, reason := range []string{snapshot.ReasonGenerated} {
-		paths := byReason[reason]
-		if len(paths) == 0 {
-			continue
-		}
-		slices.Sort(paths)
-		listed := "`" + strings.Join(paths[:min(len(paths), 3)], "`, `") + "`"
-		if len(paths) > 3 {
-			listed += " and " + count(len(paths)-3) + " more"
-		}
-		sentences = append(sentences, "the blast radius leaves out "+answer.Plural(len(paths), "changed code file")+" ("+reason+"): "+listed)
-	}
-	return sentences
 }

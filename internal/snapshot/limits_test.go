@@ -12,6 +12,11 @@ import (
 
 func TestBuildReadsTheLimitsARepositorySets(t *testing.T) {
 	defaults := conventions.Default().Limits
+	with := func(change func(*conventions.Limits)) conventions.Limits {
+		l := defaults
+		change(&l)
+		return l
+	}
 	set := func(value, step float64) conventions.Limit {
 		return conventions.Limit{Value: value, Step: step, Source: "set by `.plimsoll.toml`"}
 	}
@@ -34,34 +39,34 @@ func TestBuildReadsTheLimitsARepositorySets(t *testing.T) {
 	}{
 		{"no file", "", "", defaults, nil, nil},
 		{"a file that raises two limits", "", "[limits]\nfile_lines = 1500 # our generated parsers\ntest_ratio = 3\n",
-			conventions.Limits{FileLines: set(1500, 1), TestRatio: set(3, 0.1), SharedCommits: defaults.SharedCommits, PairShareRise: defaults.PairShareRise, HotspotFiles: defaults.HotspotFiles, ImportsNotFollowed: defaults.ImportsNotFollowed, FunctionComplexity: defaults.FunctionComplexity, FunctionNesting: defaults.FunctionNesting, RadiusPaths: defaults.RadiusPaths},
+			with(func(l *conventions.Limits) { l.FileLines = set(1500, 1); l.TestRatio = set(3, 0.1) }),
 			[]snapshot.DeclaredLimit{
 				{LimitKey: key("file_lines"), Default: 1000, Now: value(1500)},
 				{LimitKey: key("test_ratio"), Default: 2, Now: value(3)},
 			}, nil},
 		{"a limit lowered and one removed since the base", "[limits]\nshared_commits = 8\nfile_lines = 1200\n", "\uFEFF[limits]\r\nshared_commits = 3\r\n",
-			conventions.Limits{FileLines: defaults.FileLines, TestRatio: defaults.TestRatio, SharedCommits: set(3, 1), PairShareRise: defaults.PairShareRise, HotspotFiles: defaults.HotspotFiles, ImportsNotFollowed: defaults.ImportsNotFollowed, FunctionComplexity: defaults.FunctionComplexity, FunctionNesting: defaults.FunctionNesting, RadiusPaths: defaults.RadiusPaths},
+			with(func(l *conventions.Limits) { l.SharedCommits = set(3, 1) }),
 			[]snapshot.DeclaredLimit{
 				{LimitKey: key("file_lines"), Default: 1000, Before: value(1200)},
 				{LimitKey: key("shared_commits"), Default: 5, Now: value(3), Before: value(8)},
 			}, nil},
 		{"an unknown key, a value that is no number, one at zero", "", "[limits]\nfile_lines = 1500\nmax_complexity = 10\ntest_ratio = \"3\"\nshared_commits = 0\n",
-			conventions.Limits{FileLines: set(1500, 1), TestRatio: defaults.TestRatio, SharedCommits: defaults.SharedCommits, PairShareRise: defaults.PairShareRise, HotspotFiles: defaults.HotspotFiles, ImportsNotFollowed: defaults.ImportsNotFollowed, FunctionComplexity: defaults.FunctionComplexity, FunctionNesting: defaults.FunctionNesting, RadiusPaths: defaults.RadiusPaths},
+			with(func(l *conventions.Limits) { l.FileLines = set(1500, 1) }),
 			[]snapshot.DeclaredLimit{{LimitKey: key("file_lines"), Default: 1000, Now: value(1500)}},
 			[]string{"`max_complexity` is no limit plimsoll knows", "`shared_commits` is not a whole number above 0", "`test_ratio` is not a number above 0"}},
 		{"a file without the table", "", "file_lines = 1500\n", defaults, nil, []string{"`file_lines` lies outside a table", "it holds no table plimsoll reads"}},
 		{"values that are no limit: not a number, a fraction of a count, a key twice, a line that is no key", "",
 			"[[limits]]\n[limits]\nfile_lines = nan\nshared_commits = 2.5\nhotspot_files = 1e19\ntest_ratio = inf\ntest_ratio = 2.5\ntest_ratio = 3\nfile_lines: 900\n",
-			conventions.Limits{FileLines: defaults.FileLines, TestRatio: set(2.5, 0.1), SharedCommits: defaults.SharedCommits, PairShareRise: defaults.PairShareRise, HotspotFiles: defaults.HotspotFiles, ImportsNotFollowed: defaults.ImportsNotFollowed, FunctionComplexity: defaults.FunctionComplexity, FunctionNesting: defaults.FunctionNesting, RadiusPaths: defaults.RadiusPaths},
+			with(func(l *conventions.Limits) { l.TestRatio = set(2.5, 0.1) }),
 			[]snapshot.DeclaredLimit{{LimitKey: key("test_ratio"), Default: 2, Now: value(2.5)}},
 			[]string{"`[limits]` holds a line that is no `key = value`", "`file_lines` is not a whole number above 0", "`hotspot_files` is not a whole number above 0",
 				"`shared_commits` is not a whole number above 0", "`test_ratio` is not a number above 0", "`test_ratio` is set twice"}},
 		{"counts at and past the largest whole number a float holds exactly", "", "[limits]\nfile_lines = 9007199254740992\nshared_commits = 9007199254740993\n",
-			conventions.Limits{FileLines: set(9007199254740992, 1), TestRatio: defaults.TestRatio, SharedCommits: defaults.SharedCommits, PairShareRise: defaults.PairShareRise, HotspotFiles: defaults.HotspotFiles, ImportsNotFollowed: defaults.ImportsNotFollowed, FunctionComplexity: defaults.FunctionComplexity, FunctionNesting: defaults.FunctionNesting, RadiusPaths: defaults.RadiusPaths},
+			with(func(l *conventions.Limits) { l.FileLines = set(9007199254740992, 1) }),
 			[]snapshot.DeclaredLimit{{LimitKey: key("file_lines"), Default: 1000, Now: value(9007199254740992)}},
 			[]string{"`shared_commits` is not a whole number above 0"}},
 		{"a table of another name", "", "[limits]\nfile_lines = 1500\n[rules]\nno_print = true\n",
-			conventions.Limits{FileLines: set(1500, 1), TestRatio: defaults.TestRatio, SharedCommits: defaults.SharedCommits, PairShareRise: defaults.PairShareRise, HotspotFiles: defaults.HotspotFiles, ImportsNotFollowed: defaults.ImportsNotFollowed, FunctionComplexity: defaults.FunctionComplexity, FunctionNesting: defaults.FunctionNesting, RadiusPaths: defaults.RadiusPaths},
+			with(func(l *conventions.Limits) { l.FileLines = set(1500, 1) }),
 			[]snapshot.DeclaredLimit{{LimitKey: key("file_lines"), Default: 1000, Now: value(1500)}}, []string{"`[rules]` is no table plimsoll reads"}},
 	}
 	side := func(content string) map[string]string {

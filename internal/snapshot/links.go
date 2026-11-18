@@ -285,7 +285,7 @@ func (s side) resolveAll(language conventions.Language, own prefix, from string,
 			repeated := slices.ContainsFunc(found, func(l Link) bool { return l.Line == st.line && l.To == t.to && l.TypeOnly == st.typeOnly })
 			if len(files) > 0 && !repeated {
 				found = append(found, Link{From: from, Line: st.line, To: t.to, Folder: t.folder, Files: files, TypeOnly: st.typeOnly,
-					Declares: strings.HasPrefix(st.spec, "mod "), Added: base.added(from, t.to, st)})
+					Declares: declaresModule(st), Added: base.added(from, t.to, st)})
 			}
 		}
 	}

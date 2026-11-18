@@ -152,6 +152,13 @@ func modName(spec string) (string, bool) {
 	return words[1], true
 }
 
+// declaresModule says whether a statement declares a module in its own file (a mod line, also one read from a macro
+// body): the module tree's own test, so the links and the module tree agree.
+func declaresModule(st statement) bool {
+	_, declares := modName(st.spec)
+	return declares
+}
+
 // declaredAt is the declaration of a module at a place.
 func declaredAt(file string, within []string, name string) declaration {
 	return declaration{file, strings.Join(within, "/"), name}

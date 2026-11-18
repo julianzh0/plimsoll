@@ -30,14 +30,14 @@ var (
 // cFamily is what the C and C++ entries share: units are the file names the compiler takes as a unit of their own,
 // which no file includes.
 func cFamily(name string, extensions, units []string) Language {
-	declarations, functions, macros, literals := cDeclarations, cFunctions(), cMacros(), doubleQuoted+"|"+character
+	declarations, unitQuery, functions, macros, literals := cDeclarations, cUnits, cFunctions(), cMacros(), doubleQuoted+"|"+character
 	if name == "cpp" {
-		declarations += cppDeclarations
+		declarations, unitQuery = declarations+cppDeclarations, unitQuery+cppUnits
 		functions, macros, literals = cppFunctions(), cppMacros(), cppRawString+"|"+literals
 	}
 	return Language{
 		Name: name, Extensions: extensions, Literals: cComments, Functions: functions, Macros: macros, Tokens: cLikeTokens(`(?:u8|[uUL])?(?:` + literals + `)`),
-		Grammar: name, Query: cQuery, Declarations: declarations, LineReadWhenBroken: true,
+		Grammar: name, Query: cQuery, Declarations: declarations, Units: unitQuery, Peers: HeaderPeers, LineReadWhenBroken: true,
 		Imports: Imports{
 			Statements: []ImportForm{{Pattern: cIncludeQuoted}, {Pattern: cIncludeAngled}},
 			Computed:   ImportForm{Pattern: cIncludeComputed},

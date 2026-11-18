@@ -92,7 +92,6 @@ func decode(language conventions.Language, result parse.Result, content []byte) 
 	r.testSpans = tests
 	r.declarations = decodeDeclarations(result, content, tests)
 	r.units, r.pureImports = decodeUnits(result, content)
-	r.unitsRead = true
 	r.parsed = true
 	return r
 }

@@ -13,9 +13,10 @@ import (
 // token is one token of a text: a hash of its bytes, where it stands, and whether it is a name or a quoted literal.
 type token struct {
 	hash       uint64
-	line       int // from firstLine
-	start, end int // byte offsets into the text
-	word       bool
+	line       int  // from firstLine
+	start, end int  // byte offsets into the text
+	word       bool // a name or a quoted literal
+	identifier bool // a name
 }
 
 // tokensOf splits text by a language's token pattern; comments and white space are no tokens.
@@ -48,7 +49,7 @@ func eachToken(pattern *regexp.Regexp, text []byte, firstLine int) iter.Seq[toke
 			word := m[2*id] >= 0 || m[2*lit] >= 0 && bytes.ContainsAny(text[start:start+1], "\"'`")
 			h := fnv.New64a()
 			_, _ = h.Write(text[start:end]) // a hash's Write never fails
-			if !yield(token{hash: h.Sum64(), line: line, start: start, end: end, word: word}) {
+			if !yield(token{hash: h.Sum64(), line: line, start: start, end: end, word: word, identifier: m[2*id] >= 0}) {
 				return
 			}
 		}
@@ -134,9 +135,12 @@ func newTokenSpan(toks []token, base int) tokenSpan {
 }
 
 // in is the run of tokens that start inside the content's bytes a to b.
-func (ts tokenSpan) in(a, b int) (lo, hi int) {
-	lo, _ = slices.BinarySearchFunc(ts.toks, a-ts.base, func(t token, at int) int { return t.start - at })
-	hi, _ = slices.BinarySearchFunc(ts.toks, b-ts.base, func(t token, at int) int { return t.start - at })
+func (ts tokenSpan) in(a, b int) (lo, hi int) { return tokensIn(ts.toks, a-ts.base, b-ts.base) }
+
+// tokensIn is the run of tokens, sorted by start, that start at a or later and before b.
+func tokensIn(toks []token, a, b int) (lo, hi int) {
+	lo, _ = slices.BinarySearchFunc(toks, a, func(t token, at int) int { return t.start - at })
+	hi, _ = slices.BinarySearchFunc(toks, b, func(t token, at int) int { return t.start - at })
 	return lo, hi
 }
 

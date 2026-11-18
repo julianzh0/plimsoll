@@ -1,6 +1,7 @@
 package links
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"maps"
@@ -62,19 +63,12 @@ func radiusOf(t *testing.T, source snapshot.Source) (states, users []string) {
 	t.Helper()
 	r := snapshot.Build(source, conventions.Default(), snapshottest.Readings(t)).Radius
 	for _, c := range r.Changed {
-		states = append(states, fmt.Sprintf("%s %d %s", cmpOr(c.Path, c.BasePath), c.State, c.Reason))
+		states = append(states, fmt.Sprintf("%s %d %s", cmp.Or(c.Path, c.BasePath), c.State, c.Reason))
 	}
 	for _, u := range r.Users {
 		users = append(users, u.Path)
 	}
 	return states, users
-}
-
-func cmpOr(a, b string) string {
-	if a != "" {
-		return a
-	}
-	return b
 }
 
 func TestTheBlastRadiusCountsTheFilesThatUseANameTheChangeAlteredOrRemoved(t *testing.T) {

@@ -11,6 +11,7 @@ func typescriptLanguage() Language {
 		Name: "typescript", Functions: typescriptFunctions(), Tokens: cLikeTokens(doubleQuoted + "|" + singleQuoted + "|" + backQuoted), Extensions: []string{".ts", ".tsx", ".js", ".mjs", ".cjs"},
 		Imports: typescriptImports(), Grammar: "tsx", GrammarBySuffix: map[string]string{".ts": "typescript"},
 		Query: typescriptQuery, Declarations: typescriptDeclarations,
+		Units: typescriptUnits, LayoutCode: LayoutCode{LineBreaks: true},
 		// trigger.dev finds tasks in folders named trigger when its config sets no dirs
 		// (https://trigger.dev/docs/config/config-file, read 2026-11-17).
 		// NOTE: a dirs entry of trigger.config that names another folder is not read. Upgrade: read dirs from the

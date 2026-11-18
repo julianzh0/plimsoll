@@ -6,7 +6,8 @@ import "regexp"
 
 // goLanguage is the entry of Go.
 func goLanguage() Language {
-	return Language{Name: "go", Functions: goFunctions(), Tokens: cLikeTokens(doubleQuoted + "|" + character + "|" + backQuoted), Extensions: []string{".go"}, Imports: goImports(), Grammar: "go", Query: goQuery, Declarations: goDeclarations}
+	return Language{Name: "go", Functions: goFunctions(), Tokens: cLikeTokens(doubleQuoted + "|" + character + "|" + backQuoted), Extensions: []string{".go"}, Imports: goImports(), Grammar: "go", Query: goQuery, Declarations: goDeclarations,
+		Units: goUnits, LayoutCode: LayoutCode{LineBreaks: true}, Peers: FolderPeers}
 }
 
 // goQuery reads the import specs.

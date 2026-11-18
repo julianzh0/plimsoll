@@ -4,6 +4,7 @@ package conventions
 func kotlinLanguage() Language {
 	return Language{
 		Name: "kotlin", Functions: kotlinFunctions(), Tokens: cLikeTokens(tripleQuoted + "|" + doubleQuoted + "|" + character), Extensions: []string{".kt", ".kts"}, Grammar: "kotlin", Query: kotlinQuery, Declarations: kotlinDeclarations,
+		Units: kotlinUnits, LayoutCode: LayoutCode{LineBreaks: true}, Peers: PackagePeers,
 		Imports: jvmImports([]string{".java"}, nil),
 	}
 }

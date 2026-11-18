@@ -67,8 +67,7 @@ func decodeUnits(result parse.Result, content []byte) ([]unit, []span) {
 	}
 	units := make([]unit, 0, len(byStart))
 	for _, u := range byStart {
-		slices.Sort(u.names)
-		u.names = slices.Compact(u.names)
+		u.names = sortedNames(u.names)
 		units = append(units, *u)
 	}
 	byPlace := func(a, b unit) int { return cmp.Or(a.start-b.start, b.end-a.end) }
@@ -80,13 +79,15 @@ func decodeUnits(result parse.Result, content []byte) ([]unit, []span) {
 		}
 		outer = append(outer, u)
 	}
-	slices.SortFunc(attributes, func(a, b span) int { return b.start - a.start })
+	slices.SortFunc(attributes, func(a, b span) int { return a.start - b.start })
 	attach := func(units []unit) {
-		for i := range units {
-			for _, a := range attributes { // the last attribute first
-				if a.end <= units[i].start && len(bytes.TrimSpace(content[a.end:units[i].start])) == 0 {
-					units[i].start = a.start
+		for i := range units { // units sorted by start: the attributes right before each, the last one first
+			before, _ := slices.BinarySearchFunc(attributes, units[i].start, func(a span, at int) int { return a.end - at })
+			for j := before - 1; j >= 0 && attributes[j].end <= units[i].start; j-- {
+				if len(bytes.TrimSpace(content[attributes[j].end:units[i].start])) > 0 {
+					break
 				}
+				units[i].start = attributes[j].start
 			}
 		}
 	}
@@ -122,34 +123,49 @@ type prints struct {
 	units                  []uint64
 }
 
-// printsOf tokenizes a content once and gives its prints with its pure imports left out, and with none left out (for
-// a file whose imports are what its package offers).
-func printsOf(language conventions.Language, content []byte, units []unit, imports []span) (pure, all prints) {
+// printPair are a content's prints with its pure imports left out, and, for a file whose imports are what its package
+// offers, with none left out.
+type printPair struct{ pure, all prints }
+
+// pick gives the prints that apply to a file: all for a file whose imports are its package's surface.
+func (p printPair) pick(surface bool) prints {
+	if surface {
+		return p.all
+	}
+	return p.pure
+}
+
+// printsOf tokenizes a content once and gives its prints; withAll adds those with no import left out.
+func printsOf(language conventions.Language, content []byte, units []unit, imports []span, withAll bool) printPair {
 	toks := tokensOf(language.Tokens, content, 1)
 	starts := lineStarts(content)
-	hash := func(toks []token, skip []span, context string) uint64 {
-		return hashTokens(language, content, starts, toks, skip, context)
+	hash := func(lo, hi int, skip []span, context string) uint64 {
+		return hashTokens(language, content, starts, toks[lo:hi], skip, context)
 	}
+	n := len(toks)
 	unitSpans := make([]span, 0, len(units))
 	for _, u := range units {
 		unitSpans = append(unitSpans, span{start: u.start, end: u.end - 1})
 	}
-	whole := hash(toks, nil, "")
-	pure = prints{whole: whole, code: hash(toks, imports, ""), remainder: hash(toks, slices.Concat(unitSpans, imports), "")}
-	all = prints{whole: whole, code: whole, remainder: hash(toks, unitSpans, "")}
+	whole := hash(0, n, nil, "")
+	var p printPair
+	p.pure = prints{whole: whole, code: hash(0, n, imports, ""), remainder: hash(0, n, slices.Concat(unitSpans, imports), "")}
+	if withAll {
+		p.all = prints{whole: whole, code: whole, remainder: hash(0, n, unitSpans, "")}
+	}
 	for _, u := range units {
-		lo, _ := slices.BinarySearchFunc(toks, u.start, func(t token, at int) int { return t.start - at })
-		hi, _ := slices.BinarySearchFunc(toks, u.end, func(t token, at int) int { return t.start - at })
-		in := toks[lo:hi]
+		lo, hi := tokensIn(toks, u.start, u.end)
 		if u.inner == nil {
-			print := hash(in, nil, u.context)
-			pure.units, all.units = append(pure.units, print), append(all.units, print)
+			h := hash(lo, hi, nil, u.context)
+			p.pure.units, p.all.units = append(p.pure.units, h), append(p.all.units, h)
 			continue
 		}
-		pure.units = append(pure.units, hash(in, slices.Concat(u.inner, imports), u.context))
-		all.units = append(all.units, hash(in, u.inner, u.context))
+		p.pure.units = append(p.pure.units, hash(lo, hi, slices.Concat(u.inner, imports), u.context))
+		if withAll {
+			p.all.units = append(p.all.units, hash(lo, hi, u.inner, u.context))
+		}
 	}
-	return pure, all
+	return p
 }
 
 // lineStarts are the offsets where the lines of a content start, the first line's at index 1.
@@ -170,8 +186,8 @@ func hashTokens(language conventions.Language, content []byte, starts []int, tok
 	_, _ = h.Write([]byte(context)) // a hash's Write never fails
 	skipped := make([]bool, len(toks))
 	for _, sp := range skip { // span ends are included
-		lo, _ := slices.BinarySearchFunc(toks, sp.start, func(t token, at int) int { return t.start - at })
-		for i := lo; i < len(toks) && toks[i].start <= sp.end; i++ {
+		lo, hi := tokensIn(toks, sp.start, sp.end+1)
+		for i := lo; i < hi; i++ {
 			skipped[i] = true
 		}
 	}

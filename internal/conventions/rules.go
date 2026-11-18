@@ -392,7 +392,7 @@ type Language struct {
 	Declarations string
 	// Units is the query of the comparison units of the blast radius, read with Declarations (units.go).
 	Units string
-	// Layout says which of a file's layout is code, for comparing a changed file's units.
+	// LayoutCode says which of a file's layout is code, for comparing a changed file's units.
 	LayoutCode LayoutCode
 	// Peers says which files use the file's declarations without an import of it.
 	Peers Peers
@@ -527,7 +527,7 @@ func Default() Rules {
 			RadiusPaths:        Limit{Value: 30, Source: "a first cap, to be set from the radii of the field runs (US-63)"},
 		},
 		// One entry per language, each in its own file. A new language is one file and one line here.
-		Languages: withUnits([]Language{typescriptLanguage(), goLanguage(), pythonLanguage(), dartLanguage(), javaLanguage(), kotlinLanguage(), rustLanguage(), csharpLanguage(), swiftLanguage(), cLanguage(), cppLanguage()}),
+		Languages: []Language{typescriptLanguage(), goLanguage(), pythonLanguage(), dartLanguage(), javaLanguage(), kotlinLanguage(), rustLanguage(), csharpLanguage(), swiftLanguage(), cLanguage(), cppLanguage()},
 	}
 }
 

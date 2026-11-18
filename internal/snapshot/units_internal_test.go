@@ -1,7 +1,6 @@
 package snapshot
 
 import (
-	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -10,9 +9,8 @@ import (
 	"github.com/julianzh0/plimsoll/internal/parse"
 )
 
-// unitsOf reads one file with its declarations and gives its units as "<names> in <context>" and its pure imports'
-// first words.
-func unitsOf(t *testing.T, path, content string) (units, imports []string) {
+// readUnits reads one file with its declarations.
+func readUnits(t *testing.T, path, content string) reading {
 	t.Helper()
 	parser, err := parse.New()
 	if err != nil {
@@ -21,7 +19,14 @@ func unitsOf(t *testing.T, path, content string) (units, imports []string) {
 	t.Cleanup(parser.Close)
 	readings := NewReadings(parser)
 	language, _ := conventions.Default().LanguageOf(path)
-	r := readings.of(language, language.GrammarOf(path), []byte(content), readings.begin(), wanted{declarations: true})
+	return readings.of(language, language.GrammarOf(path), []byte(content), readings.begin(), wanted{declarations: true})
+}
+
+// unitsOf reads one file with its declarations and gives its units as "<names> in <context>" and its pure imports'
+// first words.
+func unitsOf(t *testing.T, path, content string) (units, imports []string) {
+	t.Helper()
+	r := readUnits(t, path, content)
 	if r.unread || r.syntaxError {
 		t.Fatalf("%s: unread %v, syntax error %v", path, r.unread, r.syntaxError)
 	}
@@ -78,19 +83,11 @@ func TestUnitsAreTheDeclarationsOfAFileWithTheNamesTheyDeclareDirectly(t *testin
 			}
 		})
 	}
-	_ = fmt.Sprint
 }
 
 func TestAnAttributeBeforeAUnitIsPartOfIt(t *testing.T) {
-	parser, err := parse.New()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(parser.Close)
-	readings := NewReadings(parser)
-	language, _ := conventions.Default().LanguageOf("a.rs")
 	content := "#[derive(Debug)]\n#[allow(dead_code)]\nstruct S;\n\n#[test]\nfn t() {}\n"
-	r := readings.of(language, "rust", []byte(content), readings.begin(), wanted{declarations: true})
+	r := readUnits(t, "a.rs", content)
 	if len(r.units) != 2 || r.units[0].start != 0 || content[r.units[1].start:r.units[1].start+7] != "#[test]" {
 		t.Errorf("units of %q = %+v, want each starting at its attributes", content, r.units)
 	}

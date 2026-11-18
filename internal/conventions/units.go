@@ -1,5 +1,10 @@
 package conventions
 
+import (
+	"path"
+	"slices"
+)
+
 // The comparison units of the blast radius (US-63): which declarations of a changed file are compared one by one, the
 // names each declares directly, the imports that alter nothing, the containers around a unit, and what of a file's
 // layout is code. A unit's captures:
@@ -30,43 +35,10 @@ const (
 	HeaderPeers
 )
 
-// SurfaceFiles are the files whose imports are what the package offers its importers (Python's `__init__.py`): there,
-// no import is pure.
-var pythonSurface = []string{"__init__.py"}
-
 // LayoutCode says which of a file's layout is code: a line break where a language inserts semicolons or reads lines,
 // and the indentation where a language reads blocks by it.
 type LayoutCode struct {
 	LineBreaks, Indentation bool
-}
-
-// withUnits gives each entry its unit query and layout.
-func withUnits(languages []Language) []Language {
-	units := map[string]struct {
-		query  string
-		layout LayoutCode
-		peers  Peers
-	}{
-		"go":         {goUnits, LayoutCode{LineBreaks: true}, FolderPeers},
-		"rust":       {rustUnits, LayoutCode{}, NoPeers},
-		"python":     {pythonUnits, LayoutCode{LineBreaks: true, Indentation: true}, NoPeers},
-		"typescript": {typescriptUnits, LayoutCode{LineBreaks: true}, NoPeers},
-		"dart":       {dartUnits, LayoutCode{}, NoPeers},
-		"swift":      {swiftUnits, LayoutCode{LineBreaks: true}, TargetPeers},
-		"kotlin":     {kotlinUnits, LayoutCode{LineBreaks: true}, PackagePeers},
-		"java":       {javaUnits, LayoutCode{}, PackagePeers},
-		"csharp":     {csharpUnits, LayoutCode{}, PackagePeers},
-		"c":          {cUnits, LayoutCode{}, HeaderPeers},
-		"cpp":        {cUnits + cppUnits, LayoutCode{}, HeaderPeers},
-	}
-	for i, l := range languages {
-		u := units[l.Name]
-		languages[i].Units, languages[i].LayoutCode, languages[i].Peers = u.query, u.layout, u.peers
-		if l.Name == "python" {
-			languages[i].SurfaceFiles = pythonSurface
-		}
-	}
-	return languages
 }
 
 const goUnits = `
@@ -188,7 +160,7 @@ const cppUnits = `
 (function_definition declarator: (function_declarator declarator: (qualified_identifier scope: (namespace_identifier) @unit.name))) @unit
 (function_definition declarator: (function_declarator declarator: [(field_identifier) @unit.name (operator_name) @unit.name
   (destructor_name) @unit.name])) @unit
-[(class_specifier name: (type_identifier) @unit.name body: (_))] @unit
+(class_specifier name: (type_identifier) @unit.name body: (_)) @unit
 (template_declaration [(class_specifier name: [(type_identifier) @unit.name (template_type name: (type_identifier) @unit.name)])
   (struct_specifier name: [(type_identifier) @unit.name (template_type name: (type_identifier) @unit.name)])
   (function_definition declarator: (function_declarator declarator: [(identifier) @unit.name (field_identifier) @unit.name
@@ -202,3 +174,18 @@ const cppUnits = `
 (namespace_definition name: (_) @container.name) @container
 (linkage_specification value: (_) @container.name) @container
 `
+
+// Headers are the suffixes of an entry's files that its language runs only through an include: its suffixes that no
+// pattern of the files it runs without an import matches (`.h`, `.hpp` beside `*.c`, `*.cc`).
+func (l Language) Headers() []string {
+	var headers []string
+	for _, suffix := range l.Extensions {
+		if !slices.ContainsFunc(l.Imports.Implicit, func(pattern string) bool {
+			matched, _ := path.Match(pattern, "x"+suffix)
+			return matched
+		}) {
+			headers = append(headers, suffix)
+		}
+	}
+	return headers
+}

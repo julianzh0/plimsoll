@@ -6,6 +6,7 @@ import "regexp"
 func csharpLanguage() Language {
 	return Language{
 		Name: "csharp", Functions: csharpFunctions(), Tokens: cLikeTokens(`@"(?:""|[^"])*"|\$?` + tripleQuoted + `|\$?` + doubleQuoted + "|" + character), Extensions: []string{".cs"}, Imports: csharpImports(), Grammar: "csharp", Query: csharpQuery, Declarations: csharpDeclarations,
+		Units: csharpUnits, Peers: PackagePeers,
 		// ASP.NET loads the application class of Global.asax.
 		Loaded: []Convention{{File: "Global.asax.cs"}},
 		// A project is a published library unless it says it is not packable, builds a program, or uses an

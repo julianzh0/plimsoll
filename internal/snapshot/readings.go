@@ -1,7 +1,6 @@
 package snapshot
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"errors"
 	"maps"
@@ -30,39 +29,18 @@ type Readings struct {
 	mu        sync.Mutex
 	kept      map[readingKey]*keptReading
 	questions uint64 // questions begun
-	// identifiers are, per content, the identifier tokens a file holds and whether each stands outside its test code:
-	// what the blast radius walk asks of the files it reaches. Kept and dropped like the readings.
-	identifiers map[[sha256.Size]byte]*keptIdentifiers
-	prints      map[[sha256.Size]byte]*keptPrints // per changed content: its blast radius fingerprints
+	// identifiers are what the blast radius walk asks of the files it reaches, and prints the fingerprints of the
+	// changed files it compares; each depends on a content alone and is kept and dropped like the readings.
+	identifiers byContent[identifiers]
+	prints      byContent[printPair]
 }
 
-// keptPrints are the prints of one changed content, and the latest question that used them.
-type keptPrints struct {
-	pure, all prints
-	question  uint64
-}
-
-// printsOfReading gives the prints of a content read with its units, made once per content.
-func (rs *Readings) printsOfReading(language conventions.Language, content []byte, r reading, question uint64) (pure, all prints) {
-	key := sha256.Sum256(append([]byte(language.Name+"\x01"), content...))
-	rs.mu.Lock()
-	if kept, found := rs.prints[key]; found {
-		kept.question = max(kept.question, question)
-		rs.mu.Unlock()
-		return kept.pure, kept.all
-	}
-	rs.mu.Unlock()
-	pure, all = printsOf(language, content, r.units, r.pureImports)
-	rs.mu.Lock()
-	rs.prints[key] = &keptPrints{pure: pure, all: all, question: question}
-	rs.mu.Unlock()
-	return pure, all
-}
-
-// keptIdentifiers are the identifiers of one content, and the latest question that used them.
-type keptIdentifiers struct {
-	identifiers identifiers
-	question    uint64
+// printsOfReading gives the prints of a content read with its units, made once per content; the prints with no import
+// left out only for an entry that has files whose imports are what their package offers.
+func (rs *Readings) printsOfReading(language conventions.Language, content []byte, r reading, question uint64) printPair {
+	return keptOrMade(rs, &rs.prints, contentKey("prints\x00"+language.Name, content), question, func() (printPair, bool) {
+		return printsOf(language, content, r.units, r.pureImports, len(language.SurfaceFiles) > 0), true
+	})
 }
 
 // identifiers are the distinct identifier tokens of one content, sorted, each with whether it stands outside its test
@@ -79,35 +57,29 @@ func (ids identifiers) find(name string) (held, outside bool) {
 }
 
 // identifiersOf gives the identifier tokens of a content: each with whether it stands outside the test spans, made
-// once per content. When they are not kept yet and worth is false for the content, it gives nil and reads nothing.
+// once per content. When they are not kept yet and worth is false for the content, it gives none, reads nothing and
+// keeps nothing.
 func (rs *Readings) identifiersOf(language conventions.Language, content []byte, testSpans []span, question uint64, worth func() bool) identifiers {
-	key := sha256.Sum256(append([]byte(language.Name+"\x00"), content...))
-	rs.mu.Lock()
-	if kept, found := rs.identifiers[key]; found {
-		kept.question = max(kept.question, question)
-		rs.mu.Unlock()
-		return kept.identifiers
-	}
-	rs.mu.Unlock()
-	if !worth() {
-		return identifiers{}
-	}
-	found := map[string]bool{}
-	for t := range eachToken(language.Tokens, content, 1) {
-		word := content[t.start:t.end]
-		if !t.word || bytes.ContainsAny(word[:1], "\"'`") {
-			continue // no identifier
+	return keptOrMade(rs, &rs.identifiers, contentKey("identifiers\x00"+language.Name, content), question, func() (identifiers, bool) {
+		if !worth() {
+			return identifiers{}, false
 		}
-		found[string(word)] = found[string(word)] || !inSpans(testSpans, t.start)
-	}
-	ids := identifiers{names: slices.Sorted(maps.Keys(found))}
-	for _, name := range ids.names {
-		ids.outsideTests = append(ids.outsideTests, found[name])
-	}
-	rs.mu.Lock()
-	rs.identifiers[key] = &keptIdentifiers{identifiers: ids, question: question}
-	rs.mu.Unlock()
-	return ids
+		found := map[string]bool{}
+		for t := range eachToken(language.Tokens, content, 1) {
+			if !t.identifier {
+				continue
+			}
+			outside := !inSpans(testSpans, t.start)
+			if was, seen := found[string(content[t.start:t.end])]; !seen || outside && !was {
+				found[string(content[t.start:t.end])] = outside
+			}
+		}
+		ids := identifiers{names: slices.Sorted(maps.Keys(found))}
+		for _, name := range ids.names {
+			ids.outsideTests = append(ids.outsideTests, found[name])
+		}
+		return ids, true
+	})
 }
 
 // readingKey names a reading: a reading depends only on the content, the entry, the grammar and the binary.
@@ -128,8 +100,7 @@ type keptReading struct {
 
 // NewReadings returns empty readings that read with the parser.
 func NewReadings(parser *parse.Parser) *Readings {
-	return &Readings{parser: parser, bound: KeptReadings, kept: map[readingKey]*keptReading{}, identifiers: map[[sha256.Size]byte]*keptIdentifiers{},
-		prints: map[[sha256.Size]byte]*keptPrints{}}
+	return &Readings{parser: parser, bound: KeptReadings, kept: map[readingKey]*keptReading{}}
 }
 
 // begin numbers a new question; the readings it uses are kept until a later question needs the room.
@@ -147,26 +118,10 @@ func (rs *Readings) end(question uint64) {
 	rs.mu.Lock()
 	defer rs.mu.Unlock()
 	if len(rs.kept) > rs.bound {
-		for key, kept := range rs.kept {
-			if kept.question < question {
-				delete(rs.kept, key)
-			}
-		}
+		maps.DeleteFunc(rs.kept, func(_ readingKey, kept *keptReading) bool { return kept.question < question })
 	}
-	if len(rs.identifiers) > rs.bound {
-		for key, kept := range rs.identifiers {
-			if kept.question < question {
-				delete(rs.identifiers, key)
-			}
-		}
-	}
-	if len(rs.prints) > rs.bound {
-		for key, kept := range rs.prints {
-			if kept.question < question {
-				delete(rs.prints, key)
-			}
-		}
-	}
+	rs.identifiers.drop(question, rs.bound)
+	rs.prints.drop(question, rs.bound)
 }
 
 // wanted is what a reading holds beside the entry's query: the file's declarations, its functions, and the rules that
@@ -251,6 +206,7 @@ func (rs *Readings) read(language conventions.Language, grammar string, content 
 		return r, !errors.Is(err, parse.ErrUnavailable)
 	}
 	r = decode(language, result, content)
+	r.unitsRead = w.declarations // the units query runs with the declarations query
 	if r.syntaxError && language.LineReadWhenBroken {
 		// the imports by the text patterns; the functions and the units still from the tree, each flagged where it holds
 		// the error

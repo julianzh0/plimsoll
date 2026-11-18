@@ -7,6 +7,7 @@ import "regexp"
 func rustLanguage() Language {
 	return Language{
 		Name: "rust", Functions: rustFunctions(), Tokens: cLikeTokens(rustLiterals), Extensions: []string{".rs"}, Grammar: "rust", Query: rustQuery, Declarations: rustDeclarations,
+		Units: rustUnits,
 		Imports: Imports{
 			Statements: []ImportForm{{Pattern: rustMod}, {Pattern: rustUse}, {Pattern: rustExtern}},
 			Grouped:    true,

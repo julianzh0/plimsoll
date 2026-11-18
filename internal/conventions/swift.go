@@ -7,6 +7,7 @@ import "regexp"
 func swiftLanguage() Language {
 	return Language{
 		Name: "swift", Functions: swiftFunctions(), Tokens: cLikeTokens(`#*` + tripleQuoted + `#*|` + doubleQuoted), Extensions: []string{".swift"}, Grammar: "swift", Query: swiftQuery, Declarations: swiftDeclarations,
+		Units: swiftUnits, LayoutCode: LayoutCode{LineBreaks: true}, Peers: TargetPeers,
 		Library: &Library{Manifest: "Package.swift", Is: regexp.MustCompile(`\.library\(`)},
 		Imports: Imports{
 			Relative:   NoRelative,
