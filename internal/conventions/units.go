@@ -9,6 +9,7 @@ package conventions
 //	@unit.body       the node after a signature that is its body (Dart): the unit runs to its end
 //	@unit.import     a pure import: it binds no name an importer of the file can reach
 //	@unit.reexport   an import that is no pure import after all (Rust `pub use`): its tokens count
+//	@unit.attribute  an attribute that stands before a unit (Rust `#[test]`): it is part of the unit after it
 //	@container       a container a unit may stand in (a namespace, an inline module, an include guard)
 //	@container.name  the container's name or condition
 //
@@ -28,6 +29,10 @@ const (
 	TargetPeers
 	HeaderPeers
 )
+
+// SurfaceFiles are the files whose imports are what the package offers its importers (Python's `__init__.py`): there,
+// no import is pure.
+var pythonSurface = []string{"__init__.py"}
 
 // LayoutCode says which of a file's layout is code: a line break where a language inserts semicolons or reads lines,
 // and the indentation where a language reads blocks by it.
@@ -57,6 +62,9 @@ func withUnits(languages []Language) []Language {
 	for i, l := range languages {
 		u := units[l.Name]
 		languages[i].Units, languages[i].LayoutCode, languages[i].Peers = u.query, u.layout, u.peers
+		if l.Name == "python" {
+			languages[i].SurfaceFiles = pythonSurface
+		}
 	}
 	return languages
 }
@@ -87,6 +95,7 @@ const rustUnits = `
 (mod_item name: (identifier) @container.name body: (_)) @container
 (use_declaration) @unit.import
 (use_declaration (visibility_modifier)) @unit.reexport
+(attribute_item) @unit.attribute
 `
 
 const pythonUnits = `
@@ -96,6 +105,7 @@ const pythonUnits = `
   (class_definition name: (identifier) @unit.name)]) @unit
 (module (expression_statement (assignment left: (identifier) @unit.name)) @unit)
 (module (expression_statement (assignment left: (pattern_list (identifier) @unit.name))) @unit)
+[(import_statement) (import_from_statement) (future_import_statement)] @unit.import
 `
 
 const typescriptUnits = `
@@ -179,8 +189,15 @@ const cppUnits = `
 (function_definition declarator: (function_declarator declarator: [(field_identifier) @unit.name (operator_name) @unit.name
   (destructor_name) @unit.name])) @unit
 [(class_specifier name: (type_identifier) @unit.name body: (_))] @unit
-(template_declaration [(class_specifier name: (type_identifier) @unit.name)
-  (function_definition declarator: (function_declarator declarator: (identifier) @unit.name))]) @unit
+(template_declaration [(class_specifier name: [(type_identifier) @unit.name (template_type name: (type_identifier) @unit.name)])
+  (struct_specifier name: [(type_identifier) @unit.name (template_type name: (type_identifier) @unit.name)])
+  (function_definition declarator: (function_declarator declarator: [(identifier) @unit.name (field_identifier) @unit.name
+    (qualified_identifier scope: (namespace_identifier) @unit.name) (operator_name) @unit.name]))
+  (alias_declaration name: (type_identifier) @unit.name)
+  (declaration declarator: [(identifier) @unit.name (init_declarator declarator: (identifier) @unit.name)
+    (function_declarator declarator: [(identifier) @unit.name (field_identifier) @unit.name])])]) @unit
+[(struct_specifier name: (template_type name: (type_identifier) @unit.name) body: (_))
+  (class_specifier name: (template_type name: (type_identifier) @unit.name) body: (_))] @unit
 (alias_declaration name: (type_identifier) @unit.name) @unit
 (namespace_definition name: (_) @container.name) @container
 (linkage_specification value: (_) @container.name) @container

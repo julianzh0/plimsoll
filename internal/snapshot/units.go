@@ -1,6 +1,7 @@
 package snapshot
 
 import (
+	"bytes"
 	"cmp"
 	"slices"
 	"strings"
@@ -9,27 +10,26 @@ import (
 )
 
 // unit is one comparison unit of a changed file (US-63): a declaration compared on its own, the names it declares
-// directly, and the names of the containers it stands in.
+// directly, and the names of the containers it stands in. A container is a unit too: its own head, without the units
+// inside it, which are compared on their own.
 type unit struct {
 	start, end int // byte offsets, end excluded
 	names      []string
 	context    string // the names of its containers, outermost first, each followed by a newline
+	inner      []span // for a container: the units inside it, left out of its fingerprint
 }
 
-// decodeUnits turns the unit captures of a reading into the file's units, outermost only, sorted by where they start,
-// and its pure imports.
+// decodeUnits turns the unit captures of a reading into the file's units, sorted by where they start, and its pure
+// imports. A declaration inside another declaration is part of the outer one; attributes right before a unit are
+// part of it.
 func decodeUnits(result parse.Result, content []byte) ([]unit, []span) {
 	byStart := map[[2]int]*unit{}
-	var imports, reexports []span
-	type container struct {
-		start, end int
-		name       string
-	}
-	var containers []container
+	var imports, reexports, attributes []span
+	var containers []unit
 	for _, match := range result.Matches {
 		var u *unit
 		var names []string
-		var c container
+		var c unit
 		bodyEnd := 0
 		for _, capture := range match {
 			switch capture.Name {
@@ -47,10 +47,12 @@ func decodeUnits(result parse.Result, content []byte) ([]unit, []span) {
 				imports = append(imports, span{start: capture.Start, end: capture.End - 1})
 			case "unit.reexport":
 				reexports = append(reexports, span{start: capture.Start, end: capture.End - 1})
+			case "unit.attribute":
+				attributes = append(attributes, span{start: capture.Start, end: capture.End})
 			case "container":
 				c.start, c.end = capture.Start, capture.End
 			case "container.name":
-				c.name = string(content[capture.Start:capture.End])
+				c.names = []string{string(content[capture.Start:capture.End])}
 			}
 		}
 		if u != nil {
@@ -67,7 +69,8 @@ func decodeUnits(result parse.Result, content []byte) ([]unit, []span) {
 		u.names = slices.Compact(u.names)
 		units = append(units, *u)
 	}
-	slices.SortFunc(units, func(a, b unit) int { return cmp.Or(a.start-b.start, b.end-a.end) })
+	byPlace := func(a, b unit) int { return cmp.Or(a.start-b.start, b.end-a.end) }
+	slices.SortFunc(units, byPlace)
 	outer := units[:0]
 	for _, u := range units {
 		if len(outer) > 0 && u.start < outer[len(outer)-1].end {
@@ -75,16 +78,37 @@ func decodeUnits(result parse.Result, content []byte) ([]unit, []span) {
 		}
 		outer = append(outer, u)
 	}
-	slices.SortFunc(containers, func(a, b container) int { return a.start - b.start })
-	for i, u := range outer {
-		var context strings.Builder
-		for _, c := range containers {
-			if c.start <= u.start && u.end <= c.end {
-				context.WriteString(c.name + "\n")
+	slices.SortFunc(attributes, func(a, b span) int { return b.start - a.start })
+	attach := func(units []unit) {
+		for i := range units {
+			for _, a := range attributes { // the last attribute first
+				if a.end <= units[i].start && len(bytes.TrimSpace(content[a.end:units[i].start])) == 0 {
+					units[i].start = a.start
+				}
 			}
 		}
-		outer[i].context = context.String()
 	}
+	attach(outer)
+	attach(containers)
+	slices.SortFunc(containers, byPlace)
+	for i, c := range containers {
+		for _, u := range outer {
+			if c.start <= u.start && u.end <= c.end {
+				containers[i].inner = append(containers[i].inner, span{start: u.start, end: u.end - 1})
+			}
+		}
+	}
+	all := slices.Concat(outer, containers)
+	for i, u := range all {
+		var context strings.Builder
+		for _, c := range containers {
+			if c.start <= u.start && u.end <= c.end && (c.start != u.start || c.end != u.end) {
+				context.WriteString(c.names[0] + "\n")
+			}
+		}
+		all[i].context = context.String()
+	}
+	slices.SortFunc(all, byPlace)
 	imports = slices.DeleteFunc(imports, func(s span) bool { return slices.Contains(reexports, s) })
-	return outer, imports
+	return all, imports
 }

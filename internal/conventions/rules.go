@@ -396,6 +396,8 @@ type Language struct {
 	LayoutCode LayoutCode
 	// Peers says which files use the file's declarations without an import of it.
 	Peers Peers
+	// SurfaceFiles are file names whose imports are what a package offers its importers: none of them is pure.
+	SurfaceFiles []string
 	// Loaded are the files a framework of the language loads by convention: their declarations are no added code.
 	Loaded []Convention
 	// Library says when a file is part of a published library, whose exported declarations are no added code; nil

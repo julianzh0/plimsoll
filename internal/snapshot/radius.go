@@ -191,6 +191,8 @@ func (w *radiusWalk) changedFiles(ch Change) []changed {
 	return []changed{c}
 }
 
+func either(a, b string) string { return cmpOr(a, b) }
+
 func cmpOr(a, b string) string {
 	if a != "" {
 		return a
@@ -222,6 +224,9 @@ func (w *radiusWalk) state(language conventions.Language, nowPath, basePath stri
 		}
 	}
 	nowReading, baseReading := w.in.nowReadings[nowPath], w.in.beforeReadings[basePath]
+	if slices.Contains(language.SurfaceFiles, path.Base(either(nowPath, basePath))) {
+		nowReading.pureImports, baseReading.pureImports = nil, nil // what the package offers: no import is pure
+	}
 	switch {
 	case basePath == "":
 		return NothingAltered, "", nil // a new file
@@ -245,15 +250,13 @@ func (w *radiusWalk) state(language conventions.Language, nowPath, basePath stri
 	return compareUnits(language, nowContent, baseContent, nowReading, baseReading)
 }
 
-// unreadUnits is why a reading's units cannot be compared, or "".
+// unreadUnits is why a reading's units cannot be compared, or "". A syntax error is not one: a unit that holds it is.
 func unreadUnits(r reading) string {
 	switch {
 	case r.unread:
 		return ReasonNotRead
-	case !r.parsed:
+	case !r.unitsRead:
 		return ReasonLineRead
-	case r.syntaxError:
-		return ReasonSyntaxError
 	}
 	return ""
 }
@@ -265,19 +268,26 @@ func compareUnits(language conventions.Language, nowContent, baseContent []byte,
 	}
 	nowPrints := map[uint64]int{}
 	for _, u := range now.units {
-		nowPrints[fingerprint(language, nowContent, u.start, u.end, u.context, nil)]++
+		nowPrints[unitPrint(language, nowContent, u, now.pureImports)]++
 	}
 	var names []string
 	for _, u := range base.units {
-		if print := fingerprint(language, baseContent, u.start, u.end, u.context, nil); nowPrints[print] > 0 {
+		if print := unitPrint(language, baseContent, u, base.pureImports); nowPrints[print] > 0 {
 			nowPrints[print]--
 			continue
+		}
+		if slices.ContainsFunc(base.errors, func(e span) bool { return e.start < u.end && u.start <= e.end }) {
+			return AsAWhole, ReasonSyntaxError, nil
 		}
 		if len(u.names) == 0 {
 			return AsAWhole, ReasonUnnamed, nil
 		}
 		for _, name := range u.names {
-			if !identifier.MatchString(name) {
+			switch {
+			case identifier.MatchString(name):
+			case u.inner != nil:
+				return AsAWhole, ReasonRemainder, nil // a container's head, such as an #if condition, changed
+			default:
 				return AsAWhole, ReasonNoIdentifier, nil
 			}
 		}
@@ -287,6 +297,14 @@ func compareUnits(language conventions.Language, nowContent, baseContent []byte,
 		return NothingAltered, "", nil // units only added or reordered
 	}
 	return ByName, "", sortedNames(names)
+}
+
+// unitPrint is a unit's fingerprint: all its tokens, or, for a container, its head without the units inside it.
+func unitPrint(language conventions.Language, content []byte, u unit, imports []span) uint64 {
+	if u.inner == nil {
+		return fingerprint(language, content, u.start, u.end, u.context, nil)
+	}
+	return fingerprint(language, content, u.start, u.end, u.context, slices.Concat(u.inner, imports))
 }
 
 var identifier = regexp.MustCompile(`^[\p{L}_][\p{L}\p{N}_]*$`)
@@ -302,7 +320,7 @@ func sameCode(language conventions.Language, nowContent, baseContent []byte, now
 	if fingerprint(language, nowContent, 0, len(nowContent), "", nil) == fingerprint(language, baseContent, 0, len(baseContent), "", nil) {
 		return true
 	}
-	if !now.parsed || !base.parsed || now.unread || base.unread {
+	if !now.unitsRead || !base.unitsRead {
 		return false
 	}
 	return fingerprint(language, nowContent, 0, len(nowContent), "", now.pureImports) ==

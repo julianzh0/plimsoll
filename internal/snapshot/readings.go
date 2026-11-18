@@ -158,8 +158,11 @@ func (rs *Readings) read(language conventions.Language, grammar string, content 
 	}
 	r = decode(language, result, content)
 	if r.syntaxError && language.LineReadWhenBroken {
-		// the imports by the text patterns; the functions still from the tree, each flagged where it holds the error
+		// the imports by the text patterns; the functions and the units still from the tree, each flagged where it holds
+		// the error
+		tree := r
 		r = readByText(language, content)
+		r.units, r.pureImports, r.unitsRead, r.errors = tree.units, tree.pureImports, tree.unitsRead, tree.errors
 	}
 	if w.functions {
 		tree, err := rs.parser.Nodes(grammar, content)

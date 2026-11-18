@@ -49,12 +49,12 @@ func TestUnitsAreTheDeclarationsOfAFileWithTheNamesTheyDeclareDirectly(t *testin
 			[]string{"Run", "Server", "Server", "A", "B", "x,y", "C", "D"}, 1},
 		{"src/a.rs", "use crate::b::B;\npub use crate::c::C;\n\npub fn run() {}\n\nstruct S;\n\nimpl S { fn m(&self) {} }\n\n" +
 			"mod inner {\n    pub fn deep() {}\n}\n\nconst K: u8 = 1;\nmacro_rules! m { () => {} }\n",
-			[]string{"run", "S", "S", "deep in inner", "K", "m"}, 1},
+			[]string{"run", "S", "S", "inner", "deep in inner", "K", "m"}, 1},
 		{"src/a.py", "import os\nfrom .m import X\n\nLIMIT = 3\n\ndef run():\n    def inner(): pass\n\n@decorator\ndef handler(): pass\n\nclass Model:\n    def method(self): pass\n",
-			[]string{"LIMIT", "run", "handler", "Model"}, 0},
+			[]string{"LIMIT", "run", "handler", "Model"}, 2},
 		{"src/a.ts", "import { b } from './b';\nexport * from './c';\n\nexport function run() {}\nconst local = 1;\nclass Shape { area() {} }\n" +
 			"namespace NS {\n  export function inner() {}\n}\n",
-			[]string{"run", "local", "Shape", "inner in NS"}, 1},
+			[]string{"run", "local", "Shape", "NS", "inner in NS"}, 1},
 		{"lib/a.dart", "import 'b.dart';\n\nvoid run() {\n  print(1);\n}\n\nclass Shape {\n  void area() {}\n}\n\nfinal limit = 3;\n",
 			[]string{"run", "Shape", "limit"}, 1},
 		{"Sources/A/a.swift", "import Foundation\n\nfunc run() {}\n\nclass Shape { func area() {} }\n\nextension Shape { func more() {} }\n\nlet limit = 3\n",
@@ -64,11 +64,11 @@ func TestUnitsAreTheDeclarationsOfAFileWithTheNamesTheyDeclareDirectly(t *testin
 		{"src/main/java/a/A.java", "package a;\n\nimport b.B;\n\npublic class A { void m() {} }\n\ninterface I {}\n",
 			[]string{"A", "I"}, 1},
 		{"src/A.cs", "using System;\n\nnamespace Acme {\n  public class A { void M() {} }\n  delegate void D();\n}\n",
-			[]string{"A in Acme", "D in Acme"}, 1},
+			[]string{"Acme", "A in Acme", "D in Acme"}, 1},
 		{"src/a.c", "#include \"a.h\"\n\n#define LIMIT 3\n\nint count;\n\nstatic int helper(int x) { return x; }\n\nint proto(void);\n\ntypedef struct point { int x; } point_t;\n",
 			[]string{"LIMIT", "count", "helper", "proto", "point_t"}, 1},
 		{"src/a.cc", "#include \"a.hpp\"\n\nnamespace acme {\nvoid Store::add(int n) {}\nclass Widget { void draw(); };\n}\n",
-			[]string{"Store in acme", "Widget in acme"}, 1},
+			[]string{"acme", "Store in acme", "Widget in acme"}, 1},
 	}
 	for _, c := range cases {
 		t.Run(c.path, func(t *testing.T) {
@@ -79,4 +79,19 @@ func TestUnitsAreTheDeclarationsOfAFileWithTheNamesTheyDeclareDirectly(t *testin
 		})
 	}
 	_ = fmt.Sprint
+}
+
+func TestAnAttributeBeforeAUnitIsPartOfIt(t *testing.T) {
+	parser, err := parse.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(parser.Close)
+	readings := NewReadings(parser)
+	language, _ := conventions.Default().LanguageOf("a.rs")
+	content := "#[derive(Debug)]\n#[allow(dead_code)]\nstruct S;\n\n#[test]\nfn t() {}\n"
+	r := readings.of(language, "rust", []byte(content), readings.begin(), wanted{declarations: true})
+	if len(r.units) != 2 || r.units[0].start != 0 || content[r.units[1].start:r.units[1].start+7] != "#[test]" {
+		t.Errorf("units of %q = %+v, want each starting at its attributes", content, r.units)
+	}
 }

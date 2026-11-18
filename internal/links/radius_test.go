@@ -277,3 +277,26 @@ func TestAChangedFileWhoseContentIsMissingLeavesTheRadiusNotAnalysed(t *testing.
 		t.Errorf("a missing path that is no tracked code file: radius = %+v, want counted", r)
 	}
 }
+
+func TestTheStateOfAChangedFileFollowsWhatItsDeclarationsDid(t *testing.T) {
+	cases := []struct {
+		label, path, base, now string
+		state                  snapshot.FileState
+	}{
+		{"a Rust test module added", "src/a.rs", "pub fn run() -> u8 { 1 }\n",
+			"pub fn run() -> u8 { 1 }\n\n#[cfg(test)]\nmod tests {\n    #[test]\n    fn t() {}\n}\n", snapshot.NothingAltered},
+		{"a Rust attribute added to a function", "src/a.rs", "pub fn run() -> u8 { 1 }\n", "#[inline]\npub fn run() -> u8 { 1 }\n", snapshot.ByName},
+		{"a Python import added to a module", "src/pkg/a.py", "import os\n\ndef run():\n    return 1\n", "import os\nimport sys\n\ndef run():\n    return 1\n", snapshot.NothingAltered},
+		{"a Python import added to a package's surface", "src/pkg/__init__.py", "from .a import run\n", "from .a import run\nfrom .b import other\n", snapshot.AsAWhole},
+		{"a C++ function changed beside a syntax error elsewhere", "src/a.cc", "int run() { return 1; }\n\nint broken( {\n",
+			"int run() { return 2; }\n\nint broken( {\n", snapshot.ByName},
+		{"a C++ function changed where the syntax error is", "src/a.cc", "int run() { return 1; }\n\nint other() { return 1 $$ ; }\n",
+			"int run() { return 1; }\n\nint other() { return 2 $$ ; }\n", snapshot.AsAWhole},
+	}
+	for _, c := range cases {
+		states, _ := radiusOf(t, snapshottest.Files(map[string]string{c.path: c.base}, map[string]string{c.path: c.now}))
+		if len(states) != 1 || !strings.HasPrefix(states[0], fmt.Sprintf("%s %d ", c.path, c.state)) {
+			t.Errorf("%s: states = %q, want %s in state %d", c.label, states, c.path, c.state)
+		}
+	}
+}
