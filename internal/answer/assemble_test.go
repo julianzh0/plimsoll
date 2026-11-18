@@ -477,6 +477,11 @@ func TestAcknowledgedStandingItemsAreListedApartAndStaleEntriesNamed(t *testing.
 		t.Errorf("not analysed about the table = %q, want %q", notAnalysed, want)
 	}
 
+	onlyStale := sample()
+	onlyStale.OwnFile, onlyStale.Acknowledged = ".plimsoll.toml", snapshot.Acknowledged{Table: "acknowledged", IDs: []string{"shape.file-size:src/gone.ts"}}
+	if stale := Assemble(Report, "0.1.0", onlyStale, []Result{{"shape", f}}); stale.Acknowledged != nil || stale.AcknowledgedIn != "" {
+		t.Errorf("only a stale entry: acknowledged %v in %q; want none and no file named", stale.Acknowledged, stale.AcknowledgedIn)
+	}
 	none := Assemble(Report, "0.1.0", sample(), []Result{{"shape", f}})
 	if none.Acknowledged != nil || none.AcknowledgedIn != "" || len(none.Standing) != 2 {
 		t.Errorf("no table: acknowledged %v in %q, standing %d; want none and both standing", none.Acknowledged, none.AcknowledgedIn, len(none.Standing))

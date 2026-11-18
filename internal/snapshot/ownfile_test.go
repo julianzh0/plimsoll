@@ -154,6 +154,10 @@ func TestBuildReadsTheAcknowledgedTableOfTheOwnFile(t *testing.T) {
 		{"a reason of 200 characters and one of 201",
 			"[acknowledged]\n\"links.cycle:a\" = \"" + long + "\"\n\"links.cycle:b\" = \"" + long + "x\"\n",
 			[]string{"links.cycle:a"}, []string{"the reason of `links.cycle:b` is longer than 200 characters; it is not applied"}},
+		{"a quoted identifier without = and one identifier out of form, a reason with an escaped quote",
+			"[acknowledged]\n\"links.cycle:a\" \"x\"\n\"Links.cycle:b\" = \"x\"\n\"links.cycle:c\" = \"say \\\"so\\\" here\"\n",
+			[]string{"links.cycle:c"}, []string{"1 line is no `\"identifier\" = \"reason\"` entry; it is not applied",
+				"1 identifier is no plain mark identifier; it is not applied"}},
 		{"set twice, the first entry unusable",
 			"[acknowledged]\n\"links.cycle:a\" = \"\"\n\"links.cycle:a\" = \"x\"\n",
 			nil, []string{"`links.cycle:a` has no reason written as text on its line; it is not applied", "`links.cycle:a` is set twice; its first entry decides"}},
@@ -171,6 +175,13 @@ func TestBuildReadsTheAcknowledgedTableOfTheOwnFile(t *testing.T) {
 		conventions.Default(), snapshottest.Readings(t))
 	want := []snapshot.DeclaredValues{{Table: "acknowledged", Key: "acknowledged", Name: "acknowledged items",
 		Now: []string{"links.cycle:a", "links.cycle:b"}, Before: []string{"links.cycle:a", "links.cycle:b"}, Whole: true, Compared: true}}
+	removed := snapshot.Build(snapshottest.Files(
+		map[string]string{"src/a.ts": "a\n", ".plimsoll.toml": "[acknowledged]\n\"links.cycle:a\" = \"x\"\n"},
+		map[string]string{"src/a.ts": "a\n", ".plimsoll.toml": "[limits]\nfile_lines = 1500\n"}),
+		conventions.Default(), snapshottest.Readings(t))
+	if want := []snapshot.DeclaredValues{{Table: "acknowledged", Key: "acknowledged", Name: "acknowledged items", Before: []string{"links.cycle:a"}, Whole: true, Compared: true}}; !reflect.DeepEqual(removed.Declarations, want) {
+		t.Errorf("the table removed: Declarations %+v, want %+v", removed.Declarations, want)
+	}
 	if !reflect.DeepEqual(declared.Declarations, want) || !slices.Equal(declared.Acknowledged.IDs, []string{"links.cycle:b"}) {
 		t.Errorf("reasons edited on both sides: Declarations %+v, applied %q; want %+v (the identifiers in their form, whatever their reason), [links.cycle:b]",
 			declared.Declarations, declared.Acknowledged.IDs, want)
