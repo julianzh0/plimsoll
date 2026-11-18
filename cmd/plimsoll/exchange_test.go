@@ -37,7 +37,7 @@ func exchange(t *testing.T, lines ...string) (responses []string, stderr string)
 	var errOut bytes.Buffer
 	done := make(chan int, 1)
 	go func() {
-		code := run(context.Background(), inReader, outWriter, &errOut, os.Environ())
+		code := run(context.Background(), nil, inReader, outWriter, &errOut, os.Environ())
 		_ = outWriter.Close()
 		_ = inReader.Close()
 		done <- code

@@ -10,7 +10,7 @@ import (
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	code := run(ctx, os.Stdin, os.Stdout, os.Stderr, os.Environ()) //nolint:forbidigo // composition root owns the process streams
+	code := run(ctx, os.Args[1:], os.Stdin, os.Stdout, os.Stderr, os.Environ()) //nolint:forbidigo // composition root owns the process streams
 	stop()
 	os.Exit(code)
 }

@@ -87,7 +87,8 @@ plimsoll is listed in the [official MCP registry](https://registry.modelcontextp
 
 ### Connect your agent
 
-plimsoll is a local MCP server on standard input and output. It takes no argument and reads no setting.
+plimsoll is a local MCP server on standard input and output. It reads no setting; `plimsoll --version` and
+`plimsoll --help` only print and exit.
 
 **Claude Code**
 
