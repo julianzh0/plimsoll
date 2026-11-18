@@ -163,6 +163,15 @@ func TestImportRulesCompareWithTheBase(t *testing.T) {
 		marks[0].Change != answer.Grown || !slices.Equal(marks[0].Subject.Names, []string{"`src/domain/x.ts` line 2 importing `src/adapters/y.ts`"}) {
 		t.Errorf("a value import added beside a type-only one of the same file: marks %+v, want one grown naming line 2", marks)
 	}
+	twoPairs := func(content string) map[string]string {
+		return c.tree(map[string]string{".plimsoll.toml": tree()[".plimsoll.toml"], "src/adapters/y.ts": "export type Y = number;\nexport const y = 1;\n",
+			"src/adapters/z.ts": "export const z = 1;\n", "src/domain/x.ts": content})
+	}
+	first := "import type { Y } from \"../adapters/y.ts\";\n"
+	if marks := marksOf(detect(t, snapshottest.Files(twoPairs(first), twoPairs(first+"import \"../adapters/z.ts\";\nimport { y } from \"../adapters/y.ts\";\n"))), ruleNever); len(marks) != 1 ||
+		!slices.Equal(marks[0].Subject.Names, []string{"`src/domain/x.ts` line 2 importing `src/adapters/z.ts`", "`src/domain/x.ts` line 3 importing `src/adapters/y.ts`"}) {
+		t.Errorf("two pairs of one file, one added on a later line: marks %+v, want their clauses by line", marks)
+	}
 	py := languageCases()["python"]
 	pyRules := py.ruled([]string{"domain -> adapters"}, nil)[".plimsoll.toml"]
 	pyTree := func(importer string) map[string]string {
@@ -243,6 +252,14 @@ func TestImportRulesSayWhatTheyCannotCheck(t *testing.T) {
 	if f := (Detector{}).Detect(unread); len(marksOf(f, ruleNever)) != 0 || !slices.Equal(f.NotAnalysedFirst,
 		[]string{lead + "the imports of 1 product file under `src/domain/` are not read or not followed (`typescript`), so the rule checks nothing"}) {
 		t.Errorf("an importer the parser could not read: marks %+v, first %q; want no mark and the rule checking nothing", f.Marks, f.NotAnalysedFirst)
+	}
+	mixedUnread := snapshot.Build(snapshottest.Files(
+		own(never, map[string]string{"src/domain/a.ts": "export const a = 1;\n", "src/domain/c.ts": "export const c = 1;\n", "src/adapters/b.ts": "export const b = 1;\n"}),
+		own(never, map[string]string{"src/domain/a.ts": "import \"../adapters/b.ts\";\n", "src/domain/c.ts": "export const c = 1;\n", "src/adapters/b.ts": "export const b = 1;\n"})),
+		conventions.Default(), snapshottest.Readings(t))
+	mixedUnread.Unparsed = []string{"src/domain/a.ts"} // as when one side of the file is over the parser's cap
+	if f := (Detector{}).Detect(mixedUnread); len(marksOf(f, ruleNever)) != 0 {
+		t.Errorf("a file the parser could not read on one side, beside a read one: marks %+v, want none (its imports are counted on neither side)", f.Marks)
 	}
 	python := map[string]string{"src/app/__init__.py": "", "src/domain/a.ts": "export const a = 1;\n", "src/adapters/b.ts": "export const b = 1;\n",
 		"src/domain/c.py": "import app.gone\nimport app.lost\n"}
@@ -346,6 +363,9 @@ func TestImportRuleWordingStandingEvidenceAndReport(t *testing.T) {
 	if got := (Detector{}).Standing(append(standing, mark(ruleOnly, answer.Standing, 1, 1))); got != "2 declared import rules broken by imports already at the base" {
 		t.Errorf("Standing(two) = %q", got)
 	}
+	if got := (Detector{}).Standing([]answer.Mark{mark(ruleNever, answer.Touched, 1, 0)}); got != "1 declared import rule with imports that break it" {
+		t.Errorf("Standing(one touched) = %q", got)
+	}
 	touched := []answer.Mark{mark(ruleNever, answer.Touched, 1, 0), mark(ruleOnly, answer.Touched, 2, 1)}
 	if got := (Detector{}).Standing(touched); got != "2 declared import rules with imports that break them" {
 		t.Errorf("Standing(two touched) = %q, want no claim about the base", got)
@@ -384,6 +404,14 @@ func TestImportRulesAreCheckedEachOnItsOwn(t *testing.T) {
 	f = detect(t, snapshottest.Files(ts.ruled(nil, nil, "domain/x", "other/o", "model/m"), nested))
 	if only := marksOf(f, ruleOnly); len(only) != 1 || only[0].ID != "links.only:src/domain" {
 		t.Errorf("nested only sources: marks %+v, want only src/domain's (src/other lies inside src)", only)
+	}
+	outside := clone(nested)
+	outside["lib/z.ts"] = "export const z = 1;\n"
+	outside["src/domain/x.ts"] = "import \"../../lib/z.ts\";\n"
+	outsideBase := clone(ts.ruled(nil, nil, "domain/x", "other/o", "model/m"))
+	outsideBase["lib/z.ts"] = "export const z = 1;\n"
+	if only := marksOf(detect(t, snapshottest.Files(outsideBase, outside)), ruleOnly); len(only) != 2 {
+		t.Errorf("an import outside both nested folders: only marks %+v, want one per rule", only)
 	}
 	goModule := map[string]string{"go.mod": "module example.com/m\n", "internal/root.go": "package internal\n",
 		"internal/adapters/y/y.go": "package y\n", "internal/shared/s/s.go": "package s\n",

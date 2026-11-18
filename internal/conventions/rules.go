@@ -166,7 +166,7 @@ const OwnValueLength = 200
 const importArrow = "->"
 
 // importRuleLength is the longest import rule as written: two folders at OwnValueLength, each with a leading "./"
-// and a trailing "/", and the arrow with room for the spaces around it.
+// and a trailing "/", joined by the arrow with up to three spaces on each side.
 const importRuleLength = 2*(OwnValueLength+len("./")+len("/")) + 2*len(" -> ")
 
 // MarkIDLength is the longest mark identifier the acknowledged table may hold: a pair names two paths, and the

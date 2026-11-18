@@ -1,6 +1,7 @@
 package links
 
 import (
+	"cmp"
 	"fmt"
 	"path"
 	"slices"
@@ -40,7 +41,7 @@ func withRules(f answer.Findings, s snapshot.Snapshot, now, before graph) answer
 			notAnalysed = append(notAnalysed, ruleLead(r)+": "+partly)
 		}
 		notAnalysed = append(notAnalysed, targetsWithoutCode(s, r)...)
-		nowImports, baseImports := breaking(r, s.Now, now), breaking(r, s.Before, before)
+		nowImports, baseImports := breaking(r, s.Now, now, s.Unparsed), breaking(r, s.Before, before, s.Unparsed)
 		if len(nowImports) > 0 {
 			broken++
 		}
@@ -166,16 +167,17 @@ func lies(file, folder string) bool { return strings.HasPrefix(file, folder+"/")
 
 // breaking are the imports of one side that break a rule, one per importing file and target, by file, line and target
 // as the graph holds them.
-// A pair is type-only when every statement of it is, and added when the change wrote one of them; it carries the
-// line of its first statement the change wrote, or else of its first statement.
+// A pair is type-only when every statement of it is, and added when one of them counts as added; it carries the
+// line of its first statement that counts as added, or else of its first statement. A file the parser could not read
+// on either side counts on neither, as checkOf says.
 // NOTE: every rule walks the files of both sides, so the work grows with rules times files: 1,000 rules added at most
 // 0.07 s to a status of nowinandroid (715 files) and vapor (898 files), measured 2026-11-18. Upgrade: index the files
 // by folder once per side when a repository with far more files declares that many rules.
-func breaking(r snapshot.ImportRule, tree snapshot.Tree, g graph) []snapshot.Link {
+func breaking(r snapshot.ImportRule, tree snapshot.Tree, g graph, unparsed []string) []snapshot.Link {
 	allowed := r.Allowed()
 	var found []snapshot.Link
 	for _, file := range tree.Files {
-		if file.Role != snapshot.Product || !lies(file.Path, r.From) {
+		if file.Role != snapshot.Product || !lies(file.Path, r.From) || slices.Contains(unparsed, file.Path) {
 			continue
 		}
 		at := map[string]int{} // a target -> its pair in found
@@ -190,11 +192,14 @@ func breaking(r snapshot.ImportRule, tree snapshot.Tree, g graph) []snapshot.Lin
 				continue
 			}
 			found[i].TypeOnly = found[i].TypeOnly && link.TypeOnly
-			if link.Added && !found[i].Added { // the pair names the first statement the change wrote
+			if link.Added && !found[i].Added { // the pair names its first line counted as added
 				found[i].Line, found[i].Added = link.Line, true
 			}
 		}
 	}
+	slices.SortStableFunc(found, func(a, b snapshot.Link) int { // an added line can move a pair down its file
+		return cmp.Or(strings.Compare(a.From, b.From), cmp.Compare(a.Line, b.Line), strings.Compare(a.To, b.To))
+	})
 	return found
 }
 
@@ -322,7 +327,7 @@ func ruleEvidence(s snapshot.Snapshot, m answer.Mark, now, before graph) []strin
 		lines = append(lines, fmt.Sprintf("rule: code under %s imports only code under %s (`[%s]` `%s`: %s)", answer.Folder(r.From),
 			folderList(r.Allowed()), r.Table, r.Key, strings.Join(entries, ", ")))
 	}
-	nowImports, baseImports := breaking(r, s.Now, now), breaking(r, s.Before, before)
+	nowImports, baseImports := breaking(r, s.Now, now, s.Unparsed), breaking(r, s.Before, before, s.Unparsed)
 	lines = append(lines, fmt.Sprintf("imports that break it now: %d; at the base: %d", len(nowImports), len(baseImports)))
 	shown, prefix, verb := nowImports, "", "imports"
 	if m.Change == answer.Resolved {

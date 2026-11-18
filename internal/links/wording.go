@@ -122,7 +122,9 @@ func (Detector) Standing(items []answer.Mark) string {
 	switch {
 	case rules > 0 && items[0].Change == answer.Standing: // one line holds items of one change
 		fragments = append(fragments, answer.Plural(rules, "declared import rule")+" broken by imports already at the base")
-	case rules > 0:
+	case rules == 1:
+		fragments = append(fragments, "1 declared import rule with imports that break it")
+	case rules > 1:
 		fragments = append(fragments, answer.Plural(rules, "declared import rule")+" with imports that break them")
 	}
 	return strings.Join(fragments, "; ")
