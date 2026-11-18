@@ -114,7 +114,7 @@ func TestReportListsEverythingInAFixedLayout(t *testing.T) {
 		"\n" +
 		"shape\n" +
 		"  product lines: 19,465 lines (net +120)\n" +
-		"  test ratio: 3.8 (net +0.1)\n" +
+		"  test ratio: 3.8 (+0.1)\n" +
 		"  largest code file `src/a.ts`: 1,620 lines (net +140)\n" +
 		"  largest code file `src/new.ts`: 900 lines (not at the base)\n" +
 		"  runtime dependencies `package.json`: 6 (net +1); express, ioredis, pg\n" +
@@ -379,7 +379,7 @@ func TestTouchedItemsAreCountedInStatusAndListedInReport(t *testing.T) {
 
 func TestReportOnlyMarksAreCountedInStatusAndListedInReport(t *testing.T) {
 	s := sample()
-	s.ReportOnly = []string{"shape.test-ratio grown"}
+	s.ReportOnly = []string{"shape.test-ratio"}
 	status := Assemble(Status, "0.1.0", s, []Result{{"shape", findings()}})
 	if status.Counts != (Counts{New: 1}) || len(status.Marks) != 1 || len(status.ReportOnly) != 1 ||
 		status.ReportOnly[0].Change != Grown {
@@ -426,7 +426,7 @@ func TestStatusPrintsEachSummaryBeforeTheStandingLine(t *testing.T) {
 
 func TestAStatusWithoutMarksSaysWhatItLeftToTheLinesBelow(t *testing.T) {
 	s := sample()
-	s.ReportOnly = []string{"shape.test-ratio grown"}
+	s.ReportOnly = []string{"shape.test-ratio"}
 	f := findings()
 	f.Marks = f.Marks[1:2] // the grown ratio alone
 	text := Render(Assemble(Status, "0.1.0", s, []Result{{"shape", f}}), wording())

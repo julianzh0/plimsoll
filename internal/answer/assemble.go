@@ -99,10 +99,9 @@ func Assemble(q Question, version string, s snapshot.Snapshot, results []Result)
 	return a
 }
 
-// reportOnly says whether a mark is of a kind status only counts: its detector and rule, with or without its change.
+// reportOnly says whether a mark is of a kind status only counts: its detector and rule.
 func reportOnly(kinds []string, m Mark) bool {
-	kind := DetectorOf(m.ID) + "." + RuleOf(m.ID)
-	return slices.Contains(kinds, kind) || slices.Contains(kinds, kind+" "+string(m.Change))
+	return slices.Contains(kinds, DetectorOf(m.ID)+"."+RuleOf(m.ID))
 }
 
 func footprint(f snapshot.Footprint) *Footprint {

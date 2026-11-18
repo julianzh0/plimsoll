@@ -17,7 +17,7 @@ type Snapshot struct {
 	MergeBase  bool
 	Modified   bool
 	Limits     conventions.Limits // the limits over the repository: plimsoll's, or those its limits file sets now
-	// ReportOnly are the kinds of mark shown in report only, as "<detector>.<rule>" or "<detector>.<rule> <change>".
+	// ReportOnly are the kinds of mark shown in report only, as "<detector>.<rule>".
 	ReportOnly []string
 	// OwnFile is the file in which a repository sets its own limits and declares its layout. DeclaredLimits are the
 	// limits it sets on either side, Declarations the text keys it declares on either side, and OwnFileProblems what

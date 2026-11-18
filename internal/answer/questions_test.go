@@ -48,7 +48,7 @@ func TestQuestionsAnswerWithARealDetector(t *testing.T) {
 		t.Fatalf("Status = %+v, %v; want one size mark, in report only, and no sections", status, err)
 	}
 	report, err := q.Report(context.Background(), "/repository", "main", nil)
-	if err != nil || report.Question != answer.Report || len(report.ReportOnly) != 1 || len(report.Sections) != 1 ||
+	if err != nil || report.Question != answer.Report || len(report.Marks) != 0 || len(report.ReportOnly) != 1 || len(report.Sections) != 1 ||
 		report.Sections[0].Statistics[0].Name != "product lines" {
 		t.Fatalf("Report = %+v, %v; want the mark and one shape section", report, err)
 	}

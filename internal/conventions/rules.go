@@ -64,8 +64,8 @@ type Rules struct {
 	MeasurementPaths []string // measurement records, in the syntax of PlanningPaths
 	ComposeFiles     []string // file-name patterns of compose files, read for their environment keys
 	Limits           Limits   // the shared defaults
-	// ReportOnly are the kinds of mark that report lists and status only counts, as "<detector>.<rule>", or with a
-	// change, "<detector>.<rule> <change>": kinds outside reviewers judged too noisy to show on every change.
+	// ReportOnly are the kinds of mark that report lists and status only counts, as "<detector>.<rule>": kinds
+	// outside reviewers or a blind reading judged too noisy to show on every change.
 	ReportOnly []string
 	Additions  Additions  // what never counts as code a change added, and which files are no use of a name
 	Languages  []Language // the language entries
