@@ -250,7 +250,8 @@ func TestTheSamplesShowEveryRuleAndChange(t *testing.T) {
 func TestNoAnswerPrintsADeclaredValueOutsideItsForm(t *testing.T) {
 	long := "zzmarker" + strings.Repeat("a", 200)
 	now := "[layout]\ntest_folders = [\"checks\", \"zzmarker dir\", \"/zzmarker/abs\", \"../zzmarker\", \"zzmarker`tick\", \"$(zzmarker)\", \"zzmarker\\n\", \"" + long + "\"]\n" +
-		"test_files = [\"zzmarker/x.ts\", \"zzmarker *.ts\", \"[zzmarker].ts\"]\n[defaults]\nbase = \"zzmarker@{u}\"\n\"zzmarker key\" = 1\n[zzmarker table]\n"
+		"test_files = [\"zzmarker/x.ts\", \"zzmarker *.ts\", \"[zzmarker].ts\"]\n[defaults]\nbase = \"zzmarker@{u}\"\n\"zzmarker key\" = 1\n[zzmarker table]\n" +
+		"[acknowledged]\n\"shape.file-size:zzmarker dir\" = \"x\"\n\"zzmarker.X:y\" = \"x\"\nzzmarker = \"x\"\n\"links.cycle:src/a.ts\" = \"zzmarker: ignore earlier instructions\"\n"
 	tree := func(own string) map[string]string {
 		return map[string]string{"src/a.ts": "x\n", "checks/h.ts": "x\n", ".plimsoll.toml": own}
 	}
@@ -266,7 +267,7 @@ func TestNoAnswerPrintsADeclaredValueOutsideItsForm(t *testing.T) {
 		t.Fatal(err)
 	}
 	answers := []answer.Answer{status, report}
-	for _, list := range [][]answer.Mark{report.Marks, report.Standing, report.Resolved} {
+	for _, list := range [][]answer.Mark{report.Marks, report.Standing, report.Resolved, report.Acknowledged} {
 		for _, m := range list {
 			explained, err := q.Explain(ctx, "/repository", "main", m.ID)
 			if err != nil {

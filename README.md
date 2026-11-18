@@ -153,7 +153,7 @@ Not analysed: the footprint counts, in 2 changed product files that hold test co
 
 | Tool | Returns |
 |---|---|
-| `status(repository, base?)` | at most five new or grown marks, one line that counts the marks shown in `report` only, one that counts what the change touched but did not create, one that counts added code without a use, the standing line, the footprint and what was not analysed |
+| `status(repository, base?)` | at most five new or grown marks, one line that counts the marks shown in `report` only, one that counts what the change touched but did not create, one that counts added code without a use, the standing line, one that counts the standing items the repository acknowledges, the footprint and what was not analysed |
 | `report(repository, base?, files?)` | everything measured, in a fixed layout, the touched items included. Standing items of one kind past five are counted by folder in the text, and `structuredContent` holds them all. With `files`, also the files that import each named file |
 | `explain(repository, base?, mark)` | the evidence of one mark, computed again and capped |
 
@@ -342,7 +342,7 @@ still run, interpreted and about 80 times slower.
 | `process.planning-file:<path>` | a file under a planning or review path is tracked now and was not at the base | repositories hold no planning records |
 | `process.doc-churn:repository` | over the commits since the base, documentation churn is above product plus test churn | documentation above code |
 | `process.limit-change:<key>` | `.plimsoll.toml` sets a limit to another value now than at the base, so a change that raised a limit to clear a mark says so | any change |
-| `process.declaration-change:<key>` | `.plimsoll.toml` declares other values under a key of `[layout]`, `[ignore]` or `[defaults]` now than at the base | any change |
+| `process.declaration-change:<key>` | `.plimsoll.toml` declares other values under a key of `[layout]`, `[ignore]` or `[defaults]`, or other entries in `[acknowledged]` (the key is then `acknowledged`), now than at the base; editing only a reason is no change | any change |
 | `settings.defined-twice:<NAME>` | a name on two or more lines of `.env.example` that are not commented out (candidate) | plimsoll's rule: one name, one setting |
 | `settings.compose-only:<NAME>` | a compose `environment` key that takes its value from the host (no value, or `$`) and that `.env.example` does not name (candidate) | the three lists agree |
 | `co-change.pair:<a>+<b>` | two code files changed together in at least 5 usable commits and did not at the base (new), or their share of the commits that touched either rose by at least 0.1 (grown). The mark shows that share and comes after every other mark | 5 shared commits, plimsoll's rule |
@@ -390,6 +390,9 @@ files = ["SPEC.md", "*.generated.go"]       # names of files plimsoll leaves out
 
 [defaults]
 base = "main"                               # the base of a question that names none
+
+[acknowledged]                              # standing items reviewed and kept on purpose, each with a reason
+"process.planning-file:SPEC.md" = "a lasting specification, not a plan"
 ```
 
 | Key | What it declares |
@@ -400,14 +403,15 @@ base = "main"                               # the base of a question that names 
 | `test_files` | File names of code files that count as test code wherever they lie: `*` is any run of characters, `?` one |
 | `folders` under `[ignore]` | Folders, as paths from the root, whose files plimsoll leaves out: no code, no planning record, no documentation it reads |
 | `files` under `[ignore]` | File names, with the same patterns as `test_files`, of files plimsoll leaves out wherever they lie |
+| an entry of `[acknowledged]` | A mark identifier exactly as an answer printed it, and a reason: a standing item with that identifier is listed under "Acknowledged" in `report` instead of "Standing", and `status` counts such items in one line. The item is still measured and counted; when it grows, or a new item gets its identifier, it shows as usual. Function marks never stand, so they are not acknowledged. The reason is required and never printed |
 | `base` | The branch, remote branch or tag a question without a base compares with. A remote branch is named with its remote (`origin/main`): `main` alone finds no remote branch. A branch of the name comes before a remote branch, and a remote branch before a tag |
 
 The function limits cannot be set in the file: they are the ones the measurement was read against.
 
 A declaration adds to the defaults and takes none away, and now's file applies to both sides of a question. Every
 mark names its limit's source, for example "1,500 lines, set by `.plimsoll.toml`", every report names what the file
-declares, and a limit or a declaration that changed since the base is itself a mark. The file switches no rule off,
-and `[ignore]` is the one way to leave files out of the count: test code declared here counts as test code. A folder is a plain path, and a
+declares, and a limit or a declaration that changed since the base is itself a mark. The file switches no rule off:
+an acknowledged item is still measured and counted, only listed apart, and `[ignore]` is the one way to leave files out of the count: test code declared here counts as test code. A folder is a plain path, and a
 bare name is a folder at the root. A test folder that is the root or a package root, and a file name that is only
 `*`, are not applied.
 
@@ -421,7 +425,7 @@ base whose repository declares no usable default base is refused with one senten
 ## Guarantees
 
 - **trust**: plimsoll never changes a repository it reads. It runs only read-only git commands, takes no lock, starts no file monitor, runs no filter and fetches nothing from a remote. Tests: `internal/gitrepo/history_integration_test.go::TestIntegrationReadLeavesTheRepositoryUnchanged`, `internal/gitrepo/history_integration_test.go::TestIntegrationReadFetchesNothingFromARemote`, `cmd/plimsoll/tools_integration_test.go::TestIntegrationAnswersAreRepeatableAndLeaveNoTrace`
-- **trust**: no answer shows the content of a file or the value of a setting: only names, paths, line numbers and counts, and, from the repository's own `.plimsoll.toml`, its limits, the declared values that are plain paths, file-name patterns or branch names, and key and table names that are plain names; and function names. Documentation and configuration files are read for their words alone, to see whether they name code a change added, and root licence files for the names of their copyright holders. Content plimsoll does not need is never read. Tests: `internal/snapshot/facts_test.go::TestBuildReadsSettingNamesNeverValues`, `internal/snapshot/links_test.go::TestBuildKeepsNoImportText`, `internal/links/links_test.go::TestNoLinksLineHoldsImportText`, `internal/snapshot/settings_test.go::TestBuildReadsComposeEnvironmentKeys`, `internal/shape/explain_test.go::TestExplainHoldsNoFileContentOrSettingValue`, `internal/gitrepo/reader_integration_test.go::TestIntegrationReadLeavesUnwantedAndBinaryContentUnread`, `internal/answer/layout_test.go::TestLayoutLinesHoldNoValueFromOutsideTheRepository`, `internal/answer/samples_test.go::TestNoAnswerPrintsADeclaredValueOutsideItsForm`, `internal/links/additions_test.go::TestAddedCodeRowsGroupNamesByFileAndReason`, `internal/snapshot/functions_test.go::TestBuildKeepsNoFunctionText`
+- **trust**: no answer shows the content of a file or the value of a setting: only names, paths, line numbers and counts, and, from the repository's own `.plimsoll.toml`, its limits, the declared values that are plain paths, file-name patterns or branch names, key and table names that are plain names, and acknowledged mark identifiers in their strict form (letters, digits and the punctuation of paths, functions and pairs; never a space or a quote); never the reason of an acknowledged entry; and function names. Documentation and configuration files are read for their words alone, to see whether they name code a change added, and root licence files for the names of their copyright holders. Content plimsoll does not need is never read. Tests: `internal/snapshot/facts_test.go::TestBuildReadsSettingNamesNeverValues`, `internal/snapshot/links_test.go::TestBuildKeepsNoImportText`, `internal/links/links_test.go::TestNoLinksLineHoldsImportText`, `internal/snapshot/settings_test.go::TestBuildReadsComposeEnvironmentKeys`, `internal/shape/explain_test.go::TestExplainHoldsNoFileContentOrSettingValue`, `internal/gitrepo/reader_integration_test.go::TestIntegrationReadLeavesUnwantedAndBinaryContentUnread`, `internal/answer/layout_test.go::TestLayoutLinesHoldNoValueFromOutsideTheRepository`, `internal/answer/samples_test.go::TestNoAnswerPrintsADeclaredValueOutsideItsForm`, `internal/snapshot/ownfile_test.go::TestBuildReadsTheAcknowledgedTableOfTheOwnFile`, `internal/links/additions_test.go::TestAddedCodeRowsGroupNamesByFileAndReason`, `internal/snapshot/functions_test.go::TestBuildKeepsNoFunctionText`
 - **idempotency**: the same question about the same repository state gives the same answer, in the same process or a new one, whatever the user's git configuration. The history and the file readings kept between questions answer as a fresh read does, also for questions answered at the same time. Tests: `cmd/plimsoll/tools_integration_test.go::TestIntegrationAnswersAreRepeatableAndLeaveNoTrace`, `internal/snapshot/readings_test.go::TestKeptReadingsEqualFreshOnes`, `internal/gitrepo/history_integration_test.go::TestIntegrationKeptHistoryEqualsAFreshRead`, `internal/gitrepo/history_integration_test.go::TestIntegrationReadsAtTheSameTimeShareOneReader`, `internal/gitrepo/history_test.go::TestQuestionsAtTheSameTimeShareOneHistoryRead`, `internal/gitrepo/history_integration_test.go::TestIntegrationReadIsTheSameEverywhere`
 - **ordering**: new and grown marks come in one order (new before grown, exact before candidate, the farthest past its limit first, then by identifier, at most two of one detector before the others). `status` shows at most five, and the report's sections follow the detector list. Tests: `internal/answer/mark_test.go::TestOrderPutsNewExactAndFarthestFirstWithTwoPerDetector`, `internal/answer/assemble_test.go::TestStatusShowsFiveMarksAndStaysInsideFortyLines`, `cmd/plimsoll/detectors_test.go::TestDetectorsAreListedInReportOrder`
 - **cleanup**: a SIGTERM or the end of its input ends the server with exit status 0. Tests: `cmd/plimsoll/main_e2e_test.go::TestE2EProgramAnswersAndEndsOnASignal`, `cmd/plimsoll/main_e2e_test.go::TestE2EEndOfInputEndsTheProcess`
