@@ -16,7 +16,7 @@ import (
 func tomlTable(content, name string) (string, bool) {
 	var table strings.Builder
 	inside, found := false, false
-	for line := range strings.Lines(content) {
+	for _, line := range tomlLines(content) {
 		if header, isHeader := tomlHeader(line); isHeader {
 			inside = header != "" && header == name
 			found = found || inside
@@ -61,6 +61,64 @@ func stringArray(text string) (items []string, rest string, closed bool) {
 		}
 	}
 	return nil, "", false
+}
+
+// tomlLines are the lines of TOML text, each with its newline, without the lines that go on a multi-line string
+// (`”'` or `"""`): the line that opens one stays, so its value reads as unfinished, and no line inside it is taken
+// for a table or a key.
+func tomlLines(content string) []string {
+	var lines []string
+	closing := ""
+	for line := range strings.Lines(content) {
+		if closing != "" {
+			if strings.Contains(line, closing) {
+				closing = ""
+			}
+			continue
+		}
+		lines = append(lines, line)
+		closing = opensMultiline(uncommented(line))
+	}
+	return lines
+}
+
+// opensMultiline is the delimiter of a multi-line string that a line opens and does not close, or "".
+func opensMultiline(line string) string {
+	for _, delimiter := range []string{`"""`, "'''"} {
+		if strings.Count(line, delimiter)%2 == 1 {
+			return delimiter
+		}
+	}
+	return ""
+}
+
+// unclosed says whether a value has opened brackets or braces that it has not closed yet. Once the brackets of the
+// value close, what follows on the line is no reason to read on: `["a"] [` ends there.
+func unclosed(value string) bool {
+	depth := 0
+	for i := 0; i < len(value); i++ {
+		switch c := value[i]; c {
+		case '#':
+			end := strings.IndexByte(value[i:], '\n')
+			if end < 0 {
+				return depth > 0
+			}
+			i += end
+		case '[', '{':
+			depth++
+		case ']', '}':
+			if depth--; depth <= 0 {
+				return false
+			}
+		case '"', '\'':
+			for i++; i < len(value) && value[i] != c && value[i] != '\n'; i++ {
+				if c == '"' && value[i] == '\\' {
+					i++
+				}
+			}
+		}
+	}
+	return depth > 0
 }
 
 // openedBrackets counts the brackets and braces a line opens minus those it closes, outside strings and before a

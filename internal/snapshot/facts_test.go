@@ -374,9 +374,13 @@ func TestBuildGivesEachHistoryPathItsArea(t *testing.T) {
 			t.Errorf("area of %s = %v, want %v", p, got, want)
 		}
 	}
-	declared := map[string]snapshot.Area{"docs/notes/a.md": snapshot.AreaRecords, "src/x.plan.ts": snapshot.AreaRecords, "docs/a.md": snapshot.AreaDocs, "x/docs/notes/a.md": snapshot.AreaDocs}
+	declared := map[string]snapshot.Area{
+		"docs/notes/a.md": snapshot.AreaRecords, "src/x.plan.ts": snapshot.AreaRecords, "docs/a.md": snapshot.AreaDocs, "x/docs/notes/a.md": snapshot.AreaDocs,
+		"fixtures/notes.md": snapshot.AreaOther, "node_modules/x/README.md": snapshot.AreaOther,
+	}
 	source := snapshottest.Files(nil, map[string]string{
-		".plimsoll.toml": "[layout]\nplanning_folders = [\"docs/notes\"]\nplanning_files = [\"*.plan.ts\"]\n", "docs/notes/b.md": "x\n", "src/y.plan.ts": "x\n",
+		".plimsoll.toml":  "[layout]\nplanning_folders = [\"docs/notes\"]\nplanning_files = [\"*.plan.ts\"]\n[ignore]\nfolders = [\"fixtures\"]\n",
+		"docs/notes/b.md": "x\n", "src/y.plan.ts": "x\n", "fixtures/a.md": "x\n",
 	})
 	for p := range declared {
 		source.Commits = append(source.Commits, snapshot.Commit{ID: p, Files: []snapshot.FileChange{{Path: p}}})

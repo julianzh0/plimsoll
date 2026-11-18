@@ -186,6 +186,8 @@ func area(rules conventions.Rules, filePath string) Area {
 	switch {
 	case recordPath(rules, filePath):
 		return AreaRecords
+	case leftOut(rules, filePath):
+		return AreaOther
 	case slices.Contains(rules.DocSuffixes, conventions.Suffix(filePath)) || nested && slices.Contains(rules.DocFolders, first):
 		return AreaDocs
 	case excluded(rules, filePath):

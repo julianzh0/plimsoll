@@ -116,7 +116,7 @@ func readOwnFile(rules conventions.Rules, content map[string][]byte) ownFile {
 	problem := func(format string, args ...any) { o.problems = append(o.problems, fmt.Sprintf(format, args...)) }
 	seen := map[string]bool{}
 	table, found := "", false
-	lines := slices.Collect(strings.Lines(strings.TrimPrefix(string(file), byteOrderMark)))
+	lines := tomlLines(strings.TrimPrefix(string(file), byteOrderMark))
 	for i := 0; i < len(lines); i++ {
 		if header, isHeader := tomlHeader(lines[i]); isHeader {
 			table = header
@@ -146,7 +146,7 @@ func readOwnFile(rules conventions.Rules, content map[string][]byte) ownFile {
 			problem("`[%s]` holds a line that is no `key = value`", table)
 			continue
 		}
-		for depth := openedBrackets(value); depth > 0 && i+1 < len(lines); depth += openedBrackets(lines[i]) {
+		for unclosed(value) && i+1 < len(lines) {
 			i++
 			value += lines[i]
 		}
