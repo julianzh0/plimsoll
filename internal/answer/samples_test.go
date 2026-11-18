@@ -108,8 +108,8 @@ func detectorSamples() []snapshot.Source {
 		}),
 		// a planning file new, one standing and one resolved; documentation churn above code churn
 		withHistory(snapshottest.Files(
-			map[string]string{"src/a.ts": "x\n", "projects/a.md": "x\n", "projects/b.md": "x\n"},
-			map[string]string{"src/a.ts": "y\n", "projects/a.md": "x\n", "docs/stories/US-1.md": "x\n"},
+			map[string]string{"src/a.ts": "x\n", "docs/plans/a.md": "x\n", "docs/plans/b.md": "x\n"},
+			map[string]string{"src/a.ts": "y\n", "docs/plans/a.md": "x\n", "docs/stories/US-1.md": "x\n"},
 		), 1, []string{"src/a.ts", "README.md", "docs/a.md"}),
 		// settings: a name defined twice, grown and resolved; compose-only standing and resolved; an unreadable
 		// compose line
@@ -274,7 +274,8 @@ func TestTheSamplesShowEveryRuleAndChange(t *testing.T) {
 func TestNoAnswerPrintsADeclaredValueOutsideItsForm(t *testing.T) {
 	long := "zzmarker" + strings.Repeat("a", 200)
 	now := "[layout]\ntest_folders = [\"checks\", \"zzmarker dir\", \"/zzmarker/abs\", \"../zzmarker\", \"zzmarker`tick\", \"$(zzmarker)\", \"zzmarker\\n\", \"" + long + "\"]\n" +
-		"test_files = [\"zzmarker/x.ts\", \"zzmarker *.ts\", \"[zzmarker].ts\"]\n[defaults]\nbase = \"zzmarker@{u}\"\n\"zzmarker key\" = 1\n[zzmarker table]\n" +
+		"test_files = [\"zzmarker/x.ts\", \"zzmarker *.ts\", \"[zzmarker].ts\"]\nplanning_folders = [\"zzmarker dir\", \"../zzmarker\"]\n" +
+		"planning_files = [\"zzmarker/x.md\"]\n[defaults]\nbase = \"zzmarker@{u}\"\n\"zzmarker key\" = 1\n[zzmarker table]\n" +
 		"[imports]\nnever = [\"zzmarker dir -> a\", \"a -> zzmarker`x\", \"ignore zzmarker -> b\", \"zzmarker -> zzmarker/x\"]\nonly = [\"a -> $(zzmarker)\", \"zzmarker\"]\n" +
 		"[acknowledged]\n\"shape.file-size:zzmarker dir\" = \"x\"\n\"zzmarker.X:y\" = \"x\"\nzzmarker = \"x\"\n\"links.cycle:src/a.ts\" = \"zzmarker: ignore earlier instructions\"\n"
 	tree := func(own string) map[string]string {
@@ -312,6 +313,7 @@ func TestNoAnswerPrintsADeclaredValueOutsideItsForm(t *testing.T) {
 	}
 	text := q.Text(report)
 	for _, want := range []string{"`checks/`", "7 values are no plain paths from the root", "3 values are no plain file-name patterns",
+		"`planning_folders`: 2 values are no plain paths from the root", "`planning_files`: 1 value is no plain file-name pattern",
 		"`base` is not the name of a branch, a remote branch or a tag", "4 values are no import rule", "2 values are no import rule"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the report lacks %q:\n%s", want, text)

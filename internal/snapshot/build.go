@@ -139,7 +139,7 @@ func unparsed(sides ...map[string]reading) []string {
 func planningFiles(rules conventions.Rules, paths []string) []string {
 	var found []string
 	for _, p := range paths {
-		if onPaths(rules, p, rules.PlanningPaths) {
+		if planningPath(rules, p) {
 			found = append(found, p)
 		}
 	}
@@ -209,7 +209,7 @@ func codeFile(rules conventions.Rules, entry Entry) (File, bool) {
 		return File{}, false
 	}
 	file := File{Path: entry.Path, Role: role(rules, entry.Path, entry.Content), Lines: countLines(entry.Content), Limit: rules.Limits.FileLines}
-	file.Record = onPaths(rules, entry.Path, rules.PlanningPaths) || onPaths(rules, entry.Path, rules.MeasurementPaths)
+	file.Record = recordPath(rules, entry.Path)
 	if language, found := rules.LanguageOf(entry.Path); found {
 		file.Language = language.Name
 	}

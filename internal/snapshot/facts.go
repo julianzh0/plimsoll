@@ -211,7 +211,7 @@ func pyprojectDependencies(content []byte) (names []string, manifest, readable b
 			}
 			continue
 		}
-		items, closed := stringArray(value[1:])
+		items, _, closed := stringArray(value[1:])
 		switch {
 		case !closed:
 			return nil, true, false

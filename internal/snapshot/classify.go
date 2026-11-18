@@ -184,7 +184,7 @@ func role(rules conventions.Rules, filePath string, content []byte) Role {
 func area(rules conventions.Rules, filePath string) Area {
 	first, _, nested := strings.Cut(filePath, "/")
 	switch {
-	case onPaths(rules, filePath, rules.PlanningPaths) || onPaths(rules, filePath, rules.MeasurementPaths):
+	case recordPath(rules, filePath):
 		return AreaRecords
 	case slices.Contains(rules.DocSuffixes, conventions.Suffix(filePath)) || nested && slices.Contains(rules.DocFolders, first):
 		return AreaDocs
@@ -198,14 +198,38 @@ func area(rules conventions.Rules, filePath string) Area {
 	return AreaProduct
 }
 
-// onPaths says whether a path lies under a list of paths. An entry ending in "/" is a folder: one folder name
-// matches at the root only, since a name like projects/ or evidence/ is also an ordinary folder deeper in the code;
-// a chain of two or more folders matches at any depth. Any other entry is a pattern for the file name. A path in a
-// skipped folder never matches.
-func onPaths(rules conventions.Rules, filePath string, entries []string) bool {
-	if inFolders(filePath, rules.SkippedFolders) || ignored(rules, filePath) {
+// recordPath says whether a path is a planning, review or measurement record.
+func recordPath(rules conventions.Rules, filePath string) bool {
+	return planningPath(rules, filePath) || onPaths(rules, filePath, rules.MeasurementPaths)
+}
+
+// planningPath says whether a path is a planning or review record: under a default planning path, or under a
+// planning folder, or with a planning file name, that the repository declares. A declared folder is a path from the
+// root, unlike a chain of the defaults, which matches at any depth.
+func planningPath(rules conventions.Rules, filePath string) bool {
+	if leftOut(rules, filePath) {
 		return false
 	}
+	return onEntries(filePath, rules.PlanningPaths) ||
+		slices.ContainsFunc(rules.PlanningFolders, func(folder string) bool { _, in := under(filePath, folder); return in }) ||
+		slices.ContainsFunc(rules.PlanningNames, func(pattern string) bool { return nameMatches(pattern, filePath) })
+}
+
+// onPaths says whether a path lies under a list of paths, in the syntax of onEntries. A path in a skipped folder, or
+// one that `[ignore]` names, never matches.
+func onPaths(rules conventions.Rules, filePath string, entries []string) bool {
+	return !leftOut(rules, filePath) && onEntries(filePath, entries)
+}
+
+// leftOut says whether a path lies in a skipped folder or is one that `[ignore]` names.
+func leftOut(rules conventions.Rules, filePath string) bool {
+	return inFolders(filePath, rules.SkippedFolders) || ignored(rules, filePath)
+}
+
+// onEntries says whether a path lies under a list of paths. An entry ending in "/" is a folder: one folder name
+// matches at the root only, since a name like projects/ or evidence/ is also an ordinary folder deeper in the code;
+// a chain of two or more folders matches at any depth. Any other entry is a pattern for the file name.
+func onEntries(filePath string, entries []string) bool {
 	for _, entry := range entries {
 		if folder, isFolder := strings.CutSuffix(entry, "/"); isFolder {
 			if strings.HasPrefix(filePath, folder+"/") || strings.Contains(folder, "/") && strings.Contains(filePath, "/"+folder+"/") {

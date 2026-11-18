@@ -39,7 +39,7 @@ func (Detector) Detect(s snapshot.Snapshot) answer.Findings {
 	now, before := float64(len(s.Now.Planning)), float64(len(s.Before.Planning))
 	f := answer.Findings{
 		Statistics: []answer.Statistic{{Name: "tracked planning and review files", Value: &now, Before: &before, Unit: "files"}},
-		Notes:      []string{"planning and review paths: " + s.PlanningRule},
+		Notes:      planningNotes(s),
 		Marks:      slices.Concat(planningMarks(s), limitMarks(s), declarationMarks(s)),
 	}
 	if note := limitsNote(s); note != "" {
@@ -49,6 +49,7 @@ func (Detector) Detect(s snapshot.Snapshot) answer.Findings {
 	for _, problem := range s.OwnFileProblems {
 		f.NotAnalysed = append(f.NotAnalysed, fmt.Sprintf("`%s`: %s; what it does not set keeps plimsoll's default", s.OwnFile, problem))
 	}
+	f.NotAnalysed = append(f.NotAnalysed, answer.OwnNotUsed(s.Layout.Planning)...)
 	f.NotAnalysed = append(f.NotAnalysed, notCompared(s)...)
 	churn := snapshot.ChurnOf(s.History.SinceBase())
 	if churn.Commits == 0 {
@@ -74,6 +75,11 @@ func (Detector) Detect(s snapshot.Snapshot) answer.Findings {
 		})
 	}
 	return f
+}
+
+// planningNotes name the planning and review paths: the defaults, then those the repository declares.
+func planningNotes(s snapshot.Snapshot) []string {
+	return append([]string{"planning and review paths: " + s.PlanningRule}, answer.OwnNotes(s.Layout.Planning)...)
 }
 
 // planningMarks compares the planning files of both sides. A renamed file takes its base side from its old name,

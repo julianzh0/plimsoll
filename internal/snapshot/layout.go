@@ -19,6 +19,8 @@ type Layout struct {
 	// OwnBase the default base it declares now, if any.
 	Own     []Declared
 	OwnBase []Declared
+	// Planning are the planning keys of the repository's own file that hold a value now, in the order of the rules.
+	Planning []Declared
 	// Rules are the import-rule keys of the repository's own file that hold a value now, in the order of the rules;
 	// their values in use are the rules as rebuilt.
 	Rules []Declared
@@ -194,7 +196,8 @@ func sharedTestFolder(rules conventions.Rules, folder string) bool {
 
 // ownLayout adds the keys of the repository's own file: one record per key that holds a value now. A value is held
 // when it names the root or every file, unmatched when no tracked path of either side lies under it or bears a
-// matching name, held when a test folder is or holds a package root, and in use otherwise.
+// matching name, held when a test or ignored folder is or holds a package root, and in use otherwise. A planning
+// folder is not held for holding code: its files become planning items, each of them shown.
 // NOTE: unlike a tool's declaration (decide), the own file is plimsoll's: a value that matches nothing is named, a
 // folder holding test folders of its own is not held, and only now's values apply. Upgrade: one resolver for both
 // if a tool's declaration should be named the same way.
@@ -213,14 +216,16 @@ func ownLayout(layout Layout, rules conventions.Rules, now ownFile, tracked []st
 			})
 			continue
 		}
-		pattern := k.Holds.Pattern()
+		pattern, planning := k.Holds.Pattern(), k.Holds.Planning()
 		d := Declared{File: rules.OwnFile, Table: k.Table, Key: k.Key, Name: k.Name, AsWritten: pattern, Now: KeyRead, Unusable: now.unusable[k.Key]}
 		for _, value := range values {
 			var why HeldReason
 			switch {
 			case pattern && strings.Trim(value, "*") == "":
 				why = HeldEveryName
-			case !pattern:
+			case !pattern && planning && value == ".":
+				why = HeldRepositoryRoot
+			case !pattern && !planning:
 				why = heldAsRoot(rules, value)
 			}
 			switch {
@@ -234,7 +239,11 @@ func ownLayout(layout Layout, rules conventions.Rules, now ownFile, tracked []st
 				d.InUse = append(d.InUse, DeclaredFolder{Path: value})
 			}
 		}
-		layout.Own = append(layout.Own, d)
+		if planning {
+			layout.Planning = append(layout.Planning, d)
+		} else {
+			layout.Own = append(layout.Own, d)
+		}
 	}
 	return layout
 }
@@ -271,15 +280,29 @@ func readDeclared(content []byte, d conventions.Declaration) ([]string, KeyState
 func withLayout(rules conventions.Rules, layout Layout) conventions.Rules {
 	rules.TestPaths, rules.TestNames = slices.Clone(rules.TestPaths), slices.Clone(rules.TestNames)
 	rules.IgnoredPaths, rules.IgnoredNames = slices.Clone(rules.IgnoredPaths), slices.Clone(rules.IgnoredNames)
-	for _, d := range slices.Concat(layout.TestFolders, layout.Own) {
-		list := &rules.TestPaths
-		if d.AsWritten {
-			list = &rules.TestNames
+	rules.PlanningFolders, rules.PlanningNames = slices.Clone(rules.PlanningFolders), slices.Clone(rules.PlanningNames)
+	for _, d := range layout.TestFolders {
+		for _, value := range d.InUse {
+			rules.TestPaths = appendNew(rules.TestPaths, value.Path)
 		}
-		if held := ownValueOf(rules, d); held == conventions.IgnoredFolderPaths {
+	}
+	for _, d := range slices.Concat(layout.Own, layout.Planning) {
+		var list *[]string
+		switch ownValueOf(rules, d) {
+		case conventions.TestFolderPaths:
+			list = &rules.TestPaths
+		case conventions.TestFileNames:
+			list = &rules.TestNames
+		case conventions.IgnoredFolderPaths:
 			list = &rules.IgnoredPaths
-		} else if held == conventions.IgnoredFileNames {
+		case conventions.IgnoredFileNames:
 			list = &rules.IgnoredNames
+		case conventions.PlanningFolderPaths:
+			list = &rules.PlanningFolders
+		case conventions.PlanningFileNames:
+			list = &rules.PlanningNames
+		case conventions.BaseName, conventions.NeverImportRules, conventions.OnlyImportRules: // no layout
+			continue
 		}
 		for _, value := range d.InUse {
 			*list = appendNew(*list, value.Path)

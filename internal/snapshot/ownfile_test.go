@@ -45,6 +45,8 @@ func TestBuildReadsTheTextKeysOfTheOwnFile(t *testing.T) {
 		{"one string", "", "[layout]\ntest_folders = \"checks\"\n", nil, []string{notAList}},
 		{"no string in the list, and a list that does not end", "", "[layout]\ntest_files = [1, \"a\"]\ntest_folders = [\n\"a\",\n",
 			nil, []string{"`test_files` is not a list of text", notAList}},
+		{"text after the list, and comments after lists", "", "[layout]\ntest_folders = [\"a\"] trailing\ntest_files = [\n  \"*.x\", # one\n] # end of list\n",
+			[]snapshot.DeclaredValues{files([]string{"*.x"}, nil)}, []string{notAList}},
 		{"a key the table does not hold", "", "[layout]\ntest_folder = [\"x\"]\n", nil, []string{"`test_folder` is no key of `[layout]`"}},
 		{"a key twice", "", "[layout]\ntest_folders = [\"a\"]\ntest_folders = [\"b\"]\n",
 			[]snapshot.DeclaredValues{folders([]string{"a"}, nil)}, []string{"`test_folders` is set twice"}},

@@ -36,7 +36,7 @@ func (Detector) Explain(s snapshot.Snapshot, m answer.Mark) []string {
 	default:
 		atBase = "tracked at the base: yes"
 	}
-	return append(lines, atBase, "planning and review paths: "+s.PlanningRule)
+	return slices.Concat(lines, []string{atBase}, planningNotes(s))
 }
 
 func churnEvidence(s snapshot.Snapshot) []string {

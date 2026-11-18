@@ -232,11 +232,11 @@ func (o *ownFile) readLimit(rules conventions.Rules, key, value string, problem 
 // readList reads a list of strings, each brought to its key's form.
 func (o *ownFile) readList(key conventions.OwnKey, value string, problem func(string, ...any)) {
 	text := strings.TrimSpace(value)
-	items, closed := []string(nil), false
+	items, rest, closed := []string(nil), "", false
 	if strings.HasPrefix(text, "[") {
-		items, closed = stringArray(text[1:])
+		items, rest, closed = stringArray(text[1:])
 	}
-	if !closed {
+	if !closed || strings.TrimSpace(uncommented(rest)) != "" {
 		o.unread[key.Key] = true
 		problem("`%s` is not a list of text", key.Key)
 		return

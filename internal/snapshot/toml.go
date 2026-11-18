@@ -30,30 +30,31 @@ func tomlTable(content, name string) (string, bool) {
 }
 
 // stringArray reads the strings of an array whose opening bracket is consumed, up to its closing bracket outside a
-// string; closed is false when the array does not end or holds something that is not a string.
-func stringArray(text string) (items []string, closed bool) {
+// string; closed is false when the array does not end or holds something that is not a string. rest is the text
+// after the closing bracket.
+func stringArray(text string) (items []string, rest string, closed bool) {
 	for i := 0; i < len(text); i++ {
 		switch c := text[i]; c {
 		case ' ', '\t', '\r', '\n', ',':
 		case '#':
 			end := strings.IndexByte(text[i:], '\n')
 			if end < 0 {
-				return items, false
+				return items, "", false
 			}
 			i += end
 		case ']':
-			return items, true
+			return items, text[i+1:], true
 		case '"', '\'':
-			item, rest, ok := quotedString(text[i:])
+			item, after, ok := quotedString(text[i:])
 			if !ok {
-				return items, false
+				return items, "", false
 			}
-			items, i = append(items, item), len(text)-len(rest)-1
+			items, i = append(items, item), len(text)-len(after)-1
 		default:
-			return items, false
+			return items, "", false
 		}
 	}
-	return items, false
+	return items, "", false
 }
 
 // openedBrackets counts the brackets and braces a line opens minus those it closes, outside strings and before a
@@ -102,7 +103,7 @@ func keyLine(key string) *regexp.Regexp {
 func valueOf(value string) ([]string, KeyState) {
 	switch {
 	case strings.HasPrefix(value, "["):
-		items, closed := stringArray(value[1:])
+		items, _, closed := stringArray(value[1:])
 		if !closed {
 			return nil, KeyUnreadable
 		}

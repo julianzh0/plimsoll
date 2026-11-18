@@ -44,14 +44,14 @@ func row(f answer.Findings, name string) (answer.Statistic, bool) {
 func TestPlanningFileMarks(t *testing.T) {
 	source := snapshottest.Files(
 		map[string]string{"docs/stories/a.md": "x\n", "docs/plans/b.md": "x\n", "docs/stories/c.md": "x\n"},
-		map[string]string{"docs/review-packet-7.md": "x\n", "docs/stories/a.md": "x\n", "docs/stories/d.md": "x\n", "docs/guide/e.md": "x\n"},
+		map[string]string{"docs/plans/review-7.md": "x\n", "docs/stories/a.md": "x\n", "docs/stories/d.md": "x\n", "docs/guide/e.md": "x\n"},
 	)
-	source.Changes = []snapshot.Change{{Path: "docs/review-packet-7.md", Added: 1}, {Path: "docs/plans/b.md", Removed: 1},
+	source.Changes = []snapshot.Change{{Path: "docs/plans/review-7.md", Added: 1}, {Path: "docs/plans/b.md", Removed: 1},
 		{Path: "docs/stories/d.md", From: "docs/stories/c.md"}, {Path: "docs/guide/e.md", Added: 1}}
 	_, f := detect(t, source)
 	marks := marksOf(f, rulePlanning)
 	want := map[string]answer.Change{
-		"docs/review-packet-7.md": answer.New, "docs/stories/a.md": answer.Standing,
+		"docs/plans/review-7.md": answer.New, "docs/stories/a.md": answer.Standing,
 		"docs/plans/b.md": answer.Resolved, "docs/stories/d.md": answer.Standing,
 	}
 	if len(marks) != len(want) {
@@ -70,6 +70,30 @@ func TestPlanningFileMarks(t *testing.T) {
 	}
 	if !slices.Contains(f.Notes, "planning and review paths: "+conventions.Default().PlanningRule()) {
 		t.Errorf("notes = %q, want the planning rule", f.Notes)
+	}
+}
+
+func TestADeclaredPlanningFolderMarksItsFiles(t *testing.T) {
+	declaring := func(own string) snapshot.Source {
+		base, now := map[string]string{"src/a.ts": "x\n"}, map[string]string{"src/a.ts": "x\n", "backlog/US-12.md": "x\n"}
+		if own != "" {
+			base[".plimsoll.toml"], now[".plimsoll.toml"] = own, own
+		}
+		source := snapshottest.Files(base, now)
+		source.Changes = []snapshot.Change{{Path: "backlog/US-12.md", Added: 1}}
+		return source
+	}
+	if _, f := detect(t, declaring("")); len(marksOf(f, rulePlanning)) != 0 {
+		t.Errorf("backlog/US-12.md without a declaration: planning marks %v, want none", marksOf(f, rulePlanning))
+	}
+	s, f := detect(t, declaring("[layout]\nplanning_folders = [\"backlog\", \"a b\"]\n"))
+	mark, note := marksOf(f, rulePlanning)["backlog/US-12.md"], "planning folders declared in `.plimsoll.toml` (`[layout]` `planning_folders`): `backlog/`"
+	if mark.Change != answer.New || !slices.Contains(f.Notes, note) || !slices.Contains(Detector{}.Explain(s, mark), note) {
+		t.Errorf("backlog/US-12.md under a declared folder: mark %+v, notes %q, evidence %q; want a new mark and the declaration in notes and evidence",
+			mark, f.Notes, Detector{}.Explain(s, mark))
+	}
+	if want := "`.plimsoll.toml` `planning_folders`: 1 value is no plain path from the root; it is not used"; !slices.Contains(f.NotAnalysed, want) {
+		t.Errorf("not analysed = %q, want %q", f.NotAnalysed, want)
 	}
 }
 
@@ -188,6 +212,10 @@ func TestAChangeToTheRepositorysOwnFileIsMarked(t *testing.T) {
 			[]string{"This change altered the test files declared in `.plimsoll.toml`: added `*IT.java`, `*_spec.rb`; 2 declared now, 0 at the base."}},
 		{"a key removed", ruleDeclarationChange, layout("test_folders = [\"checks\"]\n"), "[limits]\nfile_lines = 1500\n",
 			[]string{"This change altered the test folders declared in `.plimsoll.toml`: removed 1; 0 declared now, 1 at the base."}},
+		{"planning paths declared", ruleDeclarationChange, "", layout("planning_folders = [\"backlog\"]\nplanning_files = [\"*.plan.md\"]\n"), []string{
+			"This change altered the planning folders declared in `.plimsoll.toml`: added `backlog`; 1 declared now, 0 at the base.",
+			"This change altered the planning files declared in `.plimsoll.toml`: added `*.plan.md`; 1 declared now, 0 at the base.",
+		}},
 		{"reordered", ruleDeclarationChange, layout("test_folders = [\"a\", \"b\"]\n"), layout("test_folders = [\"b\", \"a\"]\n"), nil},
 		{"written another way", ruleDeclarationChange, layout("test_folders = [\"checks/\"]\n"), layout("test_folders = [\"./checks\"]\n"), nil},
 		{"a value without its form added", ruleDeclarationChange, layout("test_folders = [\"checks\"]\n"), layout("test_folders = [\"checks\", \"a b\"]\n"), nil},

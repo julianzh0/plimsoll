@@ -47,7 +47,7 @@ What it could not see is always named under "not analysed".
 | `shape.settings:.env.example` | a setting was added since the base | any addition |
 | `shape.function-complexity:<path>:<function>` | a function of a product file the change touched has a cognitive complexity over its limit now and is new, or was at or under it at the base and rose by 8 or more; and it nests control flow 4 levels deep, or holds a block of at least 4 statements and 40 tokens that the change wrote twice inside it. Left out: code the change moved or split out of another function, code found in a file at the base, files from another project (by their header or a vendor folder with a licence), benchmarks, generated and minified files. At most three per change, the largest rise first (candidate) | 25, plimsoll's rule, read blind on agent pull requests; counted as SonarQube's cognitive complexity |
 | `shape.function-nesting:<path>:<function>` | a function of a product file the change touched nests control flow 4 or more levels deep now and deeper than at the base (new), or was that deep and got deeper (grown). The same code is left out; at most three per change (candidate). In `report` only | 4 levels, CodeScene's threshold for deep nesting |
-| `process.planning-file:<path>` | a file under a planning or review path is tracked now and was not at the base | repositories hold no planning records |
+| `process.planning-file:<path>` | a file under a planning or review path (below, and those `.plimsoll.toml` declares) is tracked now and was not at the base | repositories hold no planning records |
 | `process.doc-churn:repository` | over the commits since the base, documentation churn is above product plus test churn | documentation above code |
 | `process.limit-change:<key>` | `.plimsoll.toml` sets a limit to another value now than at the base, so a change that raised a limit to clear a mark says so | any change |
 | `process.declaration-change:<key>` | `.plimsoll.toml` declares other values under a key of `[layout]`, `[ignore]`, `[imports]` or `[defaults]`, or other entries in `[acknowledged]` (the key is then `acknowledged`), now than at the base; editing only a reason is no change | any change |
@@ -59,6 +59,21 @@ What it could not see is always named under "not analysed".
 | `links.never:<folder>-><folder>` | product code under the first folder imports code under the second, against a `never` rule of `.plimsoll.toml`, and the change wrote one of these imports: new when there were none at the base, grown otherwise, also when the count did not rise. More than at the base without one the change wrote is touched (candidate) | the repository's own rule in `.plimsoll.toml` |
 | `links.only:<folder>` | product code under the folder imports code outside it and outside the folders its `only` rule names, and the change wrote one of these imports; new, grown and touched as for `never` (candidate) | the repository's own rule in `.plimsoll.toml` |
 | `links.folder-cycle:<folder>` | two or more folders directly under one folder depend on each other in a cycle, through imports between product files below them, and none of them did at the base (new), or the cycle has more folders (grown), and the change added one of the imports between them. The folder is the cycle's smallest (candidate) | the Acyclic Dependencies Principle (Robert C. Martin) |
+
+### Planning and review paths
+
+A file is a planning or review record when it lies under one of these paths or bears one of these names. A folder
+of one name is matched at the root only, a chain of folders at any depth; the names are matched wherever the file
+lies. A repository adds its own with `planning_folders` and `planning_files` (below).
+
+| Path | Where it comes from |
+|---|---|
+| `docs/superpowers/` | the superpowers skills' specs and plans |
+| `docs/stories/`, `docs/plans/`, `docs/specs/` | per-change stories, plans and specs |
+| `.claude/plans/` | Claude Code's plan folder when it is pointed into the project (`plansDirectory`) |
+| `.cursor/plans/` | Cursor's Plan Mode, a plan saved to the workspace ([Plan Mode](https://cursor.com/docs/agent/plan-mode)) |
+| `.planning/phases/`, `.planning/quick/`, `.planning/research/`, `.planning/threads/`, `.planning/todos/`, `.planning/debug/`, `.planning/seeds/`, `.planning/codebase/`, `.planning/ui-reviews/` | GSD: the folders its pull-request filter leaves out of review; its project files (`STATE.md`, `ROADMAP.md`, `PROJECT.md`) stay ([PR branch filtering](https://github.com/open-gsd/gsd-core/blob/main/docs/features/pr-branch-filtering.md)) |
+| `REQUIREMENTS.md`, `SPEC.md`, `PLAN.md`, `*_PLAN.md` | requirement, spec and plan files written for one change |
 
 Something over its limit at the base and no longer over it is reported as resolved. Something over it on both
 sides that did not grow is standing. The function rules look only at the files a change touched, so they have no
@@ -93,6 +108,8 @@ hotspot_files = 5                           # files the report lists as hotspots
 [layout]
 test_folders = ["checks", "tools/harness"]  # folders whose code is test code
 test_files = ["*_spec.rb", "*IT.java"]      # names of test files
+planning_folders = ["backlog"]              # folders of planning or review notes
+planning_files = ["*.plan.md"]              # names of planning or review notes
 
 [ignore]
 folders = ["src/test/resources/fixtures"]   # folders whose files plimsoll leaves out
@@ -115,6 +132,8 @@ only = ["src/domain -> src/shared"]         # code under the first folder import
 | `hotspot_files` | How many files the report lists as hotspots |
 | `test_folders` | Folders, as paths from the root, whose code files count as test code, beside the defaults |
 | `test_files` | File names of code files that count as test code wherever they lie: `*` is any run of characters, `?` one |
+| `planning_folders` | Folders, as paths from the root, whose files are planning or review records, beside the default paths |
+| `planning_files` | File names, with the same patterns as `test_files`, of planning or review records wherever they lie |
 | `folders` under `[ignore]` | Folders, as paths from the root, whose files plimsoll leaves out: no code, no planning record, no documentation it reads |
 | `files` under `[ignore]` | File names, with the same patterns as `test_files`, of files plimsoll leaves out wherever they lie |
 | an entry of `[acknowledged]` | A mark identifier exactly as an answer printed it, and a reason: a standing item with that identifier is listed under "Acknowledged" in `report` instead of "Standing", and `status` counts such items in one line. The item is still measured and counted; when it grows, or a new item gets its identifier, it shows as usual. Function marks never stand, so they are not acknowledged. The reason is required and never printed |
@@ -127,8 +146,11 @@ A declaration adds to the defaults and takes none away, and now's file applies t
 mark names its limit's source, for example "1,500 lines, set by `.plimsoll.toml`", every report names what the file
 declares, and a limit or a declaration that changed since the base is itself a mark. The file switches no rule off:
 an acknowledged item is still measured and counted, only listed apart, and `[ignore]` is the one way to leave files out of the count: test code declared here counts as test code. A folder is a plain path, and a
-bare name is a folder at the root. A test folder that is the root or a package root, and a file name that is only
-`*`, are not applied.
+bare name is a folder at the root. A test folder that is the root or a package root, a planning folder that is the
+root, and a file name that is only `*`, are not applied. A file under a declared planning path is a planning record
+like one under a default path: it keeps its role and its lines, and is left out of hotspots, pairs, the churn rows and
+the footprint's documentation lines; so a planning folder that holds code takes that code out of them too. Values are
+ASCII: a folder whose name has a space or another letter is counted as no plain path.
 
 A key plimsoll does not know, a table it does not read, a value that is no number above 0 (a whole number up to 2^53 for a limit
 that counts), a list that is no list of text, a line outside a table or a key set twice is named under "not

@@ -289,12 +289,15 @@ func TestBuildLeavesOutGeneratedFiles(t *testing.T) {
 
 func TestBuildListsPlanningAndReviewFiles(t *testing.T) {
 	planning := []string{
-		".claude/plans/a-design.md", ".context/CODEBASE_AUDIT_PLAN.md", ".review-work/a/packet.md", "PLAN.md", "REQUIREMENTS.md",
-		"docs/SPEC.md", "docs/api-review-packet-2.md", "docs/stories/US-1.md", "packages/api/docs/specs/x.md", "projects/notes.txt",
+		".claude/plans/a-design.md", ".context/CODEBASE_AUDIT_PLAN.md", ".cursor/plans/auth.plan.md", ".planning/phases/01/01-01-SUMMARY.md",
+		".planning/quick/a.md", "PLAN.md", "REQUIREMENTS.md", "docs/SPEC.md", "docs/stories/US-1.md", "packages/api/docs/specs/x.md",
+		"packages/web/.cursor/plans/x.md", "projects/PLAN.md",
 	}
 	other := []string{
 		"docs/guide.md", "docs/stories.md", "docs/planner.md", "mydocs/stories/a.md", "docs/qualification/run.json", "evidence/a.txt",
 		"node_modules/x/SPEC.md", "internal/x/testdata/s/REQUIREMENTS.md", "src/spec.md", "src/features/projects/list.md",
+		"projects/notes.txt", ".review-work/a/notes.md", "docs/review-packet-7.md", ".planning/STATE.md", ".planning/config.json",
+		".cursor/rules/style.mdc",
 	}
 	files := map[string]string{}
 	for _, p := range append(slices.Clone(planning), other...) {
@@ -307,18 +310,31 @@ func TestBuildListsPlanningAndReviewFiles(t *testing.T) {
 	if s.PlanningRule != conventions.Default().PlanningRule() {
 		t.Errorf("Build.PlanningRule = %q, want the rules' own", s.PlanningRule)
 	}
+
+	files[".plimsoll.toml"] = "[layout]\nplanning_folders = [\"backlog\", \"docs/notes\"]\nplanning_files = [\"*.plan.md\"]\n"
+	for _, p := range []string{"backlog/US-12.md", "docs/notes/a.md", "docs/x/auth.plan.md", "backlog-old/a.md", "src/backlog/a.md", "x/docs/notes/a.md", "node_modules/x/a.plan.md"} {
+		files[p] = "x\n"
+	}
+	declared := slices.Sorted(slices.Values(append(slices.Clone(planning), "backlog/US-12.md", "docs/notes/a.md", "docs/x/auth.plan.md")))
+	if got := snapshot.Build(snapshottest.Files(nil, files), conventions.Default(), snapshottest.Readings(t)).Now.Planning; !slices.Equal(got, declared) {
+		t.Errorf("Build(declared planning paths).Now.Planning = %q, want %q", got, declared)
+	}
 }
 
 func TestBuildFlagsCodeFilesUnderRecordPaths(t *testing.T) {
-	records := []string{"projects/tools/gen.ts", "docs/qualification/run.ts", "evidence/collect.sh", "x/docs/plans/draw.ts"}
-	others := []string{"src/a.ts", "docs/guide/sample.ts", "scripts/evidence.ts", "src/evidence/check.ts", "src/projects/list.ts"}
-	files := map[string]string{}
+	declared := []string{"backlog/tools/gen.ts", "src/x.plan.ts"}
+	records := append([]string{"docs/qualification/run.ts", "evidence/collect.sh", "x/docs/plans/draw.ts"}, declared...)
+	others := []string{"src/a.ts", "docs/guide/sample.ts", "scripts/evidence.ts", "src/evidence/check.ts", "src/projects/list.ts", "projects/tools/gen.ts"}
+	files := map[string]string{".plimsoll.toml": "[layout]\nplanning_folders = [\"backlog\"]\nplanning_files = [\"*.plan.ts\"]\n"}
 	for _, p := range append(slices.Clone(records), others...) {
 		files[p] = "x\n"
 	}
 	for _, file := range snapshot.Build(snapshottest.Files(nil, files), conventions.Default(), snapshottest.Readings(t)).Now.Files {
 		if want := slices.Contains(records, file.Path); file.Record != want {
 			t.Errorf("Build: %s Record = %v, want %v", file.Path, file.Record, want)
+		}
+		if slices.Contains(declared, file.Path) && file.Role != snapshot.Product {
+			t.Errorf("Build: %s under a declared planning path has role %v, want product code", file.Path, file.Role)
 		}
 	}
 }

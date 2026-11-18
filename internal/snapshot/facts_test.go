@@ -357,7 +357,8 @@ func TestBuildGivesEachHistoryPathItsArea(t *testing.T) {
 		"src/testDemo/a.ts": snapshot.AreaTests, "src/latest/a.ts": snapshot.AreaProduct, "src/testing/a.ts": snapshot.AreaProduct,
 		"lib/androidTest/a.ts": snapshot.AreaProduct, "gradle.properties": snapshot.AreaOther,
 		"src/main/resources/META-INF/services/a.B": snapshot.AreaOther,
-		"docs/superpowers/plans/a.md":              snapshot.AreaRecords, "projects/notes.md": snapshot.AreaRecords,
+		"docs/superpowers/plans/a.md":              snapshot.AreaRecords, "projects/notes.md": snapshot.AreaDocs,
+		".planning/phases/01/a.md": snapshot.AreaRecords, ".planning/STATE.md": snapshot.AreaDocs,
 		"docs/qualification/run.json": snapshot.AreaRecords, "evidence/run.txt": snapshot.AreaRecords,
 		"src/projects/list.ts": snapshot.AreaProduct,
 		"Acme.Tests/A.cs":      snapshot.AreaTests, "src/Acme.Core.Test/Util/A.cs": snapshot.AreaTests,
@@ -371,6 +372,18 @@ func TestBuildGivesEachHistoryPathItsArea(t *testing.T) {
 		source := snapshot.Source{Commits: []snapshot.Commit{{ID: "x", Files: []snapshot.FileChange{{Path: p}}}}}
 		if got := snapshot.Build(source, conventions.Default(), snapshottest.Readings(t)).History.Commits[0].Files[0].Area; got != want {
 			t.Errorf("area of %s = %v, want %v", p, got, want)
+		}
+	}
+	declared := map[string]snapshot.Area{"docs/notes/a.md": snapshot.AreaRecords, "src/x.plan.ts": snapshot.AreaRecords, "docs/a.md": snapshot.AreaDocs, "x/docs/notes/a.md": snapshot.AreaDocs}
+	source := snapshottest.Files(nil, map[string]string{
+		".plimsoll.toml": "[layout]\nplanning_folders = [\"docs/notes\"]\nplanning_files = [\"*.plan.ts\"]\n", "docs/notes/b.md": "x\n", "src/y.plan.ts": "x\n",
+	})
+	for p := range declared {
+		source.Commits = append(source.Commits, snapshot.Commit{ID: p, Files: []snapshot.FileChange{{Path: p}}})
+	}
+	for _, c := range snapshot.Build(source, conventions.Default(), snapshottest.Readings(t)).History.Commits {
+		if got := c.Files[0].Area; got != declared[c.Files[0].Path] {
+			t.Errorf("area of %s under declared planning paths = %v, want %v", c.Files[0].Path, got, declared[c.Files[0].Path])
 		}
 	}
 }

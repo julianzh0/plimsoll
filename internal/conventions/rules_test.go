@@ -124,8 +124,10 @@ func TestIsBinaryLooksForANulByteInTheFirstBytes(t *testing.T) {
 }
 
 func TestPlanningRuleIsPrintedFromTheData(t *testing.T) {
-	want := "`docs/superpowers/`, `docs/stories/`, `docs/plans/`, `docs/specs/`, `.claude/plans/`, `projects/`, `.review-work/`, " +
-		"`*review-packet*`, `REQUIREMENTS.md`, `SPEC.md`, `PLAN.md`, `*_PLAN.md`"
+	want := "`docs/superpowers/`, `docs/stories/`, `docs/plans/`, `docs/specs/`, `.claude/plans/`, `.cursor/plans/`, " +
+		"`.planning/phases/`, `.planning/quick/`, `.planning/research/`, `.planning/threads/`, `.planning/todos/`, " +
+		"`.planning/debug/`, `.planning/seeds/`, `.planning/codebase/`, `.planning/ui-reviews/`, " +
+		"`REQUIREMENTS.md`, `SPEC.md`, `PLAN.md`, `*_PLAN.md`"
 	if got := Default().PlanningRule(); got != want {
 		t.Errorf("PlanningRule() = %q, want %q", got, want)
 	}
@@ -153,6 +155,8 @@ func TestOwnValuesAreBroughtToTheirForm(t *testing.T) {
 		{TestFileNames, "test-?.js", "test-?.js"}, {TestFileNames, "a/b", ""},
 		{TestFileNames, "[ab].go", ""}, {TestFileNames, "x y", ""}, {TestFileNames, "", ""},
 		{TestFileNames, long + "a", ""},
+		{PlanningFolderPaths, "./backlog/", "backlog"}, {PlanningFolderPaths, "notes/*", ""},
+		{PlanningFileNames, "*.plan.md", "*.plan.md"}, {PlanningFileNames, "docs/PLAN.md", ""},
 		{BaseName, "main", "main"}, {BaseName, "origin/main", "origin/main"}, {BaseName, "v0.2.0", "v0.2.0"},
 		{BaseName, "release/1.x", "release/1.x"}, {BaseName, "HEAD", "HEAD"}, {BaseName, "HEAD~1", ""}, {BaseName, "main^", ""},
 		{BaseName, "main@{u}", ""}, {BaseName, "main:path", ""}, {BaseName, "a..b", ""}, {BaseName, "-x", ""}, {BaseName, "/main", ""},
@@ -180,6 +184,8 @@ func TestOwnValuesAreBroughtToTheirForm(t *testing.T) {
 	want := []OwnKey{
 		{Table: "layout", Key: "test_folders", Name: "test folders", Holds: TestFolderPaths},
 		{Table: "layout", Key: "test_files", Name: "test files", Holds: TestFileNames},
+		{Table: "layout", Key: "planning_folders", Name: "planning folders", Holds: PlanningFolderPaths},
+		{Table: "layout", Key: "planning_files", Name: "planning files", Holds: PlanningFileNames},
 		{Table: "defaults", Key: "base", Name: "default base", Holds: BaseName},
 		{Table: "ignore", Key: "folders", Name: "ignored folders", Holds: IgnoredFolderPaths},
 		{Table: "ignore", Key: "files", Name: "ignored files", Holds: IgnoredFileNames},
@@ -193,9 +199,12 @@ func TestOwnValuesAreBroughtToTheirForm(t *testing.T) {
 	if !BaseName.Single() || TestFileNames.Single() || TestFolderPaths.Single() {
 		t.Errorf("Single() = %v for the base, %v for test files, %v for test folders; want true, false, false", BaseName.Single(), TestFileNames.Single(), TestFolderPaths.Single())
 	}
-	if !TestFileNames.Pattern() || TestFolderPaths.Pattern() || !IgnoredFileNames.Pattern() || IgnoredFolderPaths.Pattern() {
-		t.Errorf("Pattern() = %v for test files, %v for test folders, %v for ignored files, %v for ignored folders; want true, false, true, false",
-			TestFileNames.Pattern(), TestFolderPaths.Pattern(), IgnoredFileNames.Pattern(), IgnoredFolderPaths.Pattern())
+	for kind, want := range map[OwnValue]bool{
+		TestFileNames: true, TestFolderPaths: false, IgnoredFileNames: true, IgnoredFolderPaths: false, PlanningFileNames: true, PlanningFolderPaths: false,
+	} {
+		if kind.Pattern() != want {
+			t.Errorf("%v.Pattern() = %v, want %v", kind, kind.Pattern(), want)
+		}
 	}
 	if !NeverImportRules.ImportRule() || !OnlyImportRules.ImportRule() || TestFolderPaths.ImportRule() || NeverImportRules.Pattern() || NeverImportRules.Single() {
 		t.Errorf("ImportRule() = %v, %v for the rule kinds, %v for test folders, Pattern() %v, Single() %v for never; want true, true, false, false, false",

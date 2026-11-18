@@ -64,6 +64,8 @@ type Rules struct {
 	IgnoredPaths                        []string // folders, as paths from the repository root, whose files are left out; empty in the shared rules
 	IgnoredNames                        []string // file-name patterns of files left out; empty in the shared rules
 	PlanningPaths                       []string // planning and review records: an entry ending in "/" is a folder, at the root when it is one name, at any depth when it is a chain; any other a file-name pattern
+	PlanningFolders                     []string // planning folders a repository declares, as paths from the root; empty in the shared rules
+	PlanningNames                       []string // file-name patterns of planning files a repository declares; empty in the shared rules
 	MeasurementPaths                    []string // measurement records, in the syntax of PlanningPaths
 	ComposeFiles                        []string // file-name patterns of compose files, read for their environment keys
 	Limits                              Limits   // the shared defaults
@@ -156,6 +158,10 @@ const (
 	// OnlyImportRules are import rules "a -> b": product code under folder a imports code only under a itself and
 	// under the folders its rules of this kind name.
 	OnlyImportRules
+	// PlanningFolderPaths are folders, as paths from the repository root, whose files are planning or review records.
+	PlanningFolderPaths
+	// PlanningFileNames are file-name patterns of planning or review records.
+	PlanningFileNames
 )
 
 // OwnValueLength is the longest value an own key may hold: the longest tracked folder path of sixteen repositories is
@@ -284,7 +290,7 @@ func (v OwnValue) Shape() string {
 		return "import rule of the form `folder -> folder` (two different folders from the root, neither inside the other)"
 	case OnlyImportRules:
 		return "import rule of the form `folder -> folder` (two folders from the root)"
-	case TestFolderPaths, TestFileNames, BaseName, IgnoredFolderPaths, IgnoredFileNames:
+	case TestFolderPaths, TestFileNames, BaseName, IgnoredFolderPaths, IgnoredFileNames, PlanningFolderPaths, PlanningFileNames:
 	}
 	return ""
 }
@@ -293,7 +299,12 @@ func (v OwnValue) Shape() string {
 func (v OwnValue) ImportRule() bool { return v == NeverImportRules || v == OnlyImportRules }
 
 // Pattern says whether the values are file-name patterns rather than folders.
-func (v OwnValue) Pattern() bool { return v == TestFileNames || v == IgnoredFileNames }
+func (v OwnValue) Pattern() bool {
+	return v == TestFileNames || v == IgnoredFileNames || v == PlanningFileNames
+}
+
+// Planning says whether the values are planning folders or planning file names.
+func (v OwnValue) Planning() bool { return v == PlanningFolderPaths || v == PlanningFileNames }
 
 // Single says whether the key holds one string rather than a list.
 func (v OwnValue) Single() bool { return v == BaseName }
@@ -452,6 +463,8 @@ func Default() Rules {
 		OwnKeys: []OwnKey{
 			{Table: "layout", Key: "test_folders", Name: "test folders", Holds: TestFolderPaths},
 			{Table: "layout", Key: "test_files", Name: "test files", Holds: TestFileNames},
+			{Table: "layout", Key: "planning_folders", Name: "planning folders", Holds: PlanningFolderPaths},
+			{Table: "layout", Key: "planning_files", Name: "planning files", Holds: PlanningFileNames},
 			{Table: "defaults", Key: "base", Name: "default base", Holds: BaseName},
 			{Table: "ignore", Key: "folders", Name: "ignored folders", Holds: IgnoredFolderPaths},
 			{Table: "ignore", Key: "files", Name: "ignored files", Holds: IgnoredFileNames},
@@ -464,9 +477,13 @@ func Default() Rules {
 			{Key: "shared_commits", Name: "co-change limit", Unit: "shared commits"},
 			{Key: "hotspot_files", Name: "hotspot count", Unit: "files"},
 		},
+		// Each place an agent tool writes plans to is backed by the tool's own documentation (docs/rules.md); GSD's
+		// folders are those its pull-request filter leaves out of review, not its lasting project files.
 		PlanningPaths: []string{
-			"docs/superpowers/", "docs/stories/", "docs/plans/", "docs/specs/", ".claude/plans/", "projects/", ".review-work/",
-			"*review-packet*", "REQUIREMENTS.md", "SPEC.md", "PLAN.md", "*_PLAN.md",
+			"docs/superpowers/", "docs/stories/", "docs/plans/", "docs/specs/", ".claude/plans/", ".cursor/plans/",
+			".planning/phases/", ".planning/quick/", ".planning/research/", ".planning/threads/", ".planning/todos/",
+			".planning/debug/", ".planning/seeds/", ".planning/codebase/", ".planning/ui-reviews/",
+			"REQUIREMENTS.md", "SPEC.md", "PLAN.md", "*_PLAN.md",
 		},
 		MeasurementPaths: []string{"docs/qualification/", "evidence/"},
 		ComposeFiles:     []string{"compose*.yml", "compose*.yaml", "docker-compose*.yml", "docker-compose*.yaml"},
