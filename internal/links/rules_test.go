@@ -50,7 +50,12 @@ func TestImportRuleMarksInEachLanguage(t *testing.T) {
 			f := detect(t, snapshottest.Files(c.ruled(never, only, base...), c.ruled(never, only, now...)))
 			marks := slices.Concat(marksOf(f, ruleNever), marksOf(f, ruleOnly))
 			var gotNever, gotOnly float64
+			seen := map[string]bool{}
 			for _, m := range marks {
+				if seen[m.ID] {
+					t.Errorf("%s: mark %s given twice", label, m.ID)
+				}
+				seen[m.ID] = true
 				if m.Change != answer.New || m.Measured.Before == nil || *m.Measured.Before != 0 || m.Subject.Kind != "rule" ||
 					m.Measured.Unit != "imports" || m.Measured.Limit != nil {
 					t.Errorf("%s: mark %+v, want a new rule mark with none at the base", label, m)
@@ -149,6 +154,24 @@ func TestImportRulesCompareWithTheBase(t *testing.T) {
 		!slices.Equal(marks[0].Subject.Names, []string{"`src/domain/x.ts` line 1 importing `src/adapters/y.ts`"}) {
 		t.Errorf("a type-only and a value import of one file: marks %+v, want one clause without \", type-only\"", marks)
 	}
+	lines := func(content string) map[string]string {
+		return c.tree(map[string]string{".plimsoll.toml": tree()[".plimsoll.toml"], "src/adapters/y.ts": "export type Y = number;\nexport const y = 1;\n",
+			"src/domain/x.ts": content})
+	}
+	statement := "import type { Y } from \"../adapters/y.ts\";\n"
+	if marks := marksOf(detect(t, snapshottest.Files(lines(statement), lines(statement+"import { y } from \"../adapters/y.ts\";\n"))), ruleNever); len(marks) != 1 ||
+		marks[0].Change != answer.Grown || !slices.Equal(marks[0].Subject.Names, []string{"`src/domain/x.ts` line 2 importing `src/adapters/y.ts`"}) {
+		t.Errorf("a value import added beside a type-only one of the same file: marks %+v, want one grown naming line 2", marks)
+	}
+	py := languageCases()["python"]
+	pyRules := py.ruled([]string{"domain -> adapters"}, nil)[".plimsoll.toml"]
+	pyTree := func(importer string) map[string]string {
+		return py.tree(map[string]string{".plimsoll.toml": pyRules, "src/adapters/y.py": "Y = 1\n", "src/domain/x.py": importer})
+	}
+	pyMarks := marksOf(detect(t, snapshottest.Files(pyTree("X = 1\n"), pyTree("from typing import TYPE_CHECKING\n\nif TYPE_CHECKING:\n    import adapters.y\n"))), ruleNever)
+	if len(pyMarks) != 1 || !slices.Equal(pyMarks[0].Subject.Names, []string{"`src/domain/x.py` line 4 importing `src/adapters/y.py`, type-only"}) {
+		t.Errorf("a python import under TYPE_CHECKING: marks %+v, want one clause ending in \", type-only\"", pyMarks)
+	}
 	typeOnly := c.tree(map[string]string{".plimsoll.toml": tree()[".plimsoll.toml"], "src/adapters/y.ts": "export type Y = number;\n",
 		"src/domain/x.ts": "import type { Y } from \"../adapters/y.ts\";\n"})
 	marks := marksOf(detect(t, snapshottest.Files(tree("domain/x", "adapters/y"), typeOnly)), ruleNever)
@@ -213,10 +236,18 @@ func TestImportRulesSayWhatTheyCannotCheck(t *testing.T) {
 			t.Errorf("%s: first %q, then %q, marks %+v; want %q, then %q and no mark", tc.name, f.NotAnalysedFirst, f.NotAnalysed, f.Marks, tc.first, tc.rest)
 		}
 	}
+	unread := snapshot.Build(snapshottest.Files(own(never, map[string]string{"src/domain/a.ts": "import \"../adapters/b.ts\";\n", "src/adapters/b.ts": "export const b = 1;\n"}),
+		own(never, map[string]string{"src/domain/a.ts": "import \"../adapters/b.ts\";\nexport const more = 1;\n", "src/adapters/b.ts": "export const b = 1;\n"})),
+		conventions.Default(), snapshottest.Readings(t))
+	unread.Unparsed = []string{"src/domain/a.ts"} // as when the file is over the parser's cap
+	if f := (Detector{}).Detect(unread); len(marksOf(f, ruleNever)) != 0 || !slices.Equal(f.NotAnalysedFirst,
+		[]string{lead + "the imports of 1 product file under `src/domain/` are not read or not followed (`typescript`), so the rule checks nothing"}) {
+		t.Errorf("an importer the parser could not read: marks %+v, first %q; want no mark and the rule checking nothing", f.Marks, f.NotAnalysedFirst)
+	}
 	python := map[string]string{"src/app/__init__.py": "", "src/domain/a.ts": "export const a = 1;\n", "src/adapters/b.ts": "export const b = 1;\n",
 		"src/domain/c.py": "import app.gone\nimport app.lost\n"}
 	f := detect(t, same(own(never, python)))
-	want := lead + "1 of the 2 product files under `src/domain/` is not checked, because their imports are not followed (`python`)"
+	want := lead + "1 of the 2 product files under `src/domain/` is not checked, because their imports are not read or not followed (`python`)"
 	if len(f.NotAnalysedFirst) != 0 || len(f.NotAnalysed) == 0 || f.NotAnalysed[0] != want {
 		t.Errorf("a language over the limit beside one that is read: first %q, then %q; want %q first among links'", f.NotAnalysedFirst, f.NotAnalysed, want)
 	}
@@ -315,6 +346,10 @@ func TestImportRuleWordingStandingEvidenceAndReport(t *testing.T) {
 	if got := (Detector{}).Standing(append(standing, mark(ruleOnly, answer.Standing, 1, 1))); got != "2 declared import rules broken by imports already at the base" {
 		t.Errorf("Standing(two) = %q", got)
 	}
+	touched := []answer.Mark{mark(ruleNever, answer.Touched, 1, 0), mark(ruleOnly, answer.Touched, 2, 1)}
+	if got := (Detector{}).Standing(touched); got != "2 declared import rules with imports that break them" {
+		t.Errorf("Standing(two touched) = %q, want no claim about the base", got)
+	}
 	clean := tree(map[string]string{"src/domain/x.ts": "import type { S } from \"../shared/s.ts\";\n", "src/adapters/y.ts": base["src/adapters/y.ts"],
 		"src/shared/s.ts": base["src/shared/s.ts"], "src/domain/w.ts": "export const w = 1;\n", "src/domain/v.ts": "export const v = 1;\n",
 		"src/other/o.ts": base["src/other/o.ts"]})
@@ -343,6 +378,12 @@ func TestImportRulesAreCheckedEachOnItsOwn(t *testing.T) {
 	slices.Sort(ids)
 	if want := []string{"links.never:src/domain->src/other 1", "links.never:src/domain->src/shared/internal 1", "links.only:src/domain 1"}; !slices.Equal(ids, want) {
 		t.Errorf("a carve-out and a redundant never rule: marks %q, want %q", ids, want)
+	}
+	nested := ts.ruled(nil, []string{"domain -> model"}, "domain/x>other/o", "model/m")
+	nested[".plimsoll.toml"] = strings.Replace(nested[".plimsoll.toml"], "only = [", "only = [\"src -> src/shared\", ", 1)
+	f = detect(t, snapshottest.Files(ts.ruled(nil, nil, "domain/x", "other/o", "model/m"), nested))
+	if only := marksOf(f, ruleOnly); len(only) != 1 || only[0].ID != "links.only:src/domain" {
+		t.Errorf("nested only sources: marks %+v, want only src/domain's (src/other lies inside src)", only)
 	}
 	goModule := map[string]string{"go.mod": "module example.com/m\n", "internal/root.go": "package internal\n",
 		"internal/adapters/y/y.go": "package y\n", "internal/shared/s/s.go": "package s\n",

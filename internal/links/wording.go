@@ -119,8 +119,11 @@ func (Detector) Standing(items []answer.Mark) string {
 	if folders > 0 {
 		fragments = append(fragments, answer.Plural(folders, "folder cycle"))
 	}
-	if rules > 0 {
+	switch {
+	case rules > 0 && items[0].Change == answer.Standing: // one line holds items of one change
 		fragments = append(fragments, answer.Plural(rules, "declared import rule")+" broken by imports already at the base")
+	case rules > 0:
+		fragments = append(fragments, answer.Plural(rules, "declared import rule")+" with imports that break them")
 	}
 	return strings.Join(fragments, "; ")
 }

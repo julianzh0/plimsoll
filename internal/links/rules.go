@@ -54,7 +54,7 @@ func withRules(f answer.Findings, s snapshot.Snapshot, now, before graph) answer
 	f.NotAnalysed = slices.Concat(notAnalysed, answer.OwnNotUsed(s.Layout.Rules), f.NotAnalysed)
 	if len(s.ImportRules) > 0 {
 		f.Statistics = append(f.Statistics, answer.Statistic{Name: importRulesRow, Value: &broken, Before: &brokenAtBase, Unit: "rules",
-			Note: fmt.Sprintf("of the %s made of the %s in `%s`", answer.Plural(len(s.ImportRules), "rule"), entriesShown(entries(s.ImportRules)), s.OwnFile)})
+			Note: fmt.Sprintf("of the %s made of the %s in `%s`", answer.Plural(len(s.ImportRules), "rule"), answer.Agree(entries(s.ImportRules), "entry", "entries"), s.OwnFile)})
 		f.Notes = append(f.Notes, importRulesNote)
 	}
 	f.Notes = append(f.Notes, answer.OwnNotes(s.Layout.Rules)...)
@@ -68,14 +68,6 @@ func entries(rules []snapshot.ImportRule) int {
 		n += len(r.Targets)
 	}
 	return n
-}
-
-// entriesShown prints a number of entries.
-func entriesShown(n int) string {
-	if n == 1 {
-		return "1 entry"
-	}
-	return answer.Count(float64(n)) + " entries"
 }
 
 // ruleLead names a rule at the start of a sentence: a never rule by its entry, an only rule by its folder.
@@ -104,7 +96,7 @@ func checkOf(s snapshot.Snapshot, r snapshot.ImportRule, now graph) (importers i
 		}
 		products++
 		switch {
-		case now.analysed(file.Path):
+		case now.analysed(file.Path) && !slices.Contains(s.Unparsed, file.Path):
 			importers++
 		case file.Language == "":
 			suffixes = append(suffixes, path.Ext(file.Path))
@@ -126,7 +118,7 @@ func checkOf(s snapshot.Snapshot, r snapshot.ImportRule, now graph) (importers i
 		if overLimit == 1 {
 			verb = "is"
 		}
-		partly = fmt.Sprintf("%d of the %s under %s %s not checked, because their imports are not followed (%s)",
+		partly = fmt.Sprintf("%d of the %s under %s %s not checked, because their imports are not read or not followed (%s)",
 			overLimit, answer.Plural(products, "product file"), answer.Folder(r.From), verb, named(languagesOver))
 	}
 	return importers, partly, ""
@@ -174,8 +166,8 @@ func lies(file, folder string) bool { return strings.HasPrefix(file, folder+"/")
 
 // breaking are the imports of one side that break a rule, one per importing file and target, by file, line and target
 // as the graph holds them.
-// A pair is type-only when every statement of it is, and added when the change wrote one of them; it carries its
-// first line.
+// A pair is type-only when every statement of it is, and added when the change wrote one of them; it carries the
+// line of its first statement the change wrote, or else of its first statement.
 // NOTE: every rule walks the files of both sides, so the work grows with rules times files: 1,000 rules added at most
 // 0.07 s to a status of nowinandroid (715 files) and vapor (898 files), measured 2026-11-18. Upgrade: index the files
 // by folder once per side when a repository with far more files declares that many rules.
@@ -198,22 +190,19 @@ func breaking(r snapshot.ImportRule, tree snapshot.Tree, g graph) []snapshot.Lin
 				continue
 			}
 			found[i].TypeOnly = found[i].TypeOnly && link.TypeOnly
-			found[i].Added = found[i].Added || link.Added
+			if link.Added && !found[i].Added { // the pair names the first statement the change wrote
+				found[i].Line, found[i].Added = link.Line, true
+			}
 		}
 	}
 	return found
 }
 
 // breaks says whether one import breaks a rule: a never rule when every code file it reaches lies under the target,
-// an only rule when none lies under an allowed folder (the rule's own and its targets). An import that reaches only
-// its own file breaks nothing.
+// an only rule when none lies under an allowed folder (the rule's own and its targets). The snapshot leaves the
+// importer out of the files a link reaches and keeps no link that reaches none.
 func breaks(r snapshot.ImportRule, allowed []string, link snapshot.Link) bool {
-	reachesOther := false
 	for _, f := range link.Files {
-		if f == link.From {
-			continue
-		}
-		reachesOther = true
 		if r.Kind == snapshot.Never && !lies(f, r.Targets[0]) {
 			return false
 		}
@@ -221,7 +210,7 @@ func breaks(r snapshot.ImportRule, allowed []string, link snapshot.Link) bool {
 			return false
 		}
 	}
-	return reachesOther
+	return true
 }
 
 // ruleMark is a rule's mark: new or grown when the change wrote one of its breaking imports, however many were taken

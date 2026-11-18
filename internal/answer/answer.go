@@ -116,9 +116,9 @@ type Mark struct {
 
 // Subject is what a mark is about.
 type Subject struct {
-	Kind  string   `json:"kind"`            // repository, file, files, folders, setting
+	Kind  string   `json:"kind"`            // repository, file, files, folders, setting, rule
 	Paths []string `json:"paths,omitempty"` // one path for a file; two or more, sorted, for files
-	Names []string `json:"names,omitempty"` // settings or dependencies the mark names, sorted
+	Names []string `json:"names,omitempty"` // settings or dependencies the mark names, sorted; for a rule, the imports it names, in order
 }
 
 // Measured is the measurement behind a mark.

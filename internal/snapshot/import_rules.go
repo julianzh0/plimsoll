@@ -53,7 +53,7 @@ func importRules(rules conventions.Rules, now ownFile) (found []ImportRule, reco
 				at, onlyAt[from] = len(found), len(found)
 				found = append(found, ImportRule{Kind: Only, Table: k.Table, Key: k.Key, From: from})
 			}
-			found[at].Targets = appendNew(found[at].Targets, to)
+			found[at].Targets = append(found[at].Targets, to) // the reader keeps each entry once
 		}
 		records = append(records, record)
 	}

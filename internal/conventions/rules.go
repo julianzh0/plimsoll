@@ -165,6 +165,10 @@ const OwnValueLength = 200
 // importArrow joins the two folders of an import rule, as it is written and as an answer prints it.
 const importArrow = "->"
 
+// importRuleLength is the longest import rule as written: two folders at OwnValueLength, each with a leading "./"
+// and a trailing "/", and the arrow with room for the spaces around it.
+const importRuleLength = 2*(OwnValueLength+len("./")+len("/")) + 2*len(" -> ")
+
 // MarkIDLength is the longest mark identifier the acknowledged table may hold: a pair names two paths, and the
 // longest tracked path of the 193 local validation clones is 257 characters, so a pair identifier stays under 530.
 const MarkIDLength = 600
@@ -245,6 +249,9 @@ func folderForm(value string) (string, bool) {
 // as written is kept: one arrow, two folders from the root other than the root itself, each within OwnValueLength.
 // Under NeverImportRules the two folders differ and neither lies under the other.
 func (v OwnValue) importRuleForm(value string) (string, bool) {
+	if len(value) > importRuleLength {
+		return "", false
+	}
 	from, to, _ := strings.Cut(value, importArrow) // a second arrow, or none, leaves an end outside the folder form
 	var ends [2]string
 	for i, end := range []string{from, to} {

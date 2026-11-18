@@ -169,7 +169,7 @@ func TestOwnValuesAreBroughtToTheirForm(t *testing.T) {
 		{NeverImportRules, "a => b", ""}, {NeverImportRules, "a\n-> b", ""}, {NeverImportRules, "", ""},
 		{OnlyImportRules, "src/domain -> src/shared", "src/domain -> src/shared"}, {OnlyImportRules, "a -> a", "a -> a"},
 		{OnlyImportRules, "src -> src/legacy", "src -> src/legacy"}, {OnlyImportRules, "a -> .", ""},
-		{OnlyImportRules, "a -> b -> c", ""}, {OnlyImportRules, "src-x -> src", "src-x -> src"},
+		{OnlyImportRules, "a -> b -> c", ""}, {OnlyImportRules, strings.Repeat(" ", 420) + "a -> b", ""}, {OnlyImportRules, "src-x -> src", "src-x -> src"},
 	}
 	for _, c := range cases {
 		if formed, usable := c.kind.Form(c.value); formed != c.formed || usable != (c.formed != "") {
