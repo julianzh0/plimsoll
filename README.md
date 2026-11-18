@@ -12,6 +12,7 @@
   <a href="go.mod"><img src="https://img.shields.io/github/go-mod/go-version/julianzh0/plimsoll" alt="Go"></a>
   <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-server-blue" alt="MCP server"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
+  <a href="https://glama.ai/mcp/servers/julianzh0/plimsoll"><img src="https://glama.ai/mcp/servers/julianzh0/plimsoll/badges/score.svg" alt="plimsoll MCP server – quality and maintenance score on Glama"></a>
 </p>
 
 <p align="center"><img src=".github/how-it-works.svg" alt="Your agent changes code, asks plimsoll, and gets a few measured findings back, each with a way to check it" width="900"></p>
