@@ -534,7 +534,8 @@ func TestImportersOfTheChangeCountDirectAndAtAnyDistance(t *testing.T) {
 		moved := snapshottest.Files(chained, renamedB)
 		moved.Changes = append(moved.Changes, snapshot.Change{Path: c.product("b2"), From: c.product("b")})
 		// e imports b: a changed file, or a path the rename removed; either way it counts directly beside c and the tests
-		for label, changed := range map[string]snapshot.Source{"a and b changed": snapshottest.Files(chained, editedB), "a changed and b renamed": moved} {
+		cases := map[string]snapshot.Source{"a and b changed": snapshottest.Files(chained, editedB), "a changed and b renamed": moved}
+		for label, changed := range cases {
 			if r, _ := statisticNamed(detect(t, changed), "importers of the change"); !strings.HasPrefix(r.Note, "4 files directly, 4 at any distance; 2 changed code files; ") {
 				t.Errorf("%s: importers of the change = %q, want c, two tests and e directly", label, r.Note)
 			}
