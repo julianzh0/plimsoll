@@ -82,6 +82,18 @@ func TestIntegrationReadSeesTheTrackedFilesOfBothSides(t *testing.T) {
 	}
 }
 
+func TestIntegrationReadLeavesOutTheFilesOfADeletedFolder(t *testing.T) {
+	repo := gitrepotest.New(t, gitrepotest.Commit{Message: "base", Files: map[string]string{
+		"a.ts": "x\n", "lib/b.ts": "x\n", "lib/notes.md": "# notes\n", "lib/deep/c.ts": "x\n"}})
+	if err := os.RemoveAll(filepath.Join(repo.Dir, "lib")); err != nil {
+		t.Fatal(err)
+	}
+	src, err := read(t, repo.Dir, "HEAD")
+	if err != nil || !reflect.DeepEqual(paths(src.Now), []string{"a.ts"}) || len(src.Unreadable) != 0 {
+		t.Errorf("Read after deleting lib/ = now %v, unreadable %v, %v; want only a.ts and nothing unreadable", paths(src.Now), src.Unreadable, err)
+	}
+}
+
 func TestIntegrationReadFollowsARename(t *testing.T) {
 	repo := gitrepotest.New(t)
 	base := repo.Commit(gitrepotest.Commit{Message: "base", Files: map[string]string{"old.ts": strings.Repeat("line\n", 40)}})
