@@ -30,8 +30,10 @@ func (Detector) Wording(m answer.Mark) string {
 	case ruleDeclarationChange:
 		now, before := int(m.Measured.Value), int(*m.Measured.Before)
 		var parts []string
-		if len(m.Subject.Names) > 0 {
-			parts = append(parts, "added "+answer.QuotedList(m.Subject.Names))
+		if added := m.Subject.Names; len(added) > acknowledgedNamed && strings.HasSuffix(m.ID, ":"+acknowledgedTable) {
+			parts = append(parts, fmt.Sprintf("added %s and %d more", answer.QuotedList(added[:acknowledgedNamed]), len(added)-acknowledgedNamed))
+		} else if len(added) > 0 {
+			parts = append(parts, "added "+answer.QuotedList(added))
 		}
 		if removed := before + len(m.Subject.Names) - now; removed > 0 {
 			parts = append(parts, fmt.Sprintf("removed %d", removed))

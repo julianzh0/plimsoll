@@ -192,9 +192,14 @@ func QuotedList(names []string) string { return strings.Join(Quoted(names), ", "
 
 // Added are the values now that before does not hold, each once, in the order of now: what a change added.
 func Added(before, now []string) []string {
+	seen := make(map[string]bool, len(before)+len(now))
+	for _, value := range before {
+		seen[value] = true
+	}
 	var added []string
 	for _, value := range now {
-		if !slices.Contains(before, value) && !slices.Contains(added, value) {
+		if !seen[value] {
+			seen[value] = true
 			added = append(added, value)
 		}
 	}
