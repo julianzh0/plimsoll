@@ -141,6 +141,8 @@ base whose repository declares no usable default base is refused with one senten
 
 A rule is one text `"<folder> -> <folder>"`: two folders from the root, in the form of `test_folders`, joined by one
 `->`. Product code under the first folder is the importing side; test code and other code never are.
+A broken rule is information, never a gate or an exit code, and a rule checks only the import-direction part of an
+architecture test: outside packages and everything that is not an import stay in the team's own test.
 
 - `never = ["a -> b"]`: code under `a` imports no code under `b`. An import breaks the rule when every code file it
   reaches lies under `b`. The two folders differ and neither lies inside the other.
