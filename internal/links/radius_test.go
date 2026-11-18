@@ -1,6 +1,7 @@
 package links
 
 import (
+	"encoding/json"
 	"fmt"
 	"maps"
 	"slices"
@@ -299,4 +300,26 @@ func TestTheStateOfAChangedFileFollowsWhatItsDeclarationsDid(t *testing.T) {
 			t.Errorf("%s: states = %q, want %s in state %d", c.label, states, c.path, c.state)
 		}
 	}
+}
+
+func TestTheBlastRadiusAddsNoNameItReadFromCode(t *testing.T) {
+	eachLanguage(t, func(t *testing.T, name string, c languageCase) {
+		k := codeOf(name)
+		a, b := c.product("a"), c.product("b")
+		const distinct = "Zqxwvut"
+		base := c.tree(map[string]string{a: c.importing(a, nil) + k.declare(distinct, 1), b: c.importing(b, []string{a}) + k.use(distinct)})
+		now := maps.Clone(base)
+		now[a] = c.importing(a, nil) + k.declare(distinct, 2)
+		f := detect(t, snapshottest.Files(base, now))
+		if f.Radius == nil || f.Radius.ByName != 1 {
+			t.Fatalf("radius = %+v, want the one user by name", f.Radius)
+		}
+		written, err := json.Marshal(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(written), distinct) {
+			t.Errorf("the findings hold the altered name %s: %s", distinct, written)
+		}
+	})
 }

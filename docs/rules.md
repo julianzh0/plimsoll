@@ -10,7 +10,7 @@ Six detectors look at a change from different sides:
 - **Hotspots** (`hotspots`): the files changed most often, weighed by their size.
 - **Hidden coupling** (`co-change`): files that keep changing together in the same commits.
 - **Wiring** (`links`): who imports whom, import rings, folders that depend on each other in a circle, product code
-  that imports test code, imports that break a rule the repository declares, how far a change reaches, and the code a
+  that imports test code, imports that break a rule the repository declares, the blast radius of a change, and the code a
   change added that nothing uses.
 
 Each detector compares now with a base you choose, such as `main`, so old debt stays quiet and new growth stands out.
@@ -32,7 +32,8 @@ Every number is measured at the base and now, from the tracked files only:
 - hotspots: the three code files (or as many as `hotspot_files` sets) with the most changes in usable commits times their lines now, as report rows, with no rule of its own
 - changed together: pairs of code files that share usable commits, at least one product code, neither a file that defines tests, and not two files that the language treats as one unit
 - test folders and package roots that a project declares in its own configuration or in `.plimsoll.toml`, added to the defaults and named with their source
-- import links, read from the code: the files that import the changed files and that the change did not touch, the three files that import the most others, import rings, cycles between sibling folders, and each new product file that no file imports. With `files`, also the files that import each named file.
+- the blast radius: the files the change did not touch that use, as a code identifier, a name a changed file altered or removed, through files that pass imports on or use the name, in the same package and through a header beside a C or C++ source; and the importers of a changed file whose changed code has no name plimsoll reads. A changed comment, an added declaration and a re-indented line outside Python alter nothing; a docstring is code. Where a changed file could not be read, the number is a lower bound; where none could, it is not analysed, never 0. A name used through an alias is not seen.
+- import links, read from the code: the files that import the changed files and that the change did not touch, directly and at any distance, with their folders and the share of product code they hold, the three files that import the most others, import rings, cycles between sibling folders, and each new product file that no file imports. With `files`, also the files that import each named file.
 - added code without a use: the functions, types and values a change added at the top level of a product file whose name no code or configuration file holds outside its own declaration. A name that only test code holds, or only documentation names, says so. A list in `report` and one count in `status`, never a mark.
 
 What it could not see is always named under "not analysed".
