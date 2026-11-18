@@ -1,6 +1,7 @@
 package snapshot
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"errors"
 	"slices"
@@ -28,6 +29,67 @@ type Readings struct {
 	mu        sync.Mutex
 	kept      map[readingKey]*keptReading
 	questions uint64 // questions begun
+	// identifiers are, per content, the identifier tokens a file holds and whether each stands outside its test code:
+	// what the blast radius walk asks of the files it reaches. Kept and dropped like the readings.
+	identifiers map[[sha256.Size]byte]*keptIdentifiers
+	prints      map[[sha256.Size]byte]*keptPrints // per changed content: its blast radius fingerprints
+}
+
+// keptPrints are the prints of one changed content, and the latest question that used them.
+type keptPrints struct {
+	pure, all prints
+	question  uint64
+}
+
+// printsOfReading gives the prints of a content read with its units, made once per content.
+func (rs *Readings) printsOfReading(language conventions.Language, content []byte, r reading, question uint64) (pure, all prints) {
+	key := sha256.Sum256(append([]byte(language.Name+"\x01"), content...))
+	rs.mu.Lock()
+	if kept, found := rs.prints[key]; found {
+		kept.question = max(kept.question, question)
+		rs.mu.Unlock()
+		return kept.pure, kept.all
+	}
+	rs.mu.Unlock()
+	pure, all = printsOf(language, content, r.units, r.pureImports)
+	rs.mu.Lock()
+	rs.prints[key] = &keptPrints{pure: pure, all: all, question: question}
+	rs.mu.Unlock()
+	return pure, all
+}
+
+// keptIdentifiers are the identifiers of one content, and the latest question that used them.
+type keptIdentifiers struct {
+	outsideTests map[string]bool
+	question     uint64
+}
+
+// identifiersOf gives the identifier tokens of a content: each with whether it stands outside the test spans, made
+// once per content. When they are not kept yet and worth is false for the content, it gives nil and reads nothing.
+func (rs *Readings) identifiersOf(language conventions.Language, content []byte, testSpans []span, question uint64, worth func() bool) map[string]bool {
+	key := sha256.Sum256(append([]byte(language.Name+"\x00"), content...))
+	rs.mu.Lock()
+	if kept, found := rs.identifiers[key]; found {
+		kept.question = max(kept.question, question)
+		rs.mu.Unlock()
+		return kept.outsideTests
+	}
+	rs.mu.Unlock()
+	if !worth() {
+		return nil
+	}
+	found := map[string]bool{}
+	for t := range eachToken(language.Tokens, content, 1) {
+		word := content[t.start:t.end]
+		if !t.word || bytes.ContainsAny(word[:1], "\"'`") {
+			continue // no identifier
+		}
+		found[string(word)] = found[string(word)] || !inSpans(testSpans, t.start)
+	}
+	rs.mu.Lock()
+	rs.identifiers[key] = &keptIdentifiers{outsideTests: found, question: question}
+	rs.mu.Unlock()
+	return found
 }
 
 // readingKey names a reading: a reading depends only on the content, the entry, the grammar and the binary.
@@ -48,7 +110,8 @@ type keptReading struct {
 
 // NewReadings returns empty readings that read with the parser.
 func NewReadings(parser *parse.Parser) *Readings {
-	return &Readings{parser: parser, bound: KeptReadings, kept: map[readingKey]*keptReading{}}
+	return &Readings{parser: parser, bound: KeptReadings, kept: map[readingKey]*keptReading{}, identifiers: map[[sha256.Size]byte]*keptIdentifiers{},
+		prints: map[[sha256.Size]byte]*keptPrints{}}
 }
 
 // begin numbers a new question; the readings it uses are kept until a later question needs the room.
@@ -65,12 +128,25 @@ func (rs *Readings) begin() uint64 {
 func (rs *Readings) end(question uint64) {
 	rs.mu.Lock()
 	defer rs.mu.Unlock()
-	if len(rs.kept) <= rs.bound {
-		return
+	if len(rs.kept) > rs.bound {
+		for key, kept := range rs.kept {
+			if kept.question < question {
+				delete(rs.kept, key)
+			}
+		}
 	}
-	for key, kept := range rs.kept {
-		if kept.question < question {
-			delete(rs.kept, key)
+	if len(rs.identifiers) > rs.bound {
+		for key, kept := range rs.identifiers {
+			if kept.question < question {
+				delete(rs.identifiers, key)
+			}
+		}
+	}
+	if len(rs.prints) > rs.bound {
+		for key, kept := range rs.prints {
+			if kept.question < question {
+				delete(rs.prints, key)
+			}
 		}
 	}
 }
@@ -163,9 +239,6 @@ func (rs *Readings) read(language conventions.Language, grammar string, content 
 		tree := r
 		r = readByText(language, content)
 		r.units, r.pureImports, r.unitsRead, r.errors = tree.units, tree.pureImports, tree.unitsRead, tree.errors
-	}
-	if w.declarations && language.Tokens != nil {
-		r.prints, r.printsAll = printsOf(language, content, r.units, r.pureImports)
 	}
 	if w.functions {
 		tree, err := rs.parser.Nodes(grammar, content)

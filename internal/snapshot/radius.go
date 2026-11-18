@@ -1,11 +1,12 @@
 package snapshot
 
 import (
-	"bytes"
 	"path"
 	"regexp"
+	"runtime"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/julianzh0/plimsoll/internal/conventions"
 )
@@ -73,6 +74,8 @@ type radiusInput struct {
 	now, before                 Tree
 	nowReadings, beforeReadings map[string]reading
 	missing                     []string
+	readings                    *Readings // where each reached file's identifiers are kept by content
+	question                    uint64
 }
 
 // item is one step of the walk: a file asked for one name, or, with no name, as a user of a file counted as a whole.
@@ -85,6 +88,7 @@ func blastRadius(in radiusInput) Radius {
 	for _, p := range in.missing {
 		r.MissingNow = r.MissingNow || w.missingNow(p)
 	}
+	w.readPrints()
 	var all []changed
 	for _, ch := range in.changes {
 		all = append(all, w.changedFiles(ch)...)
@@ -129,6 +133,54 @@ type radiusWalk struct {
 	unread   map[string]*User
 	held     map[string]map[string]int // per file: name -> heldOutsideTests or heldInTestsOnly
 	names    map[string]bool           // every name the walk asks for
+	// nowPrints and basePrints are the fingerprints of the changed files on each side: pure imports left out, and not.
+	nowPrints, basePrints map[string][2]prints
+}
+
+// readPrints makes the fingerprints of every changed file on both sides that was read for its units, one goroutine per
+// processor: tokenizing a large changed file is the slow part of comparing it.
+func (w *radiusWalk) readPrints() {
+	type job struct {
+		into     map[string][2]prints
+		path     string
+		content  []byte
+		reading  reading
+		language conventions.Language
+	}
+	var jobs []job
+	w.nowPrints, w.basePrints = map[string][2]prints{}, map[string][2]prints{}
+	add := func(into map[string][2]prints, p string, content []byte, r reading) {
+		if language, known := w.in.rules.LanguageOf(p); known && content != nil && language.Tokens != nil {
+			jobs = append(jobs, job{into, p, content, r, language})
+		}
+	}
+	for _, ch := range w.in.changes {
+		add(w.nowPrints, ch.Path, w.in.nowContent[ch.Path], w.in.nowReadings[ch.Path])
+		for _, p := range []string{ch.Path, ch.From} {
+			if p != "" {
+				add(w.basePrints, p, w.in.baseContent[p], w.in.beforeReadings[p])
+			}
+		}
+	}
+	results := make([][2]prints, len(jobs))
+	work := make(chan int)
+	var group sync.WaitGroup
+	for range min(runtime.GOMAXPROCS(0), len(jobs)) {
+		group.Go(func() {
+			for i := range work {
+				pure, all := w.in.readings.printsOfReading(jobs[i].language, jobs[i].content, jobs[i].reading, w.in.question)
+				results[i] = [2]prints{pure, all}
+			}
+		})
+	}
+	for i := range jobs {
+		work <- i
+	}
+	close(work)
+	group.Wait()
+	for i, j := range jobs {
+		j.into[j.path] = results[i]
+	}
 }
 
 func newWalk(in radiusInput) *radiusWalk {
@@ -223,14 +275,15 @@ func (w *radiusWalk) state(language conventions.Language, nowPath, basePath stri
 		}
 	}
 	nowReading, baseReading := w.in.nowReadings[nowPath], w.in.beforeReadings[basePath]
+	variant := 0
 	if slices.Contains(language.SurfaceFiles, path.Base(either(nowPath, basePath))) {
-		// what the package offers: no import is pure
-		nowReading.prints, baseReading.prints = nowReading.printsAll, baseReading.printsAll
+		variant = 1 // what the package offers: no import is pure
 	}
+	nowPrints, basePrints := w.nowPrints[nowPath][variant], w.basePrints[basePath][variant]
 	switch {
 	case basePath == "":
 		return NothingAltered, "", nil // a new file
-	case nowPath != "" && sameCode(nowReading, baseReading):
+	case nowPath != "" && sameCode(nowPrints, basePrints, nowReading, baseReading):
 		return NothingAltered, "", nil
 	case nowPath == "":
 		if reason := unreadUnits(baseReading); reason != "" {
@@ -247,7 +300,7 @@ func (w *radiusWalk) state(language conventions.Language, nowPath, basePath stri
 			return AsAWhole, reason, nil
 		}
 	}
-	return compareUnits(nowReading, baseReading)
+	return compareUnits(nowPrints, basePrints, nowReading, baseReading)
 }
 
 // unreadUnits is why a reading's units cannot be compared, or "". A syntax error is not one: a unit that holds it is.
@@ -262,17 +315,17 @@ func unreadUnits(r reading) string {
 }
 
 // compareUnits pairs the units of both sides by fingerprint, position ignored.
-func compareUnits(now, base reading) (FileState, string, []string) {
-	if now.prints.remainder != base.prints.remainder {
+func compareUnits(nowPrint, basePrint prints, now, base reading) (FileState, string, []string) {
+	if nowPrint.remainder != basePrint.remainder {
 		return AsAWhole, ReasonRemainder, nil
 	}
 	nowPrints := map[uint64]int{}
-	for _, print := range now.prints.units {
+	for _, print := range nowPrint.units {
 		nowPrints[print]++
 	}
 	var names []string
 	for i, u := range base.units {
-		if print := base.prints.units[i]; nowPrints[print] > 0 {
+		if print := basePrint.units[i]; nowPrints[print] > 0 {
 			nowPrints[print]--
 			continue
 		}
@@ -308,8 +361,8 @@ func sortedNames(names []string) []string {
 
 // sameCode says whether two readings hold the same code tokens: all of them, or, when both were read for their units,
 // those outside pure imports.
-func sameCode(now, base reading) bool {
-	return now.prints.whole == base.prints.whole || now.unitsRead && base.unitsRead && now.prints.code == base.prints.code
+func sameCode(nowPrint, basePrint prints, now, base reading) bool {
+	return nowPrint.whole == basePrint.whole || now.unitsRead && base.unitsRead && nowPrint.code == basePrint.code
 }
 
 // seed puts the first items of one changed file on the walk.
@@ -501,7 +554,13 @@ func (w *radiusWalk) push(it item, language string) {
 // item to its importers and, asked for a name it holds, is a user too; asked for any use, a file is a user; asked for
 // a name, a file that holds it is a user and asks its importers for it.
 func (w *radiusWalk) run() {
+	fetched := 0 // the items whose files' identifiers are read ahead
 	for len(w.queue) > 0 {
+		if fetched == 0 {
+			w.readAhead(w.queue)
+			fetched = len(w.queue)
+		}
+		fetched--
 		it := w.queue[0]
 		w.queue = w.queue[1:]
 		languages := w.from[it]
@@ -533,13 +592,49 @@ func (w *radiusWalk) run() {
 	}
 }
 
+// readAhead reads the identifiers of the files that the next items ask for names, one goroutine per processor: the
+// walk then asks the files in its own order from what is kept.
+func (w *radiusWalk) readAhead(items []item) {
+	var files []string
+	for _, it := range items {
+		if _, read := w.held[it.file]; it.name != "" && !read && !slices.Contains(files, it.file) {
+			files = append(files, it.file)
+		}
+	}
+	work := make(chan string)
+	var group sync.WaitGroup
+	for range min(runtime.GOMAXPROCS(0), len(files)) {
+		group.Go(func() {
+			for file := range work {
+				if language, _ := w.in.rules.LanguageOf(file); language.Tokens != nil {
+					_ = w.in.readings.identifiersOf(language, w.in.nowContent[file], w.in.nowReadings[file].testSpans, w.in.question, w.worth(file))
+				}
+			}
+		})
+	}
+	for _, file := range files {
+		work <- file
+	}
+	close(work)
+	group.Wait()
+}
+
+// worth says whether a file holds one of the walk's names as a plain word.
+func (w *radiusWalk) worth(file string) func() bool {
+	return func() bool {
+		hit := false
+		eachWord(w.in.nowContent[file], func(word []byte, _ int) { hit = hit || w.names[string(word)] })
+		return hit
+	}
+}
+
 const (
 	heldOutsideTests = 1
 	heldInTestsOnly  = 2
 )
 
 // holds gives, for one file now, the walk's names it holds as identifier tokens: outside its test code, or only in
-// it. The file is tokenized once, and only when a plain word search finds one of the names in it.
+// it. The file's identifiers are read once per content, and only after a plain word search finds one of the names.
 func (w *radiusWalk) holds(file string) map[string]int {
 	if found, read := w.held[file]; read {
 		return found
@@ -547,24 +642,19 @@ func (w *radiusWalk) holds(file string) map[string]int {
 	found := map[string]int{}
 	w.held[file] = found
 	content := w.in.nowContent[file]
-	hit := false
-	eachWord(content, func(word []byte, _ int) { hit = hit || w.names[string(word)] })
 	language, _ := w.in.rules.LanguageOf(file)
-	if !hit || language.Tokens == nil {
+	if language.Tokens == nil {
 		return found
 	}
-	testSpans := w.in.nowReadings[file].testSpans
 	inTests := w.roles[file].IsTest()
-	for t := range eachToken(language.Tokens, content, 1) {
-		word := content[t.start:t.end]
-		if !t.word || bytes.ContainsAny(word[:1], "\"'`") || !w.names[string(word)] {
-			continue // not an identifier, or not asked for
+	for name, outside := range w.in.readings.identifiersOf(language, content, w.in.nowReadings[file].testSpans, w.in.question, w.worth(file)) {
+		if !w.names[name] {
+			continue
 		}
-		switch {
-		case !inTests && !inSpans(testSpans, t.start):
-			found[string(word)] = heldOutsideTests
-		case found[string(word)] == 0:
-			found[string(word)] = heldInTestsOnly
+		if outside && !inTests {
+			found[name] = heldOutsideTests
+		} else {
+			found[name] = heldInTestsOnly
 		}
 	}
 	return found
