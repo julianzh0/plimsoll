@@ -78,9 +78,6 @@ type radiusInput struct {
 	question                    uint64
 }
 
-// item is one step of the walk: a file asked for one name, or, with no name, as a user of a file counted as a whole.
-type item struct{ file, name string }
-
 // blastRadius decides the state of each changed code file and walks from their seeds to the users.
 func blastRadius(in radiusInput) Radius {
 	var r Radius
@@ -126,13 +123,12 @@ type radiusWalk struct {
 	passOn   map[string]bool
 	passBase map[string]bool
 	roles    map[string]Role
-	queue    []item
-	from     map[item][]string // the languages of the changed files an item comes from
-	visited  map[item]bool
+	queue    []string              // files with names or a whole file to be asked, in the order they were offered
+	files    map[string]*walkState // per file: what it was asked and what it holds
+	names    map[string]int        // every name the walk asks for, by its index in the name sets
+	nameFrom [][]string            // per name index: the languages of the changed files that altered or removed it
 	users    map[string]*User
 	unread   map[string]*User
-	held     map[string]map[string]int // per file: name -> heldOutsideTests or heldInTestsOnly
-	names    map[string]bool           // every name the walk asks for
 	// nowPrints and basePrints are the fingerprints of the changed files on each side: pure imports left out, and not.
 	nowPrints, basePrints map[string][2]prints
 }
@@ -186,8 +182,8 @@ func (w *radiusWalk) readPrints() {
 func newWalk(in radiusInput) *radiusWalk {
 	w := &radiusWalk{in: in, touched: map[string]bool{}, nowPath: map[string]string{}, to: map[string][]string{},
 		toBase: map[string][]string{}, reaches: map[string]bool{}, passOn: map[string]bool{}, passBase: map[string]bool{},
-		roles: map[string]Role{}, from: map[item][]string{}, visited: map[item]bool{}, users: map[string]*User{},
-		unread: map[string]*User{}, held: map[string]map[string]int{}, names: map[string]bool{}}
+		roles: map[string]Role{}, files: map[string]*walkState{}, names: map[string]int{}, users: map[string]*User{},
+		unread: map[string]*User{}}
 	for _, ch := range in.changes {
 		w.touched[ch.Path] = true
 		if ch.From != "" {
@@ -202,7 +198,9 @@ func newWalk(in radiusInput) *radiusWalk {
 	}
 	for _, link := range in.before.Links.List {
 		for _, file := range link.Files {
-			w.toBase[file] = append(w.toBase[file], link.From)
+			if w.touched[file] { // only a changed file's base importers are asked
+				w.toBase[file] = append(w.toBase[file], link.From)
+			}
 		}
 	}
 	for _, p := range in.now.Links.PassOn {
@@ -522,88 +520,193 @@ func targetFolder(file string) string {
 	return path.Dir(file)
 }
 
-// pushNames asks files for each of some names.
-func (w *radiusWalk) pushNames(files, names []string, language string) {
-	for _, file := range files {
-		for _, name := range names {
-			w.names[name] = true
-			w.push(item{file: file, name: name}, language)
-		}
+// nameSet is a set of the walk's names, by index.
+type nameSet []uint64
+
+func (b nameSet) has(i int) bool { return i/64 < len(b) && b[i/64]&(1<<(i%64)) != 0 }
+
+func (b *nameSet) add(i int) {
+	for len(*b) <= i/64 {
+		*b = append(*b, 0)
+	}
+	(*b)[i/64] |= 1 << (i % 64)
+}
+
+// minus is the names of b that are not in c.
+func (b nameSet) minus(c nameSet) nameSet {
+	out := slices.Clone(b)
+	for i := range min(len(out), len(c)) {
+		out[i] &^= c[i]
+	}
+	return out
+}
+
+// and is the names in both b and c.
+func (b nameSet) and(c nameSet) nameSet {
+	out := make(nameSet, min(len(b), len(c)))
+	for i := range out {
+		out[i] = b[i] & c[i]
+	}
+	return out
+}
+
+func (b *nameSet) or(c nameSet) {
+	for len(*b) < len(c) {
+		*b = append(*b, 0)
+	}
+	for i := range c {
+		(*b)[i] |= c[i]
 	}
 }
 
-// pushWhole counts files as users of a file counted as a whole.
+func (b nameSet) empty() bool { return !slices.ContainsFunc(b, func(w uint64) bool { return w != 0 }) }
+
+// walkState is what the walk asked of one file: the names offered to it, those not yet asked, the languages of the
+// files counted as a whole whose user it is, and what it holds.
+type walkState struct {
+	seen, pending   nameSet
+	whole, wholeNew []string // languages of the files counted as a whole that reach it; those not yet handed on
+	queued          bool
+	held, outside   nameSet // the walk's names it holds as identifiers; those it holds outside its test code
+	heldRead        bool
+}
+
+func (w *radiusWalk) stateOf(file string) *walkState {
+	st := w.files[file]
+	if st == nil {
+		st = &walkState{}
+		w.files[file] = st
+	}
+	return st
+}
+
+// pushNames asks files for each of some names that a changed file of a language altered or removed.
+func (w *radiusWalk) pushNames(files, names []string, language string) {
+	var set nameSet
+	for _, name := range names {
+		i, known := w.names[name]
+		if !known {
+			i = len(w.nameFrom)
+			w.names[name] = i
+			w.nameFrom = append(w.nameFrom, nil)
+		}
+		if !slices.Contains(w.nameFrom[i], language) {
+			w.nameFrom[i] = append(w.nameFrom[i], language)
+		}
+		set.add(i)
+	}
+	for _, file := range files {
+		w.offer(file, set, "")
+	}
+}
+
+// pushWhole counts files as users of a file counted as a whole, of a language.
 func (w *radiusWalk) pushWhole(files []string, language string) {
 	for _, file := range files {
-		w.push(item{file: file}, language)
+		w.offer(file, nil, language)
 	}
 }
 
-// push puts an item on the walk once and records the language it comes from.
-func (w *radiusWalk) push(it item, language string) {
-	if !slices.Contains(w.from[it], language) {
-		w.from[it] = append(w.from[it], language)
+// offer gives a file the names it has not been asked yet, and, with a language, makes it a user of a file counted as
+// a whole of that language; a file with anything new is queued once.
+func (w *radiusWalk) offer(file string, names nameSet, wholeLanguage string) {
+	st := w.stateOf(file)
+	news := false
+	if wholeLanguage != "" && !slices.Contains(st.whole, wholeLanguage) {
+		st.whole, st.wholeNew, news = append(st.whole, wholeLanguage), append(st.wholeNew, wholeLanguage), true
 	}
-	if !w.visited[it] {
-		w.visited[it] = true
-		w.queue = append(w.queue, it)
+	if fresh := names.minus(st.seen); !fresh.empty() {
+		st.seen.or(fresh)
+		st.pending.or(fresh)
+		news = true
+	}
+	if news && !st.queued {
+		st.queued = true
+		w.queue = append(w.queue, file)
 	}
 }
 
-// run walks the items: a file whose content is missing now is unread; a file that only passes imports on hands the
-// item to its importers and, asked for a name it holds, is a user too; asked for any use, a file is a user; asked for
-// a name, a file that holds it is a user and asks its importers for it.
+// run walks the files: a file whose content is missing now is unread; a file that only passes imports on hands what
+// it was asked to its importers and is a user of the names it holds; any other file is a user of a file counted as a
+// whole that reaches it, and of the names it holds, which it hands to its importers. Each file is asked each name
+// once, so the work grows with the files and the names that reach them, and the users are the same in any order.
 func (w *radiusWalk) run() {
-	fetched := 0 // the items whose files' identifiers are read ahead
+	fetched := 0 // the files whose identifiers are read ahead
 	for len(w.queue) > 0 {
 		if fetched == 0 {
 			w.readAhead(w.queue)
 			fetched = len(w.queue)
 		}
 		fetched--
-		it := w.queue[0]
+		file := w.queue[0]
 		w.queue = w.queue[1:]
-		languages := w.from[it]
-		if w.missingNow(it.file) {
-			w.mark(w.unread, it.file, false, false, languages)
-			continue
-		}
-		if _, code := w.roles[it.file]; !code {
-			continue
-		}
-		passes := w.passOn[it.file] || w.passBase[it.file] && !w.reaches[it.file]
-		forward := passes
-		switch {
-		case it.name == "" && !passes:
-			w.mark(w.users, it.file, false, false, languages)
-		case it.name != "":
-			if held := w.holds(it.file)[it.name]; held != 0 {
-				w.mark(w.users, it.file, true, held == heldInTestsOnly, languages)
-				forward = true
+		st := w.files[file]
+		st.queued = false
+		asked, wholeNew := st.pending, st.wholeNew
+		st.pending, st.wholeNew = nil, nil
+		languages := slices.Clone(wholeNew)
+		for i := range len(w.nameFrom) {
+			if asked.has(i) {
+				languages = appendNew(languages, w.nameFrom[i]...)
 			}
 		}
-		if forward {
-			for _, importer := range w.to[it.file] {
-				for _, language := range languages {
-					w.push(item{file: importer, name: it.name}, language)
+		if w.missingNow(file) {
+			w.mark(w.unread, file, false, false, languages)
+			continue
+		}
+		if _, code := w.roles[file]; !code {
+			continue
+		}
+		passes := w.passOn[file] || w.passBase[file] && !w.reaches[file]
+		if len(wholeNew) > 0 {
+			if passes {
+				for _, importer := range w.to[file] {
+					for _, language := range wholeNew {
+						w.offer(importer, nil, language)
+					}
 				}
+			} else {
+				w.mark(w.users, file, false, false, wholeNew)
+			}
+		}
+		if asked.empty() {
+			continue
+		}
+		w.readHeld(file, st)
+		used := asked.and(st.held)
+		forward := used
+		if !used.empty() {
+			var usedFrom []string
+			for i := range len(w.nameFrom) {
+				if used.has(i) {
+					usedFrom = appendNew(usedFrom, w.nameFrom[i]...)
+				}
+			}
+			w.mark(w.users, file, true, used.and(st.outside).empty(), usedFrom)
+		}
+		if passes {
+			forward = asked
+		}
+		if !forward.empty() {
+			for _, importer := range w.to[file] {
+				w.offer(importer, forward, "")
 			}
 		}
 	}
 }
 
-// readAhead reads the identifiers of the files that the next items ask for names, one goroutine per processor: the
-// walk then asks the files in its own order from what is kept.
-func (w *radiusWalk) readAhead(items []item) {
-	var files []string
-	for _, it := range items {
-		if _, read := w.held[it.file]; it.name != "" && !read && !slices.Contains(files, it.file) {
-			files = append(files, it.file)
+// readAhead reads the identifiers of the queued files that are asked names, one goroutine per processor: the walk
+// then asks them in its own order from what is kept.
+func (w *radiusWalk) readAhead(files []string) {
+	var wanted []string
+	for _, file := range files {
+		if st := w.files[file]; !st.heldRead && !st.pending.empty() {
+			wanted = append(wanted, file)
 		}
 	}
 	work := make(chan string)
 	var group sync.WaitGroup
-	for range min(runtime.GOMAXPROCS(0), len(files)) {
+	for range min(runtime.GOMAXPROCS(0), len(wanted)) {
 		group.Go(func() {
 			for file := range work {
 				if language, _ := w.in.rules.LanguageOf(file); language.Tokens != nil {
@@ -612,7 +715,7 @@ func (w *radiusWalk) readAhead(items []item) {
 			}
 		})
 	}
-	for _, file := range files {
+	for _, file := range wanted {
 		work <- file
 	}
 	close(work)
@@ -623,41 +726,47 @@ func (w *radiusWalk) readAhead(items []item) {
 func (w *radiusWalk) worth(file string) func() bool {
 	return func() bool {
 		hit := false
-		eachWord(w.in.nowContent[file], func(word []byte, _ int) { hit = hit || w.names[string(word)] })
+		eachWord(w.in.nowContent[file], func(word []byte, _ int) {
+			if !hit {
+				_, hit = w.names[string(word)]
+			}
+		})
 		return hit
 	}
 }
 
-const (
-	heldOutsideTests = 1
-	heldInTestsOnly  = 2
-)
-
-// holds gives, for one file now, the walk's names it holds as identifier tokens: outside its test code, or only in
-// it. The file's identifiers are read once per content, and only after a plain word search finds one of the names.
-func (w *radiusWalk) holds(file string) map[string]int {
-	if found, read := w.held[file]; read {
-		return found
+// readHeld reads which of the walk's names a file holds as identifier tokens, and which of them outside its test
+// code. The file's identifiers are read once per content, and only after a plain word search finds one of the names.
+func (w *radiusWalk) readHeld(file string, st *walkState) {
+	if st.heldRead {
+		return
 	}
-	found := map[string]int{}
-	w.held[file] = found
-	content := w.in.nowContent[file]
+	st.heldRead = true
 	language, _ := w.in.rules.LanguageOf(file)
 	if language.Tokens == nil {
-		return found
+		return
 	}
 	inTests := w.roles[file].IsTest()
-	for name, outside := range w.in.readings.identifiersOf(language, content, w.in.nowReadings[file].testSpans, w.in.question, w.worth(file)) {
-		if !w.names[name] {
-			continue
-		}
-		if outside && !inTests {
-			found[name] = heldOutsideTests
-		} else {
-			found[name] = heldInTestsOnly
+	identifiers := w.in.readings.identifiersOf(language, w.in.nowContent[file], w.in.nowReadings[file].testSpans, w.in.question, w.worth(file))
+	held := func(name string, outside bool) {
+		if i, wanted := w.names[name]; wanted {
+			st.held.add(i)
+			if outside && !inTests {
+				st.outside.add(i)
+			}
 		}
 	}
-	return found
+	if len(identifiers.names) < len(w.names) {
+		for i, name := range identifiers.names {
+			held(name, identifiers.outsideTests[i])
+		}
+		return
+	}
+	for name := range w.names {
+		if found, outside := identifiers.find(name); found {
+			held(name, outside)
+		}
+	}
 }
 
 // mark records a user or an unread file.

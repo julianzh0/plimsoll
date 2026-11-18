@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"errors"
+	"maps"
 	"slices"
 	"sync"
 
@@ -60,23 +61,36 @@ func (rs *Readings) printsOfReading(language conventions.Language, content []byt
 
 // keptIdentifiers are the identifiers of one content, and the latest question that used them.
 type keptIdentifiers struct {
-	outsideTests map[string]bool
-	question     uint64
+	identifiers identifiers
+	question    uint64
+}
+
+// identifiers are the distinct identifier tokens of one content, sorted, each with whether it stands outside its test
+// code: a sorted list, not a map, since the walk may keep those of tens of thousands of files.
+type identifiers struct {
+	names        []string
+	outsideTests []bool
+}
+
+// find says whether the content holds a name, and whether outside its test code.
+func (ids identifiers) find(name string) (held, outside bool) {
+	i, found := slices.BinarySearch(ids.names, name)
+	return found, found && ids.outsideTests[i]
 }
 
 // identifiersOf gives the identifier tokens of a content: each with whether it stands outside the test spans, made
 // once per content. When they are not kept yet and worth is false for the content, it gives nil and reads nothing.
-func (rs *Readings) identifiersOf(language conventions.Language, content []byte, testSpans []span, question uint64, worth func() bool) map[string]bool {
+func (rs *Readings) identifiersOf(language conventions.Language, content []byte, testSpans []span, question uint64, worth func() bool) identifiers {
 	key := sha256.Sum256(append([]byte(language.Name+"\x00"), content...))
 	rs.mu.Lock()
 	if kept, found := rs.identifiers[key]; found {
 		kept.question = max(kept.question, question)
 		rs.mu.Unlock()
-		return kept.outsideTests
+		return kept.identifiers
 	}
 	rs.mu.Unlock()
 	if !worth() {
-		return nil
+		return identifiers{}
 	}
 	found := map[string]bool{}
 	for t := range eachToken(language.Tokens, content, 1) {
@@ -86,10 +100,14 @@ func (rs *Readings) identifiersOf(language conventions.Language, content []byte,
 		}
 		found[string(word)] = found[string(word)] || !inSpans(testSpans, t.start)
 	}
+	ids := identifiers{names: slices.Sorted(maps.Keys(found))}
+	for _, name := range ids.names {
+		ids.outsideTests = append(ids.outsideTests, found[name])
+	}
 	rs.mu.Lock()
-	rs.identifiers[key] = &keptIdentifiers{outsideTests: found, question: question}
+	rs.identifiers[key] = &keptIdentifiers{identifiers: ids, question: question}
 	rs.mu.Unlock()
-	return found
+	return ids
 }
 
 // readingKey names a reading: a reading depends only on the content, the entry, the grammar and the binary.
