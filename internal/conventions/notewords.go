@@ -89,8 +89,8 @@ func (r Rules) NoteRule() string {
 	for _, p := range n.Pairs {
 		pairs = append(pairs, strings.ToLower(p[0]+" "+p[1]))
 	}
-	return "alone " + quoted(n.Alone, "") + "; with a number " + quoted(n.Numbered, "<n>") + "; side by side " + quoted(pairs, "") +
-		"; beside a second word " + quoted(n.Combined, "")
+	return "on its own " + quoted(n.Alone, "") + "; with a number " + quoted(n.Numbered, "<n>") + "; as a pair " + quoted(pairs, "") +
+		"; only beside another word " + quoted(n.Combined, "") + "; any case, the first match from the left"
 }
 
 // upperASCII upper-cases the ASCII letters of a word and leaves every other character as it is, so the same name gives

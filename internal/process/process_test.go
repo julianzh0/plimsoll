@@ -114,7 +114,7 @@ func TestAnAddedWorkingNoteNameIsACandidate(t *testing.T) {
 	if m.Change != answer.New || m.Confidence != answer.Candidate || !slices.Equal(m.Subject.Names, []string{"summary"}) {
 		t.Fatalf("mark of docs/FIX_SUMMARY.md = %+v, want a new candidate naming summary", m)
 	}
-	want := "`docs/FIX_SUMMARY.md` is a Markdown file this change added whose name holds the working-note word `summary`; it may be a planning or review record (plimsoll's rule: repositories hold no planning records)."
+	want := "`docs/FIX_SUMMARY.md` is a Markdown file this change added whose name holds the working-note word `summary`; it may be a note about this change (plimsoll's rule: notes about one change do not belong in the merged repository)."
 	if got := (Detector{}).Wording(m); got != want {
 		t.Errorf("Wording = %q, want %q", got, want)
 	}
@@ -122,8 +122,8 @@ func TestAnAddedWorkingNoteNameIsACandidate(t *testing.T) {
 		t.Errorf("Explain = %q, want the word", evidence)
 	}
 	note := "working-note words in the name of an added Markdown file: " + conventions.Default().NoteRule()
-	if !slices.Contains(f.Notes, note) {
-		t.Errorf("notes = %q, want %q", f.Notes, note)
+	if !slices.Contains(f.Notes, note) || !slices.Contains(f.Notes, "added files matched by name (candidates): `docs/FIX_SUMMARY.md`") {
+		t.Errorf("notes = %q, want %q and the candidates", f.Notes, note)
 	}
 	if _, without := detect(t, snapshottest.Files(base, map[string]string{"src/a.ts": "y\n"})); slices.ContainsFunc(without.Notes, func(n string) bool { return strings.HasPrefix(n, "working-note words") }) {
 		t.Errorf("notes without a name mark = %q, want no word note", without.Notes)

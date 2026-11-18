@@ -42,8 +42,9 @@ func (Detector) Detect(s snapshot.Snapshot) answer.Findings {
 		Notes:      planningNotes(s),
 		Marks:      slices.Concat(planningMarks(s), limitMarks(s), declarationMarks(s)),
 	}
-	if slices.ContainsFunc(s.Now.Planning, func(p string) bool { return s.PlanningMatches[p].Word != "" }) {
-		f.Notes = append(f.Notes, "working-note words in the name of an added Markdown file: "+s.NoteRule)
+	if named := namedNotes(s); len(named) > 0 {
+		f.Notes = append(f.Notes, "working-note words in the name of an added Markdown file: "+s.NoteRule,
+			"added files matched by name (candidates): "+named)
 	}
 	if note := limitsNote(s); note != "" {
 		f.Notes = append(f.Notes, note)
@@ -78,6 +79,23 @@ func (Detector) Detect(s snapshot.Snapshot) answer.Findings {
 		})
 	}
 	return f
+}
+
+// namedNotesShown is how many files the note on name matches names; report lists every mark.
+const namedNotesShown = 5
+
+// namedNotes names the files the change added that match by name, at most namedNotesShown; "" when there are none.
+func namedNotes(s snapshot.Snapshot) string {
+	var named []string
+	for _, p := range s.Now.Planning {
+		if s.PlanningMatches[p].Word != "" {
+			named = append(named, "`"+p+"`")
+		}
+	}
+	if len(named) > namedNotesShown {
+		return strings.Join(named[:namedNotesShown], ", ") + fmt.Sprintf(" and %d more", len(named)-namedNotesShown)
+	}
+	return strings.Join(named, ", ")
 }
 
 // planningNotes name the planning and review paths: the defaults, then those the repository declares.

@@ -86,10 +86,10 @@ at `_`, `-`, `.`, spaces and a change from a lower-case letter or digit to an up
 
 | Words | When |
 |---|---|
-| `handoff`, `handover`, `worklog`, `scratch`, `complete`, `completion`, `final` | on their own (`HANDOFF.md`, `FinalStatus.md`) |
+| `handoff`, `handover`, `worklog`, `scratch`, `complete`, `completion`, `final` | on its own (`HANDOFF.md`, `FinalStatus.md`) |
 | `phase`, `task` | with a number in the same word (`PHASE3_COMPLETE.md`, `task6-notes.md`) |
-| `next steps`, `work log` | side by side (`NEXT_STEPS.md`) |
-| `summary`, `status`, `report`, `plan`, `analysis`, `findings`, `investigation`, `verification`, `results`, `progress`, `checklist` | beside a second word: alone they also name lasting files, such as a book's `SUMMARY.md` (`IMPLEMENTATION_SUMMARY.md`, `fix-status.md`) |
+| `next steps`, `work log` | as a pair (`NEXT_STEPS.md`) |
+| `summary`, `status`, `report`, `plan`, `analysis`, `findings`, `investigation`, `verification`, `results`, `progress`, `checklist` | only beside another word: alone they also name lasting files, such as a book's `SUMMARY.md` (`IMPLEMENTATION_SUMMARY.md`, `fix-status.md`) |
 
 Files in folders named `.changeset`, `.github`, `.claude`, `.cursor`, `templates`, `template`, `fixtures`,
 `__fixtures__`, `examples`, `example` or `snippets` are never working notes by name.

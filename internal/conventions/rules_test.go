@@ -225,6 +225,15 @@ func TestOwnValuesAreBroughtToTheirForm(t *testing.T) {
 	}
 }
 
+func TestNoteRuleNamesHowEachWordCounts(t *testing.T) {
+	want := "on its own `handoff`, `handover`, `worklog`, `scratch`, `complete`, `completion`, `final`; with a number `phase<n>`, `task<n>`; " +
+		"as a pair `next steps`, `work log`; only beside another word `summary`, `status`, `report`, `plan`, `analysis`, `findings`, " +
+		"`investigation`, `verification`, `results`, `progress`, `checklist`; any case, the first match from the left"
+	if got := Default().NoteRule(); got != want {
+		t.Errorf("NoteRule() = %q, want %q", got, want)
+	}
+}
+
 func TestNoteWordFindsWorkingNoteNames(t *testing.T) {
 	rules := Default()
 	cases := []struct {
