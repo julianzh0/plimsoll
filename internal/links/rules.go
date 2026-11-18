@@ -89,8 +89,8 @@ func entryLead(r snapshot.ImportRule, target string) string {
 // product code lies under its folder, when a never rule's target holds no code, or when no product file under its
 // folder has its imports read.
 func checkOf(s snapshot.Snapshot, r snapshot.ImportRule, now graph) (importers int, partly, nothing string) {
-	products, overLimit := 0, 0
-	var suffixes, languagesOver []string // what the product files whose imports are not read are
+	products, notRead := 0, 0
+	var suffixes, languages []string // what the product files whose imports are not read are: a suffix, a language
 	for _, file := range s.Now.Files {
 		if file.Role != snapshot.Product || !lies(file.Path, r.From) {
 			continue
@@ -102,8 +102,8 @@ func checkOf(s snapshot.Snapshot, r snapshot.ImportRule, now graph) (importers i
 		case file.Language == "":
 			suffixes = append(suffixes, path.Ext(file.Path))
 		default:
-			languagesOver = append(languagesOver, file.Language)
-			overLimit++
+			languages = append(languages, file.Language)
+			notRead++
 		}
 	}
 	switch {
@@ -113,14 +113,14 @@ func checkOf(s snapshot.Snapshot, r snapshot.ImportRule, now graph) (importers i
 		return 0, "", gone(r.Targets[0], holdsCode(s.Before, r.Targets[0], false), "matches no code")
 	case importers == 0:
 		return 0, "", fmt.Sprintf("the imports of %s under %s are not read or not followed (%s)", answer.Plural(products, "product file"),
-			answer.Folder(r.From), named(slices.Concat(suffixes, languagesOver)))
-	case overLimit > 0:
+			answer.Folder(r.From), named(slices.Concat(suffixes, languages)))
+	case notRead > 0:
 		verb := "are"
-		if overLimit == 1 {
+		if notRead == 1 {
 			verb = "is"
 		}
 		partly = fmt.Sprintf("%d of the %s under %s %s not checked, because their imports are not read or not followed (%s)",
-			overLimit, answer.Plural(products, "product file"), answer.Folder(r.From), verb, named(languagesOver))
+			notRead, answer.Plural(products, "product file"), answer.Folder(r.From), verb, named(languages))
 	}
 	return importers, partly, ""
 }
