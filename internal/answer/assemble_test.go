@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/julianzh0/plimsoll/internal/conventions"
 	"github.com/julianzh0/plimsoll/internal/snapshot"
 )
 
@@ -24,6 +25,7 @@ func sample() snapshot.Snapshot {
 		History:    snapshot.History{Read: 12, Usable: 11},
 		Unverified: []snapshot.Extension{{Suffix: ".sh", Files: 2, Lines: 7}},
 		Untracked:  3, Missing: []string{"data/big.bin"}, Unparsed: []string{"src/big.ts", "src/huge.ts"}, SyntaxErrors: []string{"src/a.py"},
+		Areas: conventions.Default().Areas,
 	}
 }
 
@@ -54,6 +56,7 @@ func wording() Wording {
 
 func TestStatusWithMarksReadsWordForWord(t *testing.T) {
 	want := "plimsoll 0.1.0 status: base `main` 1a2b3c4d5e, head 9f8e7d6c5b (working tree modified)\n" +
+		"Areas: 1 worse (size 2); not analysed: dependencies, wiring, functions, settings, process\n" +
 		"1 new, 1 grown, 0 resolved\n" +
 		"Footprint of the change since the base: 5 commits, 5 files; product +120 -80, test +300 -10, documentation +40 -0; 2.5 test lines added per product line added.\n" +
 		"\n" +
@@ -74,8 +77,13 @@ func TestStatusWithMarksReadsWordForWord(t *testing.T) {
 
 func TestAnswerWithoutMarksReadsWordForWord(t *testing.T) {
 	commit := "1a2b3c4d5e" + strings.Repeat("0", 30)
-	s := snapshot.Snapshot{AskedBase: "main", Base: commit, Head: commit, History: snapshot.History{Read: 12, Usable: 11}}
+	s := snapshot.Snapshot{AskedBase: "main", Base: commit, Head: commit, History: snapshot.History{Read: 12, Usable: 11},
+		Areas: conventions.Default().Areas}
+	ran := Findings{RanRules: []string{"shape.test-ratio", "shape.dependencies", "links.cycle", "shape.function-complexity", "process.planning-file"},
+		Radius: &Radius{State: RadiusCounted, Paths: []string{}}}
 	want := "plimsoll 0.1.0 status: base `main` 1a2b3c4d5e, head 1a2b3c4d5e\n" +
+		"Areas: none worse; not analysed: settings\n" +
+		"Blast radius: 0 files outside the change use what it altered or removed\n" +
 		"0 new, 0 grown, 0 resolved\n" +
 		"Footprint of the change since the base: 0 commits, 0 files; product +0 -0, test +0 -0, documentation +0 -0; no product line added.\n" +
 		"\n" +
@@ -84,7 +92,7 @@ func TestAnswerWithoutMarksReadsWordForWord(t *testing.T) {
 		"History: 12 commits read, 11 usable.\n" +
 		"Detectors run: shape.\n" +
 		"Not analysed: none.\n"
-	if got := Render(Assemble(Status, "0.1.0", s, []Result{{"shape", Findings{}}}), wording()); got != want {
+	if got := Render(Assemble(Status, "0.1.0", s, []Result{{"shape", ran}}), wording()); got != want {
 		t.Fatalf("Render(no marks) =\n%s\nwant\n%s", got, want)
 	}
 }
@@ -136,8 +144,8 @@ func TestReportListsEverythingInAFixedLayout(t *testing.T) {
 	}
 	lines := strings.Split(report, "\n")
 	status := strings.Split(Render(Assemble(Status, "0.1.0", sample(), []Result{{"shape", findings()}}), wording()), "\n")
-	if !strings.Contains(lines[0], "report:") || lines[2] != status[2] {
-		t.Errorf("Render(report) header = %q, footprint %q; want report and the footprint of status %q", lines[0], lines[2], status[2])
+	if !strings.Contains(lines[0], "report:") || !strings.HasPrefix(lines[1], "Areas: ") || lines[3] != status[3] {
+		t.Errorf("Render(report) header = %q, areas %q, footprint %q; want report, its areas and the footprint of status %q", lines[0], lines[1], lines[3], status[3])
 	}
 }
 
@@ -505,5 +513,32 @@ func TestAcknowledgedItemsAreCountedInStatusAndListedInReport(t *testing.T) {
 	}
 	if plain := Render(Assemble(Status, "0.1.0", sample(), []Result{{"shape", findings()}}), wording()); strings.Contains(plain, "acknowledged") {
 		t.Errorf("Render(status without a table) =\n%s\nwant no word about acknowledged items", plain)
+	}
+}
+
+func TestTheHeadlineBlockNamesWorseBetterAndNotAnalysedAreasAndTheRadius(t *testing.T) {
+	h := &Headline{Areas: []HeadlineArea{
+		{Name: "size", State: AreaPass, Resolved: []string{"shape.test-ratio:repository"}},
+		{Name: "dependencies", State: AreaFail, Marks: []string{"shape.dependencies:go.mod"}},
+		{Name: "wiring", State: AreaNotAnalysed},
+		{Name: "functions", State: AreaFail, Marks: []string{"a", "b"}},
+		{Name: "settings", State: AreaPass},
+	}}
+	for _, tc := range []struct {
+		radius *Radius
+		want   string
+	}{
+		{&Radius{State: RadiusCounted, Files: 50, Product: 25, Tests: 24, Other: 1},
+			"Blast radius: 50 files outside the change use what it altered or removed (25 product, 24 test, 1 other)"},
+		{&Radius{State: RadiusAtLeast, Files: 1, Product: 1}, "Blast radius: at least 1 file outside the change uses what it altered or removed (1 product, 0 test)"},
+		{&Radius{State: RadiusAtLeast}, "Blast radius: an incomplete count: no file outside the change found that uses what it altered or removed (see Not analysed)"},
+		{&Radius{State: RadiusNotAnalysed}, "Blast radius: not analysed (see Not analysed)"},
+	} {
+		var text strings.Builder
+		headlineBlock(&text, h, tc.radius)
+		want := "Areas: 2 worse (dependencies 1, functions 2); 1 better (size); not analysed: wiring\n" + tc.want + "\n"
+		if text.String() != want {
+			t.Errorf("block =\n%s\nwant\n%s", text.String(), want)
+		}
 	}
 }

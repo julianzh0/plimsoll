@@ -4,7 +4,6 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -29,11 +28,7 @@ func ruleKinds(t *testing.T) []string {
 			if strings.HasSuffix(file, "_test.go") {
 				continue
 			}
-			src, err := os.ReadFile(file)
-			if err != nil {
-				t.Fatal(err)
-			}
-			f, err := parser.ParseFile(token.NewFileSet(), file, src, 0)
+			f, err := parser.ParseFile(token.NewFileSet(), file, nil, 0)
 			if err != nil {
 				t.Fatal(err)
 			}

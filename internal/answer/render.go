@@ -63,6 +63,7 @@ func header(text *strings.Builder, a Answer) {
 		modified = " (working tree modified)"
 	}
 	fmt.Fprintf(text, "plimsoll %s %s: %s, head %s%s\n", a.Version, a.Question, base, Short(a.Head.Commit), modified)
+	headlineBlock(text, a.Headline, a.Radius)
 	if a.Question != Explain {
 		counts := fmt.Sprintf("%d new, %d grown, %d resolved", a.Counts.New, a.Counts.Grown, a.Counts.Resolved)
 		if len(a.ReportOnly) > 0 {
@@ -383,4 +384,62 @@ func InFolders(paths []string) string {
 		parts = append(parts, fmt.Sprintf("%d in other folders", others))
 	}
 	return strings.Join(parts, ", ")
+}
+
+// headlineBlock writes the areas and the blast radius right after the first line (R-30): the areas that got worse
+// with their number of marks (the numbered marks below carry the identifiers), those better and those not analysed.
+func headlineBlock(text *strings.Builder, h *Headline, r *Radius) {
+	if h != nil {
+		var worse, better, notAnalysed []string
+		for _, area := range h.Areas {
+			switch {
+			case area.State == AreaFail:
+				worse = append(worse, fmt.Sprintf("%s %d", area.Name, len(area.Marks)))
+			case area.State == AreaNotAnalysed:
+				notAnalysed = append(notAnalysed, area.Name)
+			case len(area.Resolved) > 0:
+				better = append(better, area.Name)
+			}
+		}
+		line := "Areas: none worse"
+		if len(worse) > 0 {
+			line = fmt.Sprintf("Areas: %d worse (%s)", len(worse), strings.Join(worse, ", "))
+		}
+		if len(better) > 0 {
+			line += fmt.Sprintf("; %d better (%s)", len(better), strings.Join(better, ", "))
+		}
+		if len(notAnalysed) > 0 {
+			line += "; not analysed: " + strings.Join(notAnalysed, ", ")
+		}
+		text.WriteString(line + "\n")
+	}
+	if r != nil {
+		text.WriteString("Blast radius: " + radiusLine(*r) + "\n")
+	}
+}
+
+// radiusLine says the blast radius in one line: a number with its parts, a lower bound, or why there is none.
+func radiusLine(r Radius) string {
+	const use = " outside the change use what it altered or removed"
+	switch {
+	case r.State == RadiusNotAnalysed:
+		return "not analysed (see Not analysed)"
+	case r.Files == 0 && r.State == RadiusAtLeast:
+		return "an incomplete count: no file outside the change found that uses what it altered or removed (see Not analysed)"
+	case r.Files == 0:
+		return "0 files" + use
+	}
+	files := Plural(r.Files, "file")
+	if r.State == RadiusAtLeast {
+		files = "at least " + files
+	}
+	split := fmt.Sprintf("%s product, %s test", Count(float64(r.Product)), Count(float64(r.Tests)))
+	if r.Other > 0 {
+		split += ", " + Count(float64(r.Other)) + " other"
+	}
+	verb := use
+	if r.Files == 1 {
+		verb = " outside the change uses what it altered or removed"
+	}
+	return files + verb + " (" + split + ")"
 }
