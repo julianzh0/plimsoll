@@ -19,6 +19,7 @@ type Snapshot struct {
 	Limits     conventions.Limits // the limits over the repository: plimsoll's, or those its limits file sets now
 	// ReportOnly are the kinds of mark shown in report only, as "<detector>.<rule>".
 	ReportOnly []string
+	Areas      []conventions.Area // the headline's areas, in order
 	// OwnFile is the file in which a repository sets its own limits and declares its layout. DeclaredLimits are the
 	// limits it sets on either side, Declarations the text keys it declares on either side, and OwnFileProblems what
 	// the file says now that is not read, each a phrase. OwnFileUnreadAtBase says the file could not be read at the

@@ -81,6 +81,7 @@ func Build(source Source, rules conventions.Rules, readings *Readings) Snapshot 
 		Modified:            source.Modified,
 		Limits:              rules.Limits,
 		ReportOnly:          rules.ReportOnly,
+		Areas:               rules.Areas,
 		BaseDeclared:        source.BaseDeclared,
 		OwnFile:             rules.OwnFile,
 		DeclaredLimits:      declaredLimits,

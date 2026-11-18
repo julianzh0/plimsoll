@@ -264,7 +264,7 @@ func (d radiusDetector) Detect(s snapshot.Snapshot) answer.Findings {
 	return f
 }
 
-func TestStatusAndReportCarryTheBlastRadiusAndExplainLeavesItOut(t *testing.T) {
+func TestStatusAndReportCarryTheBlastRadiusAndHeadlineAndExplainLeavesThemOut(t *testing.T) {
 	q, _ := questions(t, grown(), nil)
 	q.Detectors = []answer.Detector{radiusDetector{}}
 	status, errStatus := q.Status(context.Background(), "/repository", "main")
@@ -273,5 +273,8 @@ func TestStatusAndReportCarryTheBlastRadiusAndExplainLeavesItOut(t *testing.T) {
 	if errors.Join(errStatus, errReport, errExplain) != nil || status.Radius == nil || report.Radius == nil || status.Radius.Files != 1 ||
 		explained.Radius != nil {
 		t.Errorf("radius of status, report, explain = %+v, %+v, %+v; want the radius in status and report only", status.Radius, report.Radius, explained.Radius)
+	}
+	if status.Headline == nil || report.Headline == nil || explained.Headline != nil {
+		t.Errorf("headline of status, report, explain = %+v, %+v, %+v; want it in status and report only", status.Headline, report.Headline, explained.Headline)
 	}
 }

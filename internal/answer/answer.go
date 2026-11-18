@@ -56,6 +56,7 @@ type Answer struct {
 	History        History       `json:"history"`
 	Detectors      []string      `json:"detectors"`
 	NotAnalysed    []NotAnalysed `json:"notAnalysed"`
+	Headline       *Headline     `json:"headline,omitempty"` // status and report: the change per area
 	Radius         *Radius       `json:"radius,omitempty"`   // status and report: the blast radius of the change
 	Sections       []Section     `json:"sections,omitempty"` // report: one per detector
 	Evidence       *Evidence     `json:"evidence,omitempty"` // explain
@@ -178,6 +179,34 @@ type Radius struct {
 	Paths    []string    `json:"paths"`
 	Omitted  int         `json:"omitted"`
 }
+
+// Headline sums up the change per area (US-64): how many areas got worse and how many better, and each area's state
+// with the identifiers it rests on. Only kinds of mark that are not report-only move an area.
+type Headline struct {
+	Worse  int            `json:"worse"`  // the failing areas
+	Better int            `json:"better"` // the passing areas with a resolved item
+	Areas  []HeadlineArea `json:"areas"`  // in the fixed order
+}
+
+// HeadlineArea is one area: failing when it has a new or grown mark of a kind that decides it, else not analysed
+// when none of its deciding rules ran, else passing. Marks are the failing marks' identifiers, in mark order;
+// Resolved the identifiers of its resolved items, sorted.
+type HeadlineArea struct {
+	Name     string    `json:"name"`
+	State    AreaState `json:"state"`
+	Marks    []string  `json:"marks"`
+	Resolved []string  `json:"resolved"`
+}
+
+// AreaState is the state of an area of the headline.
+type AreaState string
+
+// The states of an area.
+const (
+	AreaPass        AreaState = "pass"
+	AreaFail        AreaState = "fail"
+	AreaNotAnalysed AreaState = "not analysed"
+)
 
 // RadiusState says what a radius number is.
 type RadiusState string

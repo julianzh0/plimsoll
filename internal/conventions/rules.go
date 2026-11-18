@@ -73,8 +73,10 @@ type Rules struct {
 	// ReportOnly are the kinds of mark that report lists and status only counts, as "<detector>.<rule>": kinds
 	// outside reviewers or a blind reading judged too noisy to show on every change.
 	ReportOnly []string
-	Additions  Additions  // what never counts as code a change added, and which files are no use of a name
-	Languages  []Language // the language entries
+	// Areas are the areas of the headline, in the order an answer shows them; every kind of mark is in exactly one.
+	Areas     []Area
+	Additions Additions  // what never counts as code a change added, and which files are no use of a name
+	Languages []Language // the language entries
 }
 
 // Manifest is a known dependency manifest and how its runtime dependencies are read.
@@ -509,6 +511,14 @@ func Default() Rules {
 			"shape.file-size", "shape.settings", "process.doc-churn", "settings.compose-only",
 			"co-change.pair", "links.test-import", "links.folder-cycle", "shape.function-nesting",
 		},
+		Areas: []Area{
+			{Name: "size", Kinds: []string{"shape.test-ratio", "shape.file-size"}},
+			{Name: "dependencies", Kinds: []string{"shape.dependencies"}},
+			{Name: "wiring", Kinds: []string{"links.cycle", "links.never", "links.only", "links.test-import", "links.folder-cycle", "co-change.pair"}},
+			{Name: "functions", Kinds: []string{"shape.function-complexity", "shape.function-nesting"}},
+			{Name: "settings", Kinds: []string{"settings.defined-twice", "settings.compose-only", "shape.settings"}},
+			{Name: "process", Kinds: []string{"process.planning-file", "process.limit-change", "process.declaration-change", "process.doc-churn"}},
+		},
 		FunctionRules: defaultFunctionRules(),
 		Limits: Limits{
 			FileLines:          Limit{Value: 1000, Step: 1, Source: "plimsoll's default, taken from Pylint and SonarQube"},
@@ -587,4 +597,11 @@ func (r Rules) TestRule() string {
 type MacroRule struct {
 	Pattern *regexp.Regexp
 	As      string
+}
+
+// Area is one area of the headline: its name and the kinds of mark it holds, as "<detector>.<rule>". A kind that is
+// not report-only decides the area's state.
+type Area struct {
+	Name  string
+	Kinds []string
 }

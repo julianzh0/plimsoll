@@ -45,6 +45,7 @@ func Assemble(q Question, version string, s snapshot.Snapshot, results []Result)
 	}
 	var standing []Mark
 	var first []NotAnalysed
+	var ran []string                  // the kinds of the rules that ran, of every detector
 	acknowledged := map[string]bool{} // the table's identifiers; true once a detector returned an item with it
 	for _, id := range s.Acknowledged.IDs {
 		acknowledged[id] = false
@@ -75,6 +76,7 @@ func Assemble(q Question, version string, s snapshot.Snapshot, results []Result)
 			}
 		}
 		a.Summaries = append(a.Summaries, result.Findings.Summaries...)
+		ran = append(ran, result.Findings.RanRules...)
 		if result.Findings.Radius != nil {
 			a.Radius = result.Findings.Radius
 		}
@@ -108,6 +110,7 @@ func Assemble(q Question, version string, s snapshot.Snapshot, results []Result)
 	a.NotAnalysed = append(a.NotAnalysed, acknowledgedNotAnalysed(s, acknowledged)...)
 	a.Counts.Resolved = len(a.Resolved)
 	a.Marks = Order(a.Marks)
+	a.Headline = headline(s, a.Marks, a.Resolved, ran) // before status cuts the marks to five
 	if q == Status && len(a.Marks) > statusMarks {
 		a.More = len(a.Marks) - statusMarks
 		a.Marks = a.Marks[:statusMarks]
@@ -120,6 +123,39 @@ func Assemble(q Question, version string, s snapshot.Snapshot, results []Result)
 		a.NotAnalysed = append([]NotAnalysed{skipped}, a.NotAnalysed...)
 	}
 	return a
+}
+
+// headline builds the areas' states from every new and grown mark, the resolved items and the rules that ran.
+func headline(s snapshot.Snapshot, marks, resolved []Mark, ran []string) *Headline {
+	h := &Headline{Areas: []HeadlineArea{}}
+	for _, area := range s.Areas {
+		deciding := func(kind string) bool {
+			return slices.Contains(area.Kinds, kind) && !slices.Contains(s.ReportOnly, kind)
+		}
+		ha := HeadlineArea{Name: area.Name, State: AreaPass, Marks: []string{}, Resolved: []string{}}
+		for _, m := range marks {
+			if deciding(RuleKindOf(m.ID)) {
+				ha.Marks = append(ha.Marks, m.ID)
+			}
+		}
+		for _, m := range resolved {
+			if deciding(RuleKindOf(m.ID)) {
+				ha.Resolved = append(ha.Resolved, m.ID)
+			}
+		}
+		slices.Sort(ha.Resolved)
+		switch {
+		case len(ha.Marks) > 0:
+			ha.State = AreaFail
+			h.Worse++
+		case !slices.ContainsFunc(ran, deciding):
+			ha.State = AreaNotAnalysed
+		case len(ha.Resolved) > 0:
+			h.Better++
+		}
+		h.Areas = append(h.Areas, ha)
+	}
+	return h
 }
 
 // reportOnly says whether a mark is of a kind status only counts: its detector and rule.
