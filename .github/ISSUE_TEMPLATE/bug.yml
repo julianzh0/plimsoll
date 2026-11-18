@@ -1,0 +1,30 @@
+name: Something does not work
+description: plimsoll fails, hangs, crashes, will not install, or your agent cannot connect to it.
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead, with the exact error text.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: plimsoll version
+      description: The output of `plimsoll --version`.
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: System and client
+      description: Operating system and CPU (for example macOS arm64), and the MCP client (Claude Code, Codex, Cursor, ...).
+    validations:
+      required: true
+  - type: input
+    id: repository
+    attributes:
+      label: Repository
+      description: A public repository where it happens, if there is one, and its size.

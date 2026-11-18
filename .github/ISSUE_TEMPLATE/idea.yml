@@ -1,0 +1,16 @@
+name: An idea
+description: Something plimsoll should catch, a language it should read, or a change to how it answers.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What you would like
+      description: What a change did that plimsoll should have told you, or what is hard to use today.
+    validations:
+      required: true
+  - type: textarea
+    id: example
+    attributes:
+      label: An example
+      description: A real change, pull request or code sample that shows it.
