@@ -238,6 +238,7 @@ func TestNoteWordFindsWorkingNoteNames(t *testing.T) {
 		{"README.md", ""}, {"summary-2.md", ""}, {"PHASE.md", ""}, {"IMPLEMENTATION_SUMMARY.txt", ""},
 		{"FINAL.MD", ""}, {"examples/FINAL_REPORT.md", ""}, {".github/ISSUE_TEMPLATE/bug_report.md", ""},
 		{"pkg/templates/status-report.md", ""}, {"fınal.md", ""}, {"next-plan-steps.md", "plan"},
+		{"docs/ref/sqlite_session.md", ""}, {"SESSION_SUMMARY.md", "summary"},
 	}
 	for _, c := range cases {
 		if word, found := rules.NoteWord(c.path); word != c.word || found != (c.word != "") {

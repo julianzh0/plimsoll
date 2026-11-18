@@ -24,9 +24,10 @@ type NoteNames struct {
 func defaultNoteNames() NoteNames {
 	return NoteNames{
 		Suffixes: []string{".md", ".mdx"},
-		// HANDOFF, HANDOVER, WORKLOG, SCRATCH, SESSION: agent rule files and tools' ignore lists; COMPLETE, COMPLETION,
-		// FINAL: agent pull requests (PHASE3_COMPLETE, FINAL_STATUS) and the Cursor forum's reports.
-		Alone:    []string{"HANDOFF", "HANDOVER", "WORKLOG", "SCRATCH", "COMPLETE", "COMPLETION", "FINAL", "SESSION"},
+		// HANDOFF, HANDOVER, WORKLOG, SCRATCH: agent rule files and tools' ignore lists; COMPLETE, COMPLETION, FINAL:
+		// agent pull requests (PHASE3_COMPLETE, FINAL_STATUS) and the Cursor forum's reports. SESSION was taken out on
+		// audit: alone it named mostly lasting pages (sqlite_session.md); SESSION_SUMMARY is caught by SUMMARY.
+		Alone:    []string{"HANDOFF", "HANDOVER", "WORKLOG", "SCRATCH", "COMPLETE", "COMPLETION", "FINAL"},
 		Numbered: []string{"PHASE", "TASK"},
 		Pairs:    [][2]string{{"NEXT", "STEPS"}, {"WORK", "LOG"}},
 		// The words of GitHub's most common agent names (IMPLEMENTATION_SUMMARY, TEST_REPORT, PROJECT_STATUS); alone
