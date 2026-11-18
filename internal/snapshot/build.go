@@ -33,6 +33,7 @@ func Build(source Source, rules conventions.Rules, readings *Readings) Snapshot 
 	limits, declaredLimits := declaredLimits(rules, ownNow, ownBefore)
 	rules.Limits = limits
 	question := readings.begin()
+	defer readings.end(question)
 	now := tree(rules, source.Now, nil)
 	nowMeasured := measuredFiles(rules, source.Changes, now, Tree{}, nowContent, nil)
 	nowReadings := readings.side(rules, nowContent, now.Files, question, changed, nowMeasured.now)

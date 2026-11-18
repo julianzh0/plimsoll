@@ -37,9 +37,11 @@ func TestAFullCacheDropsOnlyReadingsNoLaterQuestionUsed(t *testing.T) {
 	first := readings.begin()
 	readings.of(language, "go", a, first, wanted{})
 	readings.of(language, "go", b, first, wanted{})
+	readings.end(first)
 	second := readings.begin()
 	readings.of(language, "go", a, second, wanted{})
 	readings.of(language, "go", c, second, wanted{})
+	readings.end(second)
 	kept := func(content []byte) bool {
 		_, found := readings.kept[readingKey{entry: language.Name, grammar: "go", content: sha256.Sum256(content)}]
 		return found
@@ -63,26 +65,36 @@ func TestOneQuestionKeepsEveryReadingItMadeOverTheBound(t *testing.T) {
 	for _, content := range []string{"package a\n", "package b\n", "package c\n"} {
 		readings.of(language, "go", []byte(content), question, wanted{})
 	}
+	readings.end(question)
 	if len(readings.kept) != 3 {
 		t.Errorf("readings kept %d entries after one question read 3 files over a bound of 1, want 3", len(readings.kept))
 	}
 }
 
-func TestAQuestionOverTheBoundDropsOlderReadingsOnce(t *testing.T) {
+// An edit gives one file new content: the next question reads it first and must still find every older reading it
+// goes on to use (swc after one edit: 31.8 s instead of 5 s when they were dropped at the first new content).
+func TestAQuestionOverTheBoundKeepsTheOlderReadingsItUsesAfterNewContent(t *testing.T) {
 	parser, err := parse.New()
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(parser.Close)
 	readings := NewReadings(parser)
-	readings.bound = 1
+	readings.bound = 2
 	language, _ := conventions.Default().LanguageOf("a.go")
+	a, b, edited := []byte("package a\n"), []byte("package b\n"), []byte("package a // edited\n")
 	first := readings.begin()
-	readings.of(language, "go", []byte("package a\n"), first, wanted{})
+	readings.of(language, "go", a, first, wanted{})
+	readings.of(language, "go", b, first, wanted{})
+	readings.end(first)
+	keyOf := func(content []byte) readingKey {
+		return readingKey{entry: language.Name, grammar: "go", content: sha256.Sum256(content)}
+	}
+	before := readings.kept[keyOf(b)]
 	second := readings.begin()
-	readings.of(language, "go", []byte("package b\n"), second, wanted{})
-	readings.of(language, "go", []byte("package c\n"), second, wanted{})
-	if readings.dropped != second {
-		t.Errorf("readings dropped older readings last for question %d, want %d", readings.dropped, second)
+	readings.of(language, "go", edited, second, wanted{})
+	readings.of(language, "go", b, second, wanted{})
+	if after := readings.kept[keyOf(b)]; after != before {
+		t.Errorf("of(b) in a second question after new content = a new reading, want the one the first question made")
 	}
 }

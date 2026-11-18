@@ -28,7 +28,6 @@ type Readings struct {
 	mu        sync.Mutex
 	kept      map[readingKey]*keptReading
 	questions uint64 // questions begun
-	dropped   uint64 // the latest question that dropped older readings: at most once per question
 }
 
 // readingKey names a reading: a reading depends only on the content, the entry, the grammar and the binary.
@@ -60,8 +59,15 @@ func (rs *Readings) begin() uint64 {
 	return rs.questions
 }
 
-// dropOlder drops the readings that no question from this one on has used. It runs with mu held.
-func (rs *Readings) dropOlder(question uint64) {
+// end closes a question: when more readings are kept than the bound, it drops those that no question from this one
+// on has used. Dropping only once a question is done keeps every older reading the question goes on to use after
+// its first new content (one edit used to drop them all: swc's next question took 31.8 s instead of 5 s).
+func (rs *Readings) end(question uint64) {
+	rs.mu.Lock()
+	defer rs.mu.Unlock()
+	if len(rs.kept) <= rs.bound {
+		return
+	}
 	for key, kept := range rs.kept {
 		if kept.question < question {
 			delete(rs.kept, key)
@@ -86,10 +92,6 @@ func (rs *Readings) of(language conventions.Language, grammar string, content []
 		rs.mu.Unlock()
 		<-kept.read
 		return kept.r
-	}
-	if len(rs.kept) >= rs.bound && rs.dropped < question {
-		rs.dropOlder(question)
-		rs.dropped = question
 	}
 	kept := &keptReading{read: make(chan struct{}), question: question}
 	rs.kept[key] = kept
