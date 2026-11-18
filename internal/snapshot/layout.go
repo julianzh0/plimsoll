@@ -221,11 +221,13 @@ func ownLayout(layout Layout, rules conventions.Rules, now ownFile, tracked []st
 		for _, value := range values {
 			var why HeldReason
 			switch {
-			case pattern && strings.Trim(value, "*") == "":
-				why = HeldEveryName
-			case !pattern && planning && value == ".":
+			case pattern:
+				if strings.Trim(value, "*") == "" {
+					why = HeldEveryName
+				}
+			case value == ".":
 				why = HeldRepositoryRoot
-			case !pattern && !planning:
+			case !planning:
 				why = heldAsRoot(rules, value)
 			}
 			switch {

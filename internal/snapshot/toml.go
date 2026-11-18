@@ -39,7 +39,7 @@ func stringArray(text string) (items []string, rest string, closed bool) {
 		case '#':
 			end := strings.IndexByte(text[i:], '\n')
 			if end < 0 {
-				return items, "", false
+				return nil, "", false
 			}
 			i += end
 		case ']':
@@ -47,14 +47,14 @@ func stringArray(text string) (items []string, rest string, closed bool) {
 		case '"', '\'':
 			item, after, ok := quotedString(text[i:])
 			if !ok {
-				return items, "", false
+				return nil, "", false
 			}
 			items, i = append(items, item), len(text)-len(after)-1
 		default:
-			return items, "", false
+			return nil, "", false
 		}
 	}
-	return items, "", false
+	return nil, "", false
 }
 
 // openedBrackets counts the brackets and braces a line opens minus those it closes, outside strings and before a

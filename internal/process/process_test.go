@@ -68,7 +68,7 @@ func TestPlanningFileMarks(t *testing.T) {
 	if r, _ := row(f, "tracked planning and review files"); *r.Value != 3 || *r.Before != 3 {
 		t.Errorf("the planning row = %+v, want 3 now and 3 at the base", r)
 	}
-	if !slices.Contains(f.Notes, "planning and review paths: "+conventions.Default().PlanningRule()) {
+	if !slices.Contains(f.Notes, "default planning and review paths: "+conventions.Default().PlanningRule()) {
 		t.Errorf("notes = %q, want the planning rule", f.Notes)
 	}
 }
@@ -88,9 +88,10 @@ func TestADeclaredPlanningFolderMarksItsFiles(t *testing.T) {
 	}
 	s, f := detect(t, declaring("[layout]\nplanning_folders = [\"backlog\", \"a b\"]\n"))
 	mark, note := marksOf(f, rulePlanning)["backlog/US-12.md"], "planning folders declared in `.plimsoll.toml` (`[layout]` `planning_folders`): `backlog/`"
-	if mark.Change != answer.New || !slices.Contains(f.Notes, note) || !slices.Contains(Detector{}.Explain(s, mark), note) {
-		t.Errorf("backlog/US-12.md under a declared folder: mark %+v, notes %q, evidence %q; want a new mark and the declaration in notes and evidence",
-			mark, f.Notes, Detector{}.Explain(s, mark))
+	match := "matches `backlog/`, declared in `.plimsoll.toml` (`[layout]` `planning_folders`)"
+	if evidence := (Detector{}).Explain(s, mark); mark.Change != answer.New || !slices.Contains(f.Notes, note) || !slices.Contains(evidence, match) || slices.Contains(evidence, note) {
+		t.Errorf("backlog/US-12.md under a declared folder: mark %+v, notes %q, evidence %q; want a new mark, the declaration in notes, and evidence that names the match",
+			mark, f.Notes, evidence)
 	}
 	if want := "`.plimsoll.toml` `planning_folders`: 1 value is no plain path from the root; it is not used"; !slices.Contains(f.NotAnalysed, want) {
 		t.Errorf("not analysed = %q, want %q", f.NotAnalysed, want)
@@ -180,7 +181,8 @@ func TestProcessWordingStandingAndEvidence(t *testing.T) {
 	source.Changes = []snapshot.Change{{Path: "docs/stories/d.md", From: "docs/stories/c.md"}}
 	s, f := detect(t, source)
 	evidence := Detector{}.Explain(s, marksOf(f, rulePlanning)["docs/stories/d.md"])
-	if !slices.Contains(evidence, "tracked at the base: yes, as `docs/stories/c.md`") || !strings.HasPrefix(evidence[0], "tracked now: yes") {
+	if !slices.Contains(evidence, "tracked at the base: yes, as `docs/stories/c.md`") || !strings.HasPrefix(evidence[0], "tracked now: yes") ||
+		!slices.Contains(evidence, "matches `docs/stories/`, a default planning and review path") {
 		t.Errorf("evidence of a renamed planning file = %q", evidence)
 	}
 }

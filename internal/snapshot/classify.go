@@ -203,22 +203,49 @@ func recordPath(rules conventions.Rules, filePath string) bool {
 	return planningPath(rules, filePath) || onPaths(rules, filePath, rules.MeasurementPaths)
 }
 
-// planningPath says whether a path is a planning or review record: under a default planning path, or under a
-// planning folder, or with a planning file name, that the repository declares. A declared folder is a path from the
-// root, unlike a chain of the defaults, which matches at any depth.
+// planningPath says whether a path is a planning or review record.
 func planningPath(rules conventions.Rules, filePath string) bool {
+	_, found := planningMatch(rules, filePath)
+	return found
+}
+
+// planningMatch is the first entry a planning or review record matches: a default planning path, or a planning folder
+// or file name that the repository declares. A declared folder is a path from the root, unlike a chain of the
+// defaults, which matches at any depth.
+func planningMatch(rules conventions.Rules, filePath string) (PlanningMatch, bool) {
+	if leftOut(rules, filePath) {
+		return PlanningMatch{}, false
+	}
+	if entry, found := entryOf(filePath, rules.PlanningPaths); found {
+		return PlanningMatch{Entry: entry}, true
+	}
+	for _, folder := range rules.PlanningFolders {
+		if _, in := under(filePath, folder); in {
+			return declaredMatch(rules, folder+"/", conventions.PlanningFolderPaths), true
+		}
+	}
+	for _, pattern := range rules.PlanningNames {
+		if nameMatches(pattern, filePath) {
+			return declaredMatch(rules, pattern, conventions.PlanningFileNames), true
+		}
+	}
+	return PlanningMatch{}, false
+}
+
+// declaredMatch is a match of a value that the key of the own file holding the given kind declares.
+func declaredMatch(rules conventions.Rules, entry string, holds conventions.OwnValue) PlanningMatch {
+	at := slices.IndexFunc(rules.OwnKeys, func(k conventions.OwnKey) bool { return k.Holds == holds })
+	return PlanningMatch{Entry: entry, Table: rules.OwnKeys[at].Table, Key: rules.OwnKeys[at].Key}
+}
+
+// onPaths says whether a path lies under a list of paths, in the syntax of entryOf. A path in a skipped folder, or
+// one that `[ignore]` names, never matches.
+func onPaths(rules conventions.Rules, filePath string, entries []string) bool {
 	if leftOut(rules, filePath) {
 		return false
 	}
-	return onEntries(filePath, rules.PlanningPaths) ||
-		slices.ContainsFunc(rules.PlanningFolders, func(folder string) bool { _, in := under(filePath, folder); return in }) ||
-		slices.ContainsFunc(rules.PlanningNames, func(pattern string) bool { return nameMatches(pattern, filePath) })
-}
-
-// onPaths says whether a path lies under a list of paths, in the syntax of onEntries. A path in a skipped folder, or
-// one that `[ignore]` names, never matches.
-func onPaths(rules conventions.Rules, filePath string, entries []string) bool {
-	return !leftOut(rules, filePath) && onEntries(filePath, entries)
+	_, found := entryOf(filePath, entries)
+	return found
 }
 
 // leftOut says whether a path lies in a skipped folder or is one that `[ignore]` names.
@@ -226,20 +253,20 @@ func leftOut(rules conventions.Rules, filePath string) bool {
 	return inFolders(filePath, rules.SkippedFolders) || ignored(rules, filePath)
 }
 
-// onEntries says whether a path lies under a list of paths. An entry ending in "/" is a folder: one folder name
+// entryOf is the first of a list of paths that a path lies under. An entry ending in "/" is a folder: one folder name
 // matches at the root only, since a name like projects/ or evidence/ is also an ordinary folder deeper in the code;
 // a chain of two or more folders matches at any depth. Any other entry is a pattern for the file name.
-func onEntries(filePath string, entries []string) bool {
+func entryOf(filePath string, entries []string) (string, bool) {
 	for _, entry := range entries {
 		if folder, isFolder := strings.CutSuffix(entry, "/"); isFolder {
 			if strings.HasPrefix(filePath, folder+"/") || strings.Contains(folder, "/") && strings.Contains(filePath, "/"+folder+"/") {
-				return true
+				return entry, true
 			}
 		} else if nameMatches(entry, filePath) {
-			return true
+			return entry, true
 		}
 	}
-	return false
+	return "", false
 }
 
 // nameMatches says whether a path's file name matches a file-name pattern of path.Match.

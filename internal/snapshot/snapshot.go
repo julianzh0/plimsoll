@@ -38,22 +38,30 @@ type Snapshot struct {
 	Changes             []Change
 	Footprint           Footprint
 	History             History
-	Layout              Layout      // what the project declares in its own standard files, for both sides
-	TestRule            string      // how test code was recognized, as an answer prints it
-	PlanningRule        string      // the planning and review paths, as an answer prints them
-	Unverified          []Extension // code extensions without a proven language
-	Untracked           int
-	Submodules          []string
-	Unreadable          []string
-	Missing             []string   // paths whose content a partial clone lacks; their lines and history are not counted
-	Unparsed            []string   // code files, on either side, that the parser could not read; sorted, each once
-	Additions           []Addition // the top-level names the change declared in product files, with their uses; sorted
+	Layout              Layout // what the project declares in its own standard files, for both sides
+	TestRule            string // how test code was recognized, as an answer prints it
+	PlanningRule        string // the planning and review paths, as an answer prints them
+	// PlanningMatches is, per planning file of either side, the entry it matches.
+	PlanningMatches map[string]PlanningMatch
+	Unverified      []Extension // code extensions without a proven language
+	Untracked       int
+	Submodules      []string
+	Unreadable      []string
+	Missing         []string   // paths whose content a partial clone lacks; their lines and history are not counted
+	Unparsed        []string   // code files, on either side, that the parser could not read; sorted, each once
+	Additions       []Addition // the top-level names the change declared in product files, with their uses; sorted
 	// SkippedChanges are the skipped folders that hold changed files, each with how many: "`dist/` (3 files)", sorted.
 	SkippedChanges []string
 	SyntaxErrors   []string // changed code files whose reading on either side met a syntax error; sorted, each once
 	// Functions are the functions of the changed product files that the change made complex or nested deeper.
 	Functions Functions
 	Named     []string // the files the caller named, cleaned, sorted, each once; nil when none
+}
+
+// PlanningMatch is the entry of the planning and review paths that a file matches, as an answer prints it: a default
+// entry, or a value that the own file declares under Table and Key ("" for a default).
+type PlanningMatch struct {
+	Entry, Table, Key string
 }
 
 // Tree is one side of the repository.

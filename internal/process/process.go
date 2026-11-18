@@ -79,7 +79,7 @@ func (Detector) Detect(s snapshot.Snapshot) answer.Findings {
 
 // planningNotes name the planning and review paths: the defaults, then those the repository declares.
 func planningNotes(s snapshot.Snapshot) []string {
-	return append([]string{"planning and review paths: " + s.PlanningRule}, answer.OwnNotes(s.Layout.Planning)...)
+	return append([]string{"default planning and review paths: " + s.PlanningRule}, answer.OwnNotes(s.Layout.Planning)...)
 }
 
 // planningMarks compares the planning files of both sides. A renamed file takes its base side from its old name,

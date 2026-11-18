@@ -93,6 +93,7 @@ func Build(source Source, rules conventions.Rules, readings *Readings) Snapshot 
 		Layout:              layout,
 		TestRule:            rules.TestRule(),
 		PlanningRule:        rules.PlanningRule(),
+		PlanningMatches:     planningMatches(rules, now.Planning, before.Planning),
 		Unverified:          unverified(now.Files),
 		Untracked:           source.Untracked,
 		Submodules:          source.Submodules,
@@ -133,6 +134,17 @@ func unparsed(sides ...map[string]reading) []string {
 	}
 	slices.Sort(found)
 	return slices.Compact(found)
+}
+
+// planningMatches are the entries the planning files of both sides match.
+func planningMatches(rules conventions.Rules, sides ...[]string) map[string]PlanningMatch {
+	matches := map[string]PlanningMatch{}
+	for _, paths := range sides {
+		for _, p := range paths {
+			matches[p], _ = planningMatch(rules, p)
+		}
+	}
+	return matches
 }
 
 // planningFiles are the paths that lie under a planning or review path.

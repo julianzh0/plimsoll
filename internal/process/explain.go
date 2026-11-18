@@ -36,7 +36,11 @@ func (Detector) Explain(s snapshot.Snapshot, m answer.Mark) []string {
 	default:
 		atBase = "tracked at the base: yes"
 	}
-	return slices.Concat(lines, []string{atBase}, planningNotes(s))
+	match := s.PlanningMatches[path]
+	if match.Key == "" {
+		return append(lines, atBase, fmt.Sprintf("matches `%s`, a default planning and review path", match.Entry))
+	}
+	return append(lines, atBase, fmt.Sprintf("matches `%s`, declared in `%s` (`[%s]` `%s`)", match.Entry, s.OwnFile, match.Table, match.Key))
 }
 
 func churnEvidence(s snapshot.Snapshot) []string {
