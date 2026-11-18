@@ -7,11 +7,11 @@
     "url": "https://github.com/julianzh0/plimsoll",
     "source": "github"
   },
-  "version": "0.6.0",
+  "version": "0.7.0",
   "packages": [
     {
       "registryType": "mcpb",
-      "identifier": "https://github.com/julianzh0/plimsoll/releases/download/v0.6.0/plimsoll.mcpb",
+      "identifier": "https://github.com/julianzh0/plimsoll/releases/download/v0.7.0/plimsoll.mcpb",
       "transport": {
         "type": "stdio"
       }
