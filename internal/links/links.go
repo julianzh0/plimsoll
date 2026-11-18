@@ -41,6 +41,11 @@ func (Detector) Detect(s snapshot.Snapshot) answer.Findings {
 	if len(languages) > 0 {
 		f = withLinks(f, s, languages, now, before)
 	}
+	radius, rows, notCounted := blastRadius(s, languages)
+	f.Radius, f.Statistics, f.NotAnalysed = radius, append(rows, f.Statistics...), append(f.NotAnalysed, notCounted...)
+	if len(s.Radius.Changed) > 0 {
+		f.Notes = append(f.Notes, radiusNote)
+	}
 	f = withRules(f, s, now, before)
 	if rows, summary := additionRows(s.Additions); len(rows) > 0 {
 		f.Statistics = append(f.Statistics, rows...)

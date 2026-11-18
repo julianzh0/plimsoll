@@ -166,7 +166,7 @@ func TestExplainAnswersForOneItem(t *testing.T) {
 	for _, id := range []string{"shape.file-size:src/new.ts", "shape.file-size:src/gone.ts", "shape.file-size:src/old.ts"} {
 		a, err := q.Explain(context.Background(), "/repository", "main", id)
 		items := len(a.Marks) + len(a.ReportOnly) + len(a.Resolved) + len(a.Standing)
-		if err != nil || a.Question != answer.Explain || items != 1 || a.Footprint != nil || a.Sections != nil ||
+		if err != nil || a.Question != answer.Explain || items != 1 || a.Footprint != nil || a.Sections != nil || a.Radius != nil ||
 			a.Evidence == nil || a.Evidence.Mark != id || a.Counts != report.Counts {
 			t.Errorf("Explain(%s) = %+v, %v; want that item alone with its evidence and the report's counts", id, a, err)
 		}
@@ -252,5 +252,26 @@ func TestExplainSaysAnItemIsAcknowledged(t *testing.T) {
 	}
 	if _, err := q.Explain(context.Background(), "/repository", "main", "shape.file-size:src/gone.ts"); err == nil {
 		t.Error("Explain(a stale entry's identifier) = no error, want it refused as unknown")
+	}
+}
+
+// radiusDetector gives a blast radius and the size marks of shape, as the link detector gives a radius.
+type radiusDetector struct{ shape.Detector }
+
+func (d radiusDetector) Detect(s snapshot.Snapshot) answer.Findings {
+	f := d.Detector.Detect(s)
+	f.Radius = &answer.Radius{State: answer.RadiusCounted, Files: 1, ByName: 1, Product: 1, Paths: []string{"src/b.ts"}}
+	return f
+}
+
+func TestStatusAndReportCarryTheBlastRadiusAndExplainLeavesItOut(t *testing.T) {
+	q, _ := questions(t, grown(), nil)
+	q.Detectors = []answer.Detector{radiusDetector{}}
+	status, errStatus := q.Status(context.Background(), "/repository", "main")
+	report, errReport := q.Report(context.Background(), "/repository", "main", nil)
+	explained, errExplain := q.Explain(context.Background(), "/repository", "main", "shape.file-size:src/a.ts")
+	if errors.Join(errStatus, errReport, errExplain) != nil || status.Radius == nil || report.Radius == nil || status.Radius.Files != 1 ||
+		explained.Radius != nil {
+		t.Errorf("radius of status, report, explain = %+v, %+v, %+v; want the radius in status and report only", status.Radius, report.Radius, explained.Radius)
 	}
 }

@@ -131,6 +131,8 @@ type Limits struct {
 	FunctionComplexity Limit
 	// FunctionNesting is the control nesting a function reaches for the nesting list; its step is the rise it needs.
 	FunctionNesting Limit
+	// RadiusPaths is how many paths of the blast radius a report lists; the rest is counted.
+	RadiusPaths Limit
 }
 
 // OwnKey is a key of a repository's own file that declares its layout: its table, its key, what an answer calls it
@@ -520,6 +522,7 @@ func Default() Rules {
 			// The share of own imports not followed was 1.4% on the BFF and 0% on plimsoll, where the links equalled those
 			// of dependency-cruiser and go list; 10% leaves room for code that embeds program text in strings.
 			ImportsNotFollowed: Limit{Value: 0.10, Source: "links checked against go list and dependency-cruiser, 2026-11"},
+			RadiusPaths:        Limit{Value: 30, Source: "a first cap, to be set from the radii of the field runs (US-63)"},
 		},
 		// One entry per language, each in its own file. A new language is one file and one line here.
 		Languages: withUnits([]Language{typescriptLanguage(), goLanguage(), pythonLanguage(), dartLanguage(), javaLanguage(), kotlinLanguage(), rustLanguage(), csharpLanguage(), swiftLanguage(), cLanguage(), cppLanguage()}),

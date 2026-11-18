@@ -56,6 +56,7 @@ type Answer struct {
 	History        History       `json:"history"`
 	Detectors      []string      `json:"detectors"`
 	NotAnalysed    []NotAnalysed `json:"notAnalysed"`
+	Radius         *Radius       `json:"radius,omitempty"`   // status and report: the blast radius of the change
 	Sections       []Section     `json:"sections,omitempty"` // report: one per detector
 	Evidence       *Evidence     `json:"evidence,omitempty"` // explain
 }
@@ -160,3 +161,30 @@ type Evidence struct {
 	Lines   []string `json:"lines"`
 	Omitted int      `json:"omitted"`
 }
+
+// Radius is the blast radius of a change (US-63): the files the change did not touch that use a name it altered or
+// removed, or that use a changed file whose names could not be read. State says whether the number is counted, a
+// lower bound, or not analysed; Paths are the first of those files, in path order, and Omitted counts the rest.
+type Radius struct {
+	State    RadiusState `json:"state"`
+	Files    int         `json:"files"`
+	ByName   int         `json:"byName"`  // the files that use an altered or removed name
+	AsWhole  int         `json:"asWhole"` // the other files: users of a changed file whose names could not be read
+	Product  int         `json:"product"`
+	Tests    int         `json:"tests"`
+	Other    int         `json:"other"`
+	InChange int         `json:"inChange"` // users the change itself touched, apart
+	Unread   int         `json:"unread"`   // files the walk reached whose content is missing
+	Paths    []string    `json:"paths"`
+	Omitted  int         `json:"omitted"`
+}
+
+// RadiusState says what a radius number is.
+type RadiusState string
+
+// The states of a radius.
+const (
+	RadiusCounted     RadiusState = "counted"
+	RadiusAtLeast     RadiusState = "at least"
+	RadiusNotAnalysed RadiusState = "not analysed"
+)

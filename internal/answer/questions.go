@@ -72,7 +72,7 @@ func (q Questions) Explain(ctx context.Context, repository, base, mark string) (
 		return Answer{}, err
 	}
 	explained := report
-	explained.Question, explained.Footprint, explained.Sections = Explain, nil, nil
+	explained.Question, explained.Footprint, explained.Sections, explained.Radius = Explain, nil, nil, nil
 	explained.Marks, explained.ReportOnly, explained.Resolved = only(report.Marks, mark), only(report.ReportOnly, mark), only(report.Resolved, mark)
 	explained.Touched, explained.Standing = only(report.Touched, mark), only(report.Standing, mark)
 	explained.Acknowledged = only(report.Acknowledged, mark)

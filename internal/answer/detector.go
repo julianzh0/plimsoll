@@ -26,6 +26,7 @@ type Findings struct {
 	// declared and plimsoll cannot check at all.
 	NotAnalysedFirst []string
 	Summaries        []string // one sentence per list of report rows that status only counts
+	Radius           *Radius  // the blast radius of the change, from the link detector only
 }
 
 // Result is one detector's findings, under its name.

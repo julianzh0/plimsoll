@@ -219,7 +219,8 @@ func TestALanguageWithoutItsPrefixFile(t *testing.T) {
 	}
 	for _, tc := range cases {
 		f := detect(t, snapshottest.Files(tc.base, tc.now))
-		if !slices.Equal(f.NotAnalysed, []string{tc.sentence}) || (len(f.Statistics) > 0) != tc.numbers {
+		linkNumbers := slices.DeleteFunc(slices.Clone(f.Statistics), func(s answer.Statistic) bool { return strings.HasPrefix(s.Name, "blast radius") })
+		if !slices.Equal(f.NotAnalysed, []string{tc.sentence}) || (len(linkNumbers) > 0) != tc.numbers {
 			t.Errorf("%s: not analysed %q, statistics %+v; want %q and numbers %v", tc.name, f.NotAnalysed, f.Statistics, tc.sentence, tc.numbers)
 		}
 	}

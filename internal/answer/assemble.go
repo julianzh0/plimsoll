@@ -75,6 +75,9 @@ func Assemble(q Question, version string, s snapshot.Snapshot, results []Result)
 			}
 		}
 		a.Summaries = append(a.Summaries, result.Findings.Summaries...)
+		if result.Findings.Radius != nil {
+			a.Radius = result.Findings.Radius
+		}
 		for _, what := range result.Findings.NotAnalysedFirst {
 			first = append(first, NotAnalysed{Detector: result.Detector, What: what})
 		}
