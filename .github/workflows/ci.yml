@@ -71,9 +71,17 @@ jobs:
       - name: Start the bundle
         run: |
           mkdir bundle && cd bundle && unzip -q ../dist/plimsoll.mcpb
-          printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci","version":"1"}}}' |
-            timeout 20 sh server/plimsoll.sh > answer.json
-          grep '"serverInfo"' answer.json
+          # The server ends at the end of its input, so the input stays open until the answer is read.
+          timeout 20 python3 -c '
+          import json, subprocess
+          server = subprocess.Popen(["sh", "server/plimsoll.sh"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+          server.stdin.write(json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "ci", "version": "1"}}}) + "\n")
+          server.stdin.flush()
+          answer = json.loads(server.stdout.readline())
+          server.stdin.close()
+          print(answer["result"]["serverInfo"])
+          assert server.wait() == 0
+          '
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
       - name: Validate server.json
         run: |
