@@ -68,6 +68,9 @@ The script does the same and puts `plimsoll.exe` in `%LOCALAPPDATA%\plimsoll`, w
 (`$env:PLIMSOLL_INSTALL_DIR` and `$env:PLIMSOLL_VERSION` work as above). The Windows build is checked by compiling it,
 not by a Windows test run.
 
+plimsoll is listed in the [official MCP registry](https://registry.modelcontextprotocol.io) as
+`io.github.julianzh0/plimsoll`: clients that install from there get an MCP bundle with the binaries above.
+
 ### Connect your agent
 
 plimsoll is a local MCP server on standard input and output. It takes no argument and reads no setting.

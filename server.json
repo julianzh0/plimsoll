@@ -1,0 +1,20 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.julianzh0/plimsoll",
+  "title": "plimsoll",
+  "description": "Catch what your agent's changes do to your code: new dependencies, tangled imports, complex code.",
+  "repository": {
+    "url": "https://github.com/julianzh0/plimsoll",
+    "source": "github"
+  },
+  "version": "0.6.0",
+  "packages": [
+    {
+      "registryType": "mcpb",
+      "identifier": "https://github.com/julianzh0/plimsoll/releases/download/v0.6.0/plimsoll.mcpb",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}

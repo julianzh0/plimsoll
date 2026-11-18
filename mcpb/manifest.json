@@ -1,0 +1,43 @@
+{
+  "manifest_version": "0.3",
+  "name": "plimsoll",
+  "display_name": "plimsoll",
+  "version": "0.0.0",
+  "description": "Catch what your agent's changes do to your code: new dependencies, tangled imports, complex code.",
+  "author": {
+    "name": "Julian Zheng",
+    "url": "https://github.com/julianzh0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/julianzh0/plimsoll"
+  },
+  "homepage": "https://github.com/julianzh0/plimsoll",
+  "documentation": "https://github.com/julianzh0/plimsoll/blob/main/docs/rules.md",
+  "support": "https://github.com/julianzh0/plimsoll/issues",
+  "license": "MIT",
+  "keywords": ["code review", "coding agents", "git", "architecture", "dependencies"],
+  "server": {
+    "type": "binary",
+    "entry_point": "server/plimsoll.sh",
+    "mcp_config": {
+      "command": "sh",
+      "args": ["${__dirname}/server/plimsoll.sh"],
+      "env": {},
+      "platform_overrides": {
+        "win32": {
+          "command": "${__dirname}/server/plimsoll_windows_amd64.exe",
+          "args": []
+        }
+      }
+    }
+  },
+  "tools": [
+    {"name": "status", "description": "What is new or has grown in a repository since a base: a few measured marks, each with its limit and a way to verify it"},
+    {"name": "report", "description": "The full report of a repository against a base: every mark, every measured number, the standing debt"},
+    {"name": "explain", "description": "The evidence behind one mark, computed again"}
+  ],
+  "compatibility": {
+    "platforms": ["darwin", "linux", "win32"]
+  }
+}

@@ -1,13 +1,15 @@
 name: Release
 
-# A pushed tag vX.Y.Z builds plimsoll for macOS and Linux on amd64 and arm64 and publishes the binaries and their
-# SHA-256 checksums as the tag's GitHub release. The tag must match the version in cmd/plimsoll/detectors.go.
+# A pushed tag vX.Y.Z builds plimsoll for macOS, Linux and Windows on amd64 and arm64, packs the MCP bundle, publishes
+# the binaries, the bundle and their SHA-256 checksums as the tag's GitHub release, and then lists the release in the
+# official MCP registry. The tag must match the version in cmd/plimsoll/detectors.go and in server.json.
 on:
   push:
     tags: ['v*']
 
 permissions:
   contents: write
+  id-token: write # mcp-publisher logs in to the MCP registry with the workflow's OIDC token
 
 jobs:
   release:
@@ -36,5 +38,17 @@ jobs:
             cp THIRD_PARTY_NOTICES.md dist/
             cd dist && sha256sum plimsoll_* > checksums.txt'
           cat dist/checksums.txt
+      - name: Bundle
+        # The container wrote dist/ as root.
+        run: |
+          sudo chown -R "$(id -u)" dist
+          mcpb/pack.sh dist "${TAG#v}" server.release.json
+          (cd dist && sha256sum plimsoll.mcpb >> checksums.txt)
       - name: Publish
         run: gh release create "$TAG" dist/* --title "$TAG" --generate-notes --verify-tag
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - name: List the release in the MCP registry
+        run: |
+          mcpb/publisher.sh .
+          ./mcp-publisher login github-oidc
+          ./mcp-publisher publish server.release.json

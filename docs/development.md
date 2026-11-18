@@ -52,6 +52,9 @@ internal/links/                  # import links: reach, product code importing t
 internal/mcpserver/              # the only code that knows MCP, through the official MCP Go SDK
 internal/parse/                  # the only code that knows WebAssembly: runs the tree-sitter grammars through wazero
 internal/parse/grammars/         # the grammar modules, their pins, the C shim and the build script
+mcpb/                            # the MCP bundle: its manifest, the launcher, the packing and publisher scripts
+server.json                      # the entry the release lists in the official MCP registry
+glama.json                       # who maintains plimsoll's listing on Glama
 ```
 
 A language is one file in `internal/conventions/` (`typescript.go`, `golang.go`, `python.go`) and one line in the
@@ -80,3 +83,12 @@ taught:
 
 `internal/gitrepo/gitrepotest`, `internal/parse/parsetest` and `internal/snapshot/snapshottest` are test support. Their files do not end in
 `_test`, so plimsoll counts them as product code when it measures itself.
+
+### Releases
+
+A release is a pushed tag `vX.Y.Z`. Before tagging, set the version in `cmd/plimsoll/detectors.go` and in
+`server.json` (its `version` and the bundle URL); the release stops when either names another version. The release
+workflow builds the binaries, packs `plimsoll.mcpb` with `mcpb/pack.sh`, publishes both with `checksums.txt`, and
+lists the release in the official MCP registry: `mcp-publisher` logs in with the workflow's GitHub OIDC token, so no
+token or browser login is needed. CI packs the bundle from every push, starts it on amd64 and arm64 Linux, and lets
+the registry validate its `server.json`.
