@@ -82,21 +82,27 @@ func tomlLines(content string) []string {
 	return lines
 }
 
-// closes says whether a line inside a multi-line string holds its closing delimiter. In a basic string (`"""`) an
-// escaped character never closes it: `\"""` is a quote and two more inside the string.
+// closes says whether a line inside a multi-line string holds its closing delimiter. In a basic string (`"""`) it is
+// three quotes in a row with no escape among them: an escaped character never closes the string.
 func closes(line, closing string) bool {
-	if closing == `"""` {
-		var plain strings.Builder
-		for i := 0; i < len(line); i++ {
-			if line[i] == '\\' {
-				i++
-				continue
-			}
-			plain.WriteByte(line[i])
-		}
-		line = plain.String()
+	if closing != `"""` {
+		return strings.Contains(line, closing)
 	}
-	return strings.Contains(line, closing)
+	quotes := 0
+	for i := 0; i < len(line); i++ {
+		switch line[i] {
+		case '\\':
+			quotes = 0
+			i++
+		case '"':
+			if quotes++; quotes == 3 {
+				return true
+			}
+		default:
+			quotes = 0
+		}
+	}
+	return false
 }
 
 // opensMultiline is the delimiter of a multi-line string that a line opens and does not close, or "".
