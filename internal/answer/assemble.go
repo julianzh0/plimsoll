@@ -44,11 +44,16 @@ func Assemble(q Question, version string, s snapshot.Snapshot, results []Result)
 		NotAnalysed: []NotAnalysed{},
 	}
 	var standing []Mark
-	returned := map[string]bool{}
+	acknowledged := map[string]bool{} // the table's identifiers; true once a detector returned an item with it
+	for _, id := range s.Acknowledged.IDs {
+		acknowledged[id] = false
+	}
 	for _, result := range results {
 		a.Detectors = append(a.Detectors, result.Detector)
 		for _, m := range result.Findings.Marks {
-			returned[m.ID] = true
+			if _, listed := acknowledged[m.ID]; listed {
+				acknowledged[m.ID] = true
+			}
 			if (m.Change == New || m.Change == Grown) && reportOnly(s.ReportOnly, m) {
 				a.ReportOnly = append(a.ReportOnly, m)
 				continue
@@ -80,14 +85,11 @@ func Assemble(q Question, version string, s snapshot.Snapshot, results []Result)
 			})
 		}
 	}
-	acknowledged := map[string]bool{}
-	for _, id := range s.Acknowledged.IDs {
-		acknowledged[id] = true
-	}
 	for _, m := range standing {
+		_, listed := acknowledged[m.ID]
 		switch {
 		case shownAsMark(a.Marks, m.Subject):
-		case acknowledged[m.ID]:
+		case listed:
 			a.Acknowledged = append(a.Acknowledged, m)
 		default:
 			a.Standing = append(a.Standing, m)
@@ -96,7 +98,7 @@ func Assemble(q Question, version string, s snapshot.Snapshot, results []Result)
 	if len(a.Acknowledged) > 0 {
 		a.AcknowledgedIn = s.OwnFile
 	}
-	a.NotAnalysed = append(a.NotAnalysed, acknowledgedNotAnalysed(s, returned)...)
+	a.NotAnalysed = append(a.NotAnalysed, acknowledgedNotAnalysed(s, acknowledged)...)
 	a.Counts.Resolved = len(a.Resolved)
 	a.Marks = Order(a.Marks)
 	if q == Status && len(a.Marks) > statusMarks {

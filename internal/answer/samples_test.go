@@ -10,6 +10,7 @@ import (
 
 	"github.com/julianzh0/plimsoll/internal/answer"
 	"github.com/julianzh0/plimsoll/internal/cochange"
+	"github.com/julianzh0/plimsoll/internal/conventions"
 	"github.com/julianzh0/plimsoll/internal/hotspots"
 	"github.com/julianzh0/plimsoll/internal/links"
 	"github.com/julianzh0/plimsoll/internal/process"
@@ -204,6 +205,9 @@ func TestTheSamplesShowEveryRuleAndChange(t *testing.T) {
 		for _, list := range [][]answer.Mark{a.Marks, a.ReportOnly, a.Resolved, a.Touched, a.Standing} {
 			for _, m := range list {
 				seen[strings.SplitN(m.ID, ":", 2)[0]+" "+string(m.Change)] = true
+				if !conventions.MarkID(m.ID) {
+					t.Errorf("mark identifier %q is outside the form an acknowledged entry accepts (conventions.MarkID)", m.ID)
+				}
 			}
 		}
 	}

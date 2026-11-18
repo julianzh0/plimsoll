@@ -18,6 +18,7 @@ import (
 type DeclaredValues struct {
 	Table, Key, Name string
 	Now, Before      []string
+	Whole            bool // a whole table whose keys are the values; Key is then the table's name
 	Compared         bool
 	UnreadAtBase     bool
 }
@@ -38,6 +39,7 @@ type ownFile struct {
 // them whose entry has a usable reason (applied), and its problem phrases.
 type acknowledged struct {
 	inForm, applied    []string
+	seen               map[string]bool // the identifiers in inForm
 	noEntry, notInForm int
 	named              []string // phrases that name an identifier in its form, in file order
 }
@@ -54,10 +56,14 @@ func (a *acknowledged) read(line string) {
 	case !conventions.MarkID(id):
 		a.notInForm++
 		return
-	case slices.Contains(a.inForm, id):
+	case a.seen[id]:
 		a.named = append(a.named, fmt.Sprintf("`%s` is set twice; its first entry decides", id))
 		return
 	}
+	if a.seen == nil {
+		a.seen = map[string]bool{}
+	}
+	a.seen[id] = true
 	a.inForm = append(a.inForm, id)
 	reason, after, ok := quotedString(strings.TrimSpace(rest))
 	switch {
@@ -73,19 +79,21 @@ func (a *acknowledged) read(line string) {
 // problems are the table's phrases: counted lines and identifiers first, then the named ones in file order.
 func (a acknowledged) problems() []string {
 	var phrases []string
-	switch {
-	case a.noEntry == 1:
-		phrases = append(phrases, "1 line is no `\"identifier\" = \"reason\"` entry; it is not applied")
-	case a.noEntry > 1:
-		phrases = append(phrases, fmt.Sprintf("%d lines are no `\"identifier\" = \"reason\"` entries; they are not applied", a.noEntry))
+	if a.noEntry > 0 {
+		phrases = append(phrases, counted(a.noEntry, "line is no `\"identifier\" = \"reason\"` entry; it is", "lines are no `\"identifier\" = \"reason\"` entries; they are")+" not applied")
 	}
-	switch {
-	case a.notInForm == 1:
-		phrases = append(phrases, "1 identifier is no plain mark identifier; it is not applied")
-	case a.notInForm > 1:
-		phrases = append(phrases, fmt.Sprintf("%d identifiers are no plain mark identifiers; they are not applied", a.notInForm))
+	if a.notInForm > 0 {
+		phrases = append(phrases, counted(a.notInForm, "identifier is no plain mark identifier; it is", "identifiers are no plain mark identifiers; they are")+" not applied")
 	}
 	return append(phrases, a.named...)
+}
+
+// counted puts a count before the singular or the plural phrase.
+func counted(n int, one, many string) string {
+	if n == 1 {
+		return "1 " + one
+	}
+	return fmt.Sprintf("%d %s", n, many)
 }
 
 // readOwnFile reads one side's own file in one pass: its limits and its text keys. A table, a key or a value it does
@@ -301,7 +309,7 @@ func declaredValues(rules conventions.Rules, now, before ownFile) []DeclaredValu
 	if len(now.ack.inForm) > 0 || len(before.ack.inForm) > 0 {
 		declared = append(declared, DeclaredValues{
 			Table: rules.AcknowledgedTable, Key: rules.AcknowledgedTable, Name: rules.AcknowledgedName,
-			Now: now.ack.inForm, Before: before.ack.inForm, Compared: !now.unreadable && !before.unreadable,
+			Now: now.ack.inForm, Before: before.ack.inForm, Whole: true, Compared: !now.unreadable && !before.unreadable,
 		})
 	}
 	return declared

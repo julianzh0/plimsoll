@@ -166,16 +166,12 @@ func declarationMarks(s snapshot.Snapshot) []answer.Mark {
 	return marks
 }
 
-// acknowledgedTable is the name of the own file's table of acknowledged items: its declaration is the whole table, so
-// its key is the table's name. acknowledgedNamed is how many added identifiers its sentence names before it counts
-// the rest; every other key names all, since a value of those is short.
-const (
-	acknowledgedTable = "acknowledged"
-	acknowledgedNamed = 5
-)
+// declaredNamed is how many added values a declaration's sentence names before it counts the rest: a table of
+// acknowledged items can hold hundreds.
+const declaredNamed = 5
 
 func declarationHint(d snapshot.DeclaredValues, ownFile string) string {
-	if d.Key == d.Table {
+	if d.Whole {
 		return fmt.Sprintf("compare the `[%s]` table of `%s` at the base and now.", d.Table, ownFile)
 	}
 	return fmt.Sprintf("compare `[%s]` `%s` of `%s` at the base and now.", d.Table, d.Key, ownFile)

@@ -66,7 +66,7 @@ func declarationEvidence(s snapshot.Snapshot, m answer.Mark) []string {
 		return nil
 	}
 	d := s.Declarations[at]
-	if d.Key == d.Table {
+	if d.Whole {
 		return tableEvidence(s.OwnFile, d)
 	}
 	side := func(values []string) string {

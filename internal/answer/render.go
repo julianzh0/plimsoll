@@ -198,12 +198,12 @@ func report(text *strings.Builder, a Answer, w Wording) {
 }
 
 func explain(text *strings.Builder, a Answer, w Wording) {
-	for _, m := range slices.Concat(a.Marks, a.ReportOnly, a.Resolved, a.Touched, a.Standing) {
+	others := slices.Concat(a.Marks, a.ReportOnly, a.Resolved, a.Touched, a.Standing)
+	for i, m := range append(others, a.Acknowledged...) {
 		fmt.Fprintf(text, "[%s, %s] %s\n   verify: %s id: %s\n", m.Change, m.Confidence, sentence(w, m), m.Hint, m.ID)
-	}
-	for _, m := range a.Acknowledged {
-		fmt.Fprintf(text, "[%s, %s] %s\n   verify: %s id: %s\n", m.Change, m.Confidence, sentence(w, m), m.Hint, m.ID)
-		fmt.Fprintf(text, "   acknowledged in `%s`: `report` lists it under \"Acknowledged\", not under \"Standing\".\n", a.AcknowledgedIn)
+		if i >= len(others) {
+			fmt.Fprintf(text, "   acknowledged in `%s`: `report` lists it under \"Acknowledged\", not under \"Standing\".\n", a.AcknowledgedIn)
+		}
 	}
 	if a.Evidence == nil {
 		return

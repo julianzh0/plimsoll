@@ -170,7 +170,7 @@ func TestBuildReadsTheAcknowledgedTableOfTheOwnFile(t *testing.T) {
 		map[string]string{"src/a.ts": "a\n", ".plimsoll.toml": "[acknowledged]\n\"links.cycle:a\" = \"\"\n\"links.cycle:b\" = \"y\"\n"}),
 		conventions.Default(), snapshottest.Readings(t))
 	want := []snapshot.DeclaredValues{{Table: "acknowledged", Key: "acknowledged", Name: "acknowledged items",
-		Now: []string{"links.cycle:a", "links.cycle:b"}, Before: []string{"links.cycle:a", "links.cycle:b"}, Compared: true}}
+		Now: []string{"links.cycle:a", "links.cycle:b"}, Before: []string{"links.cycle:a", "links.cycle:b"}, Whole: true, Compared: true}}
 	if !reflect.DeepEqual(declared.Declarations, want) || !slices.Equal(declared.Acknowledged.IDs, []string{"links.cycle:b"}) {
 		t.Errorf("reasons edited on both sides: Declarations %+v, applied %q; want %+v (the identifiers in their form, whatever their reason), [links.cycle:b]",
 			declared.Declarations, declared.Acknowledged.IDs, want)
