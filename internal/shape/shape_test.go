@@ -220,6 +220,7 @@ func TestFileSizeMarks(t *testing.T) {
 		{"moved", map[string]string{"src/old.ts": snapshottest.Lines(1100)}, map[string]string{"src/new.ts": snapshottest.Lines(1100)},
 			[]snapshot.Change{{Path: "src/new.ts", From: "src/old.ts"}}, answer.Standing, "src/new.ts", 1100},
 		{"exactly the limit", map[string]string{"src/a.ts": snapshottest.Lines(1000)}, map[string]string{"src/a.ts": snapshottest.Lines(1000)}, nil, "", "", 0},
+		{"a file in a language plimsoll does not read", map[string]string{"src/resources/flow.groovy": snapshottest.Lines(980)}, map[string]string{"src/resources/flow.groovy": snapshottest.Lines(1120)}, nil, "", "", 0},
 		{"a test file", map[string]string{"tests/a.test.ts": snapshottest.Lines(980)}, map[string]string{"tests/a.test.ts": snapshottest.Lines(1120)}, nil, answer.New, "tests/a.test.ts", 1120},
 	}
 	for _, tc := range cases {

@@ -135,7 +135,7 @@ Then ask your agent, for example: *"Use plimsoll to check what this branch did t
 `status` on [fd](https://github.com/sharkdp/fd), its last 20 commits:
 
 ```text
-plimsoll 0.4.0 status: base `HEAD~20` d76b4e3e5b, head 6cf330283c
+plimsoll 0.5.0 status: base `HEAD~20` d76b4e3e5b, head 6cf330283c
 1 new, 0 grown, 0 resolved; 1 more in `report` only
 Footprint of the change since the base: 50 commits, 16 files; product +492 -141, test +118 -1, documentation +42 -5; 0.2 test lines added per product line added.
 
@@ -334,7 +334,7 @@ still run, interpreted and about 80 times slower.
 | Identifier | Fires when | Limit and source |
 |---|---|---|
 | `shape.test-ratio:repository` | the test ratio is over its limit now and was not at the base (new), or rose by 0.1 or more while over it (grown) | 2.0, plimsoll's rule: test code at most twice the product code |
-| `shape.file-size:<path>` | a code file is over its line limit now and was not at the base (new), or grew while over it (grown) | 1,000 lines, plimsoll's default, taken from Pylint and SonarQube |
+| `shape.file-size:<path>` | a code file in a language plimsoll reads is over its line limit now and was not at the base (new), or grew while over it (grown); a file in another one (listed as not verified) is not measured | 1,000 lines, plimsoll's default, taken from Pylint and SonarQube |
 | `shape.dependencies:<manifest>` | a runtime dependency was added since the base. Its verify line names the new ones that no tracked lockfile holds (never installed, or not a real package) | any addition |
 | `shape.settings:.env.example` | a setting was added since the base | any addition |
 | `shape.function-complexity:<path>:<function>` | a function of a product file the change touched has a cognitive complexity over its limit now and is new, or was at or under it at the base and rose by 8 or more; and it nests control flow 4 levels deep, or holds a block of at least 4 statements and 40 tokens that the change wrote twice inside it. Left out: code the change moved or split out of another function, code found in a file at the base, files from another project (by their header or a vendor folder with a licence), benchmarks, generated and minified files. At most three per change, the largest rise first (candidate) | 25, plimsoll's rule, read blind on agent pull requests; counted as SonarQube's cognitive complexity |
@@ -355,10 +355,12 @@ sides that did not grow is standing. The function rules look only at the files a
 standing and no resolved items. A function is named by its path and name, and a second function of the same name in
 one file by `#2`.
 
-Some kinds are shown in `report` only: a file that grew while already over its line limit, settings added,
+Some kinds are shown in `report` only: a file over its line limit (new or grown), settings added,
 documentation churn, compose-only settings, pairs of files that changed together, imports of test
 code, folder cycles and functions nested deeper. Seven outside models judged real answers of each kind and found them useful as background
-but too noisy to show on every change. `status` counts them in one line; `report` lists them; `explain` gives their
+but too noisy to show on every change. A file crossing its line limit was read blind in 150 agent pull requests: worth
+acting on in 45, most others a file long by nature, a small addition that tipped it over, or moved, vendored or
+generated code. `status` counts them in one line; `report` lists them; `explain` gives their
 evidence.
 
 A link item that is new or larger since the base although the change added none of its imports (a file moved, or a

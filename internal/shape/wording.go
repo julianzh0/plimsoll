@@ -2,6 +2,7 @@ package shape
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
@@ -123,11 +124,20 @@ func (Detector) Standing(items []answer.Mark) string {
 	manifests, settings := 0, 0
 	var dependencies []string
 	grownMost, grownPath := 0.0, ""
+	crossed, crossedCount, crossedMost, crossedPath := map[float64]int{}, 0, 0.0, ""
 	for _, m := range items {
 		switch answer.RuleOf(m.ID) {
 		case ruleRatio:
 			fragments = append(fragments, fmt.Sprintf("test ratio %s (limit %s)", answer.Decimal(m.Measured.Value), answer.Decimal(*m.Measured.Limit)))
 		case ruleSize:
+			if m.Change == answer.New {
+				crossed[*m.Measured.Limit]++
+				crossedCount++
+				if m.Measured.Value > crossedMost {
+					crossedMost, crossedPath = m.Measured.Value, m.Subject.Paths[0]
+				}
+				continue
+			}
 			files[*m.Measured.Limit]++
 			if m.Change == answer.Grown && m.Measured.Before != nil && m.Measured.Value-*m.Measured.Before > grownMost {
 				grownMost, grownPath = m.Measured.Value-*m.Measured.Before, m.Subject.Paths[0]
@@ -139,17 +149,18 @@ func (Detector) Standing(items []answer.Mark) string {
 			settings += len(m.Subject.Names)
 		}
 	}
-	limits := make([]float64, 0, len(files))
-	for limit := range files {
-		limits = append(limits, limit)
+	for _, limit := range slices.Sorted(maps.Keys(crossed)) {
+		fragments = append(fragments, fmt.Sprintf("%s crossed %s lines", answer.Plural(crossed[limit], "file"), answer.Count(limit)))
 	}
-	slices.Sort(limits)
-	for _, limit := range limits {
-		noun := "files"
-		if files[limit] == 1 {
-			noun = "file"
+	if crossedPath != "" {
+		largest := ""
+		if crossedCount > 1 {
+			largest = "the largest "
 		}
-		fragments = append(fragments, fmt.Sprintf("%d %s over %s lines", files[limit], noun, answer.Count(limit)))
+		fragments[len(fragments)-1] += fmt.Sprintf(", %s`%s` at %s", largest, crossedPath, answer.Count(crossedMost))
+	}
+	for _, limit := range slices.Sorted(maps.Keys(files)) {
+		fragments = append(fragments, fmt.Sprintf("%s over %s lines", answer.Plural(files[limit], "file"), answer.Count(limit)))
 	}
 	if grownPath != "" && len(fragments) > 0 {
 		fragments[len(fragments)-1] += fmt.Sprintf(" grew, `%s` the most (+%s)", grownPath, answer.Count(grownMost))

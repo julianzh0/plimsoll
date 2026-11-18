@@ -250,6 +250,9 @@ func statistic(s Statistic) string {
 	}
 	if s.Before != nil {
 		difference = signed(number(s.Unit, *s.Value-*s.Before), *s.Value-*s.Before)
+		if s.Unit != ratioUnit { // a ratio is no sum of what was added and removed
+			difference = "net " + difference
+		}
 	}
 	text := fmt.Sprintf("%s: %s (%s)", label, value, difference)
 	if s.Note != "" {

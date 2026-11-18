@@ -64,8 +64,8 @@ type Rules struct {
 	MeasurementPaths []string // measurement records, in the syntax of PlanningPaths
 	ComposeFiles     []string // file-name patterns of compose files, read for their environment keys
 	Limits           Limits   // the shared defaults
-	// ReportOnly are the kinds of mark that report lists and status only counts, as "<detector>.<rule>", or with a
-	// change, "<detector>.<rule> <change>": kinds outside reviewers judged too noisy to show on every change.
+	// ReportOnly are the kinds of mark that report lists and status only counts, as "<detector>.<rule>": kinds
+	// outside reviewers or a blind reading judged too noisy to show on every change.
 	ReportOnly []string
 	Additions  Additions  // what never counts as code a change added, and which files are no use of a name
 	Languages  []Language // the language entries
@@ -380,9 +380,10 @@ func Default() Rules {
 		CommitPaths: 20,
 		Additions:   defaultAdditions(),
 		// Seven outside reviewers judged real answers per kind of mark (2026-11-17); these they judged too noisy for
-		// status and worth keeping in report.
+		// status and worth keeping in report. A file crossing its line limit was worth acting on in 45 of 150 agent pull
+		// requests read blind (2026-11-18), under the bar of one in two.
 		ReportOnly: []string{
-			"shape.file-size grown", "shape.settings", "process.doc-churn", "settings.compose-only",
+			"shape.file-size", "shape.settings", "process.doc-churn", "settings.compose-only",
 			"co-change.pair", "links.test-import", "links.folder-cycle", "shape.function-nesting",
 		},
 		FunctionRules: defaultFunctionRules(),

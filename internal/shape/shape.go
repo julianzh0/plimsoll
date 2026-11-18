@@ -278,8 +278,9 @@ func fileAt(files []snapshot.File, path string) (snapshot.File, bool) {
 	return files[index], true
 }
 
-// sizeMarks compares every code file of both sides with its line limit. A renamed file is measured under its new
-// name against its old one; the old name gives no item.
+// sizeMarks compares every code file of both sides that is in a language plimsoll reads with its line limit: a file
+// in another one (data such as process models or fixtures, packaging, project files) is counted under "not verified"
+// and gives no item. A renamed file is measured under its new name against its old one; the old name gives no item.
 func sizeMarks(s snapshot.Snapshot) []answer.Mark {
 	var marks []answer.Mark
 	renamed := map[string]bool{}
@@ -299,6 +300,9 @@ func sizeMarks(s snapshot.Snapshot) []answer.Mark {
 }
 
 func sizeMark(file, previous snapshot.File, existed bool, linesNow int) []answer.Mark {
+	if file.Language == "" {
+		return nil
+	}
 	limit := file.Limit
 	change, found := answer.Compare(
 		answer.Reading{Holds: existed && float64(previous.Lines) > limit.Value, Value: float64(previous.Lines)},

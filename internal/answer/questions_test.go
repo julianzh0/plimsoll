@@ -44,11 +44,11 @@ func TestQuestionsAnswerWithARealDetector(t *testing.T) {
 	q, _ := questions(t, grown(), nil)
 	status, err := q.Status(context.Background(), "/repository", "main")
 	if err != nil || status.Question != answer.Status || status.Version != "0.1.0" || len(status.Detectors) != 1 ||
-		len(status.Marks) != 1 || status.Marks[0].ID != "shape.file-size:src/a.ts" || status.Sections != nil {
-		t.Fatalf("Status = %+v, %v; want one size mark and no sections", status, err)
+		len(status.Marks) != 0 || len(status.ReportOnly) != 1 || status.ReportOnly[0].ID != "shape.file-size:src/a.ts" || status.Sections != nil {
+		t.Fatalf("Status = %+v, %v; want one size mark, in report only, and no sections", status, err)
 	}
 	report, err := q.Report(context.Background(), "/repository", "main", nil)
-	if err != nil || report.Question != answer.Report || len(report.Marks) != 1 || len(report.Sections) != 1 ||
+	if err != nil || report.Question != answer.Report || len(report.Marks) != 0 || len(report.ReportOnly) != 1 || len(report.Sections) != 1 ||
 		report.Sections[0].Statistics[0].Name != "product lines" {
 		t.Fatalf("Report = %+v, %v; want the mark and one shape section", report, err)
 	}
@@ -165,7 +165,7 @@ func TestExplainAnswersForOneItem(t *testing.T) {
 	}
 	for _, id := range []string{"shape.file-size:src/new.ts", "shape.file-size:src/gone.ts", "shape.file-size:src/old.ts"} {
 		a, err := q.Explain(context.Background(), "/repository", "main", id)
-		items := len(a.Marks) + len(a.Resolved) + len(a.Standing)
+		items := len(a.Marks) + len(a.ReportOnly) + len(a.Resolved) + len(a.Standing)
 		if err != nil || a.Question != answer.Explain || items != 1 || a.Footprint != nil || a.Sections != nil ||
 			a.Evidence == nil || a.Evidence.Mark != id || a.Counts != report.Counts {
 			t.Errorf("Explain(%s) = %+v, %v; want that item alone with its evidence and the report's counts", id, a, err)
