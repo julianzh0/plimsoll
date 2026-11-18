@@ -308,3 +308,12 @@ func TestBaseIsOptionalInEveryTool(t *testing.T) {
 		}
 	}
 }
+
+func TestEveryToolIsReadOnlyClosedAndIdempotent(t *testing.T) {
+	for _, q := range questions() {
+		a := toolOf(q).Annotations
+		if a == nil || !a.ReadOnlyHint || !a.IdempotentHint || a.OpenWorldHint == nil || *a.OpenWorldHint {
+			t.Errorf("%s's annotations = %+v, want read-only, idempotent (the same commit gives the same answer) and closed-world", q.name, a)
+		}
+	}
+}

@@ -14,11 +14,24 @@ import (
 	"github.com/julianzh0/plimsoll/internal/answer"
 )
 
-// The descriptions say what each tool returns, never when to ask or what to do with the answer.
+// The descriptions say what each tool returns and which of the three to use for which need, in plain words, never at
+// what moment of a task to ask; the output schema already lists the answer's parts, so they are not repeated here.
 const (
-	statusDescription  = "Returns what is new or has grown in a repository since `base`: at most five marks, each a measurement with its limit and a way to verify it, then one line each for what is listed in `report` only, for what the change touched but did not create and for added code without a use, one line of standing debt, one line that counts the standing items the repository acknowledges, the footprint of the changes since `base`, and what was not analysed."
-	reportDescription  = "Returns the full report of a repository against `base`: all marks, all measured numbers with their values at `base`, the standing debt item by item, the standing items the repository acknowledges, the footprint of the changes since `base`, and what was not analysed."
-	explainDescription = "Returns the evidence behind one mark, computed again: the files and patterns searched, the counts and what was left out."
+	statusDescription = "The short answer about what a change did to a git repository since `base`: at most five new or grown " +
+		"marks, each with its limit and a way to check it, then one line each counting the marks shown only in " +
+		"`report`, the items the change touched but did not create, added code without a use, and the standing " +
+		"marks. A mark is one measured finding; a standing mark was already over its limit at `base`. Use this " +
+		"for the short answer; use `report` for every mark and number, and `explain` for the evidence behind one " +
+		"mark."
+	reportDescription = "The full answer about what a change did to a git repository since `base`: every mark, every measured " +
+		"number with its value at `base`, the standing marks one by one, those the repository acknowledges in its" +
+		" .plimsoll.toml (acknowledging is done in that file, not through a tool), the footprint of the change, " +
+		"and what was not analysed. Use this when the five marks of `status` are not enough or you need the " +
+		"numbers; use `explain` for the evidence behind one mark. For each repository file named in `files`, the " +
+		"answer also lists the files that import it."
+	explainDescription = "The evidence behind one mark, computed again from the repository: the files, lines and patterns it rests" +
+		" on, the counts, and what was left out. `mark` is the identifier exactly as `status` or `report` printed" +
+		" it, with the same `base`. Use this to check one mark; use `status` or `report` to find the marks."
 )
 
 const (
@@ -81,7 +94,7 @@ func toolOf(q question) *mcp.Tool {
 		Name: q.name, Description: q.description,
 		InputSchema:  inputSchema(strings.Join(members, ","), strings.Join(required, ",")),
 		OutputSchema: json.RawMessage(outputSchema),
-		Annotations:  &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: &closed},
+		Annotations:  &mcp.ToolAnnotations{ReadOnlyHint: true, IdempotentHint: true, OpenWorldHint: &closed},
 	}
 }
 
