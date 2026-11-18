@@ -3,8 +3,10 @@ package snapshot
 import (
 	"fmt"
 	"maps"
+	"runtime"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/julianzh0/plimsoll/internal/conventions"
 )
@@ -163,18 +165,39 @@ func unchangedFromNow(before, now []Entry, changed map[string]bool) []Entry {
 
 // tree classifies one side. A file in known is already classified, so it is taken as it is.
 func tree(rules conventions.Rules, entries []Entry, known map[string]File) Tree {
+	files := codeFiles(rules, entries, known)
 	var side Tree
-	for _, entry := range entries {
+	for i, entry := range entries {
 		side.Paths = append(side.Paths, entry.Path)
-		if file, found := known[entry.Path]; found {
-			side.Files = append(side.Files, file)
-		} else if file, isCode := codeFile(rules, entry); isCode {
-			side.Files = append(side.Files, file)
+		if files[i].Path != "" {
+			side.Files = append(side.Files, files[i])
 		}
 	}
 	slices.Sort(side.Paths)
 	slices.SortFunc(side.Files, func(a, b File) int { return strings.Compare(a.Path, b.Path) })
 	return side
+}
+
+// codeFiles classifies the entries, one goroutine per processor, each taking every n-th entry: the role patterns run
+// over every test file's content, which on a repository of tens of thousands of files takes seconds by one (swc: 3 s).
+// An entry that is no code file gives an empty File; a file in known is taken as it is.
+func codeFiles(rules conventions.Rules, entries []Entry, known map[string]File) []File {
+	files := make([]File, len(entries))
+	workers := runtime.GOMAXPROCS(0)
+	var group sync.WaitGroup
+	for worker := range workers {
+		group.Go(func() {
+			for i := worker; i < len(entries); i += workers {
+				if file, found := known[entries[i].Path]; found {
+					files[i] = file
+				} else if file, isCode := codeFile(rules, entries[i]); isCode {
+					files[i] = file
+				}
+			}
+		})
+	}
+	group.Wait()
+	return files
 }
 
 func codeFile(rules conventions.Rules, entry Entry) (File, bool) {
