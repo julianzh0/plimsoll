@@ -25,9 +25,46 @@ type unit struct {
 // imports. A declaration inside another declaration is part of the outer one; attributes right before a unit are
 // part of it.
 func decodeUnits(result parse.Result, content []byte) ([]unit, []span) {
+	units, containers, attributes, imports := captured(result, content)
+	byPlace := func(a, b unit) int { return cmp.Or(a.start-b.start, b.end-a.end) }
+	slices.SortFunc(units, byPlace)
+	outer := units[:0]
+	for _, u := range units {
+		if len(outer) > 0 && u.start < outer[len(outer)-1].end {
+			continue // inside the unit before it
+		}
+		outer = append(outer, u)
+	}
+	slices.SortFunc(attributes, func(a, b span) int { return a.start - b.start })
+	attachAttributes(outer, attributes, content)
+	attachAttributes(containers, attributes, content)
+	slices.SortFunc(containers, byPlace)
+	for i, c := range containers {
+		for _, u := range outer {
+			if c.start <= u.start && u.end <= c.end {
+				containers[i].inner = append(containers[i].inner, span{start: u.start, end: u.end - 1})
+			}
+		}
+	}
+	all := slices.Concat(outer, containers)
+	for i, u := range all {
+		var context strings.Builder
+		for _, c := range containers {
+			if c.start <= u.start && u.end <= c.end && (c.start != u.start || c.end != u.end) {
+				context.WriteString(c.names[0] + "\n")
+			}
+		}
+		all[i].context = context.String()
+	}
+	slices.SortFunc(all, byPlace)
+	return all, imports
+}
+
+// captured reads the unit captures of a reading: its units (one per captured span, with the names and the furthest
+// body end of every match on it), its containers, its attributes and its pure imports (re-exports left out).
+func captured(result parse.Result, content []byte) (units, containers []unit, attributes, imports []span) {
 	byStart := map[[2]int]*unit{}
-	var imports, reexports, attributes []span
-	var containers []unit
+	var reexports []span
 	for _, match := range result.Matches {
 		var u *unit
 		var names []string
@@ -65,55 +102,27 @@ func decodeUnits(result parse.Result, content []byte) ([]unit, []span) {
 			containers = append(containers, c)
 		}
 	}
-	units := make([]unit, 0, len(byStart))
+	units = make([]unit, 0, len(byStart))
 	for _, u := range byStart {
 		u.names = sortedNames(u.names)
 		units = append(units, *u)
 	}
-	byPlace := func(a, b unit) int { return cmp.Or(a.start-b.start, b.end-a.end) }
-	slices.SortFunc(units, byPlace)
-	outer := units[:0]
-	for _, u := range units {
-		if len(outer) > 0 && u.start < outer[len(outer)-1].end {
-			continue // inside the unit before it
-		}
-		outer = append(outer, u)
-	}
-	slices.SortFunc(attributes, func(a, b span) int { return a.start - b.start })
-	attach := func(units []unit) {
-		for i := range units { // units sorted by start: the attributes right before each, the last one first
-			before, _ := slices.BinarySearchFunc(attributes, units[i].start, func(a span, at int) int { return a.end - at })
-			for j := before - 1; j >= 0 && attributes[j].end <= units[i].start; j-- {
-				if len(bytes.TrimSpace(content[attributes[j].end:units[i].start])) > 0 {
-					break
-				}
-				units[i].start = attributes[j].start
-			}
-		}
-	}
-	attach(outer)
-	attach(containers)
-	slices.SortFunc(containers, byPlace)
-	for i, c := range containers {
-		for _, u := range outer {
-			if c.start <= u.start && u.end <= c.end {
-				containers[i].inner = append(containers[i].inner, span{start: u.start, end: u.end - 1})
-			}
-		}
-	}
-	all := slices.Concat(outer, containers)
-	for i, u := range all {
-		var context strings.Builder
-		for _, c := range containers {
-			if c.start <= u.start && u.end <= c.end && (c.start != u.start || c.end != u.end) {
-				context.WriteString(c.names[0] + "\n")
-			}
-		}
-		all[i].context = context.String()
-	}
-	slices.SortFunc(all, byPlace)
 	imports = slices.DeleteFunc(imports, func(s span) bool { return slices.Contains(reexports, s) })
-	return all, imports
+	return units, containers, attributes, imports
+}
+
+// attachAttributes moves the start of each unit to the attributes right before it: those separated
+// from it by white space only, the last one first. The attributes are sorted by start.
+func attachAttributes(units []unit, attributes []span, content []byte) {
+	for i := range units {
+		before, _ := slices.BinarySearchFunc(attributes, units[i].start, func(a span, at int) int { return a.end - at })
+		for j := before - 1; j >= 0 && attributes[j].end <= units[i].start; j-- {
+			if len(bytes.TrimSpace(content[attributes[j].end:units[i].start])) > 0 {
+				break
+			}
+			units[i].start = attributes[j].start
+		}
+	}
 }
 
 // prints are the fingerprints of a reading's code, made once per content: of every code token, of those outside pure

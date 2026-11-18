@@ -381,45 +381,50 @@ func (w *radiusWalk) run() {
 		fetched--
 		file := w.queue[0]
 		w.queue = w.queue[1:]
-		st := w.files[file]
-		st.queued = false
-		asked, wholeNew := st.pending, st.wholeNew
-		st.pending, st.wholeNew = nil, nil
-		if missingNow(w.in, file) {
-			w.mark(w.unread, file, false, false, w.languagesOf(asked, wholeNew...))
-			continue
-		}
-		if _, code := w.roles[file]; !code {
-			continue
-		}
-		passes := w.passOn[file] || w.passBase[file] && !w.reaches[file]
-		if len(wholeNew) > 0 {
-			if passes {
-				for _, importer := range w.to[file] {
-					for _, language := range wholeNew {
-						w.offer(importer, nil, language)
-					}
-				}
-			} else {
-				w.mark(w.users, file, false, false, wholeNew)
+		w.visit(file)
+	}
+}
+
+// visit decides one file the walk reached with what it was asked since its last visit.
+func (w *radiusWalk) visit(file string) {
+	st := w.files[file]
+	st.queued = false
+	asked, wholeNew := st.pending, st.wholeNew
+	st.pending, st.wholeNew = nil, nil
+	if missingNow(w.in, file) {
+		w.mark(w.unread, file, false, false, w.languagesOf(asked, wholeNew...))
+		return
+	}
+	if _, code := w.roles[file]; !code {
+		return
+	}
+	passes := w.passOn[file] || w.passBase[file] && !w.reaches[file]
+	switch {
+	case len(wholeNew) == 0:
+	case passes:
+		for _, importer := range w.to[file] {
+			for _, language := range wholeNew {
+				w.offer(importer, nil, language)
 			}
 		}
-		if asked.empty() {
-			continue
-		}
-		w.readHeld(file, st)
-		used := asked.and(st.held)
-		forward := used
-		if !used.empty() {
-			w.mark(w.users, file, true, used.and(st.outside).empty(), w.languagesOf(used))
-		}
-		if passes {
-			forward = asked
-		}
-		if !forward.empty() {
-			for _, importer := range w.to[file] {
-				w.offer(importer, forward, "")
-			}
+	default:
+		w.mark(w.users, file, false, false, wholeNew)
+	}
+	if asked.empty() {
+		return
+	}
+	w.readHeld(file, st)
+	used := asked.and(st.held)
+	if !used.empty() {
+		w.mark(w.users, file, true, used.and(st.outside).empty(), w.languagesOf(used))
+	}
+	forward := used
+	if passes {
+		forward = asked
+	}
+	if !forward.empty() {
+		for _, importer := range w.to[file] {
+			w.offer(importer, forward, "")
 		}
 	}
 }
