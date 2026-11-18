@@ -35,6 +35,7 @@ type LanguageImports struct {
 	Implicit       []string // file names, or patterns of them, the language runs without an import of them
 	SourceSets     bool     // its packages lie under source roots, and a test source set is reached only from one
 	NotSeen        string   // the entry's sentence on use between files without an import statement; "" for none
+	NoImporter     string   // the entry's files that hold an import and are no importer of it; "" for none
 }
 
 // Own is the language's imports of the repository's own code: all but those outside.
@@ -235,7 +236,7 @@ func links(rules conventions.Rules, content map[string][]byte, tree Tree, readin
 			Language: language.Name, PrefixFile: imports.Prefix.File, Prefix: own.state,
 			PrefixRequired: imports.Prefix.Required, Folders: imports.Target == conventions.FolderTarget,
 			NoRings: imports.NoRings, Roots: imports.Prefix.Roots, Implicit: imports.Implicit,
-			SourceSets: imports.Prefix.Format == conventions.SourceRoots, NotSeen: imports.NotSeen,
+			SourceSets: imports.Prefix.Format == conventions.SourceRoots, NotSeen: imports.NotSeen, NoImporter: imports.NoImporter,
 		}
 		for _, file := range files {
 			r := readings[file.Path]

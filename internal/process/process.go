@@ -48,10 +48,10 @@ func (Detector) Detect(s snapshot.Snapshot) answer.Findings {
 		f.Notes = append(f.Notes, "working-note words in the name of an added Markdown file: "+s.NoteRule,
 			"added files matched by name (candidates): "+named)
 	}
-	f.Ran(answer.Kind(name, rulePlanning), true)
-	if len(s.DeclaredLimits) > 0 || len(s.Declarations) > 0 { // the repository has its own file
-		f.Ran(answer.Kind(name, ruleLimitChange), !s.OwnFileUnreadAtBase)
-		f.Ran(answer.Kind(name, ruleDeclarationChange), !s.OwnFileUnreadAtBase)
+	f.Ran(answer.Kind(name, rulePlanning))
+	if (len(s.DeclaredLimits) > 0 || len(s.Declarations) > 0) && !s.OwnFileUnreadAtBase { // its own file, read on both sides
+		f.Ran(answer.Kind(name, ruleLimitChange))
+		f.Ran(answer.Kind(name, ruleDeclarationChange))
 	}
 	if note := limitsNote(s); note != "" {
 		f.Notes = append(f.Notes, note)

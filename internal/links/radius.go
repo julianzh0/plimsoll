@@ -45,30 +45,23 @@ func blastRadius(s snapshot.Snapshot, used []snapshot.LanguageImports) (*answer.
 		radius := &answer.Radius{State: answer.RadiusNotAnalysed, Paths: []string{}}
 		return radius, radiusRows(radius, nil, counts, len(r.Changed)), notAnalysed
 	}
-	radius := &answer.Radius{Paths: []string{}}
-	var users []snapshot.User
-	for _, u := range r.Users {
-		if !reached(u) {
-			continue
-		}
-		users = append(users, u)
-		radius.Files++
+	users := slices.DeleteFunc(slices.Clone(r.Users), func(u snapshot.User) bool { return !reached(u) })
+	// Product files first, then tests, then the rest, each in path order: the reader checks product code first.
+	slices.SortStableFunc(users, func(a, b snapshot.User) int { return roleOf(a) - roleOf(b) })
+	radius := &answer.Radius{Files: len(users), Paths: []string{}}
+	var omitted answer.Radius // the parts of the files left out of the list
+	for _, u := range users {
 		if u.ByName {
 			radius.ByName++
 		} else {
 			radius.AsWhole++
 		}
-		*roleCount(radius, roleOf(u))++
-	}
-	// Product files first, then tests, then the rest, each in path order: the reader checks product code first.
-	slices.SortStableFunc(users, func(a, b snapshot.User) int { return roleOf(a) - roleOf(b) })
-	var omitted answer.Radius // the parts of the files left out of the list
-	for _, u := range users {
+		addRole(radius, u)
 		if len(radius.Paths) < int(s.Limits.RadiusPaths.Value) {
 			radius.Paths = append(radius.Paths, u.Path)
 		} else {
 			radius.Omitted++
-			*roleCount(&omitted, roleOf(u))++
+			addRole(&omitted, u)
 		}
 	}
 	for _, u := range r.Touched {
@@ -105,8 +98,16 @@ func roleOf(u snapshot.User) int {
 	return otherUser
 }
 
-func roleCount(r *answer.Radius, role int) *int {
-	return []*int{&r.Product, &r.Tests, &r.Other}[role]
+// addRole counts a user under its role.
+func addRole(r *answer.Radius, u snapshot.User) {
+	switch roleOf(u) {
+	case productUser:
+		r.Product++
+	case testUser:
+		r.Tests++
+	default:
+		r.Other++
+	}
 }
 
 // altered says whether a changed code file altered or removed something, or could not be told: then the importers of
@@ -119,7 +120,11 @@ func altered(r snapshot.Radius) bool {
 // parts of the files left out of the list.
 func radiusRows(r, omitted *answer.Radius, counts map[snapshot.FileState]int, changed int) []answer.Statistic {
 	if changed == 0 {
-		return []answer.Statistic{{Name: "blast radius", Note: "0 files; no code file changed"}}
+		note := "0 files; no code file changed"
+		if r.State == answer.RadiusAtLeast { // a code file's content is missing now
+			note = "0 files found, an incomplete count; no code file changed"
+		}
+		return []answer.Statistic{{Name: "blast radius", Note: note}}
 	}
 	changedNote := answer.Plural(changed, "changed code file")
 	var states []string
@@ -136,17 +141,17 @@ func radiusRows(r, omitted *answer.Radius, counts map[snapshot.FileState]int, ch
 	if r.State == answer.RadiusNotAnalysed {
 		return []answer.Statistic{{Name: "blast radius", Note: "not analysed; " + changedNote}}
 	}
-	var parts []string
+	files := "0 files"
 	switch {
-	case r.Files > 0 && r.State == answer.RadiusAtLeast:
-		parts = append(parts, "at least "+answer.Plural(r.Files, "file")+" ("+roleSplit(r)+")")
 	case r.Files > 0:
-		parts = append(parts, answer.Plural(r.Files, "file")+" ("+roleSplit(r)+")")
+		files = answer.Plural(r.Files, "file") + " (" + r.Split() + ")"
+		if r.State == answer.RadiusAtLeast {
+			files = "at least " + files
+		}
 	case r.State == answer.RadiusAtLeast:
-		parts = append(parts, "0 files found, an incomplete count")
-	default:
-		parts = append(parts, "0 files")
+		files = "0 files found, an incomplete count"
 	}
+	parts := []string{files}
 	if r.AsWhole > 0 {
 		parts = append(parts, answer.Agree(r.AsWhole, "of them imports", "of them import")+" a changed file whose altered names could not be read")
 	}
@@ -161,21 +166,9 @@ func radiusRows(r, omitted *answer.Radius, counts map[snapshot.FileState]int, ch
 	if r.Files > 0 {
 		listed := answer.QuotedList(r.Paths)
 		if r.Omitted > 0 {
-			listed += " and " + count(r.Omitted) + " more (" + roleSplit(omitted) + ")"
+			listed += " and " + count(r.Omitted) + " more (" + omitted.Split() + ")"
 		}
 		rows = append(rows, answer.Statistic{Name: "blast radius files", Note: listed})
 	}
 	return rows
-}
-
-// roleSplit is "<n> product, <n> test" with ", <n> other" when there are others.
-func roleSplit(r *answer.Radius) string {
-	return count(r.Product) + " product, " + count(r.Tests) + " test" + otherPart(r.Other)
-}
-
-func otherPart(n int) string {
-	if n == 0 {
-		return ""
-	}
-	return ", " + count(n) + " other"
 }

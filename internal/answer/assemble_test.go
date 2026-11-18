@@ -517,7 +517,7 @@ func TestAcknowledgedItemsAreCountedInStatusAndListedInReport(t *testing.T) {
 }
 
 func TestTheHeadlineBlockNamesWorseBetterAndNotAnalysedAreasAndTheRadius(t *testing.T) {
-	h := &Headline{Areas: []HeadlineArea{
+	h := &Headline{Worse: 2, Better: 1, Areas: []HeadlineArea{
 		{Name: "size", State: AreaPass, Resolved: []string{"shape.test-ratio:repository"}},
 		{Name: "dependencies", State: AreaFail, Marks: []string{"shape.dependencies:go.mod"}},
 		{Name: "wiring", State: AreaNotAnalysed},

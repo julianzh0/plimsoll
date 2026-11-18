@@ -377,6 +377,16 @@ func TestAChangeWithoutCodeHasARadiusOfZero(t *testing.T) {
 	if want := "0 files; no code file changed"; !found || row.Note != want {
 		t.Errorf("blast radius of a change without code = %+v (found %v), want %q", row, found, want)
 	}
+	partial := snapshottest.Files(base, now)
+	partial.Missing = []string{"src/a.ts"} // an untouched code file whose content this clone lacks
+	for i, e := range partial.Now {
+		if e.Path == "src/a.ts" {
+			partial.Now[i].Content = nil
+		}
+	}
+	if row, _ := statisticNamed(detect(t, partial), "blast radius"); row.Note != "0 files found, an incomplete count; no code file changed" {
+		t.Errorf("blast radius of a change without code in a partial clone = %q, want an incomplete count as the headline says", row.Note)
+	}
 }
 
 // A radius of zero with a changed file not counted is no all-clear; the importers note names Rust's module rule only

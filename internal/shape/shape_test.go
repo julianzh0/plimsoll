@@ -442,19 +442,19 @@ func wantedConfidence(m answer.Mark) answer.Confidence {
 	return answer.Exact
 }
 
-func TestShapeNamesTheDecidingRulesThatRanAndCouldNotRun(t *testing.T) {
+func TestShapeNamesTheDecidingRulesThatRan(t *testing.T) {
 	manifest := func(dep string) string { return `{"dependencies": {"` + dep + `": "1"}}` }
 	read := detect(t, snapshottest.Files(map[string]string{"package.json": manifest("a"), "src/a.ts": "export const a = 1;\n"},
 		map[string]string{"package.json": manifest("a"), "src/a.ts": "export const a = 2;\n"}), conventions.Default())
-	if !slices.Contains(read.RanRules, "shape.dependencies") || !slices.Contains(read.RanRules, "shape.test-ratio") || len(read.CouldNotRun) != 0 {
-		t.Errorf("a read manifest and product code: ran %q, could not run %q; want dependencies and test-ratio ran", read.RanRules, read.CouldNotRun)
+	if want := []string{"shape.test-ratio", "shape.function-complexity", "shape.dependencies"}; !slices.Equal(read.RanRules, want) {
+		t.Errorf("a read manifest and changed product code: ran %q, want %q", read.RanRules, want)
 	}
 	broken := detect(t, snapshottest.Files(map[string]string{"package.json": manifest("a")}, map[string]string{"package.json": `{"dependencies": {`}), conventions.Default())
-	if !slices.Contains(broken.CouldNotRun, "shape.dependencies") || slices.Contains(broken.RanRules, "shape.dependencies") {
-		t.Errorf("a manifest unreadable now: ran %q, could not run %q; want dependencies could not run", broken.RanRules, broken.CouldNotRun)
+	if slices.Contains(broken.RanRules, "shape.dependencies") {
+		t.Errorf("a manifest unreadable now: ran %q, want no dependencies rule", broken.RanRules)
 	}
 	none := detect(t, snapshottest.Files(map[string]string{"README.md": "a\n"}, map[string]string{"README.md": "b\n"}), conventions.Default())
-	if len(none.RanRules)+len(none.CouldNotRun) != 0 {
-		t.Errorf("no manifest, no code: ran %q, could not run %q; want neither: no rule applies", none.RanRules, none.CouldNotRun)
+	if len(none.RanRules) != 0 {
+		t.Errorf("no manifest, no code: ran %q, want none", none.RanRules)
 	}
 }

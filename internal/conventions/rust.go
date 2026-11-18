@@ -17,6 +17,7 @@ func rustLanguage() Language {
 			NoRings:    "a crate's modules use each other, and Rust compiles them as one unit",
 			Implicit:   []string{"main.rs", "lib.rs", "build.rs"},
 			NotSeen:    "a path written in code without a `use` line, and a module named by a `path` attribute",
+			NoImporter: "a parent file that only declares a module (`mod x;`)",
 		},
 	}
 }

@@ -18,9 +18,6 @@ const importersNote = "importers of the change: untouched files that import a ch
 	"distance; a deleted or renamed file counts the importers of its old path; the share is of the product code files " +
 	"whose imports are read"
 
-// rustModNote is added to the importers note where Rust's links are used.
-const rustModNote = "; a parent file that only declares a module (Rust `mod x;`) is no importer of it"
-
 // importersOf are the distinct importers of some files, sorted, and how many of them the set holds.
 func importersOf(g graph, files []string, left map[string]bool) (outside []string, inside int) {
 	seen := map[string]bool{}

@@ -27,9 +27,9 @@ type Findings struct {
 	NotAnalysedFirst []string
 	Summaries        []string // one sentence per list of report rows that status only counts
 	Radius           *Radius  // the blast radius of the change, from the link detector only
-	// RanRules and CouldNotRun are the kinds ("<detector>.<rule>") of the detector's rules that applied to this question
-	// and could read what they read, and those that applied but could not; a rule that does not apply is in neither.
-	RanRules, CouldNotRun []string
+	// RanRules are the kinds ("<detector>.<rule>") of the detector's rules that applied to this question and could read
+	// what they read; an area none of whose deciding rules ran is not analysed.
+	RanRules []string
 }
 
 // Result is one detector's findings, under its name.

@@ -397,16 +397,16 @@ func headlineBlock(text *strings.Builder, h *Headline, r *Radius) {
 				worse = append(worse, fmt.Sprintf("%s %d", area.Name, len(area.Marks)))
 			case area.State == AreaNotAnalysed:
 				notAnalysed = append(notAnalysed, area.Name)
-			case len(area.Resolved) > 0:
+			case area.Better():
 				better = append(better, area.Name)
 			}
 		}
 		line := "Areas: none worse"
-		if len(worse) > 0 {
-			line = fmt.Sprintf("Areas: %d worse (%s)", len(worse), strings.Join(worse, ", "))
+		if h.Worse > 0 {
+			line = fmt.Sprintf("Areas: %d worse (%s)", h.Worse, strings.Join(worse, ", "))
 		}
-		if len(better) > 0 {
-			line += fmt.Sprintf("; %d better (%s)", len(better), strings.Join(better, ", "))
+		if h.Better > 0 {
+			line += fmt.Sprintf("; %d better (%s)", h.Better, strings.Join(better, ", "))
 		}
 		if len(notAnalysed) > 0 {
 			line += "; not analysed: " + strings.Join(notAnalysed, ", ")
@@ -433,13 +433,18 @@ func radiusLine(r Radius) string {
 	if r.State == RadiusAtLeast {
 		files = "at least " + files
 	}
-	split := fmt.Sprintf("%s product, %s test", Count(float64(r.Product)), Count(float64(r.Tests)))
-	if r.Other > 0 {
-		split += ", " + Count(float64(r.Other)) + " other"
-	}
 	verb := use
 	if r.Files == 1 {
 		verb = " outside the change uses what it altered or removed"
 	}
-	return files + verb + " (" + split + ")"
+	return files + verb + " (" + r.Split() + ")"
+}
+
+// Split is the radius's parts: "<n> product, <n> test", and ", <n> other" when there are others.
+func (r Radius) Split() string {
+	split := Count(float64(r.Product)) + " product, " + Count(float64(r.Tests)) + " test"
+	if r.Other > 0 {
+		split += ", " + Count(float64(r.Other)) + " other"
+	}
+	return split
 }

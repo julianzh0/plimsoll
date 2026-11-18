@@ -1,6 +1,7 @@
 package answer_test
 
 import (
+	"reflect"
 	"slices"
 	"testing"
 
@@ -66,22 +67,9 @@ func TestTheHeadlineCountsAreasWorseAndBetterFromDecidingKindsOnly(t *testing.T)
 	if settings := areaOf(h, "settings"); settings.State != answer.AreaFail {
 		t.Errorf("settings = %+v, want failing: new and resolved in one area fails", settings)
 	}
-	if report.Headline == nil || !equalHeadlines(*status.Headline, *report.Headline) {
+	if report.Headline == nil || !reflect.DeepEqual(*status.Headline, *report.Headline) {
 		t.Errorf("status and report headlines differ: %+v and %+v", status.Headline, report.Headline)
 	}
-}
-
-func equalHeadlines(a, b answer.Headline) bool {
-	if a.Worse != b.Worse || a.Better != b.Better || len(a.Areas) != len(b.Areas) {
-		return false
-	}
-	for i := range a.Areas {
-		x, y := a.Areas[i], b.Areas[i]
-		if x.Name != y.Name || x.State != y.State || !slices.Equal(x.Marks, y.Marks) || !slices.Equal(x.Resolved, y.Resolved) {
-			return false
-		}
-	}
-	return true
 }
 
 func TestAnAreaWhoseDecidingRulesDidNotRunIsNotAnalysed(t *testing.T) {

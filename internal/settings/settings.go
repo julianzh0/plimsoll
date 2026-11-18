@@ -36,13 +36,13 @@ func (Detector) Name() string { return name }
 func (Detector) Detect(s snapshot.Snapshot) answer.Findings {
 	file := snapshot.SettingsFile
 	if slices.Contains(s.Now.Broken, file) || slices.Contains(s.Before.Broken, file) {
-		return answer.Findings{NotAnalysed: []string{fmt.Sprintf("`%s` could not be read, so no settings were compared", file)},
-			CouldNotRun: []string{answer.Kind(name, ruleDefinedTwice)}}
+		return answer.Findings{NotAnalysed: []string{fmt.Sprintf("`%s` could not be read, so no settings were compared", file)}}
 	}
 	if s.Now.Settings == nil {
 		return answer.Findings{} // shape says there is no settings file
 	}
-	f := answer.Findings{RanRules: []string{answer.Kind(name, ruleDefinedTwice)}}
+	f := answer.Findings{}
+	f.Ran(answer.Kind(name, ruleDefinedTwice))
 	existed := s.Before.Settings != nil
 	twiceNow, twiceBefore := definedTwice(s.Now.Settings), definedTwice(s.Before.Settings)
 	f.Statistics = append(f.Statistics, count("names defined on more than one line", "names", len(twiceNow), len(twiceBefore), existed))

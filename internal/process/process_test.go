@@ -363,8 +363,8 @@ func acknowledgedLines(files ...string) string {
 
 func TestTheProcessRulesThatRan(t *testing.T) {
 	_, plain := detect(t, snapshottest.Files(map[string]string{"a.txt": "a\n"}, map[string]string{"a.txt": "b\n"}))
-	if !slices.Equal(plain.RanRules, []string{"process.planning-file"}) || len(plain.CouldNotRun) != 0 {
-		t.Errorf("no own file: ran %q, could not run %q; want the planning rule alone", plain.RanRules, plain.CouldNotRun)
+	if !slices.Equal(plain.RanRules, []string{"process.planning-file"}) {
+		t.Errorf("no own file: ran %q, want the planning rule alone", plain.RanRules)
 	}
 	own := map[string]string{".plimsoll.toml": "[limits]\nfile_lines = 1200\n"}
 	_, declared := detect(t, snapshottest.Files(own, own))

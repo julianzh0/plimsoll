@@ -73,6 +73,11 @@ const wantLinksNote = "links: imports read from the code; an import is a link on
 const wantFolderNote = "an import of a folder reaches the folder's files, and a package that lies in several folders is reached in each; " +
 	"use between files of one folder or one package needs no import and is not seen"
 
+// statisticsNamed are the statistics of one name, in order.
+func statisticsNamed(f answer.Findings, name string) []answer.Statistic {
+	return slices.DeleteFunc(slices.Clone(f.Statistics), func(s answer.Statistic) bool { return s.Name != name })
+}
+
 // linkNumbers are the statistics other than the blast radius, which every answer holds, 0 when no code changed.
 func linkNumbers(f answer.Findings) []answer.Statistic {
 	return slices.DeleteFunc(slices.Clone(f.Statistics), func(s answer.Statistic) bool { return strings.HasPrefix(s.Name, "blast radius") })
@@ -559,12 +564,7 @@ func TestImportersOfTheChangeCountDirectAndAtAnyDistance(t *testing.T) {
 			t.Errorf("old deleted and u renamed: importers of the change = %q, want b and two tests directly, u among the change", r.Note)
 		}
 		f := detect(t, snapshottest.Files(base, now))
-		var most []answer.Statistic
-		for _, s := range f.Statistics {
-			if s.Name == "direct importers of" {
-				most = append(most, s)
-			}
-		}
+		most := statisticsNamed(f, "direct importers of")
 		wantSubject := a
 		if c.byFolder {
 			wantSubject = path.Dir(a) + "/"
@@ -631,12 +631,7 @@ func TestMostImportsRanksByDistinctOwnTargets(t *testing.T) {
 			files[a] += `import type { B } from "./b.ts";` + "\n"
 		}
 		f := detect(t, snapshottest.Files(c.tree(map[string]string{b: files[b], cc: files[cc], d: files[d]}), files))
-		var rows []answer.Statistic
-		for _, s := range f.Statistics {
-			if s.Name == "most imports" {
-				rows = append(rows, s)
-			}
-		}
+		rows := statisticsNamed(f, "most imports")
 		three, two, one := 3.0, 2.0, 1.0
 		want := []answer.Statistic{
 			{Name: "most imports", Subject: a, Value: &three, Unit: "own targets"},
@@ -670,12 +665,7 @@ func TestNewProductFilesWithoutAnImporterAreListed(t *testing.T) {
 				read++
 			}
 		}
-		var rows []answer.Statistic
-		for _, s := range f.Statistics {
-			if s.Name == "new product file without an importer" {
-				rows = append(rows, s)
-			}
-		}
+		rows := statisticsNamed(f, "new product file without an importer")
 		if len(rows) != 1 || rows[0].Subject != n1 || rows[0].Value != nil || rows[0].Note != fmt.Sprintf("no import of it in the %d code files read", read) {
 			t.Errorf("new files without an importer = %+v, want %s alone", rows, n1)
 		}
@@ -754,12 +744,7 @@ func TestNamedFilesGetTheirImporters(t *testing.T) {
 		}) {
 			t.Errorf("importers of the named files = %+v", reach)
 		}
-		var rows []answer.Statistic
-		for _, s := range f.Statistics {
-			if s.Name == "named file" {
-				rows = append(rows, s)
-			}
-		}
+		rows := statisticsNamed(f, "named file")
 		want := []answer.Statistic{
 			{Name: "named file", Subject: "README.md", Note: "tracked, but not a code file"},
 			{Name: "named file", Subject: a, Value: &two, Before: &two, Unit: "files", Note: "1 product, 1 test"},
@@ -870,28 +855,27 @@ func TestMostDirectImportersIsOneRowPerGoPackage(t *testing.T) {
 func TestTheRingRuleRunsWhereItsLanguagesLinksAreUsed(t *testing.T) {
 	c := languageCases()["typescript"]
 	ta := c.product("ta")
-	ruleOf := func(base map[string]string) (ran, couldNot []string) {
+	ruleOf := func(base map[string]string) []string {
 		now := clone(base)
 		now[ta] += alteration
-		f := detect(t, snapshottest.Files(base, now))
-		return f.RanRules, f.CouldNotRun
+		return detect(t, snapshottest.Files(base, now)).RanRules
 	}
-	if ran, couldNot := ruleOf(c.fan(2)); !slices.Contains(ran, "links.cycle") || slices.Contains(couldNot, "links.cycle") {
-		t.Errorf("a counted change in a used language: ran %q, could not run %q; want links.cycle ran", ran, couldNot)
+	if ran := ruleOf(c.fan(2)); !slices.Contains(ran, "links.cycle") {
+		t.Errorf("a counted change in a used language: ran %q, want links.cycle", ran)
 	}
-	if ran, couldNot := ruleOf(c.fan(8, c.nowhere)); slices.Contains(ran, "links.cycle") || !slices.Contains(couldNot, "links.cycle") {
-		t.Errorf("a change in a language whose links are not used: ran %q, could not run %q; want links.cycle could not run", ran, couldNot)
+	if ran := ruleOf(c.fan(8, c.nowhere)); slices.Contains(ran, "links.cycle") {
+		t.Errorf("a change in a language whose links are not used: ran %q, want no links.cycle", ran)
 	}
 	commented := c.fan(2)
 	now := clone(commented)
 	now["README.md"] = "a\n"
-	if f := detect(t, snapshottest.Files(commented, now)); slices.Contains(f.RanRules, "links.cycle") || slices.Contains(f.CouldNotRun, "links.cycle") {
-		t.Errorf("no code file changed: ran %q, could not run %q; want neither", f.RanRules, f.CouldNotRun)
+	if f := detect(t, snapshottest.Files(commented, now)); slices.Contains(f.RanRules, "links.cycle") {
+		t.Errorf("no code file changed: ran %q, want no links.cycle", f.RanRules)
 	}
 	// The same gate beside a rule declared over Go folders, whose links are used: the rule is checked.
 	gated := c.fan(8, c.nowhere)
 	maps.Copy(gated, languageCases()["go"].ruled([]string{"domain -> adapters"}, nil, "domain/x>shared/s", "adapters/y"))
-	if ran, couldNot := ruleOf(gated); !slices.Contains(ran, "links.never") || !slices.Contains(couldNot, "links.cycle") {
-		t.Errorf("the gate beside a checked Go rule: ran %q, could not run %q; want links.never ran, links.cycle could not", ran, couldNot)
+	if ran := ruleOf(gated); !slices.Equal(ran, []string{"links.never"}) {
+		t.Errorf("the gate beside a checked Go rule: ran %q, want links.never alone", ran)
 	}
 }

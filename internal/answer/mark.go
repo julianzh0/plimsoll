@@ -29,13 +29,9 @@ func RuleKindOf(id string) string {
 	return kind
 }
 
-// Ran adds a rule to the rules that ran, or to those that could not run.
-func (f *Findings) Ran(kind string, ran bool) {
-	if ran {
-		f.RanRules = append(f.RanRules, kind)
-	} else {
-		f.CouldNotRun = append(f.CouldNotRun, kind)
-	}
+// Ran adds a rule to the rules that ran.
+func (f *Findings) Ran(kind string) {
+	f.RanRules = append(f.RanRules, kind)
 }
 
 // Reading is one side of a rule: whether its condition holds there, and its value.

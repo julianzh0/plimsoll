@@ -27,7 +27,8 @@ type Imports struct {
 	Grouped bool
 	// NotSeen is the use between files the language allows without an import statement, as a note names it; "" for
 	// none.
-	NotSeen string
+	NotSeen    string
+	NoImporter string // the files that hold an import of another and are no importer of it; "" for none
 }
 
 // ImportForm is a pattern; as a statement form, its named group "spec" holds the target as written.

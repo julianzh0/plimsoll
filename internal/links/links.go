@@ -38,16 +38,17 @@ func (Detector) Detect(s snapshot.Snapshot) answer.Findings {
 	}
 	f := answer.Findings{NotAnalysed: notAnalysed}
 	now, before := graphsOf(s, languages)
+	changedCode := altered(s.Radius)
 	if len(languages) > 0 {
-		f = withLinks(f, s, languages, now, before, altered(s.Radius))
+		f = withLinks(f, s, languages, now, before, changedCode)
 	}
 	radius, rows, notCounted := blastRadius(s, languages)
 	f.Radius, f.Statistics, f.NotAnalysed = radius, append(rows, f.Statistics...), append(f.NotAnalysed, notCounted...)
-	if altered(s.Radius) {
+	if changedCode {
 		f.Notes = append(f.Notes, radiusNote)
 	}
-	if ran, applies := cycleRan(s, languages); applies {
-		f.Ran(answer.Kind(name, ruleCycle), ran)
+	if cycleRan(s, languages) {
+		f.Ran(answer.Kind(name, ruleCycle))
 	}
 	f = withRules(f, s, now, before)
 	if rows, summary := additionRows(s.Additions); len(rows) > 0 {
@@ -61,26 +62,14 @@ func (Detector) Detect(s snapshot.Snapshot) answer.Findings {
 	return f
 }
 
-// cycleRan says whether the rule on import rings ran: it applies when the change names a code file of a language in
-// which rings are looked for, and runs when one such file is counted and its language's links are used.
-func cycleRan(s snapshot.Snapshot, used []snapshot.LanguageImports) (ran, applies bool) {
-	rings := map[string]bool{} // the languages in which rings are looked for, and whether their links are used
-	for _, l := range s.Now.Links.Languages {
-		if l.NoRings == "" {
-			rings[l.Language] = false
-		}
-	}
+// cycleRan says whether the rule on import rings ran: when a counted changed code file is of a language whose links
+// are used and in which rings are looked for.
+func cycleRan(s snapshot.Snapshot, used []snapshot.LanguageImports) bool {
+	rings := map[string]bool{}
 	for _, l := range used {
-		if _, looked := rings[l.Language]; looked {
-			rings[l.Language] = true
-		}
+		rings[l.Language] = l.NoRings == ""
 	}
-	for _, c := range s.Radius.Changed {
-		usedNow, looked := rings[c.Language]
-		applies = applies || looked
-		ran = ran || usedNow && c.State != snapshot.NotCounted
-	}
-	return ran, applies
+	return slices.ContainsFunc(s.Radius.Changed, func(c snapshot.ChangedFile) bool { return rings[c.Language] && c.State != snapshot.NotCounted })
 }
 
 // withLinks adds what the links of the analysed languages show: the rows, the marks and the notes.
@@ -88,11 +77,7 @@ func cycleRan(s snapshot.Snapshot, used []snapshot.LanguageImports) (ran, applie
 func withLinks(f answer.Findings, s snapshot.Snapshot, languages []snapshot.LanguageImports, now, before graph, altered bool) answer.Findings {
 	f.Notes = append(f.Notes, linksNote)
 	if altered {
-		note := importersNote
-		if slices.ContainsFunc(languages, func(l snapshot.LanguageImports) bool { return l.Language == "rust" }) {
-			note += rustModNote
-		}
-		f.Notes = append(f.Notes, note)
+		f.Notes = append(f.Notes, importersNote)
 	}
 	if slices.ContainsFunc(languages, func(l snapshot.LanguageImports) bool { return l.Folders }) {
 		f.Notes = append(f.Notes, folderNote)
@@ -268,6 +253,11 @@ func entryNotes(languages []snapshot.LanguageImports) []string {
 	for _, l := range languages {
 		if l.NotSeen != "" {
 			notes = append(notes, fmt.Sprintf("`%s`: not seen: %s", l.Language, l.NotSeen))
+		}
+	}
+	for _, l := range languages {
+		if l.NoImporter != "" {
+			notes = append(notes, fmt.Sprintf("`%s`: no importer and no user: %s", l.Language, l.NoImporter))
 		}
 	}
 	for _, l := range languages {

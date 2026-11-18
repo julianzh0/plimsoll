@@ -198,6 +198,11 @@ type HeadlineArea struct {
 	Resolved []string  `json:"resolved"`
 }
 
+// Better says whether an area passes with a resolved item of a kind that decides it.
+func (a HeadlineArea) Better() bool {
+	return a.State == AreaPass && len(a.Resolved) > 0
+}
+
 // AreaState is the state of an area of the headline.
 type AreaState string
 

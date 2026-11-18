@@ -136,17 +136,16 @@ func headline(s snapshot.Snapshot, marks, resolved []Mark, ran []string) *Headli
 		deciding := func(kind string) bool {
 			return slices.Contains(area.Kinds, kind) && !slices.Contains(s.ReportOnly, kind)
 		}
-		ha := HeadlineArea{Name: area.Name, State: AreaPass, Marks: []string{}, Resolved: []string{}}
-		for _, m := range marks {
-			if deciding(RuleKindOf(m.ID)) {
-				ha.Marks = append(ha.Marks, m.ID)
+		ids := func(items []Mark) []string {
+			found := []string{}
+			for _, m := range items {
+				if deciding(RuleKindOf(m.ID)) {
+					found = append(found, m.ID)
+				}
 			}
+			return found
 		}
-		for _, m := range resolved {
-			if deciding(RuleKindOf(m.ID)) {
-				ha.Resolved = append(ha.Resolved, m.ID)
-			}
-		}
+		ha := HeadlineArea{Name: area.Name, State: AreaPass, Marks: ids(marks), Resolved: ids(resolved)}
 		slices.Sort(ha.Resolved)
 		switch {
 		case len(ha.Marks) > 0:
@@ -154,7 +153,7 @@ func headline(s snapshot.Snapshot, marks, resolved []Mark, ran []string) *Headli
 			h.Worse++
 		case !slices.ContainsFunc(ran, deciding):
 			ha.State = AreaNotAnalysed
-		case len(ha.Resolved) > 0:
+		case ha.Better():
 			h.Better++
 		}
 		h.Areas = append(h.Areas, ha)
@@ -164,7 +163,7 @@ func headline(s snapshot.Snapshot, marks, resolved []Mark, ran []string) *Headli
 
 // reportOnly says whether a mark is of a kind status only counts: its detector and rule.
 func reportOnly(kinds []string, m Mark) bool {
-	return slices.Contains(kinds, DetectorOf(m.ID)+"."+RuleOf(m.ID))
+	return slices.Contains(kinds, RuleKindOf(m.ID))
 }
 
 func footprint(f snapshot.Footprint) *Footprint {

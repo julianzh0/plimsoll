@@ -5,6 +5,7 @@ import (
 	"go/parser"
 	"go/token"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -66,23 +67,22 @@ func TestEveryKindOfMarkIsInExactlyOneArea(t *testing.T) {
 	if len(kinds) < 17 {
 		t.Fatalf("found %d kinds of mark in the detectors' source, want at least 17: %q", len(kinds), kinds)
 	}
+	var names []string
+	for _, a := range areas {
+		names = append(names, a.Name)
+	}
+	if want := []string{"size", "dependencies", "wiring", "functions", "settings", "process"}; !slices.Equal(names, want) {
+		t.Fatalf("areas %q, want %q in this order", names, want)
+	}
 	for _, kind := range kinds {
 		var in []string
 		for _, a := range areas {
-			for _, k := range a.Kinds {
-				if k == kind {
-					in = append(in, a.Name)
-				}
+			if slices.Contains(a.Kinds, kind) {
+				in = append(in, a.Name)
 			}
 		}
 		if len(in) != 1 {
 			t.Errorf("%s is in the areas %q, want exactly one", kind, in)
-		}
-	}
-	want := []string{"size", "dependencies", "wiring", "functions", "settings", "process"}
-	for i, a := range areas {
-		if i >= len(want) || a.Name != want[i] {
-			t.Fatalf("areas = %+v, want %q in this order", areas, want)
 		}
 	}
 }
