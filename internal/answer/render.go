@@ -249,7 +249,7 @@ func statistic(s Statistic) string {
 		value += " " + unit
 	}
 	if s.Before != nil {
-		difference = signed(number(s.Unit, *s.Value-*s.Before), *s.Value-*s.Before)
+		difference = "net " + signed(number(s.Unit, *s.Value-*s.Before), *s.Value-*s.Before)
 	}
 	text := fmt.Sprintf("%s: %s (%s)", label, value, difference)
 	if s.Note != "" {

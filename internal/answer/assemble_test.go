@@ -113,11 +113,11 @@ func TestReportListsEverythingInAFixedLayout(t *testing.T) {
 		"Touched but not created by this change: none.\n" +
 		"\n" +
 		"shape\n" +
-		"  product lines: 19,465 lines (+120)\n" +
-		"  test ratio: 3.8 (+0.1)\n" +
-		"  largest code file `src/a.ts`: 1,620 lines (+140)\n" +
+		"  product lines: 19,465 lines (net +120)\n" +
+		"  test ratio: 3.8 (net +0.1)\n" +
+		"  largest code file `src/a.ts`: 1,620 lines (net +140)\n" +
 		"  largest code file `src/new.ts`: 900 lines (not at the base)\n" +
-		"  runtime dependencies `package.json`: 6 (+1); express, ioredis, pg\n" +
+		"  runtime dependencies `package.json`: 6 (net +1); express, ioredis, pg\n" +
 		"  test code recognized by: `tests/`\n" +
 		"\n" +
 		"Standing (already at the base, not grown):\n" +
@@ -267,7 +267,7 @@ func TestMergeBaseAndSingularsAreSaid(t *testing.T) {
 	one := 1.0
 	zero := 0.0
 	report := Assemble(Report, "0.1.0", s, []Result{{"shape", Findings{Statistics: []Statistic{{Name: "product lines", Value: &one, Before: &zero, Unit: "lines"}}}}})
-	if text := Render(report, wording()); !strings.Contains(text, "  product lines: 1 line (+1)\n") {
+	if text := Render(report, wording()); !strings.Contains(text, "  product lines: 1 line (net +1)\n") {
 		t.Errorf("Render(one line) lacks the singular:\n%s", text)
 	}
 }
