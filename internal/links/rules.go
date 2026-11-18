@@ -25,17 +25,6 @@ const (
 	notCountedLine = "not counted: imports of outside packages, and imports through a third file"
 )
 
-// rulesShown is how many imports the change added a rule mark names.
-const rulesShown = 2
-
-// ruleCheck is one declared rule with the product files under its folder whose imports are read now.
-type ruleCheck struct {
-	rule      snapshot.ImportRule
-	importers int // product files under the rule's folder whose imports are read now
-	products  int // product files under the rule's folder now
-	partly    string
-}
-
 // withRules adds what the declared import rules show: their marks, their row and notes, and what they cannot check.
 // The line of a rule that checks nothing goes first in the answer's "not analysed"; the rule lines come first among
 // the detector's own.
@@ -43,13 +32,13 @@ func withRules(f answer.Findings, s snapshot.Snapshot, languages []snapshot.Lang
 	var notAnalysed []string
 	broken, brokenAtBase := 0.0, 0.0
 	for _, r := range s.ImportRules {
-		check, nothing := checkOf(s, r, languages)
+		_, partly, nothing := checkOf(s, r, languages)
 		if nothing != "" {
 			f.NotAnalysedFirst = append(f.NotAnalysedFirst, ruleLead(r)+": "+nothing+", so the rule checks nothing")
 			continue
 		}
-		if check.partly != "" {
-			notAnalysed = append(notAnalysed, ruleLead(r)+": "+check.partly)
+		if partly != "" {
+			notAnalysed = append(notAnalysed, ruleLead(r)+": "+partly)
 		}
 		notAnalysed = append(notAnalysed, targetsWithoutCode(s, r)...)
 		nowImports, baseImports := breaking(r, s.Now, now), breaking(r, s.Before, before)
@@ -78,54 +67,53 @@ func ruleLead(r snapshot.ImportRule) string {
 	if r.Kind == snapshot.Only {
 		return fmt.Sprintf("`[%s]` `%s` rule of %s", r.Table, r.Key, answer.Folder(r.From))
 	}
-	return fmt.Sprintf("`[%s]` `%s` rule `%s`", r.Table, r.Key, r.Entry(r.Targets[0]))
+	return entryLead(r, r.Targets[0])
 }
 
-// checkOf decides whether a rule is checked, on now's side: what says it checks nothing, or "" and the rule's
-// importers. A rule checks nothing when no product code lies under its folder, when a never rule's target holds no
-// code, or when no product file under its folder has its imports read.
-func checkOf(s snapshot.Snapshot, r snapshot.ImportRule, languages []snapshot.LanguageImports) (ruleCheck, string) {
+// entryLead names one entry of a rule at the start of a sentence.
+func entryLead(r snapshot.ImportRule, target string) string {
+	return fmt.Sprintf("`[%s]` `%s` rule `%s`", r.Table, r.Key, r.Entry(target))
+}
+
+// checkOf decides whether a rule is checked, on now's side. It gives the product files under the rule's folder whose
+// imports are read, what says that some others are not, and what says that the rule checks nothing, or "": when no
+// product code lies under its folder, when a never rule's target holds no code, or when no product file under its
+// folder has its imports read.
+func checkOf(s snapshot.Snapshot, r snapshot.ImportRule, languages []snapshot.LanguageImports) (importers int, partly, nothing string) {
 	used := map[string]bool{}
 	for _, l := range languages {
 		used[l.Language] = true
 	}
-	check := ruleCheck{rule: r}
-	var notRead []string // what the product files whose imports are not read are: a suffix, or a language over the limit
-	overLimit := 0
+	products, overLimit := 0, 0
+	var suffixes, languagesOver []string // what the product files whose imports are not read are
 	for _, file := range s.Now.Files {
 		if file.Role != snapshot.Product || !lies(file.Path, r.From) {
 			continue
 		}
-		check.products++
+		products++
 		switch {
 		case used[file.Language]:
-			check.importers++
+			importers++
 		case file.Language == "":
-			notRead = appendOnce(notRead, path.Ext(file.Path))
+			suffixes = append(suffixes, path.Ext(file.Path))
 		default:
-			notRead = appendOnce(notRead, file.Language)
+			languagesOver = append(languagesOver, file.Language)
 			overLimit++
 		}
 	}
 	switch {
-	case check.products == 0:
-		return check, gone(r.From, holdsCode(s.Before, r.From, true), "matches no product code")
+	case products == 0:
+		return 0, "", gone(r.From, holdsCode(s.Before, r.From, true), "matches no product code")
 	case r.Kind == snapshot.Never && !holdsCode(s.Now, r.Targets[0], false):
-		return check, gone(r.Targets[0], holdsCode(s.Before, r.Targets[0], false), "matches no code")
-	case check.importers == 0:
-		return check, fmt.Sprintf("the imports of %s under %s are not read or not followed (%s)", answer.Plural(check.products, "product file"),
-			answer.Folder(r.From), named(notRead))
+		return 0, "", gone(r.Targets[0], holdsCode(s.Before, r.Targets[0], false), "matches no code")
+	case importers == 0:
+		return 0, "", fmt.Sprintf("the imports of %s under %s are not read or not followed (%s)", answer.Plural(products, "product file"),
+			answer.Folder(r.From), named(slices.Concat(suffixes, languagesOver)))
 	case overLimit > 0:
-		var languagesOver []string
-		for _, what := range notRead {
-			if !strings.HasPrefix(what, ".") {
-				languagesOver = append(languagesOver, what)
-			}
-		}
-		check.partly = fmt.Sprintf("%d of the %s under %s are not checked, because their imports are not followed (%s)",
-			overLimit, answer.Plural(check.products, "product file"), answer.Folder(r.From), named(languagesOver))
+		partly = fmt.Sprintf("%d of the %s under %s are not checked, because their imports are not followed (%s)",
+			overLimit, answer.Plural(products, "product file"), answer.Folder(r.From), named(languagesOver))
 	}
-	return check, ""
+	return importers, partly, ""
 }
 
 // gone says that a folder holds no code now, and whether it held some at the base.
@@ -144,7 +132,7 @@ func targetsWithoutCode(s snapshot.Snapshot, r snapshot.ImportRule) []string {
 	var lines []string
 	for _, target := range r.Targets {
 		if !holdsCode(s.Now, target, false) {
-			lines = append(lines, fmt.Sprintf("`[%s]` `%s` rule `%s`: %s", r.Table, r.Key, r.Entry(target), gone(target, holdsCode(s.Before, target, false), "matches no code")))
+			lines = append(lines, entryLead(r, target)+": "+gone(target, holdsCode(s.Before, target, false), "matches no code"))
 		}
 	}
 	return lines
@@ -157,21 +145,15 @@ func holdsCode(tree snapshot.Tree, folder string, productOnly bool) bool {
 	})
 }
 
-// named lists what cannot be checked, sorted, each in backticks; past three, the rest are counted.
+// named lists what cannot be checked, sorted, each once and in backticks; past three, the rest are counted.
 func named(what []string) string {
 	slices.Sort(what)
+	what = slices.Compact(what)
 	shown := answer.QuotedList(what[:min(len(what), 3)])
 	if len(what) > 3 {
 		shown += fmt.Sprintf(" and %d more", len(what)-3)
 	}
 	return shown
-}
-
-func appendOnce(list []string, value string) []string {
-	if slices.Contains(list, value) {
-		return list
-	}
-	return append(list, value)
 }
 
 // lies says whether a file lies under a folder: the folder's names are the path's first names.
@@ -181,6 +163,7 @@ func lies(file, folder string) bool { return strings.HasPrefix(file, folder+"/")
 // A pair is type-only when every statement of it is, and added when the change wrote one of them; it carries its
 // first line.
 func breaking(r snapshot.ImportRule, tree snapshot.Tree, g graph) []snapshot.Link {
+	allowed := append([]string{r.From}, r.Targets...)
 	var found []snapshot.Link
 	for _, file := range tree.Files {
 		if file.Role != snapshot.Product || !lies(file.Path, r.From) {
@@ -188,7 +171,7 @@ func breaking(r snapshot.ImportRule, tree snapshot.Tree, g graph) []snapshot.Lin
 		}
 		at := map[string]int{} // a target -> its pair in found
 		for _, link := range g.from[file.Path] {
-			if !breaks(r, link) {
+			if !breaks(r, allowed, link) {
 				continue
 			}
 			i, seen := at[link.To]
@@ -208,20 +191,23 @@ func breaking(r snapshot.ImportRule, tree snapshot.Tree, g graph) []snapshot.Lin
 }
 
 // breaks says whether one import breaks a rule: a never rule when every code file it reaches lies under the target,
-// an only rule when none lies under the rule's folder or one of its targets. An import that reaches only its own file
-// breaks nothing.
-func breaks(r snapshot.ImportRule, link snapshot.Link) bool {
-	reached := slices.DeleteFunc(slices.Clone(link.Files), func(f string) bool { return f == link.From })
-	if len(reached) == 0 {
-		return false
+// an only rule when none lies under an allowed folder (the rule's own and its targets). An import that reaches only
+// its own file breaks nothing.
+func breaks(r snapshot.ImportRule, allowed []string, link snapshot.Link) bool {
+	reachesOther := false
+	for _, f := range link.Files {
+		if f == link.From {
+			continue
+		}
+		reachesOther = true
+		if r.Kind == snapshot.Never && !lies(f, r.Targets[0]) {
+			return false
+		}
+		if r.Kind == snapshot.Only && slices.ContainsFunc(allowed, func(folder string) bool { return lies(f, folder) }) {
+			return false
+		}
 	}
-	if r.Kind == snapshot.Never {
-		return !slices.ContainsFunc(reached, func(f string) bool { return !lies(f, r.Targets[0]) })
-	}
-	allowed := append([]string{r.From}, r.Targets...)
-	return !slices.ContainsFunc(reached, func(f string) bool {
-		return slices.ContainsFunc(allowed, func(folder string) bool { return lies(f, folder) })
-	})
+	return reachesOther
 }
 
 // ruleMark is a rule's mark: new or grown when the change wrote one of its breaking imports, however many were taken
@@ -229,16 +215,16 @@ func breaks(r snapshot.ImportRule, link snapshot.Link) bool {
 func ruleMark(s snapshot.Snapshot, r snapshot.ImportRule, nowImports []snapshot.Link, atBase int) (answer.Mark, bool) {
 	var clauses []string
 	for _, link := range nowImports {
-		if link.Added && len(clauses) < rulesShown {
+		if link.Added && len(clauses) < closingShown {
 			clauses = append(clauses, clause(link))
 		}
 	}
 	count, before := len(nowImports), float64(atBase)
 	var change answer.Change
 	switch {
-	case count > 0 && len(clauses) > 0 && atBase == 0:
+	case len(clauses) > 0 && atBase == 0:
 		change = answer.New
-	case count > 0 && len(clauses) > 0:
+	case len(clauses) > 0:
 		change = answer.Grown
 	case count > atBase:
 		change = answer.Touched
@@ -249,9 +235,9 @@ func ruleMark(s snapshot.Snapshot, r snapshot.ImportRule, nowImports []snapshot.
 	default:
 		return answer.Mark{}, false
 	}
-	paths := []string{r.From, r.Targets[0]}
-	if r.Kind == snapshot.Only {
-		paths = []string{r.From}
+	paths := []string{r.From}
+	if r.Kind == snapshot.Never {
+		paths = append(paths, r.Targets[0])
 	}
 	source := ruleSource(s, r)
 	return answer.Mark{
@@ -271,7 +257,7 @@ func ruleSource(s snapshot.Snapshot, r snapshot.ImportRule) string {
 
 // clause names one breaking import by file, line and target.
 func clause(link snapshot.Link) string {
-	text := fmt.Sprintf("`%s` line %d importing %s", link.From, link.Line, targetShown(link))
+	text := importedAs(link, "importing")
 	if link.TypeOnly {
 		text += typeOnlySuffix
 	}
@@ -316,15 +302,19 @@ func ruleEvidence(s snapshot.Snapshot, m answer.Mark, languages []snapshot.Langu
 		return nil
 	}
 	r := s.ImportRules[at]
-	lines := []string{"rule: `" + r.Entry(r.Targets[0]) + "` (" + ruleSource(s, r) + ")"}
-	if r.Kind == snapshot.Only {
-		allowed, entries := []string{answer.Folder(r.From)}, []string{}
+	var lines []string
+	if r.Kind == snapshot.Never {
+		lines = append(lines, "rule: `"+r.Entry(r.Targets[0])+"` ("+ruleSource(s, r)+")")
+	} else {
+		allowed, entries := []string{r.From}, []string{}
 		for _, target := range r.Targets {
-			allowed = appendOnce(allowed, answer.Folder(target))
+			if !slices.Contains(allowed, target) {
+				allowed = append(allowed, target)
+			}
 			entries = append(entries, "`"+r.Entry(target)+"`")
 		}
-		lines[0] = fmt.Sprintf("rule: code under %s imports only code under %s (`[%s]` `%s`: %s)", answer.Folder(r.From),
-			strings.Join(allowed, ", "), r.Table, r.Key, strings.Join(entries, ", "))
+		lines = append(lines, fmt.Sprintf("rule: code under %s imports only code under %s (`[%s]` `%s`: %s)", answer.Folder(r.From),
+			folderList(allowed), r.Table, r.Key, strings.Join(entries, ", ")))
 	}
 	nowImports, baseImports := breaking(r, s.Now, now), breaking(r, s.Before, before)
 	lines = append(lines, fmt.Sprintf("imports that break it now: %d; at the base: %d", len(nowImports), len(baseImports)))
@@ -335,12 +325,11 @@ func ruleEvidence(s snapshot.Snapshot, m answer.Mark, languages []snapshot.Langu
 	for _, link := range shown {
 		lines = append(lines, prefix+linkLine(link, verb))
 	}
-	check, _ := checkOf(s, r, languages)
-	searched := fmt.Sprintf("searched: the imports of the %s under %s; test code and other code are not importers",
-		answer.Plural(check.importers, "product file"), answer.Folder(r.From))
-	lines = append(lines, searched)
-	if check.partly != "" {
-		lines = append(lines, check.partly)
+	importers, partly, _ := checkOf(s, r, languages)
+	lines = append(lines, fmt.Sprintf("searched: the imports of the %s under %s; test code and other code are not importers",
+		answer.Plural(importers, "product file"), answer.Folder(r.From)))
+	if partly != "" {
+		lines = append(lines, partly)
 	}
 	return append(lines, notCountedLine)
 }

@@ -87,7 +87,7 @@ func TestImportRuleMarksInEachLanguage(t *testing.T) {
 			c.clauseOf(t, m.Subject.Names[0], "domain/x", "adapters/y")
 		}
 		marks = check("three imports", parts, []string{"domain/x>adapters/y", "domain/x>adapters/z", "domain/w>adapters/y", "shared/s", "other/o"}, 3, 3)
-		if names := marks[0].Subject.Names; len(names) != rulesShown {
+		if names := marks[0].Subject.Names; len(names) != closingShown {
 			t.Errorf("three imports: names %q, want two", names)
 		} else {
 			c.clauseOf(t, names[0], "domain/w", "adapters/y")

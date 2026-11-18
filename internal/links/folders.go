@@ -110,12 +110,12 @@ func folderCycles(imports []siblingImport) [][]string {
 func folderAtBase(s snapshot.Snapshot) func(folder string) []string {
 	return func(folder string) []string {
 		names := []string{folder}
-		if slices.ContainsFunc(s.Before.Paths, func(p string) bool { return strings.HasPrefix(p, folder+"/") }) {
+		if slices.ContainsFunc(s.Before.Paths, func(p string) bool { return lies(p, folder) }) {
 			return names
 		}
 		depth := len(segments(folder))
 		for _, change := range s.Changes {
-			if change.From == "" || !strings.HasPrefix(change.Path, folder+"/") {
+			if change.From == "" || !lies(change.Path, folder) {
 				continue
 			}
 			from := segments(path.Dir(change.From))
