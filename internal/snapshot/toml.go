@@ -31,13 +31,16 @@ func tomlTable(content, name string) (string, bool) {
 
 // stringArray reads the strings of an array whose opening bracket is consumed, up to its closing bracket outside a
 // string; closed is false when the array does not end, holds something that is not a string, or lacks the comma
-// between two strings. rest is the text after the closing bracket.
+// between two strings or has one with no string before it. rest is the text after the closing bracket.
 func stringArray(text string) (items []string, rest string, closed bool) {
-	separated := true
+	separated := true // a string may come next; false after a string until its comma
 	for i := 0; i < len(text); i++ {
 		switch c := text[i]; c {
 		case ' ', '\t', '\r', '\n':
 		case ',':
+			if separated {
+				return nil, "", false
+			}
 			separated = true
 		case '#':
 			end := strings.IndexByte(text[i:], '\n')

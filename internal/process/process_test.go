@@ -75,7 +75,8 @@ func TestPlanningFileMarks(t *testing.T) {
 
 func TestADeclaredPlanningFolderMarksItsFiles(t *testing.T) {
 	declaring := func(own string) snapshot.Source {
-		base, now := map[string]string{"src/a.ts": "x\n"}, map[string]string{"src/a.ts": "x\n", "backlog/US-12.md": "x\n"}
+		base := map[string]string{"src/a.ts": "x\n"}
+		now := map[string]string{"src/a.ts": "x\n", "backlog/US-12.md": "x\n", "notes/auth.plan.md": "x\n", "docs/PLAN.md": "x\n"}
 		if own != "" {
 			base[".plimsoll.toml"], now[".plimsoll.toml"] = own, own
 		}
@@ -83,10 +84,18 @@ func TestADeclaredPlanningFolderMarksItsFiles(t *testing.T) {
 		source.Changes = []snapshot.Change{{Path: "backlog/US-12.md", Added: 1}}
 		return source
 	}
-	if _, f := detect(t, declaring("")); len(marksOf(f, rulePlanning)) != 0 {
-		t.Errorf("backlog/US-12.md without a declaration: planning marks %v, want none", marksOf(f, rulePlanning))
+	if _, f := detect(t, declaring("")); len(marksOf(f, rulePlanning)) != 1 {
+		t.Errorf("without a declaration: planning marks %v, want docs/PLAN.md alone", marksOf(f, rulePlanning))
 	}
-	s, f := detect(t, declaring("[layout]\nplanning_folders = [\"backlog\", \"a b\"]\n"))
+	s, f := detect(t, declaring("[layout]\nplanning_folders = [\"backlog\", \"a b\"]\nplanning_files = [\"*.plan.md\"]\n"))
+	for path, want := range map[string]string{
+		"notes/auth.plan.md": "matches `*.plan.md`, declared in `.plimsoll.toml` (`[layout]` `planning_files`)",
+		"docs/PLAN.md":       "matches `PLAN.md`, a default planning and review path",
+	} {
+		if evidence := (Detector{}).Explain(s, marksOf(f, rulePlanning)[path]); !slices.Contains(evidence, want) {
+			t.Errorf("evidence of %s = %q, want %q", path, evidence, want)
+		}
+	}
 	mark, note := marksOf(f, rulePlanning)["backlog/US-12.md"], "planning folders declared in `.plimsoll.toml` (`[layout]` `planning_folders`): `backlog/`"
 	match := "matches `backlog/`, declared in `.plimsoll.toml` (`[layout]` `planning_folders`)"
 	if evidence := (Detector{}).Explain(s, mark); mark.Change != answer.New || !slices.Contains(f.Notes, note) || !slices.Contains(evidence, match) || slices.Contains(evidence, note) {

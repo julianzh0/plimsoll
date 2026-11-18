@@ -49,6 +49,8 @@ func TestBuildReadsTheTextKeysOfTheOwnFile(t *testing.T) {
 			[]snapshot.DeclaredValues{files([]string{"*.x"}, nil)}, []string{notAList}},
 		{"a missing comma between values, and a comma after the last", "", "[layout]\ntest_folders = [\"a\" \"b\"]\ntest_files = [\"*.x\",]\n",
 			[]snapshot.DeclaredValues{files([]string{"*.x"}, nil)}, []string{notAList}},
+		{"a comma with no value before it", "", "[layout]\ntest_folders = [\"a\",,\"b\"]\ntest_files = [,\"*.x\"]\n",
+			nil, []string{"`test_files` is not a list of text", notAList}},
 		{"a key the table does not hold", "", "[layout]\ntest_folder = [\"x\"]\n", nil, []string{"`test_folder` is no key of `[layout]`"}},
 		{"a key twice", "", "[layout]\ntest_folders = [\"a\"]\ntest_folders = [\"b\"]\n",
 			[]snapshot.DeclaredValues{folders([]string{"a"}, nil)}, []string{"`test_folders` is set twice"}},
