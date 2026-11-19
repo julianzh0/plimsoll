@@ -79,12 +79,21 @@ func TestStandingNamesTheRatioAndCountsFilesPerLimit(t *testing.T) {
 			"2 files crossed 1,500 lines, the largest `src/a.ts` at 1,700"},
 		{[]answer.Mark{nesting(answer.New, 4, nil), nesting(answer.New, 5, nil)}, "2 functions nested deeper are listed, `src/sync.ts` `syncAll` the deepest of them (5 levels)"},
 		{[]answer.Mark{nesting(answer.New, 4, nil)}, "1 function nested deeper is listed, `src/sync.ts` `syncAll` (4 levels)"},
+		{[]answer.Mark{duplicate("src/b.ts", 85), duplicate("src/c.ts", 100)}, "2 new functions that repeat another are listed, `src/c.ts` `syncAll` the fullest repeat of them (100%)"},
+		{[]answer.Mark{duplicate("src/b.ts", 85)}, "1 new function that repeats another is listed, `src/b.ts` `syncAll` (85%)"},
 	}
 	for _, tc := range cases {
 		if got := (Detector{}).Standing(tc.items); got != tc.want {
 			t.Errorf("Standing = %q, want %q", got, tc.want)
 		}
 	}
+}
+
+// duplicate is a duplicate mark of a function syncAll in path whose tokens are share percent in another function.
+func duplicate(path string, share float64) answer.Mark {
+	return answer.Mark{ID: answer.ID(name, ruleDuplicate, path+":syncAll"), Change: answer.New, Confidence: answer.Candidate,
+		Subject:  answer.Subject{Kind: "function", Paths: []string{path}, Names: []string{"syncAll"}},
+		Measured: answer.Measured{Value: share, Unit: "% of its tokens"}}
 }
 
 // complexity is a complexity mark of src/sync.ts syncAll with the default limit.

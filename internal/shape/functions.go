@@ -190,28 +190,29 @@ func functionsNotAnalysed(fs snapshot.Functions) []string {
 	return found
 }
 
-// functionsInStanding is the status clause of the nesting items: how many, and the deepest by name.
-func functionsInStanding(items []answer.Mark) string {
-	var nested []answer.Mark
+// functionsInStanding is the status clause of one function rule's items: how many, and the one measured most by name.
+// one and many are the clause for one item and for more, before the name.
+func functionsInStanding(items []answer.Mark, rule, one, many, most string, value func(float64) string) string {
+	var listed []answer.Mark
 	for _, m := range items {
-		if answer.RuleOf(m.ID) == ruleNesting {
-			nested = append(nested, m)
+		if answer.RuleOf(m.ID) == rule {
+			listed = append(listed, m)
 		}
 	}
-	if len(nested) == 0 {
+	if len(listed) == 0 {
 		return ""
 	}
-	deepest := nested[0]
-	for _, m := range nested[1:] {
-		if m.Measured.Value > deepest.Measured.Value {
-			deepest = m
+	top := listed[0]
+	for _, m := range listed[1:] {
+		if m.Measured.Value > top.Measured.Value {
+			top = m
 		}
 	}
-	named := fmt.Sprintf("`%s` `%s`", deepest.Subject.Paths[0], deepest.Subject.Names[0])
-	if len(nested) == 1 {
-		return fmt.Sprintf("1 function nested deeper is listed, %s (%d levels)", named, int(deepest.Measured.Value))
+	named := fmt.Sprintf("`%s` `%s`", top.Subject.Paths[0], top.Subject.Names[0])
+	if len(listed) == 1 {
+		return fmt.Sprintf("%s, %s (%s)", one, named, value(top.Measured.Value))
 	}
-	return fmt.Sprintf("%d functions nested deeper are listed, %s the deepest of them (%d levels)", len(nested), named, int(deepest.Measured.Value))
+	return fmt.Sprintf("%d %s, %s %s of them (%s)", len(listed), many, named, most, value(top.Measured.Value))
 }
 
 // words writes a small count as a word, as a sentence reads it: "three".
