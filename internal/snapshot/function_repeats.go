@@ -60,7 +60,6 @@ type FunctionRepeat struct {
 	Stretch            int     // the most tokens in a row of the new function the counterpart covers
 	StretchStart       int     // the lines of that stretch in the new function
 	StretchEnd         int
-	Others             int // other functions that also met the rule for this one
 }
 
 // RepeatCounterpart is the other function of a pair.
@@ -172,8 +171,7 @@ func functionRepeats(run repeatRun) FunctionRepeats {
 		return result
 	}
 	slices.SortFunc(cands, repeatFn.compare)
-	best, others := run.search(cands, &result)
-	run.list(cands, best, others, &result)
+	run.list(cands, run.search(cands, &result), &result)
 	result.Unwalked = slices.Compact(slices.Sorted(slices.Values(result.Unwalked)))
 	return result
 }
@@ -318,8 +316,8 @@ func better(s pairScore, cur *pairScore) bool {
 }
 
 // search compares every source that shares a run (names aside) with a candidate, one source at a time, and keeps per
-// candidate its best counterpart and how many sources met the rule.
-func (run repeatRun) search(cands []repeatFn, result *FunctionRepeats) ([]*pairScore, []int) {
+// candidate its best counterpart.
+func (run repeatRun) search(cands []repeatFn, result *FunctionRepeats) []*pairScore {
 	n := run.rr.Run
 	entries := map[string]bool{}
 	type place struct {
@@ -362,7 +360,6 @@ func (run repeatRun) search(cands []repeatFn, result *FunctionRepeats) ([]*pairS
 	// a covered stretch of Stretch tokens takes at least Stretch/Run of the source's runs: a shorter source marks none
 	shortest := (run.rr.Stretch+n-1)/n + n - 1
 	best := make([]*pairScore, len(cands))
-	others := make([]int, len(cands))
 	for _, s := range run.sources(entries, result) {
 		if len(s.fn.tokens) < shortest || !partners(s) {
 			continue
@@ -382,17 +379,13 @@ func (run repeatRun) search(cands []repeatFn, result *FunctionRepeats) ([]*pairS
 				if !marks {
 					continue
 				}
-				others[ci]++
 				if better(score, best[ci]) {
 					best[ci] = &score
 				}
 			}
 		}
 	}
-	for i := range others {
-		others[i] = max(others[i]-1, 0)
-	}
-	return best, others
+	return best
 }
 
 // sourceGrams are a source's runs in both views and their counts, built on its first pair and kept for the others.
@@ -447,7 +440,7 @@ func (run repeatRun) status(s repeatFn) CounterpartStatus {
 }
 
 // sources are the readable functions of the measured product files now of the project's own code in the entries, in
-// path and offset order: changed files from the question's readings, others from a light reading of their places.
+// path and offset order: changed files from the question's readings, others from their readings with functions.
 func (run repeatRun) sources(entries map[string]bool, result *FunctionRepeats) []repeatFn {
 	paths := make([]string, 0, len(run.nowFiles))
 	for p := range run.nowFiles {
@@ -484,31 +477,18 @@ func (run repeatRun) sources(entries map[string]bool, result *FunctionRepeats) [
 }
 
 // functionsNow are a file's functions now outside its test code: the question's own reading when it holds them,
-// otherwise a light reading of their places and tokens.
+// otherwise the file's reading with its functions.
 func (run repeatRun) functionsNow(language conventions.Language, filePath string) ([]function, bool) {
 	r := run.nowReadings[filePath]
-	if r.unread {
-		return nil, false
+	if !r.unread && r.functions == nil && !r.functionsUnread {
+		r = run.readings.of(language, language.GrammarOf(filePath), run.nowContent[filePath], run.question,
+			wanted{functions: true, functionRules: &run.rules.FunctionRules})
 	}
-	if r.functions != nil || r.functionsUnread {
-		return r.functions, !r.functionsUnread
-	}
-	light := run.readings.of(language, language.GrammarOf(filePath), run.nowContent[filePath], run.question,
-		wanted{places: true, functionRules: &run.rules.FunctionRules})
-	if light.functionsUnread {
-		return nil, false
-	}
-	var kept []function
-	for _, fn := range light.functions {
-		if !inSpans(r.testSpans, fn.start) {
-			kept = append(kept, fn)
-		}
-	}
-	return kept, true
+	return r.functions, !r.unread && !r.functionsUnread
 }
 
 // list keeps the outermost of nested marks, drops those whose file came from another project, and lists the fullest.
-func (run repeatRun) list(cands []repeatFn, best []*pairScore, others []int, result *FunctionRepeats) {
+func (run repeatRun) list(cands []repeatFn, best []*pairScore, result *FunctionRepeats) {
 	type pair struct {
 		FunctionRepeat
 		cand int
@@ -531,7 +511,7 @@ func (run repeatRun) list(cands []repeatFn, best []*pairScore, others []int, res
 			result.FromAnotherProject++
 			continue
 		}
-		kept = append(kept, pair{run.repeat(c, *best[i], others[i]), i})
+		kept = append(kept, pair{run.repeat(c, *best[i]), i})
 	}
 	result.Found = len(kept)
 	slices.SortStableFunc(kept, func(a, b pair) int {
@@ -543,12 +523,12 @@ func (run repeatRun) list(cands []repeatFn, best []*pairScore, others []int, res
 }
 
 // repeat is a listed pair's facts.
-func (run repeatRun) repeat(c repeatFn, s pairScore, others int) FunctionRepeat {
+func (run repeatRun) repeat(c repeatFn, s pairScore) FunctionRepeat {
 	r := FunctionRepeat{Path: c.path, Name: c.fn.name, Occurrence: c.occurrence, Start: c.fn.startLine, End: c.fn.endLine,
 		Tokens: len(c.fn.tokens),
 		Counterpart: RepeatCounterpart{Path: s.source.path, Name: s.source.fn.name,
 			Start: s.source.fn.startLine, End: s.source.fn.endLine, Tokens: len(s.source.fn.tokens), Status: s.status},
-		Share: s.share, Reverse: s.reverse, Stretch: s.stretch, Others: others}
+		Share: s.share, Reverse: s.reverse, Stretch: s.stretch}
 	r.StretchStart = c.fn.tokenLines[s.stretchAt]
 	r.StretchEnd = c.fn.tokenLines[s.stretchAt+s.stretch-1]
 	return r

@@ -62,19 +62,19 @@ func TestTokenReadingsOverTheirByteBudgetAreDroppedFirst(t *testing.T) {
 	readings.tokenBound = 1 // bytes: any kept token reading is over it
 	rules := conventions.Default()
 	language, _ := rules.LanguageOf("a.go")
-	places := wanted{places: true, functionRules: &rules.FunctionRules}
+	places := wanted{functions: true, functionRules: &rules.FunctionRules}
 	a, b, c := []byte("package a\n\nfunc f() int { return 1 }\n"), []byte("package b\n"), []byte("package c\n")
 	first := readings.begin()
 	readings.of(language, "go", a, first, places)
 	readings.of(language, "go", b, first, wanted{})
 	readings.end(first)
-	if _, found := readings.kept[readingKey{entry: "go", grammar: "go", places: true, content: sha256.Sum256(a)}]; !found {
+	if _, found := readings.kept[readingKey{entry: "go", grammar: "go", functions: true, content: sha256.Sum256(a)}]; !found {
 		t.Fatalf("the question that read a's tokens dropped them at its own end, want them kept for it")
 	}
 	second := readings.begin()
 	readings.of(language, "go", c, second, wanted{})
 	readings.end(second)
-	_, tokens := readings.kept[readingKey{entry: "go", grammar: "go", places: true, content: sha256.Sum256(a)}]
+	_, tokens := readings.kept[readingKey{entry: "go", grammar: "go", functions: true, content: sha256.Sum256(a)}]
 	_, plain := readings.kept[goKey(b)]
 	if tokens || !plain || readings.tokens != 0 {
 		t.Errorf("after a second question over a token budget of 1 byte: a's tokens kept %v, b kept %v, %d tokens counted; want false, true, 0",

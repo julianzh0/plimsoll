@@ -97,8 +97,8 @@ func repeatEvidence(s snapshot.Snapshot, m answer.Mark) []string {
 	for _, p := range s.Repeats.Listed {
 		if repeatID(p) == m.ID {
 			return []string{fmt.Sprintf("%d tokens against %d; %d%% of its tokens are in runs of %d tokens the counterpart holds, %d%% of the counterpart's in its; "+
-				"searched: %d functions in %d product files; %s also met the limits", p.Tokens, p.Counterpart.Tokens, int(math.Floor(p.Share*100)),
-				s.Repeats.Rules.Run, int(math.Floor(p.Reverse*100)), s.Repeats.Searched, s.Repeats.SearchedFiles, answer.Plural(p.Others, "other function"))}
+				"searched: %d functions in %d product files", p.Tokens, p.Counterpart.Tokens, int(math.Floor(p.Share*100)),
+				s.Repeats.Rules.Run, int(math.Floor(p.Reverse*100)), s.Repeats.Searched, s.Repeats.SearchedFiles)}
 		}
 	}
 	return nil

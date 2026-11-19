@@ -213,14 +213,14 @@ func methods(first string) string {
 }
 
 // TestBuildCountsWhatItCompared checks the counts beside the pairs: two new functions compared, both repeat, and the
-// later one has a second counterpart that also met the rule.
+// later one is listed too.
 func TestBuildCountsWhatItCompared(t *testing.T) {
 	base := map[string]string{"pkg/z.go": snapshottest.GoFile(snapshottest.GoColumns("Original"))}
 	now := map[string]string{"pkg/z.go": base["pkg/z.go"], "pkg/b.go": snapshottest.GoFile(snapshottest.GoColumns("NewOne")),
 		"pkg/c.go": snapshottest.GoFile(snapshottest.GoColumns("NewTwo"))}
 	_, got := repeats(t, base, now)
-	if got.Files != 2 || got.Compared != 2 || got.Found != 2 || len(got.Listed) != 2 || got.Listed[0].Others != 0 || got.Listed[1].Others != 1 {
-		t.Errorf("Build(two copies of one function).Repeats = files %d, compared %d, found %d, listed %+v; want 2, 2, 2, others 0 and 1",
+	if got.Files != 2 || got.Compared != 2 || got.Found != 2 || len(got.Listed) != 2 {
+		t.Errorf("Build(two copies of one function).Repeats = files %d, compared %d, found %d, listed %+v; want 2, 2, 2, two listed",
 			got.Files, got.Compared, got.Found, got.Listed)
 	}
 }

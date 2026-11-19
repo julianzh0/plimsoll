@@ -19,7 +19,7 @@ func repeatsSnapshot() snapshot.Snapshot {
 			{Path: "src/orders/save.ts", Name: "saveOrder", Occurrence: 1, Start: 40, End: 118, Tokens: 420,
 				Counterpart: snapshot.RepeatCounterpart{Path: "src/users/save.ts", Name: "saveUser", Start: 12, End: 88,
 					Tokens: 400, Status: snapshot.CounterpartUnchanged},
-				Share: 0.914, Reverse: 0.9, Stretch: 286, StretchStart: 52, StretchEnd: 101, Others: 1},
+				Share: 0.914, Reverse: 0.9, Stretch: 286, StretchStart: 52, StretchEnd: 101},
 			{Path: "src/a.go", Name: "Second", Occurrence: 2, Start: 30, End: 60, Tokens: 200,
 				Counterpart: snapshot.RepeatCounterpart{Path: "src/a.go", Name: "First", Start: 1, End: 28, Tokens: 210,
 					Status: snapshot.CounterpartNew},
@@ -78,7 +78,7 @@ func TestExplainOfARepeatGivesBothSizesSharesAndTheSearch(t *testing.T) {
 	m := repeatMarks(s)[0]
 	got := strings.Join((shape.Detector{}).Explain(s, m), "\n")
 	if want := "420 tokens against 400; 91% of its tokens are in runs of 10 tokens the counterpart holds, 90% of the counterpart's in its; " +
-		"searched: 120 functions in 30 product files; 1 other function also met the limits"; got != want {
+		"searched: 120 functions in 30 product files"; got != want {
 		t.Errorf("Explain(repeat) =\n%s\nwant\n%s", got, want)
 	}
 }
