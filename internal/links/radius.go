@@ -28,8 +28,8 @@ func blastRadius(s snapshot.Snapshot, used []snapshot.LanguageImports, now graph
 	// A user counts by what the used languages' changed files did to it: by name when one of them reached it by a name,
 	// in its test code alone when none of those names stands outside its test code.
 	usageOf := func(u snapshot.User) (usage, bool) {
-		byName := inUsed(u.ByName)
-		return usage{path: u.Path, role: u.Role, byName: byName, testsOnly: byName && !inUsed(u.Outside)}, byName || inUsed(u.Whole)
+		byName, whole := inUsed(u.ByName), inUsed(u.Whole)
+		return usage{path: u.Path, role: u.Role, byName: byName, testsOnly: byName && !whole && !inUsed(u.Outside)}, byName || whole
 	}
 	radius := &answer.Radius{Paths: []string{}, Folders: []answer.FolderCount{}}
 	leftOut := map[string][]string{} // reason -> paths

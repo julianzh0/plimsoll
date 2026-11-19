@@ -488,6 +488,19 @@ func TestAGatedLanguageDecidesNothingAboutAUser(t *testing.T) {
 	}
 }
 
+// A product file that a used language reaches as a whole is product code even when the name it holds by name sits
+// only in its tests.
+func TestAUserReachedAsAWholeIsNoTestOnlyUser(t *testing.T) {
+	s := snapshot.Snapshot{Radius: snapshot.Radius{
+		Changed: []snapshot.ChangedFile{{Path: "a.go", Language: "go", State: snapshot.AsAWhole}, {Path: "b.go", Language: "go", State: snapshot.ByName}},
+		Users:   []snapshot.User{{Path: "u.go", Role: snapshot.Product, Whole: []string{"go"}, ByName: []string{"go"}}},
+	}}
+	r, _, _ := blastRadius(s, []snapshot.LanguageImports{{Language: "go"}}, graph{known: map[string]bool{"u.go": true}})
+	if r.Files != 1 || r.Product != 1 || r.Tests != 0 {
+		t.Errorf("radius = %+v, want one product file", r)
+	}
+}
+
 // The same name changed in two languages, one of them behind the gate: a file of the gated language that uses the
 // name counts neither through its own language nor through the other one's seed.
 func TestTheGateHoldsWhenTwoLanguagesChangeTheSameName(t *testing.T) {
