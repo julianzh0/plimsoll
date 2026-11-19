@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"maps"
 	"os"
 	"path"
 	"runtime"
@@ -109,14 +110,10 @@ func (r *Reader) Read(ctx context.Context, repository, base string, wants snapsh
 	if source.Now, err = now(run, top, wants, &source); err != nil {
 		return snapshot.Source{}, err
 	}
-	var absent []string
-	if source.Before, source.BaseOther, absent, err = before(run, source.Base, source.Changes, wants); err != nil {
+	if source.Before, source.BaseOther, source.Unavailable, err = before(run, source.Base, source.Changes, missing, wants); err != nil {
 		return snapshot.Source{}, err
 	}
-	source.Missing = slices.Compact(slices.Sorted(slices.Values(append(missing, absent...))))
-	if source.Unavailable, err = unavailable(run, source.Base, missing, absent); err != nil {
-		return snapshot.Source{}, err
-	}
+	source.Missing = slices.Compact(slices.Sorted(slices.Values(append(missing, source.Unavailable...))))
 	since, err := run(nil, "rev-list", source.Base+"..HEAD")
 	if err != nil {
 		return snapshot.Source{}, gitFailed(err)
@@ -426,8 +423,10 @@ func readFile(root *os.Root, path string, wants snapshot.Wants) ([]byte, error) 
 }
 
 // before lists the tracked files at the base and reads, in one batch, only the wanted files that changed. other are
-// the tracked paths that are no regular file; absent the wanted files whose content a partial clone lacks.
-func before(run runner, base string, changes []snapshot.Change, wants snapshot.Wants) (entries []snapshot.Entry, other, absent []string, err error) {
+// the tracked paths that are no regular file; absent the changed files whose base content a partial clone lacks: the
+// wanted ones it could not read, and those of the paths missing from some commit (missing) whose base object is absent.
+// A path the change added has no base and is never absent.
+func before(run runner, base string, changes []snapshot.Change, missing []string, wants snapshot.Wants) (entries []snapshot.Entry, other, absent []string, err error) {
 	output, err := run(nil, "ls-tree", "-r", "-z", "--full-tree", base)
 	if err != nil {
 		return nil, nil, nil, gitFailed(err)
@@ -440,20 +439,26 @@ func before(run runner, base string, changes []snapshot.Change, wants snapshot.W
 		}
 	}
 	var wanted []string
-	objects := map[string]string{}
+	objects, checked := map[string]string{}, map[string][]string{}
 	for _, tracked := range parseTracked(output, 2) {
 		if !regular(tracked.mode) {
 			other = append(other, tracked.path)
 			continue
 		}
 		entries = append(entries, snapshot.Entry{Path: tracked.path})
-		if changed[tracked.path] && wants.Path(tracked.path) {
+		switch {
+		case changed[tracked.path] && wants.Path(tracked.path):
 			wanted = append(wanted, tracked.object)
 			objects[tracked.path] = tracked.object
+		case changed[tracked.path] && slices.Contains(missing, tracked.path):
+			checked[tracked.object] = append(checked[tracked.object], tracked.path)
 		}
 	}
+	if absent, err = lacking(run, checked); err != nil {
+		return nil, nil, nil, err
+	}
 	if len(wanted) == 0 {
-		return entries, other, nil, nil
+		return entries, other, absent, nil
 	}
 	slices.Sort(wanted)
 	batch, err := run([]byte(strings.Join(slices.Compact(wanted), "\n")+"\n"), "cat-file", "--batch")
@@ -519,27 +524,23 @@ func missingContent(run runner) ([]string, error) {
 	return pathsOfObjects(raw, lost), nil
 }
 
-// unavailable are the paths whose base content is missing although they differ between the base and the working
-// tree: the changed paths whose base content was absent, and the paths missing from some commit that differ (their
-// changes were left out of the diff). Comparing the two states needs only the trees and the working tree, no content.
-func unavailable(run runner, base string, missing, absent []string) ([]string, error) {
-	found := slices.Clone(absent)
-	if len(missing) > 0 {
-		out, err := run(nil, "diff", "--name-only", "--no-renames", "-z", base)
-		if err != nil {
-			return nil, gitFailed(err)
-		}
-		changed := map[string]bool{}
-		for _, p := range fields(out) {
-			changed[p] = true
-		}
-		for _, p := range missing {
-			if changed[p] {
-				found = append(found, p)
-			}
+// lacking are the paths of the objects the clone lacks, from the paths of each object; it reads no content.
+func lacking(run runner, pathsOf map[string][]string) ([]string, error) {
+	if len(pathsOf) == 0 {
+		return nil, nil
+	}
+	objects := slices.Sorted(maps.Keys(pathsOf))
+	out, err := run([]byte(strings.Join(objects, "\n")+"\n"), "cat-file", "--batch-check")
+	if err != nil {
+		return nil, gitFailed(err)
+	}
+	var paths []string
+	for line := range strings.Lines(string(out)) {
+		if object, found := strings.CutSuffix(strings.TrimSuffix(line, "\n"), " missing"); found {
+			paths = append(paths, pathsOf[object]...)
 		}
 	}
-	return slices.Compact(slices.Sorted(slices.Values(found))), nil
+	return paths, nil
 }
 
 // withEveryCommit is the commits in the order of ids, each one read where it was, else with no files.

@@ -210,6 +210,26 @@ func TestIntegrationReadFetchesNothingFromARemote(t *testing.T) {
 	}
 }
 
+// TestIntegrationContentMissingOnlyInBetweenIsAvailable reads a partial clone in which two changed paths lack content
+// only in a commit between the base and the head: one the change added, one whose base content is there.
+func TestIntegrationContentMissingOnlyInBetweenIsAvailable(t *testing.T) {
+	big := strings.Repeat("x\n", 20000) // 40 kB, over the clone's limit
+	origin := gitrepotest.New(t,
+		gitrepotest.Commit{Message: "base", Files: map[string]string{"src/kept.ts": "a\n"}},
+		gitrepotest.Commit{Message: "big for a while", Files: map[string]string{"src/kept.ts": big, "src/added.ts": big}},
+		gitrepotest.Commit{Message: "small again", Files: map[string]string{"src/kept.ts": "b\n", "src/added.ts": "c\n"}},
+	)
+	origin.Git("config", "uploadpack.allowFilter", "true")
+	clone := filepath.Join(t.TempDir(), "clone")
+	if out, err := exec.Command("git", "clone", "-q", "--filter=blob:limit=10k", "file://"+origin.Dir, clone).CombinedOutput(); err != nil {
+		t.Fatalf("partial clone: %v: %s", err, out)
+	}
+	got, err := read(t, clone, "HEAD~2")
+	if err != nil || len(got.Missing) != 2 || len(got.Unavailable) != 0 {
+		t.Errorf("Read(partial clone, HEAD~2) = %v, Missing %q, Unavailable %q; want both missing from history, none unavailable", err, got.Missing, got.Unavailable)
+	}
+}
+
 func TestIntegrationAPartialCloneIsReadAroundItsMissingContent(t *testing.T) {
 	big := func(fill string) string { return strings.Repeat(fill+"\n", 20000) } // 40 kB, over the clone's limit
 	origin := gitrepotest.New(t,
