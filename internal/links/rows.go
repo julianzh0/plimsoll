@@ -45,8 +45,9 @@ func atBase(s snapshot.Snapshot, before graph, file string, count func(path stri
 }
 
 // importers of the change: the direct ones, those behind them at any distance, and the files the change touched
-// among them. The changed files are the code files of the analysed languages that a change names now; a deleted or
-// renamed file adds the files that imported its base path at the base and exist now, under their path now.
+// among them. The changed files are the code files of the analysed languages that a change names now, apart from those
+// the blast radius does not count; a deleted or renamed file adds the files that imported its base path at the base and
+// exist now, under their path now.
 type changeImporters struct {
 	changedNow    []string        // the changed code files now, sorted
 	touched       map[string]bool // the paths a change names, on either side
@@ -56,6 +57,12 @@ type changeImporters struct {
 
 func importersOfChange(s snapshot.Snapshot, now, before graph) changeImporters {
 	r := changeImporters{touched: map[string]bool{}}
+	notCounted := map[string]bool{}
+	for _, c := range s.Radius.Changed {
+		if c.State == snapshot.NotCounted {
+			notCounted[c.Path], notCounted[c.BasePath] = true, true
+		}
+	}
 	nowPath := map[string]string{} // base path -> path now, for the files a change renamed
 	for _, ch := range s.Changes {
 		r.touched[ch.Path] = true
@@ -64,7 +71,7 @@ func importersOfChange(s snapshot.Snapshot, now, before graph) changeImporters {
 		}
 	}
 	for _, file := range now.files {
-		if r.touched[file] {
+		if r.touched[file] && !notCounted[file] {
 			r.changedNow = append(r.changedNow, file)
 		}
 	}
@@ -87,8 +94,8 @@ func importersOfChange(s snapshot.Snapshot, now, before graph) changeImporters {
 		}
 	}
 	for _, file := range before.files {
-		if !r.touched[file] || now.analysed(file) {
-			continue // unchanged, or still here under the same path
+		if !r.touched[file] || now.analysed(file) || notCounted[file] {
+			continue // unchanged, still here under the same path, or not counted
 		}
 		for _, importer := range before.importers(file) {
 			if moved, renamed := nowPath[importer]; renamed {
@@ -112,22 +119,26 @@ func importersOfChange(s snapshot.Snapshot, now, before graph) changeImporters {
 	return r
 }
 
-// importerRows are the importers of the change and the changed files with the most direct importers.
-func importerRows(s snapshot.Snapshot, now, before graph) []answer.Statistic {
+// importerRows put the importers of the change into the radius and give its row and the changed files with the most
+// direct importers.
+func importerRows(s snapshot.Snapshot, now, before graph, radius *answer.Radius) []answer.Statistic {
 	r := importersOfChange(s, now, before)
-	direct := answer.Plural(len(r.direct), "file") + " directly"
-	if len(r.direct) > 0 {
-		direct += " (" + split(now, r.direct) + ")"
+	radius.Direct, radius.Total = importers(now, r.direct), importers(now, r.total)
+	radius.Folders, radius.OtherFolders = answer.Folders(r.total)
+	radius.ProductCodeFiles, radius.ImportersInChange = rolesOf(now, now.files).product, r.inside
+	direct := answer.Plural(radius.Direct.Files, "file") + " directly"
+	if radius.Direct.Files > 0 {
+		direct += " (" + answer.RoleSplit(radius.Direct.Product, radius.Direct.Tests, radius.Direct.Other) + ")"
 	}
-	total := count(len(r.total)) + " at any distance"
-	if len(r.total) > len(r.direct) {
-		total += " (" + split(now, r.total) + ")"
+	total := count(radius.Total.Files) + " at any distance"
+	if radius.Total.Files > radius.Direct.Files {
+		total += " (" + answer.RoleSplit(radius.Total.Product, radius.Total.Tests, radius.Total.Other) + ")"
 	}
 	parts := []string{direct + ", " + total}
-	if len(r.total) > 0 {
-		parts = append(parts, "in "+answer.InFolders(r.total))
-		if products := rolesOf(now, now.files).product; products > 0 {
-			parts = append(parts, count(rolesOf(now, r.total).product)+" of "+answer.Plural(products, "product code file"))
+	if radius.Total.Files > 0 {
+		parts = append(parts, "in "+answer.FoldersText(radius.Folders, radius.OtherFolders))
+		if radius.ProductCodeFiles > 0 {
+			parts = append(parts, count(radius.Total.Product)+" of "+answer.Plural(radius.ProductCodeFiles, "product code file"))
 		}
 	}
 	if r.inside > 0 {
@@ -197,6 +208,12 @@ func rolesOf(g graph, files []string) roles {
 		}
 	}
 	return r
+}
+
+// importers counts files by role.
+func importers(g graph, files []string) answer.Importers {
+	r := rolesOf(g, files)
+	return answer.Importers{Files: len(files), Product: r.product, Tests: r.test, Other: r.other}
 }
 
 // split names how many importers are product, test and other code.

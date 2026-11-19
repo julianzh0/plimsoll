@@ -39,10 +39,10 @@ func (Detector) Detect(s snapshot.Snapshot) answer.Findings {
 	f := answer.Findings{NotAnalysed: notAnalysed}
 	now, before := graphsOf(s, languages)
 	changedCode := altered(s.Radius)
-	if len(languages) > 0 {
-		f = withLinks(f, s, languages, now, before, changedCode)
-	}
 	radius, rows, notCounted := blastRadius(s, languages)
+	if len(languages) > 0 {
+		f = withLinks(f, s, languages, now, before, radius, changedCode)
+	}
 	f.Radius, f.Statistics, f.NotAnalysed = radius, append(rows, f.Statistics...), append(f.NotAnalysed, notCounted...)
 	if changedCode {
 		f.Notes = append(f.Notes, radiusNote)
@@ -69,12 +69,14 @@ func cycleRan(s snapshot.Snapshot, used []snapshot.LanguageImports) bool {
 	for _, l := range used {
 		rings[l.Language] = l.NoRings == ""
 	}
-	return slices.ContainsFunc(s.Radius.Changed, func(c snapshot.ChangedFile) bool { return rings[c.Language] && c.State != snapshot.NotCounted })
+	return slices.ContainsFunc(s.Radius.Changed, func(c snapshot.ChangedFile) bool {
+		return rings[c.Language] && c.State != snapshot.NotCounted && !slices.Contains(s.Unparsed, c.Path) // its links were read
+	})
 }
 
 // withLinks adds what the links of the analysed languages show: the rows, the marks and the notes.
 // The importers of the change are left out when every changed code file altered nothing: they are no files to check.
-func withLinks(f answer.Findings, s snapshot.Snapshot, languages []snapshot.LanguageImports, now, before graph, altered bool) answer.Findings {
+func withLinks(f answer.Findings, s snapshot.Snapshot, languages []snapshot.LanguageImports, now, before graph, radius *answer.Radius, altered bool) answer.Findings {
 	f.Notes = append(f.Notes, linksNote)
 	if altered {
 		f.Notes = append(f.Notes, importersNote)
@@ -88,7 +90,7 @@ func withLinks(f answer.Findings, s snapshot.Snapshot, languages []snapshot.Lang
 	}
 	f.Marks = testImportMarks(s, now, before)
 	if altered {
-		f.Statistics = append(f.Statistics, importerRows(s, now, before)...)
+		f.Statistics = append(f.Statistics, importerRows(s, now, before, radius)...)
 	}
 	nowRings, baseRings := now.rings(false), before.rings(false)
 	if slices.ContainsFunc(languages, func(l snapshot.LanguageImports) bool { return l.NoRings == "" }) {

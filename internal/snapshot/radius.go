@@ -12,7 +12,7 @@ import (
 	"github.com/julianzh0/plimsoll/internal/conventions"
 )
 
-// FileState is what a change did to one changed code file, for the blast radius (US-63).
+// FileState is what a change did to one changed code file, for the blast radius.
 type FileState int
 
 // The states of a changed code file.
@@ -27,6 +27,7 @@ const (
 // The reasons a changed code file is not counted, counted as a whole or deleted without names.
 const (
 	ReasonSkipped      = "in a skipped folder"
+	ReasonIgnored      = "left out by the repository's own file"
 	ReasonMissing      = "its content is missing in this partial clone"
 	ReasonGenerated    = "generated"
 	ReasonSyntaxError  = "its declarations hold a syntax error"
@@ -38,12 +39,11 @@ const (
 )
 
 // Radius is what the change did to the files that use its code: the state of each changed code file and the files
-// that use what it altered or removed. It holds no name, token or text of any file (US-63, trust).
+// that use what it altered or removed. It holds no name, token or text of any file (trust).
 type Radius struct {
 	Changed []ChangedFile // sorted by path now, then path at the base
 	Users   []User        // untouched users, sorted by path
 	Touched []User        // users the change itself touched, sorted by path
-	Unread  []User        // walked files whose content is missing now, sorted by path
 	// MissingNow says a code file's content is missing now: some use may be out of sight.
 	MissingNow bool
 }
@@ -74,7 +74,7 @@ type radiusInput struct {
 	nowContent, baseContent     map[string][]byte // every tracked path of a side, nil when its content was not read
 	now, before                 Tree
 	nowReadings, beforeReadings map[string]reading
-	missing                     []string
+	missing, unreadable         []string  // content not in a partial clone; files that could not be read now
 	readings                    *Readings // where each reached file's identifiers are kept by content
 	question                    uint64
 }
@@ -82,7 +82,7 @@ type radiusInput struct {
 // blastRadius decides the state of each changed code file and walks from their seeds to the users.
 func blastRadius(in radiusInput) Radius {
 	var r Radius
-	for _, p := range in.missing {
+	for _, p := range slices.Concat(in.missing, in.unreadable) {
 		r.MissingNow = r.MissingNow || missingNow(in, p)
 	}
 	if len(in.changes) == 0 {
@@ -102,15 +102,16 @@ func blastRadius(in radiusInput) Radius {
 		return cmp.Or(strings.Compare(a.Path, b.Path), strings.Compare(a.BasePath, b.BasePath))
 	})
 	w.run()
-	r.Users, r.Touched, r.Unread = w.results()
+	r.Users, r.Touched = w.results()
 	return r
 }
 
-// missingNow says whether a path is tracked now, of a language plimsoll reads, with its content missing.
+// missingNow says whether a path is tracked now, of a language plimsoll reads and outside what it leaves out, with its
+// content missing.
 func missingNow(in radiusInput, p string) bool {
 	_, known := in.rules.LanguageOf(p)
 	content, tracked := in.nowContent[p]
-	return known && tracked && content == nil
+	return known && tracked && content == nil && !excluded(in.rules, p)
 }
 
 // changed is a changed code file with what the walk needs of it.
@@ -127,7 +128,7 @@ func compared(in radiusInput, nowPath, basePath string) bool {
 		p       string
 		content []byte
 	}{{nowPath, in.nowContent[nowPath]}, {basePath, in.baseContent[basePath]}} {
-		if side.p == "" || side.content == nil || inFolders(side.p, in.rules.SkippedFolders) ||
+		if side.p == "" || side.content == nil || excluded(in.rules, side.p) ||
 			onPaths(in.rules, side.p, in.rules.GeneratedNames) || generatedOrBinary(in.rules, side.content) {
 			return false
 		}
@@ -155,7 +156,7 @@ func (w *radiusWalk) readPrints() {
 		jobs = append(jobs, job{true, ch.Path, w.in.nowContent[ch.Path], w.in.nowReadings[ch.Path], language},
 			job{false, basePath, w.in.baseContent[basePath], w.in.beforeReadings[basePath], language})
 	}
-	results := make([]printPair, len(jobs))
+	results := make([]prints, len(jobs))
 	parallel(len(jobs), func(i int) {
 		results[i] = w.in.readings.printsOfReading(jobs[i].language, jobs[i].language.GrammarOf(jobs[i].path), jobs[i].content, jobs[i].reading, w.in.question)
 	})
@@ -197,13 +198,26 @@ func (w *radiusWalk) changedFiles(ch Change) []changed {
 	if _, tracked := w.in.nowContent[ch.Path]; tracked {
 		nowPath = ch.Path
 	}
-	language, known := w.in.rules.LanguageOf(cmp.Or(nowPath, basePath))
-	if !known || nowPath == "" && basePath == "" {
+	nowLanguage, nowKnown := w.in.rules.LanguageOf(nowPath)
+	baseLanguage, baseKnown := w.in.rules.LanguageOf(basePath)
+	nowKnown, baseKnown = nowKnown && nowPath != "", baseKnown && basePath != ""
+	switch {
+	case !nowKnown && !baseKnown:
 		return nil
+	case !nowKnown && nowPath != "": // code renamed to a suffix no entry reads: its old path is gone
+		return w.changedFiles(Change{Path: basePath})
+	case !baseKnown:
+		basePath = "" // new, or renamed from a suffix no entry reads
 	}
-	if ch.From != "" && nowPath != "" && language.Imports.Target == conventions.FolderTarget && path.Dir(ch.From) != path.Dir(nowPath) {
+	language := nowLanguage
+	if !nowKnown {
+		language = baseLanguage
+	}
+	if ch.From != "" && nowPath != "" && basePath != "" && language.Imports.Target == conventions.FolderTarget && path.Dir(ch.From) != path.Dir(nowPath) {
 		gone := w.changedFiles(Change{Path: ch.From})
-		return append(gone, changed{file: ChangedFile{Path: nowPath, Language: language.Name, State: NothingAltered}, language: language})
+		moved := changed{file: ChangedFile{Path: nowPath, Language: language.Name}, language: language}
+		moved.file.State, moved.file.Reason, moved.names = w.state(language, nowPath, "")
+		return append(gone, moved)
 	}
 	c := changed{file: ChangedFile{Path: nowPath, BasePath: basePath, Language: language.Name}, language: language}
 	c.file.State, c.file.Reason, c.names = w.state(language, nowPath, basePath)
@@ -220,23 +234,26 @@ func (w *radiusWalk) state(language conventions.Language, nowPath, basePath stri
 		content []byte
 	}{{nowPath, nowContent}, {basePath, baseContent}}
 	for _, side := range sides {
-		if side.p != "" && inFolders(side.p, rules.SkippedFolders) {
+		switch {
+		case side.p == "":
+		case ignored(rules, side.p):
+			return NotCounted, ReasonIgnored, nil
+		case excluded(rules, side.p):
 			return NotCounted, ReasonSkipped, nil
 		}
 	}
 	for _, side := range sides {
-		if side.p != "" && side.content == nil {
+		if side.p != "" && side.content == nil && slices.Contains(w.in.missing, side.p) {
 			return NotCounted, ReasonMissing, nil
 		}
 	}
-	for _, side := range sides {
-		if side.p != "" && (onPaths(rules, side.p, rules.GeneratedNames) || generatedOrBinary(rules, side.content)) {
+	for _, side := range sides { // content that could not be read for another reason is binary
+		if side.p != "" && (side.content == nil || onPaths(rules, side.p, rules.GeneratedNames) || generatedOrBinary(rules, side.content)) {
 			return NotCounted, ReasonGenerated, nil
 		}
 	}
 	nowReading, baseReading := w.in.nowReadings[nowPath], w.in.beforeReadings[basePath]
-	surface := slices.Contains(language.SurfaceFiles, path.Base(cmp.Or(nowPath, basePath))) // no import is pure there
-	nowPrints, basePrints := w.nowPrints[nowPath].pick(surface), w.basePrints[basePath].pick(surface)
+	nowPrints, basePrints := w.nowPrints[nowPath], w.basePrints[basePath]
 	switch {
 	case basePath == "":
 		return NothingAltered, "", nil // a new file
@@ -245,6 +262,9 @@ func (w *radiusWalk) state(language conventions.Language, nowPath, basePath stri
 	case nowPath == "":
 		if reason := unreadUnits(baseReading); reason != "" {
 			return Deleted, reason, nil
+		}
+		if len(baseReading.errors) > 0 { // a broken declaration's names may be wrong: its importers count as a whole
+			return Deleted, ReasonSyntaxError, nil
 		}
 		var names []string
 		for _, u := range baseReading.units {
@@ -276,30 +296,26 @@ func compareUnits(nowPrint, basePrint prints, now, base reading) (FileState, str
 	if nowPrint.remainder != basePrint.remainder {
 		return AsAWhole, ReasonRemainder, nil
 	}
-	nowPrints := map[uint64]int{}
-	for _, p := range nowPrint.units {
-		nowPrints[p]++
+	holdsError := func(r reading, u unit) bool {
+		return slices.ContainsFunc(r.errors, func(e span) bool { return e.start < u.end && u.start <= e.end })
 	}
-	var names []string
-	for i, u := range base.units {
-		if p := basePrint.units[i]; nowPrints[p] > 0 {
-			nowPrints[p]--
-			continue
-		}
-		if slices.ContainsFunc(base.errors, func(e span) bool { return e.start < u.end && u.start <= e.end }) {
+	for _, i := range unmatched(nowPrint.units, basePrint.units) {
+		if holdsError(now, now.units[i]) {
 			return AsAWhole, ReasonSyntaxError, nil
 		}
-		if len(u.names) == 0 {
+	}
+	var names []string
+	for _, i := range unmatched(basePrint.units, nowPrint.units) {
+		u := base.units[i]
+		switch {
+		case holdsError(base, u):
+			return AsAWhole, ReasonSyntaxError, nil
+		case u.inner != nil:
+			return AsAWhole, ReasonRemainder, nil // a container's head, such as a namespace's name or an #if condition, changed
+		case len(u.names) == 0:
 			return AsAWhole, ReasonUnnamed, nil
-		}
-		for _, name := range u.names {
-			switch {
-			case identifier.MatchString(name):
-			case u.inner != nil:
-				return AsAWhole, ReasonRemainder, nil // a container's head, such as an #if condition, changed
-			default:
-				return AsAWhole, ReasonNoIdentifier, nil
-			}
+		case slices.ContainsFunc(u.names, func(n string) bool { return !identifier.MatchString(n) }):
+			return AsAWhole, ReasonNoIdentifier, nil
 		}
 		names = append(names, u.names...)
 	}
@@ -309,7 +325,25 @@ func compareUnits(nowPrint, basePrint prints, now, base reading) (FileState, str
 	return ByName, "", sortedNames(names)
 }
 
-var identifier = regexp.MustCompile(`^[\p{L}_][\p{L}\p{N}_]*$`)
+// unmatched are the indexes of a side's unit prints the other side does not hold, each print counted as often as it
+// occurs.
+func unmatched(side, other []uint64) []int {
+	held := map[uint64]int{}
+	for _, p := range other {
+		held[p]++
+	}
+	var found []int
+	for i, p := range side {
+		if held[p] > 0 {
+			held[p]--
+			continue
+		}
+		found = append(found, i)
+	}
+	return found
+}
+
+var identifier = regexp.MustCompile(`^[\p{L}_$][\p{L}\p{N}_$]*$`)
 
 func sortedNames(names []string) []string {
 	slices.Sort(names)

@@ -358,32 +358,49 @@ func inFolders(items []Mark) string {
 	return ", in " + InFolders(paths)
 }
 
-// InFolders counts paths by their first two folders, the largest first, the first three named and the rest counted:
-// "`src/` 3, `docs/plans/` 1, 2 in other folders". Two levels keep a tree of records per story as one count.
-func InFolders(paths []string) string {
+// Folders counts paths by their first two folders ("" for the root), the largest first: the first three, and how many
+// lie in other folders. Two levels keep a tree of records per story as one count.
+func Folders(paths []string) (named []FolderCount, others int) {
 	counts := map[string]int{}
 	for _, p := range paths {
 		folders := strings.Split(path.Dir(p), "/")
-		folder := "`" + strings.Join(folders[:min(len(folders), groupLevels)], "/") + "/`"
-		if folder == "`./`" {
-			folder = "the root"
+		folder := strings.Join(folders[:min(len(folders), groupLevels)], "/") + "/"
+		if folder == "./" {
+			folder = ""
 		}
 		counts[folder]++
 	}
 	folders := slices.SortedFunc(maps.Keys(counts), func(a, b string) int { return cmp.Or(cmp.Compare(counts[b], counts[a]), strings.Compare(a, b)) })
-	parts := make([]string, 0, reportFolders+1)
-	others := 0
+	named = []FolderCount{}
 	for i, folder := range folders {
 		if i < reportFolders {
-			parts = append(parts, fmt.Sprintf("%s %d", folder, counts[folder]))
+			named = append(named, FolderCount{Folder: folder, Files: counts[folder]})
 		} else {
 			others += counts[folder]
 		}
+	}
+	return named, others
+}
+
+// FoldersText says folder counts: "`src/` 3, `docs/plans/` 1, 2 in other folders".
+func FoldersText(named []FolderCount, others int) string {
+	parts := make([]string, 0, len(named)+1)
+	for _, f := range named {
+		folder := "`" + f.Folder + "`"
+		if f.Folder == "" {
+			folder = "the root"
+		}
+		parts = append(parts, fmt.Sprintf("%s %d", folder, f.Files))
 	}
 	if others > 0 {
 		parts = append(parts, fmt.Sprintf("%d in other folders", others))
 	}
 	return strings.Join(parts, ", ")
+}
+
+// InFolders counts paths by their first two folders, the largest first, the first three named and the rest counted.
+func InFolders(paths []string) string {
+	return FoldersText(Folders(paths))
 }
 
 // headlineBlock writes the areas and the blast radius right after the first line (R-30): the areas that got worse
@@ -420,12 +437,12 @@ func headlineBlock(text *strings.Builder, h *Headline, r *Radius) {
 
 // radiusLine says the blast radius in one line: a number with its parts, a lower bound, or why there is none.
 func radiusLine(r Radius) string {
-	const use = " outside the change use what it altered or removed"
+	const use = " outside the change use or import what it altered or removed"
 	switch {
 	case r.State == RadiusNotAnalysed:
 		return "not analysed (see Not analysed)"
 	case r.Files == 0 && r.State == RadiusAtLeast:
-		return "an incomplete count: no file outside the change found that uses what it altered or removed (see Not analysed)"
+		return "an incomplete count: no file outside the change found that uses or imports what it altered or removed (see Not analysed)"
 	case r.Files == 0:
 		return "0 files" + use
 	}
@@ -435,7 +452,7 @@ func radiusLine(r Radius) string {
 	}
 	verb := use
 	if r.Files == 1 {
-		verb = " outside the change uses what it altered or removed"
+		verb = " outside the change uses or imports what it altered or removed"
 	}
 	return files + verb + " (" + r.Split() + ")"
 }

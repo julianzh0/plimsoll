@@ -163,24 +163,57 @@ type Evidence struct {
 	Omitted int      `json:"omitted"`
 }
 
-// Radius is the blast radius of a change (US-63): the files the change did not touch that use a name it altered or
-// removed, or that use a changed file whose names could not be read. State says whether the number is counted, a
-// lower bound, or not analysed; Paths are the first of those files, in path order, and Omitted counts the rest.
+// Radius is the blast radius of a change: the files the change did not touch that use a name it altered or removed,
+// or that use a changed file counted as a whole. State says whether the number is counted, a lower bound, or not
+// analysed; Paths are the first of those files, product files first and each part in path order, and Omitted counts
+// the rest. Changed are the changed code files by state; Direct and Total the untouched files that import a changed
+// code file directly and at any distance, of the languages whose imports are read, with Folders of the total, the
+// count in OtherFolders, and ProductCodeFiles of those languages, the share's denominator.
 type Radius struct {
-	State    RadiusState `json:"state"`
-	Files    int         `json:"files"`
-	ByName   int         `json:"byName"`  // the files that use an altered or removed name
-	AsWhole  int         `json:"asWhole"` // the other files: users of a changed file whose names could not be read
-	Product  int         `json:"product"`
-	Tests    int         `json:"tests"`
-	Other    int         `json:"other"`
-	InChange int         `json:"inChange"` // users the change itself touched, apart
-	Unread   int         `json:"unread"`   // files the walk reached whose content is missing
-	Paths    []string    `json:"paths"`
-	Omitted  int         `json:"omitted"`
+	State             RadiusState   `json:"state"`
+	Files             int           `json:"files"`
+	ByName            int           `json:"byName"`  // the files that use an altered or removed name
+	AsWhole           int           `json:"asWhole"` // the other files: users of a changed file counted as a whole
+	Product           int           `json:"product"`
+	Tests             int           `json:"tests"`
+	Other             int           `json:"other"`
+	InChange          int           `json:"inChange"` // users the change itself touched, apart
+	Paths             []string      `json:"paths"`
+	Omitted           int           `json:"omitted"`
+	Changed           ChangedFiles  `json:"changed"`
+	Direct            Importers     `json:"direct"`
+	Total             Importers     `json:"total"`
+	Folders           []FolderCount `json:"folders"`
+	OtherFolders      int           `json:"otherFolders"`
+	ProductCodeFiles  int           `json:"productCodeFiles"`
+	ImportersInChange int           `json:"importersInChange"` // importers the change itself touched, apart
 }
 
-// Headline sums up the change per area (US-64): how many areas got worse and how many better, and each area's state
+// ChangedFiles counts the changed code files of a change by state.
+type ChangedFiles struct {
+	All            int `json:"all"`
+	ByName         int `json:"byName"`         // altered or removed declarations, read by name
+	AsWhole        int `json:"asWhole"`        // changed code that could not be told by name
+	Deleted        int `json:"deleted"`        // exist only at the base
+	NothingAltered int `json:"nothingAltered"` // comments, imports or added declarations only
+	NotCounted     int `json:"notCounted"`     // skipped, ignored, generated, missing, or of a language whose links are not used
+}
+
+// Importers counts files by role.
+type Importers struct {
+	Files   int `json:"files"`
+	Product int `json:"product"`
+	Tests   int `json:"tests"`
+	Other   int `json:"other"`
+}
+
+// FolderCount is how many files lie under a folder ("" for the root).
+type FolderCount struct {
+	Folder string `json:"folder"`
+	Files  int    `json:"files"`
+}
+
+// Headline sums up the change per area: how many areas got worse and how many better, and each area's state
 // with the identifiers it rests on. Only kinds of mark that are not report-only move an area.
 type Headline struct {
 	Worse  int            `json:"worse"`  // the failing areas

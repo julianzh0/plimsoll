@@ -17,11 +17,13 @@
 
 <p align="center"><img src=".github/how-it-works.svg" alt="Your agent changes code, asks plimsoll, and gets a few measured findings back, each with a way to check it" width="900"></p>
 
-After a change, your agent asks plimsoll and gets a few findings back, each measured, each with its limit and a way
-to check it. Here is a real answer for the last 30 commits of [Obtainium](https://github.com/ImranR98/Obtainium):
+After a change, your agent asks plimsoll and gets back the areas the change made worse, the files outside it that use
+what it altered, and a few findings, each measured, each with its limit and a way to check it. Here is a real answer for the last 30 commits of [Obtainium](https://github.com/ImranR98/Obtainium):
 
 ```text
-plimsoll 0.6.0 status: base `HEAD~30` e9087ce099, head 35c3e7fea4
+plimsoll 0.8.0 status: base `HEAD~30` e9087ce099, head 35c3e7fea4
+Areas: 3 worse (dependencies 1, wiring 1, functions 2); not analysed: settings
+Blast radius: 50 files outside the change use or import what it altered or removed (25 product, 25 test)
 3 new, 1 grown, 0 resolved; 14 more in `report` only
 
 1. [new, exact] `pubspec.yaml` names 1 runtime dependency that was not there at the base: `cronet_http` (47 now, 46 at the base).

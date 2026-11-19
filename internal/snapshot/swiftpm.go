@@ -59,9 +59,24 @@ func swiftDependencies(content []byte) (names []string, manifest, readable bool)
 // NOTE: a target's name or path built from a variable is not read, and such a module's imports count as outside.
 // Upgrade: ask swift package dump-package.
 func swiftTargets(content []byte) prefix {
-	text, declared := swiftManifest(content)
+	folders, declared := swiftTargetFolders(content)
 	if !declared {
 		return prefix{state: PrefixUnreadable}
+	}
+	return prefix{state: PrefixRead, own: func(_, spec string, _ []string) ([]string, bool) {
+		if folder, own := folders[spec]; own {
+			return []string{folder}, false
+		}
+		return nil, false
+	}}
+}
+
+// swiftTargetFolders are the folders of the targets a root Package.swift declares, by target name, and whether it
+// declares a Package.
+func swiftTargetFolders(content []byte) (map[string]string, bool) {
+	text, declared := swiftManifest(content)
+	if !declared {
+		return nil, false
 	}
 	folders := map[string]string{} // a target's name to its folder
 	end := -1                      // the end of the last target read: a target named inside it is a reference
@@ -91,12 +106,7 @@ func swiftTargets(content []byte) prefix {
 		}
 		folders[name] = folder
 	}
-	return prefix{state: PrefixRead, own: func(_, spec string, _ []string) ([]string, bool) {
-		if folder, own := folders[spec]; own {
-			return []string{folder}, false
-		}
-		return nil, false
-	}}
+	return folders, true
 }
 
 // swiftManifest is a Package.swift's text with its comments blanked, and whether it declares a Package.

@@ -127,7 +127,7 @@ type reading struct {
 	parsed      bool // the entry's grammar read the file
 	// declarations are the top-level names the file declares outside its test code, when it was read with them.
 	declarations []topName
-	// units are the file's comparison units and pure imports (US-63), when it was read with its declarations.
+	// units are the file's comparison units and pure imports, when it was read with its declarations.
 	units       []unit
 	pureImports []span
 	unitsRead   bool   // the grammar read the file for its units, with or without errors

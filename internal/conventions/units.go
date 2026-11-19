@@ -5,7 +5,7 @@ import (
 	"slices"
 )
 
-// The comparison units of the blast radius (US-63): which declarations of a changed file are compared one by one, the
+// The comparison units of the blast radius: which declarations of a changed file are compared one by one, the
 // names each declares directly, the imports that alter nothing, the containers around a unit, and what of a file's
 // layout is code. A unit's captures:
 //
@@ -77,7 +77,6 @@ const pythonUnits = `
   (class_definition name: (identifier) @unit.name)]) @unit
 (module (expression_statement (assignment left: (identifier) @unit.name)) @unit)
 (module (expression_statement (assignment left: (pattern_list (identifier) @unit.name))) @unit)
-[(import_statement) (import_from_statement) (future_import_statement)] @unit.import
 `
 
 const typescriptUnits = `

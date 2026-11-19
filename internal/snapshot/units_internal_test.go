@@ -56,7 +56,7 @@ func TestUnitsAreTheDeclarationsOfAFileWithTheNamesTheyDeclareDirectly(t *testin
 			"mod inner {\n    pub fn deep() {}\n}\n\nconst K: u8 = 1;\nmacro_rules! m { () => {} }\n",
 			[]string{"run", "S", "S", "inner", "deep in inner", "K", "m"}, 1},
 		{"src/a.py", "import os\nfrom .m import X\n\nLIMIT = 3\n\ndef run():\n    def inner(): pass\n\n@decorator\ndef handler(): pass\n\nclass Model:\n    def method(self): pass\n",
-			[]string{"LIMIT", "run", "handler", "Model"}, 2},
+			[]string{"LIMIT", "run", "handler", "Model"}, 0}, // a Python import binds a reachable name: no import is pure
 		{"src/a.ts", "import { b } from './b';\nexport * from './c';\n\nexport function run() {}\nconst local = 1;\nclass Shape { area() {} }\n" +
 			"namespace NS {\n  export function inner() {}\n}\n",
 			[]string{"run", "local", "Shape", "NS", "inner in NS"}, 1},
@@ -90,5 +90,9 @@ func TestAnAttributeBeforeAUnitIsPartOfIt(t *testing.T) {
 	r := readUnits(t, "a.rs", content)
 	if len(r.units) != 2 || r.units[0].start != 0 || content[r.units[1].start:r.units[1].start+7] != "#[test]" {
 		t.Errorf("units of %q = %+v, want each starting at its attributes", content, r.units)
+	}
+	touching := "#[inline]fn run() {}\n"
+	if r := readUnits(t, "a.rs", touching); len(r.units) != 1 || r.units[0].start != 0 {
+		t.Errorf("units of %q = %+v, want the attribute that touches the function in its unit", touching, r.units)
 	}
 }

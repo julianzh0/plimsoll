@@ -201,7 +201,9 @@ func (g graph) importers(path string) []string {
 func (g graph) targets(path string) int {
 	distinct := map[string]bool{}
 	for _, link := range g.from[path] {
-		distinct[link.To] = true
+		if link.Uses() { // a module's declaration is containment, not an import
+			distinct[link.To] = true
+		}
 	}
 	return len(distinct)
 }

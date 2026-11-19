@@ -68,7 +68,7 @@ func TestStatusWithMarksReadsWordForWord(t *testing.T) {
 		"Standing (already at the base, not grown): 1 standing.\n" +
 		"History: 12 commits read, 11 usable.\n" +
 		"Detectors run: shape.\n" +
-		"Not analysed: no `.env.example`, so no settings count; not verified for `.sh` (7 lines in 2 files); 3 untracked files; content not in this partial clone, so its lines and history are not counted: 1 file (`data/big.bin`); the parser could not read 2 files, so their imports, test code and settings reads are not counted (a file may need at most 128 MiB to parse): `src/big.ts`, `src/huge.ts` and 1 more in `report`.\n"
+		"Not analysed: no `.env.example`, so no settings count; not verified for `.sh` (7 lines in 2 files); 3 untracked files; content not in this partial clone, so its lines, history, links and blast radius are not counted: 1 file (`data/big.bin`); the parser could not read 2 files, so their imports, test code and settings reads are not counted (a file may need at most 128 MiB to parse): `src/big.ts`, `src/huge.ts` and 1 more in `report`.\n"
 	got := Render(Assemble(Status, "0.1.0", sample(), []Result{{"shape", findings()}}), wording())
 	if got != want {
 		t.Fatalf("Render(status) =\n%s\nwant\n%s", got, want)
@@ -83,7 +83,7 @@ func TestAnswerWithoutMarksReadsWordForWord(t *testing.T) {
 		Radius: &Radius{State: RadiusCounted, Paths: []string{}}}
 	want := "plimsoll 0.1.0 status: base `main` 1a2b3c4d5e, head 1a2b3c4d5e\n" +
 		"Areas: none worse; not analysed: settings\n" +
-		"Blast radius: 0 files outside the change use what it altered or removed\n" +
+		"Blast radius: 0 files outside the change use or import what it altered or removed\n" +
 		"0 new, 0 grown, 0 resolved\n" +
 		"Footprint of the change since the base: 0 commits, 0 files; product +0 -0, test +0 -0, documentation +0 -0; no product line added.\n" +
 		"\n" +
@@ -94,6 +94,26 @@ func TestAnswerWithoutMarksReadsWordForWord(t *testing.T) {
 		"Not analysed: none.\n"
 	if got := Render(Assemble(Status, "0.1.0", s, []Result{{"shape", ran}}), wording()); got != want {
 		t.Fatalf("Render(no marks) =\n%s\nwant\n%s", got, want)
+	}
+	wantReport := "plimsoll 0.1.0 report: base `main` 1a2b3c4d5e, head 1a2b3c4d5e\n" +
+		"Areas: none worse; not analysed: settings\n" +
+		"Blast radius: 0 files outside the change use or import what it altered or removed\n" +
+		"0 new, 0 grown, 0 resolved\n" +
+		"Footprint of the change since the base: 0 commits, 0 files; product +0 -0, test +0 -0, documentation +0 -0; no product line added.\n" +
+		"\n" +
+		"No new or grown marks since `main` (0 commits, 0 files compared).\n" +
+		"\n" +
+		"Resolved: none.\n" +
+		"Touched but not created by this change: none.\n" +
+		"\n" +
+		"shape\n" +
+		"\n" +
+		"Standing (already at the base, not grown): none.\n" +
+		"History: 12 commits read, 11 usable.\n" +
+		"Detectors run: shape.\n" +
+		"Not analysed: none.\n"
+	if got := Render(Assemble(Report, "0.1.0", s, []Result{{"shape", ran}}), wording()); got != wantReport {
+		t.Fatalf("Render(report, no marks) =\n%s\nwant\n%s", got, wantReport)
 	}
 }
 
@@ -136,7 +156,7 @@ func TestReportListsEverythingInAFixedLayout(t *testing.T) {
 		"- shape: no `.env.example`, so no settings count\n" +
 		"- repository: not verified for `.sh` (7 lines in 2 files)\n" +
 		"- repository: 3 untracked files\n" +
-		"- repository: content not in this partial clone, so its lines and history are not counted: 1 file (`data/big.bin`)\n" +
+		"- repository: content not in this partial clone, so its lines, history, links and blast radius are not counted: 1 file (`data/big.bin`)\n" +
 		"- repository: the parser could not read 2 files, so their imports, test code and settings reads are not counted (a file may need at most 128 MiB to parse): `src/big.ts`, `src/huge.ts`\n" +
 		"- repository: 1 changed file holds a syntax error, so an import after the error may be missed: `src/a.py`\n"
 	if !strings.HasSuffix(report, wantTail) {
@@ -195,6 +215,7 @@ func TestStatusShowsFiveMarksAndStaysInsideFortyLines(t *testing.T) {
 	for i := range 30 {
 		f.NotAnalysed = append(f.NotAnalysed, fmt.Sprintf("entry %d", i))
 	}
+	f.Radius = &Radius{State: RadiusAtLeast, Files: 50, Product: 25, Tests: 25, Paths: []string{}, Folders: []FolderCount{}}
 	a := Assemble(Status, "0.1.0", sample(), []Result{{"shape", f}})
 	if len(a.Marks) != 5 || a.More != 7 || a.Counts != (Counts{New: 12, Resolved: 10}) {
 		t.Fatalf("Assemble(status) = %d marks, %d more, counts %+v; want 5, 7, {12 0 10}", len(a.Marks), a.More, a.Counts)
@@ -203,7 +224,7 @@ func TestStatusShowsFiveMarksAndStaysInsideFortyLines(t *testing.T) {
 	if lines := strings.Count(text, "\n"); lines > 40 {
 		t.Errorf("Render(status) has %d lines, want at most 40", lines)
 	}
-	for _, want := range []string{"7 more: `report` lists them.", "and 7 more in `report`", "and 30 more in `report`"} {
+	for _, want := range []string{"7 more: `report` lists them.", "and 7 more in `report`", "and 30 more in `report`", "\nAreas: ", "\nBlast radius: at least 50 files"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("Render(status) lacks %q:\n%s", want, text)
 		}
@@ -529,9 +550,9 @@ func TestTheHeadlineBlockNamesWorseBetterAndNotAnalysedAreasAndTheRadius(t *test
 		want   string
 	}{
 		{&Radius{State: RadiusCounted, Files: 50, Product: 25, Tests: 24, Other: 1},
-			"Blast radius: 50 files outside the change use what it altered or removed (25 product, 24 test, 1 other)"},
-		{&Radius{State: RadiusAtLeast, Files: 1, Product: 1}, "Blast radius: at least 1 file outside the change uses what it altered or removed (1 product, 0 test)"},
-		{&Radius{State: RadiusAtLeast}, "Blast radius: an incomplete count: no file outside the change found that uses what it altered or removed (see Not analysed)"},
+			"Blast radius: 50 files outside the change use or import what it altered or removed (25 product, 24 test, 1 other)"},
+		{&Radius{State: RadiusAtLeast, Files: 1, Product: 1}, "Blast radius: at least 1 file outside the change uses or imports what it altered or removed (1 product, 0 test)"},
+		{&Radius{State: RadiusAtLeast}, "Blast radius: an incomplete count: no file outside the change found that uses or imports what it altered or removed (see Not analysed)"},
 		{&Radius{State: RadiusNotAnalysed}, "Blast radius: not analysed (see Not analysed)"},
 	} {
 		var text strings.Builder

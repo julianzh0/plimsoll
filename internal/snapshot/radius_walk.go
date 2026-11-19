@@ -1,6 +1,7 @@
 package snapshot
 
 import (
+	"cmp"
 	"math/bits"
 	"path"
 	"regexp"
@@ -23,23 +24,25 @@ type radiusWalk struct {
 	roles    map[string]Role
 	queue    []string              // files with names or a whole file to be asked, in the order they were offered
 	files    map[string]*walkState // per file: what it was asked and what it holds
-	names    map[string]int        // every name the walk asks for, by its index in the name sets
-	nameFrom [][]string            // per name index: the languages of the changed files that altered or removed it
+	// names are the walk's names by spelling: one index per language of the changed files that altered or removed a
+	// name of that spelling, so a file is asked, and counted, only for the languages whose seeds reached it.
+	names    map[string][]int
+	index    map[[2]string]int // language and spelling -> index
+	nameFrom []string          // per index: its language
 	users    map[string]*User
-	unread   map[string]*User
 	// nowPrints and basePrints are the fingerprints of the compared changed files on each side.
-	nowPrints, basePrints map[string]printPair
+	nowPrints, basePrints map[string]prints
 	byFolder              map[string][]File // the code files now by folder, made on first use
 	byPackage             map[string]map[string][]string
-	byTarget              map[string][]string // per file: the imported folders whose links reach it
-	folderReach           map[string][]string // per imported folder: the files its links reach
+	targets               []string            // the folders of the targets Package.swift declares, deepest first; nil until read
+	byTargetFolder        map[string][]string // per target folder: its code files of the target's language
 }
 
 func newWalk(in radiusInput) *radiusWalk {
 	w := &radiusWalk{in: in, touched: map[string]bool{}, nowPath: map[string]string{}, to: map[string][]string{},
 		toBase: map[string][]string{}, reaches: map[string]bool{}, passOn: map[string]bool{}, passBase: map[string]bool{},
-		roles: map[string]Role{}, files: map[string]*walkState{}, names: map[string]int{}, users: map[string]*User{},
-		unread: map[string]*User{}, nowPrints: map[string]printPair{}, basePrints: map[string]printPair{}}
+		roles: map[string]Role{}, files: map[string]*walkState{}, names: map[string][]int{}, index: map[[2]string]int{}, users: map[string]*User{},
+		nowPrints: map[string]prints{}, basePrints: map[string]prints{}}
 	for _, ch := range in.changes {
 		w.touched[ch.Path] = true
 		if ch.From != "" {
@@ -188,7 +191,7 @@ func (w *radiusWalk) peers(c changed) []string {
 	case conventions.PackagePeers:
 		found = w.packageFiles(c.language)[packageOf(c.language.Imports.PackageLine, content)]
 	case conventions.TargetPeers:
-		found = w.targetFiles(file)
+		found = w.targetFiles(file, c.language.Name)
 	case conventions.HeaderPeers:
 		stem := strings.TrimSuffix(file, path.Ext(file))
 		for _, suffix := range c.language.Headers() {
@@ -224,31 +227,37 @@ func (w *radiusWalk) packageFiles(language conventions.Language) map[string][]st
 	return found
 }
 
-// targetFiles are the files of the module a file belongs to, as the links that import a module's folders reach them:
-// a Swift target, wherever its manifest puts it; a file no such link reaches has its folder's files.
-func (w *radiusWalk) targetFiles(file string) []string {
-	if w.byTarget == nil { // the imported folders that reach each file, and each such folder's files, once
-		w.byTarget, w.folderReach = map[string][]string{}, map[string][]string{}
-		for _, link := range w.in.now.Links.List {
-			if _, seen := w.folderReach[link.To]; !link.Folder || seen {
-				continue
-			}
-			w.folderReach[link.To] = link.Files
-			for _, f := range link.Files {
-				w.byTarget[f] = append(w.byTarget[f], link.To)
-			}
-		}
-	}
-	if folders := w.byTarget[file]; len(folders) > 0 {
-		var found []string
+// targetFiles are the code files of a language in the target a file belongs to: the deepest folder of a target
+// Package.swift declares that holds it, at any depth; a file outside every declared target has its folder's files.
+func (w *radiusWalk) targetFiles(file, language string) []string {
+	if w.targets == nil {
+		folders, _ := swiftTargetFolders(w.in.nowContent["Package.swift"])
+		w.targets, w.byTargetFolder = []string{}, map[string][]string{}
 		for _, folder := range folders {
-			found = append(found, w.folderReach[folder]...)
+			w.targets = append(w.targets, folder)
 		}
-		return sortedNames(found)
+		slices.SortFunc(w.targets, func(a, b string) int { return cmp.Or(len(b)-len(a), strings.Compare(a, b)) })
+	}
+	for _, target := range w.targets {
+		if !strings.HasPrefix(file, target+"/") {
+			continue
+		}
+		found, made := w.byTargetFolder[target]
+		if !made {
+			for _, f := range w.in.now.Files {
+				if f.Language == language && strings.HasPrefix(f.Path, target+"/") {
+					found = append(found, f.Path)
+				}
+			}
+			w.byTargetFolder[target] = found
+		}
+		return found
 	}
 	var found []string
 	for _, f := range w.folderFiles(path.Dir(file)) {
-		found = append(found, f.Path)
+		if f.Language == language {
+			found = append(found, f.Path)
+		}
 	}
 	return found
 }
@@ -319,13 +328,14 @@ func (w *radiusWalk) stateOf(file string) *walkState {
 func (w *radiusWalk) pushNames(files, names []string, language string) {
 	var set nameSet
 	for _, name := range names {
-		i, known := w.names[name]
+		key := [2]string{language, name}
+		i, known := w.index[key]
 		if !known {
 			i = len(w.nameFrom)
-			w.names[name] = i
-			w.nameFrom = append(w.nameFrom, nil)
+			w.index[key] = i
+			w.names[name] = append(w.names[name], i)
+			w.nameFrom = append(w.nameFrom, language)
 		}
-		w.nameFrom[i] = appendNew(w.nameFrom[i], language)
 		set.add(i)
 	}
 	for _, file := range files {
@@ -370,7 +380,7 @@ func (w *radiusWalk) offer(file string, names nameSet, wholeLanguage string) {
 // languagesOf are the languages of the changed files that altered or removed the names of a set.
 func (w *radiusWalk) languagesOf(names nameSet, more ...string) []string {
 	found := slices.Clone(more)
-	names.each(func(i int) { found = appendNew(found, w.nameFrom[i]...) })
+	names.each(func(i int) { found = appendNew(found, w.nameFrom[i]) })
 	return found
 }
 
@@ -398,11 +408,7 @@ func (w *radiusWalk) visit(file string) {
 	st.queued = false
 	asked, wholeNew := st.pending, st.wholeNew
 	st.pending, st.wholeNew = nil, nil
-	if missingNow(w.in, file) {
-		w.mark(w.unread, file, false, false, w.languagesOf(asked, wholeNew...))
-		return
-	}
-	if _, code := w.roles[file]; !code {
+	if _, code := w.roles[file]; !code { // only a code file whose content is read now can be reached
 		return
 	}
 	passes := w.passOn[file] || w.passBase[file] && !w.reaches[file]
@@ -415,7 +421,7 @@ func (w *radiusWalk) visit(file string) {
 			}
 		}
 	default:
-		w.mark(w.users, file, false, false, wholeNew)
+		w.mark(file, false, false, wholeNew)
 	}
 	if asked.empty() {
 		return
@@ -423,7 +429,7 @@ func (w *radiusWalk) visit(file string) {
 	w.readHeld(file, st)
 	used := asked.and(st.held)
 	if !used.empty() {
-		w.mark(w.users, file, true, used.and(st.outside).empty(), w.languagesOf(used))
+		w.mark(file, true, used.and(st.outside).empty(), w.languagesOf(used))
 	}
 	forward := used
 	if passes {
@@ -448,16 +454,26 @@ func (w *radiusWalk) readAhead(files []string) {
 	parallel(len(wanted), func(i int) { w.readHeld(wanted[i], w.files[wanted[i]]) })
 }
 
-// worth says whether a file holds one of the walk's names as a plain word.
+// worth says whether a file holds one of the walk's names as a word: a run of letters, digits, `_`, `$` and the
+// bytes of non-ASCII letters, so that every identifier token a language reads is one such word.
 func (w *radiusWalk) worth(file string) func() bool {
 	return func() bool {
-		hit := false
-		eachWord(w.in.nowContent[file], func(word []byte, _ int) {
-			if !hit {
-				_, hit = w.names[string(word)]
+		content, start := w.in.nowContent[file], -1
+		for i := 0; i <= len(content); i++ {
+			if i < len(content) && (wordByte(rune(content[i])) || content[i] == '$' || content[i] >= 0x80) {
+				if start < 0 {
+					start = i
+				}
+				continue
 			}
-		})
-		return hit
+			if start >= 0 {
+				if _, hit := w.names[string(content[start:i])]; hit {
+					return true
+				}
+				start = -1
+			}
+		}
+		return false
 	}
 }
 
@@ -474,9 +490,9 @@ func (w *radiusWalk) readHeld(file string, st *walkState) {
 		return
 	}
 	inTests := w.roles[file].IsTest()
-	identifiers := w.in.readings.identifiersOf(language, language.GrammarOf(file), w.in.nowContent[file], w.in.nowReadings[file].testSpans, w.in.question, w.worth(file))
+	identifiers := w.in.readings.identifiersOf(language, language.GrammarOf(file), w.in.nowContent[file], w.in.nowReadings[file], w.in.question, w.worth(file))
 	held := func(name string, outside bool) {
-		if i, wanted := w.names[name]; wanted {
+		for _, i := range w.names[name] {
 			st.held.add(i)
 			if outside && !inTests {
 				st.outside.add(i)
@@ -496,12 +512,12 @@ func (w *radiusWalk) readHeld(file string, st *walkState) {
 	}
 }
 
-// mark records a user or an unread file.
-func (w *radiusWalk) mark(into map[string]*User, file string, byName, testsOnly bool, languages []string) {
-	u := into[file]
+// mark records a user.
+func (w *radiusWalk) mark(file string, byName, testsOnly bool, languages []string) {
+	u := w.users[file]
 	if u == nil {
 		u = &User{Path: file, Role: w.roles[file], TestsOnly: true}
-		into[file] = u
+		w.users[file] = u
 	}
 	if byName {
 		u.ByName, u.TestsOnly = true, u.TestsOnly && testsOnly
@@ -509,8 +525,8 @@ func (w *radiusWalk) mark(into map[string]*User, file string, byName, testsOnly 
 	u.Languages = appendNew(u.Languages, languages...)
 }
 
-// results are the untouched users, the touched ones and the unread files, sorted by path.
-func (w *radiusWalk) results() (users, touched, unread []User) {
+// results are the untouched users and the touched ones, sorted by path.
+func (w *radiusWalk) results() (users, touched []User) {
 	for _, u := range w.users {
 		slices.Sort(u.Languages)
 		u.TestsOnly = u.TestsOnly && u.ByName
@@ -520,13 +536,8 @@ func (w *radiusWalk) results() (users, touched, unread []User) {
 			users = append(users, *u)
 		}
 	}
-	for _, u := range w.unread {
-		slices.Sort(u.Languages)
-		unread = append(unread, *u)
-	}
 	byPath := func(a, b User) int { return strings.Compare(a.Path, b.Path) }
 	slices.SortFunc(users, byPath)
 	slices.SortFunc(touched, byPath)
-	slices.SortFunc(unread, byPath)
-	return users, touched, unread
+	return users, touched
 }

@@ -398,8 +398,6 @@ type Language struct {
 	LayoutCode LayoutCode
 	// Peers says which files use the file's declarations without an import of it.
 	Peers Peers
-	// SurfaceFiles are file names whose imports are what a package offers its importers: none of them is pure.
-	SurfaceFiles []string
 	// Loaded are the files a framework of the language loads by convention: their declarations are no added code.
 	Loaded []Convention
 	// Library says when a file is part of a published library, whose exported declarations are no added code; nil
@@ -534,7 +532,7 @@ func Default() Rules {
 			// The share of own imports not followed was 1.4% on the BFF and 0% on plimsoll, where the links equalled those
 			// of dependency-cruiser and go list; 10% leaves room for code that embeds program text in strings.
 			ImportsNotFollowed: Limit{Value: 0.10, Source: "links checked against go list and dependency-cruiser, 2026-11"},
-			RadiusPaths:        Limit{Value: 30, Source: "a first cap, to be set from the radii of the field runs (US-63)"},
+			RadiusPaths:        Limit{Value: 18, Source: "the smallest number that lists three in four of 170 field radii in full"},
 		},
 		// One entry per language, each in its own file. A new language is one file and one line here.
 		Languages: []Language{typescriptLanguage(), goLanguage(), pythonLanguage(), dartLanguage(), javaLanguage(), kotlinLanguage(), rustLanguage(), csharpLanguage(), swiftLanguage(), cLanguage(), cppLanguage()},

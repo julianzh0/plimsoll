@@ -200,7 +200,7 @@ func repositoryNotAnalysed(s snapshot.Snapshot) []NotAnalysed {
 		add(fmt.Sprintf("`%s` could not be read", path))
 	}
 	if len(s.Missing) > 0 {
-		add(fmt.Sprintf("content not in this partial clone, so its lines and history are not counted: %s (%s)",
+		add(fmt.Sprintf("content not in this partial clone, so its lines, history, links and blast radius are not counted: %s (%s)",
 			Plural(len(s.Missing), "file"), QuotedList(s.Missing)))
 	}
 	if len(s.Unparsed) > 0 {

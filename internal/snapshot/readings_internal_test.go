@@ -117,8 +117,31 @@ func TestPrintsAreKeptPerGrammar(t *testing.T) {
 		grammar := language.GrammarOf(p)
 		r := readings.of(language, grammar, content, question, wanted{declarations: true})
 		got := readings.printsOfReading(language, grammar, content, r, question)
-		if len(got.pure.units) != len(r.units) {
-			t.Errorf("%s: %d unit prints for %d units", p, len(got.pure.units), len(r.units))
+		if len(got.units) != len(r.units) {
+			t.Errorf("%s: %d unit prints for %d units", p, len(got.units), len(r.units))
 		}
+	}
+}
+
+// A reading the parser could not finish (a failure of the moment) leaves no prints or identifiers behind: a later
+// question that reads the same content gives what a fresh read gives.
+func TestWhatAnUnfinishedReadingGaveIsNotKept(t *testing.T) {
+	parser, err := parse.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(parser.Close)
+	readings := NewReadings(parser)
+	language, _ := conventions.Default().LanguageOf("a.go")
+	content := []byte("package a\n\nfunc Run() int { return 1 }\n")
+	question := readings.begin()
+	readings.printsOfReading(language, "go", content, reading{unread: true}, question)
+	readings.identifiersOf(language, "go", content, reading{unread: true}, question, func() bool { return true })
+	if len(readings.prints.kept)+len(readings.identifiers.kept) != 0 {
+		t.Fatalf("kept %d prints and %d identifiers of an unfinished reading, want none", len(readings.prints.kept), len(readings.identifiers.kept))
+	}
+	r := readings.of(language, "go", content, question, wanted{declarations: true})
+	if got := readings.printsOfReading(language, "go", content, r, question); len(got.units) != len(r.units) || len(r.units) == 0 {
+		t.Errorf("after recovery: %d unit prints for %d units", len(got.units), len(r.units))
 	}
 }

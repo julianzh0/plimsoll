@@ -58,7 +58,7 @@ type Snapshot struct {
 	SyntaxErrors   []string // changed code files whose reading on either side met a syntax error; sorted, each once
 	// Functions are the functions of the changed product files that the change made complex or nested deeper.
 	Functions Functions
-	// Radius is the state of each changed code file and the files that use what it altered or removed (US-63).
+	// Radius is the state of each changed code file and the files that use what it altered or removed.
 	Radius Radius
 	Named  []string // the files the caller named, cleaned, sorted, each once; nil when none
 }

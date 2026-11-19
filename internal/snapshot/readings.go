@@ -32,15 +32,14 @@ type Readings struct {
 	// identifiers are what the blast radius walk asks of the files it reaches, and prints the fingerprints of the
 	// changed files it compares; each depends on a content alone and is kept and dropped like the readings.
 	identifiers byContent[identifiers]
-	prints      byContent[printPair]
+	prints      byContent[prints]
 }
 
 // printsOfReading gives the prints of a content read with its units by a grammar, made once per content and grammar
-// (one entry's grammars split the same content into different units); the prints with no import left out only for an
-// entry that has files whose imports are what their package offers.
-func (rs *Readings) printsOfReading(language conventions.Language, grammar string, content []byte, r reading, question uint64) printPair {
-	return keptOrMade(rs, &rs.prints, contentKey("prints\x00"+language.Name+"\x00"+grammar, content), question, func() (printPair, bool) {
-		return printsOf(language, content, r.units, r.pureImports, len(language.SurfaceFiles) > 0), true
+// (one entry's grammars split the same content into different units).
+func (rs *Readings) printsOfReading(language conventions.Language, grammar string, content []byte, r reading, question uint64) prints {
+	return keptOrMade(rs, &rs.prints, contentKey("prints\x00"+language.Name+"\x00"+grammar, content), question, func() (prints, bool) {
+		return printsOf(language, content, r.units, r.pureImports), !r.unread // a failure of the moment is not kept
 	})
 }
 
@@ -58,9 +57,10 @@ func (ids identifiers) find(name string) (held, outside bool) {
 }
 
 // identifiersOf gives the identifier tokens of a content: each with whether it stands outside the test spans its
-// grammar read, made once per content and grammar. When they are not kept yet and worth is false for the content, it gives none, reads nothing and
-// keeps nothing.
-func (rs *Readings) identifiersOf(language conventions.Language, grammar string, content []byte, testSpans []span, question uint64, worth func() bool) identifiers {
+// grammar read, made once per content and grammar. When they are not kept yet and worth is false for the content, it
+// gives none, reads nothing and keeps nothing; those of a reading the parser could not finish are not kept either.
+func (rs *Readings) identifiersOf(language conventions.Language, grammar string, content []byte, r reading, question uint64, worth func() bool) identifiers {
+	testSpans := r.testSpans
 	return keptOrMade(rs, &rs.identifiers, contentKey("identifiers\x00"+language.Name+"\x00"+grammar, content), question, func() (identifiers, bool) {
 		if !worth() {
 			return identifiers{}, false
@@ -79,7 +79,7 @@ func (rs *Readings) identifiersOf(language conventions.Language, grammar string,
 		for _, name := range ids.names {
 			ids.outsideTests = append(ids.outsideTests, found[name])
 		}
-		return ids, true
+		return ids, !r.unread
 	})
 }
 

@@ -239,12 +239,13 @@ func TestTheBlastRadiusListsItsFilesUpToTheCap(t *testing.T) {
 	now[a] = k.declare("Run", 2)
 	f := detect(t, snapshottest.Files(base, now))
 	r := f.Radius
-	if r == nil || r.Files != 34 || !slices.Equal(r.Paths, want[:30]) || r.Omitted != 4 || r.ByName != 34 || r.Product != 32 || r.Tests != 2 {
-		t.Fatalf("radius = %+v, want 34 by name, the first 30 product paths and 4 omitted", r)
+	limit := int(conventions.Default().Limits.RadiusPaths.Value)
+	if r == nil || r.Files != 34 || !slices.Equal(r.Paths, want[:limit]) || r.Omitted != 34-limit || r.ByName != 34 || r.Product != 32 || r.Tests != 2 {
+		t.Fatalf("radius = %+v, want 34 by name, the first %d product paths and the rest omitted", r, limit)
 	}
 	rows, _ := statisticNamed(f, "blast radius files")
-	if !strings.HasSuffix(rows.Note, " and 4 more (2 product, 2 test)") || strings.Count(rows.Note, "`")/2 != 30 {
-		t.Errorf("blast radius files = %q, want 30 product paths and 4 more", rows.Note)
+	if !strings.HasSuffix(rows.Note, fmt.Sprintf(" and %d more (%d product, 2 test)", 34-limit, 32-limit)) || strings.Count(rows.Note, "`")/2 != limit {
+		t.Errorf("blast radius files = %q, want %d product paths and the rest", rows.Note, limit)
 	}
 	if row, _ := statisticNamed(f, "blast radius"); !strings.HasPrefix(row.Note, "34 files (32 product, 2 test); ") {
 		t.Errorf("blast radius row = %+v, want 34 files", row)
@@ -285,12 +286,19 @@ func TestTheStateOfAChangedFileFollowsWhatItsDeclarationsDid(t *testing.T) {
 		{"a Rust test module added", "src/a.rs", "pub fn run() -> u8 { 1 }\n",
 			"pub fn run() -> u8 { 1 }\n\n#[cfg(test)]\nmod tests {\n    #[test]\n    fn t() {}\n}\n", snapshot.NothingAltered},
 		{"a Rust attribute added to a function", "src/a.rs", "pub fn run() -> u8 { 1 }\n", "#[inline]\npub fn run() -> u8 { 1 }\n", snapshot.ByName},
-		{"a Python import added to a module", "src/pkg/a.py", "import os\n\ndef run():\n    return 1\n", "import os\nimport sys\n\ndef run():\n    return 1\n", snapshot.NothingAltered},
+		// a Python import binds a name its importers can reach, in any module
+		{"a Python import added to a module", "src/pkg/a.py", "import os\n\ndef run():\n    return 1\n", "import os\nimport sys\n\ndef run():\n    return 1\n", snapshot.AsAWhole},
+		{"a Python binding re-exported from elsewhere", "src/pkg/api.py", "from .old import Run\n", "from .new import Run\n", snapshot.AsAWhole},
 		{"a Python import added to a package's surface", "src/pkg/__init__.py", "from .a import run\n", "from .a import run\nfrom .b import other\n", snapshot.AsAWhole},
 		{"a C++ function changed beside a syntax error elsewhere", "src/a.cc", "int run() { return 1; }\n\nint broken( {\n",
 			"int run() { return 2; }\n\nint broken( {\n", snapshot.ByName},
 		{"a C++ function changed where the syntax error is", "src/a.cc", "int run() { return 1; }\n\nint other() { return 1 $$ ; }\n",
-			"int run() { return 1; }\n\nint other() { return 2 $$ ; }\n", snapshot.AsAWhole},
+			"int run() { return 1; }\n\nint other() { return 2 $$ ; }\n", snapshot.AsAWhole}, {"a syntax error written into a changed function", "src/a.cc", "int run() { return 1; }\n",
+			"int run() { return 2 $$ ; }\n", snapshot.AsAWhole},
+		{"a TypeScript namespace renamed", "src/a.ts", "export namespace A {\n  export const x = 1;\n}\n",
+			"export namespace B {\n  export const x = 1;\n}\n", snapshot.AsAWhole},
+		{"a Go function with a non-ASCII name changed", "a.go", "package a\n\nfunc Café() int { return 1 }\n",
+			"package a\n\nfunc Café() int { return 2 }\n", snapshot.ByName},
 	}
 	for _, c := range cases {
 		states, _ := radiusOf(t, snapshottest.Files(map[string]string{c.path: c.base}, map[string]string{c.path: c.now}))
@@ -411,5 +419,107 @@ func TestAnIncompleteZeroSaysSoAndTheRustRuleOnlyWithRust(t *testing.T) {
 	}
 	if slices.ContainsFunc(f.Notes, func(n string) bool { return strings.Contains(n, "Rust") }) {
 		t.Errorf("notes of a TypeScript tree = %q, want no Rust rule", f.Notes)
+	}
+}
+
+// usersOf gives the links findings of a change and the paths its radius lists, after the language gate.
+func usersOf(t *testing.T, source snapshot.Source) (answer.Findings, []string) {
+	t.Helper()
+	f := detect(t, source)
+	if f.Radius == nil {
+		t.Fatal("no radius")
+	}
+	return f, f.Radius.Paths
+}
+
+func TestANonASCIINameReachesItsUsers(t *testing.T) {
+	base := map[string]string{"go.mod": "module " + goModule + "\n",
+		"internal/a/a.go": "package a\n\nfunc Café() int { return 1 }\n",
+		"internal/b/b.go": "package b\n\nimport \"" + goModule + "/internal/a\"\n\nvar _ = a.Café()\n"}
+	now := maps.Clone(base)
+	now["internal/a/a.go"] = "package a\n\nfunc Café() int { return 2 }\n"
+	if _, users := usersOf(t, snapshottest.Files(base, now)); !slices.Equal(users, []string{"internal/b/b.go"}) {
+		t.Errorf("users = %q, want the file that calls Café", users)
+	}
+}
+
+// The same name changed in two languages, one of them behind the gate: a file of the gated language that uses the
+// name counts neither through its own language nor through the other one's seed.
+func TestTheGateHoldsWhenTwoLanguagesChangeTheSameName(t *testing.T) {
+	ts, k := languageCases()["typescript"], codeOf("typescript")
+	base := ts.fan(8, ts.nowhere) // over the limit: TypeScript's links are not used
+	ta, user := ts.product("ta"), ts.product("a")
+	base[ta] += k.declare("Run", 1)
+	base[user] += k.use("Run")
+	base["go.mod"] = "module " + goModule + "\n"
+	base["internal/a/a.go"] = "package a\n\nfunc Run() int { return 1 }\n"
+	base["internal/b/b.go"] = "package b\n\nimport \"" + goModule + "/internal/a\"\n\nvar _ = a.Run()\n"
+	now := maps.Clone(base)
+	now[ta] = strings.Replace(now[ta], k.declare("Run", 1), k.declare("Run", 2), 1)
+	now["internal/a/a.go"] = "package a\n\nfunc Run() int { return 2 }\n"
+	if _, users := usersOf(t, snapshottest.Files(base, now)); !slices.Equal(users, []string{"internal/b/b.go"}) {
+		t.Errorf("users = %q, want the Go user alone", users)
+	}
+}
+
+func TestACodeFileRenamedToAnotherSuffixIsGone(t *testing.T) {
+	base := map[string]string{"src/a.ts": "export function run() { return 1; }\n", "src/b.ts": "import { run } from './a';\nrun();\n"}
+	now := map[string]string{"src/a.txt": base["src/a.ts"], "src/b.ts": base["src/b.ts"]}
+	source := snapshottest.Files(base, now)
+	source.Changes = []snapshot.Change{{Path: "src/a.txt", From: "src/a.ts"}}
+	states, users := radiusOf(t, source)
+	if !slices.Equal(states, []string{fmt.Sprintf("src/a.ts %d ", snapshot.Deleted)}) || !slices.Equal(users, []string{"src/b.ts"}) {
+		t.Errorf("states %q, users %q; want a.ts deleted and its importer counted", states, users)
+	}
+}
+
+func TestAChangedFileTheRepositoryIgnoresIsNotCounted(t *testing.T) {
+	base := map[string]string{".plimsoll.toml": "[ignore]\nfolders = [\"gen\"]\n", "gen/x.ts": "export function run() { return 1; }\n",
+		"src/b.ts": "import { run } from '../gen/x';\nrun();\n"}
+	now := maps.Clone(base)
+	now["gen/x.ts"] = "export function run() { return 2; }\n"
+	f := detect(t, snapshottest.Files(base, now))
+	if f.Radius == nil || f.Radius.State != answer.RadiusNotAnalysed ||
+		!slices.ContainsFunc(f.NotAnalysed, func(s string) bool { return strings.Contains(s, "(left out by the repository's own file): `gen/x.ts`") }) {
+		t.Errorf("radius %+v, not analysed %q; want not analysed and the ignored file named", f.Radius, f.NotAnalysed)
+	}
+	if _, found := statisticNamed(f, "importers of the change"); found {
+		t.Errorf("an ignored file's change printed importers of the change, want none")
+	}
+}
+
+func TestASwiftTargetsFilesAreUsersWithoutAnImport(t *testing.T) {
+	base := map[string]string{"Package.swift": "let package = Package(name: \"app\", targets: [\n    .target(name: \"App\", path: \"Sources/App\"),\n])\n",
+		"Sources/App/Core/F.swift": "public func f0() -> Int { return 1 }\n", "Sources/App/UI/U.swift": "let use = f0()\n"}
+	now := maps.Clone(base)
+	now["Sources/App/Core/F.swift"] = "public func f0() -> Int { return 2 }\n"
+	if _, users := usersOf(t, snapshottest.Files(base, now)); !slices.Equal(users, []string{"Sources/App/UI/U.swift"}) {
+		t.Errorf("users = %q, want the file of the same target in another folder", users)
+	}
+}
+
+func TestTheStructuredRadiusHoldsTheNumbersItsRowsSay(t *testing.T) {
+	base := map[string]string{"src/a.ts": "export function run() { return 1; }\n", "src/b.ts": "import { run } from './a';\nexport const b = run();\n",
+		"src/c.ts": "import { b } from './b';\nexport const c = b;\n", "tests/a.test.ts": "import { run } from '../src/a';\nrun();\n"}
+	now := maps.Clone(base)
+	now["src/a.ts"] = "export function run() { return 2; }\n"
+	f := detect(t, snapshottest.Files(base, now))
+	r := f.Radius
+	want := answer.ChangedFiles{All: 1, ByName: 1}
+	if r == nil || r.Changed != want || r.Direct != (answer.Importers{Files: 2, Product: 1, Tests: 1}) ||
+		r.Total != (answer.Importers{Files: 3, Product: 2, Tests: 1}) || r.ProductCodeFiles != 3 ||
+		!slices.Equal(r.Folders, []answer.FolderCount{{Folder: "src/", Files: 2}, {Folder: "tests/", Files: 1}}) {
+		t.Fatalf("radius = %+v, want 1 changed by name, 2 direct (1 product, 1 test), 3 in total, 2 of 3 product files", r)
+	}
+	if row, _ := statisticNamed(f, "importers of the change"); !strings.HasPrefix(row.Note, "2 files directly (1 product, 1 test), 3 at any distance (2 product, 1 test); in `src/` 2, `tests/` 1; 2 of 3 product code files") {
+		t.Errorf("importers row = %q, want the structured numbers", row.Note)
+	}
+}
+
+func TestADeletedFileWithABrokenDeclarationCountsAsAWhole(t *testing.T) {
+	base := map[string]string{"src/a.cc": "int run() { return 1 $$ ; }\n", "src/b.cc": "#include \"a.cc\"\n"}
+	states, _ := radiusOf(t, snapshottest.Files(base, map[string]string{"src/b.cc": base["src/b.cc"]}))
+	if want := fmt.Sprintf("src/a.cc %d %s", snapshot.Deleted, snapshot.ReasonSyntaxError); !slices.Contains(states, want) {
+		t.Errorf("states = %q, want %q", states, want)
 	}
 }

@@ -872,6 +872,12 @@ func TestTheRingRuleRunsWhereItsLanguagesLinksAreUsed(t *testing.T) {
 	if f := detect(t, snapshottest.Files(commented, now)); slices.Contains(f.RanRules, "links.cycle") {
 		t.Errorf("no code file changed: ran %q, want no links.cycle", f.RanRules)
 	}
+	unread := snapshot.Build(snapshottest.Files(c.fan(2), func() map[string]string { n := clone(c.fan(2)); n[ta] += alteration; return n }()),
+		conventions.Default(), snapshottest.Readings(t))
+	unread.Unparsed = []string{ta} // as when the file is over the parser's cap: its links were not read
+	if ran := (Detector{}).Detect(unread).RanRules; slices.Contains(ran, "links.cycle") {
+		t.Errorf("the only changed file unread by the parser: ran %q, want no links.cycle", ran)
+	}
 	// The same gate beside a rule declared over Go folders, whose links are used: the rule is checked.
 	gated := c.fan(8, c.nowhere)
 	maps.Copy(gated, languageCases()["go"].ruled([]string{"domain -> adapters"}, nil, "domain/x>shared/s", "adapters/y"))

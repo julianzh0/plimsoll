@@ -11,7 +11,7 @@ import (
 	"github.com/julianzh0/plimsoll/internal/parse"
 )
 
-// unit is one comparison unit of a changed file (US-63): a declaration compared on its own, the names it declares
+// unit is one comparison unit of a changed file: a declaration compared on its own, the names it declares
 // directly, and the names of the containers it stands in. A container is a unit too: its own head, without the units
 // inside it, which are compared on their own.
 type unit struct {
@@ -115,7 +115,8 @@ func captured(result parse.Result, content []byte) (units, containers []unit, at
 // from it by white space only, the last one first. The attributes are sorted by start.
 func attachAttributes(units []unit, attributes []span, content []byte) {
 	for i := range units {
-		before, _ := slices.BinarySearchFunc(attributes, units[i].start, func(a span, at int) int { return a.end - at })
+		// the first attribute ending after the unit's start: those before it end at or before the start
+		before, _ := slices.BinarySearchFunc(attributes, units[i].start+1, func(a span, at int) int { return a.end - at })
 		for j := before - 1; j >= 0 && attributes[j].end <= units[i].start; j-- {
 			if len(bytes.TrimSpace(content[attributes[j].end:units[i].start])) > 0 {
 				break
@@ -132,20 +133,8 @@ type prints struct {
 	units                  []uint64
 }
 
-// printPair are a content's prints with its pure imports left out, and, for a file whose imports are what its package
-// offers, with none left out.
-type printPair struct{ pure, all prints }
-
-// pick gives the prints that apply to a file: all for a file whose imports are its package's surface.
-func (p printPair) pick(surface bool) prints {
-	if surface {
-		return p.all
-	}
-	return p.pure
-}
-
-// printsOf tokenizes a content once and gives its prints; withAll adds those with no import left out.
-func printsOf(language conventions.Language, content []byte, units []unit, imports []span, withAll bool) printPair {
+// printsOf tokenizes a content once and gives its prints, with its pure imports left out.
+func printsOf(language conventions.Language, content []byte, units []unit, imports []span) prints {
 	toks := tokensOf(language.Tokens, content, 1)
 	newlines := linesOf(content)
 	hash := func(lo, hi int, skip []span, context string) uint64 {
@@ -156,23 +145,10 @@ func printsOf(language conventions.Language, content []byte, units []unit, impor
 	for _, u := range units {
 		unitSpans = append(unitSpans, span{start: u.start, end: u.end - 1})
 	}
-	whole := hash(0, n, nil, "")
-	var p printPair
-	p.pure = prints{whole: whole, code: hash(0, n, imports, ""), remainder: hash(0, n, slices.Concat(unitSpans, imports), "")}
-	if withAll {
-		p.all = prints{whole: whole, code: whole, remainder: hash(0, n, unitSpans, "")}
-	}
+	p := prints{whole: hash(0, n, nil, ""), code: hash(0, n, imports, ""), remainder: hash(0, n, slices.Concat(unitSpans, imports), "")}
 	for _, u := range units {
 		lo, hi := tokensIn(toks, u.start, u.end)
-		if u.inner == nil {
-			h := hash(lo, hi, nil, u.context)
-			p.pure.units, p.all.units = append(p.pure.units, h), append(p.all.units, h)
-			continue
-		}
-		p.pure.units = append(p.pure.units, hash(lo, hi, slices.Concat(u.inner, imports), u.context))
-		if withAll {
-			p.all.units = append(p.all.units, hash(lo, hi, u.inner, u.context))
-		}
+		p.units = append(p.units, hash(lo, hi, slices.Concat(u.inner, imports), u.context))
 	}
 	return p
 }
