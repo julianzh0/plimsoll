@@ -134,6 +134,8 @@ func TestEveryAnswerMatchesTheOutputSchema(t *testing.T) {
 		"no product code": snapshottest.Files(nil, map[string]string{"README.md": "x\n"}),
 		"every detector":  everyDetector(),
 		"a declared base": declaredBase(),
+		"a repeated function": snapshottest.Files(map[string]string{"pkg/a.go": snapshottest.GoFile(snapshottest.GoColumns("Original"))},
+			map[string]string{"pkg/a.go": snapshottest.GoFile(snapshottest.GoColumns("Original")), "pkg/b.go": snapshottest.GoFile(snapshottest.GoColumns("Copied"))}),
 	}
 	for name, source := range sources {
 		q := answer.Questions{

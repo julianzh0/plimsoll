@@ -149,14 +149,19 @@ func b2i(b bool) int {
 }
 
 func TestBuildComparesNoRepeatsWithoutTheCodeItNeeds(t *testing.T) {
+	leftOut := map[string]string{"pkg/a_test.go": "package p\n", "vendor/lib/x.go": "package lib\n"}
 	base := map[string]string{"pkg/a.go": snapshottest.GoFile(snapshottest.GoColumns("Original"))}
 	now := map[string]string{"pkg/a.go": snapshottest.GoFile(snapshottest.GoColumns("Original")), "pkg/b.go": snapshottest.GoFile(snapshottest.GoColumns("Copied"))}
+	maps.Copy(base, leftOut)
+	maps.Copy(now, leftOut)
 	for _, tt := range []struct {
 		unavailable []string
 		listed      int
 	}{
-		{[]string{"pkg/old.go"}, 0},   // a changed code file whose base the clone lacks: nothing is compared
-		{[]string{"data/big.txt"}, 1}, // no code: the rule runs
+		{[]string{"pkg/old.go"}, 0},      // a changed code file whose base the clone lacks: nothing is compared
+		{[]string{"data/big.txt"}, 1},    // no code: the rule runs
+		{[]string{"pkg/a_test.go"}, 1},   // test code, which the rule leaves out on both sides: it runs
+		{[]string{"vendor/lib/x.go"}, 1}, // vendored code, left out too
 	} {
 		source := snapshottest.Files(base, now)
 		source.Unavailable = tt.unavailable
@@ -167,19 +172,31 @@ func TestBuildComparesNoRepeatsWithoutTheCodeItNeeds(t *testing.T) {
 	}
 }
 
-// TestBuildComparesNoFunctionOfAFileWhoseBaseCannotBeRead splits a base file over the parser's memory cap: its old
-// functions cannot be told from new ones, so none is compared and the file is named.
-func TestBuildComparesNoFunctionOfAFileWhoseBaseCannotBeRead(t *testing.T) {
+// TestBuildComparesNoFunctionOfAFileTheParserCannotRead puts a file over the parser's memory cap at the base or now:
+// its old functions cannot be told from new ones, nor its gone ones from kept ones, so it is no candidate, no
+// counterpart and no source of moved code, and it is named.
+func TestBuildComparesNoFunctionOfAFileTheParserCannotRead(t *testing.T) {
 	var big strings.Builder
 	for i := range 150_000 { // measured: the Go grammar needs more than its 128 MiB for this shape from 100,000 lines
 		fmt.Fprintf(&big, "var v%d = %d\n", i, i)
 	}
-	base := map[string]string{"pkg/a.go": snapshottest.GoFile(snapshottest.GoColumns("Original")) + big.String(),
-		"pkg/c.go": snapshottest.GoFile(snapshottest.GoColumns("Copied"))}
-	now := map[string]string{"pkg/a.go": snapshottest.GoFile(snapshottest.GoColumns("Original")), "pkg/c.go": base["pkg/c.go"]}
-	got := snapshot.Build(snapshottest.Files(base, now), conventions.Default(), snapshottest.Readings(t)).Repeats
-	if len(got.Listed) != 0 || !slices.Contains(got.Unwalked, "pkg/a.go") {
-		t.Errorf("Build(a base over the parser's cap).Repeats = %d listed, unwalked %q; want none listed, pkg/a.go unwalked", len(got.Listed), got.Unwalked)
+	original, copied := snapshottest.GoFile(snapshottest.GoColumns("Original")), snapshottest.GoFile(snapshottest.GoColumns("Copied"))
+	for _, tt := range []struct {
+		name      string
+		base, now map[string]string
+	}{
+		{"a candidate whose base the parser cannot read", map[string]string{"pkg/a.go": original + big.String(), "pkg/c.go": copied},
+			map[string]string{"pkg/a.go": original, "pkg/c.go": copied}},
+		{"a counterpart whose base the parser cannot read", map[string]string{"pkg/a.go": original + big.String()},
+			map[string]string{"pkg/a.go": original, "pkg/c.go": copied}},
+		{"a file the parser cannot read now", map[string]string{"pkg/a.go": original},
+			map[string]string{"pkg/a.go": original + big.String(), "pkg/c.go": copied}},
+	} {
+		got := snapshot.Build(snapshottest.Files(tt.base, tt.now), conventions.Default(), snapshottest.Readings(t)).Repeats
+		if len(got.Listed) != 0 || got.Moved != 0 || !slices.Contains(got.Unwalked, "pkg/a.go") {
+			t.Errorf("Build(%s).Repeats = %d listed, %d moved, unwalked %q; want none listed, none moved, pkg/a.go unwalked",
+				tt.name, len(got.Listed), got.Moved, got.Unwalked)
+		}
 	}
 }
 

@@ -135,7 +135,7 @@ func filesByPath(t Tree) map[string]File {
 func functionRepeats(run repeatRun) FunctionRepeats {
 	result := FunctionRepeats{Rules: run.rr, PerMeasure: run.rules.FunctionRules.PerMeasure}
 	for _, p := range run.unavailable {
-		if _, code := run.rules.LanguageOf(p); code {
+		if run.reads(p) {
 			result.Unavailable = append(result.Unavailable, p)
 		}
 	}
@@ -151,7 +151,11 @@ func functionRepeats(run repeatRun) FunctionRepeats {
 		if !found || measuredFile(run.rules, f, run.nowContent[change.Path]) != fileMeasured {
 			continue
 		}
-		if run.outside(change.Path) || !read || r.unread || r.functionsUnread {
+		if run.outside(change.Path) || !read {
+			continue
+		}
+		if r.unread || r.functionsUnread {
+			result.Unwalked = append(result.Unwalked, change.Path)
 			continue
 		}
 		base, baseRead := run.baseFunctions(cmp.Or(change.From, change.Path))
@@ -181,7 +185,20 @@ func functionRepeats(run repeatRun) FunctionRepeats {
 	slices.SortFunc(cands, repeatFn.compare)
 	best, others := run.search(cands, &result)
 	run.list(cands, best, others, &result)
+	result.Unwalked = slices.Compact(slices.Sorted(slices.Values(result.Unwalked)))
 	return result
+}
+
+// reads says whether the rule reads a path's content: a code file of the project's own that is a measured product file
+// at the base or now, or one in neither tree (nothing tells it apart).
+func (run repeatRun) reads(p string) bool {
+	if _, code := run.rules.LanguageOf(p); !code || run.outside(p) {
+		return false
+	}
+	base, atBase := run.baseFiles[p]
+	now, atNow := run.nowFiles[p]
+	return !atBase && !atNow || atBase && measuredFile(run.rules, base, nil) == fileMeasured ||
+		atNow && measuredFile(run.rules, now, run.nowContent[p]) == fileMeasured
 }
 
 // gone are the readable functions of the measured base versions of changed files whose names no readable function of
@@ -192,6 +209,9 @@ func (run repeatRun) gone() []repeatFn {
 		basePath := cmp.Or(change.From, change.Path)
 		names := map[string]bool{}
 		if f, ok := run.nowFiles[change.Path]; ok && measuredFile(run.rules, f, run.nowContent[change.Path]) == fileMeasured {
+			if now := run.nowReadings[change.Path]; now.unread || now.functionsUnread {
+				continue // which functions are gone cannot be told
+			}
 			for _, fn := range run.nowReadings[change.Path].functions {
 				if !fn.broken {
 					names[fn.name] = true
@@ -221,6 +241,17 @@ func (run repeatRun) baseFunctions(basePath string) (functions []function, read 
 		return nil, false
 	}
 	return r.functions, true
+}
+
+// baseRead says whether a changed file's base version could be read, when it is a measured product file; true for a
+// file the change did not touch.
+func (run repeatRun) baseRead(filePath string) bool {
+	i := slices.IndexFunc(run.changes, func(c Change) bool { return c.Path == filePath })
+	if i < 0 {
+		return true
+	}
+	_, read := run.baseFunctions(cmp.Or(run.changes[i].From, filePath))
+	return read
 }
 
 func (run repeatRun) entryOf(filePath string) string {
@@ -439,6 +470,9 @@ func (run repeatRun) sources(entries map[string]bool, result *FunctionRepeats) [
 			continue
 		}
 		functions, ok := run.functionsNow(language, p)
+		if ok && !run.baseRead(p) { // whether its functions were there before cannot be told
+			ok = false
+		}
 		if !ok {
 			result.Unwalked = append(result.Unwalked, p)
 			continue
