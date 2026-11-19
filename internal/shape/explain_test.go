@@ -46,18 +46,18 @@ func TestExplainGivesTheEvidenceOfEachRule(t *testing.T) {
 	}{
 		{"file size", sizeSource, "file-size", []string{
 			"lines now: 1,620", "lines at the base: 1,480", "counted as: product code (typescript)",
-			"limit: 1,000 lines (plimsoll's default, taken from Pylint and SonarQube)",
+			"limit: 1,000 lines (plimsoll's default, the same limit as Pylint's and SonarQube's)",
 			"a code file by the shared rules: not documentation or data by suffix, not in a skipped folder, not binary, not generated",
 		}},
 		{"a file with history", busy, "file-size", []string{
 			"lines now: 1,620", "lines at the base: 1,480", "counted as: product code (typescript)",
-			"limit: 1,000 lines (plimsoll's default, taken from Pylint and SonarQube)",
+			"limit: 1,000 lines (plimsoll's default, the same limit as Pylint's and SonarQube's)",
 			"a code file by the shared rules: not documentation or data by suffix, not in a skipped folder, not binary, not generated",
 			"changes to it in the 3 usable commits read: 2",
 		}},
 		{"a renamed file", renamed, "file-size", []string{
 			"lines now: 1,600", "lines at the base: 1,600, as `old/a.ts`", "counted as: product code (typescript)",
-			"limit: 1,000 lines (plimsoll's default, taken from Pylint and SonarQube)",
+			"limit: 1,000 lines (plimsoll's default, the same limit as Pylint's and SonarQube's)",
 			"a code file by the shared rules: not documentation or data by suffix, not in a skipped folder, not binary, not generated",
 		}},
 		{"test ratio with a declared folder", declaredRatioSource(), "test-ratio", []string{
@@ -91,7 +91,7 @@ func TestExplainGivesTheEvidenceOfEachRule(t *testing.T) {
 		{"settings", additions, "settings", []string{"names at the base: 1", "names now: 3", "added: BETA, GAMMA"}},
 		{"function complexity", snapshottest.Files(nil, map[string]string{"src/sync.ts": snapshottest.Function("syncAll", 7, 0)}), "function-complexity", []string{
 			"lines now: 1–17 (17 lines); new in this change",
-			"cognitive complexity now: 28; limit 25 (plimsoll's rule, read blind on agent pull requests; counted as SonarQube's cognitive complexity); a function that existed counts from a rise of 8",
+			"cognitive complexity now: 28; limit 25 (plimsoll's rule, read blind on agent pull requests; measured with SonarSource's cognitive complexity metric); a function that existed counts from a rise of 8",
 			"counted: 1 for each if, loop, switch, catch and conditional expression plus 1 per level it is nested in; 1 for each else, else-if and run of one boolean operator; functions written inside it and markup are not counted",
 			"deepest nesting now: 7 levels at line 8",
 			"lines of it this change added: 17 of 17",
@@ -102,7 +102,7 @@ func TestExplainGivesTheEvidenceOfEachRule(t *testing.T) {
 		{"function complexity, compared without a match", snapshottest.Files(map[string]string{"src/old.ts": "export const syncAll = 1;\n"},
 			map[string]string{"src/old.ts": "export const syncAll = 1;\n", "src/sync.ts": snapshottest.Function("syncAll", 7, 0)}), "function-complexity", []string{
 			"lines now: 1–17 (17 lines); new in this change",
-			"cognitive complexity now: 28; limit 25 (plimsoll's rule, read blind on agent pull requests; counted as SonarQube's cognitive complexity); a function that existed counts from a rise of 8",
+			"cognitive complexity now: 28; limit 25 (plimsoll's rule, read blind on agent pull requests; measured with SonarSource's cognitive complexity metric); a function that existed counts from a rise of 8",
 			"counted: 1 for each if, loop, switch, catch and conditional expression plus 1 per level it is nested in; 1 for each else, else-if and run of one boolean operator; functions written inside it and markup are not counted",
 			"deepest nesting now: 7 levels at line 8",
 			"lines of it this change added: 17 of 17",

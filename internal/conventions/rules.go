@@ -519,8 +519,8 @@ func Default() Rules {
 		},
 		FunctionRules: defaultFunctionRules(),
 		Limits: Limits{
-			FileLines:          Limit{Value: 1000, Step: 1, Source: "plimsoll's default, taken from Pylint and SonarQube"},
-			FunctionComplexity: Limit{Value: 25, Step: 8, Source: "plimsoll's rule, read blind on agent pull requests; counted as SonarQube's cognitive complexity"},
+			FileLines:          Limit{Value: 1000, Step: 1, Source: "plimsoll's default, the same limit as Pylint's and SonarQube's"},
+			FunctionComplexity: Limit{Value: 25, Step: 8, Source: "plimsoll's rule, read blind on agent pull requests; measured with SonarSource's cognitive complexity metric"},
 			FunctionNesting:    Limit{Value: 4, Step: 1, Source: "CodeScene's threshold for deep nesting"},
 			TestRatio:          Limit{Value: 2.0, Step: 0.1, Source: "plimsoll's rule: test code at most twice the product code"},
 			// The requirements set the floor for a pair of files that changed together (R-16).

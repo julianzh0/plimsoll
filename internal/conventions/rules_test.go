@@ -82,7 +82,7 @@ func TestRuleNamesHowTestCodeIsRecognized(t *testing.T) {
 
 func TestDefaultLimitsNameTheirSource(t *testing.T) {
 	rules := Default()
-	if want := (Limit{1000, 1, "plimsoll's default, taken from Pylint and SonarQube"}); rules.Limits.FileLines != want {
+	if want := (Limit{1000, 1, "plimsoll's default, the same limit as Pylint's and SonarQube's"}); rules.Limits.FileLines != want {
 		t.Errorf("Limits.FileLines = %+v, want %+v", rules.Limits.FileLines, want)
 	}
 	if want := (Limit{2.0, 0.1, "plimsoll's rule: test code at most twice the product code"}); rules.Limits.TestRatio != want {
@@ -91,7 +91,7 @@ func TestDefaultLimitsNameTheirSource(t *testing.T) {
 	if want := (Limit{0.10, 0, "links checked against go list and dependency-cruiser, 2026-11"}); rules.Limits.ImportsNotFollowed != want {
 		t.Errorf("Limits.ImportsNotFollowed = %+v, want %+v", rules.Limits.ImportsNotFollowed, want)
 	}
-	if want := (Limit{25, 8, "plimsoll's rule, read blind on agent pull requests; counted as SonarQube's cognitive complexity"}); rules.Limits.FunctionComplexity != want {
+	if want := (Limit{25, 8, "plimsoll's rule, read blind on agent pull requests; measured with SonarSource's cognitive complexity metric"}); rules.Limits.FunctionComplexity != want {
 		t.Errorf("Limits.FunctionComplexity = %+v, want %+v", rules.Limits.FunctionComplexity, want)
 	}
 	if want := (Limit{4, 1, "CodeScene's threshold for deep nesting"}); rules.Limits.FunctionNesting != want {
