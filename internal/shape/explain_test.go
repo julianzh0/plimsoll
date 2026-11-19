@@ -1,6 +1,7 @@
 package shape
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -125,12 +126,29 @@ func TestExplainHoldsNoFileContentOrSettingValue(t *testing.T) {
 		"tests/a.ts": snapshottest.Lines(4000), "src/f.ts": secret,
 		"src/w.ts": strings.Replace(snapshottest.Function("zzsecretWalk", 4, 0), "  return a;", "  const zzsecretLocal = 'zzsecret';\n  return a;", 1),
 	})
+	// a pair of repeated functions whose comments, inner names and literals hold secrets
+	inside := strings.NewReplacer("values1", "zzsecretLocal", `"row %d: %w"`, `"zzsecret %d: %w"`, "\tfor n, row", "\t// zzsecret comment\n\tfor n, row")
+	source.Now = append(source.Now, snapshot.Entry{Path: "pkg/x.go", Content: []byte(inside.Replace(snapshottest.GoFile(snapshottest.GoColumns("First"))))},
+		snapshot.Entry{Path: "pkg/y.go", Content: []byte(inside.Replace(snapshottest.GoFile(snapshottest.GoColumns("Second"))))})
+	source.Changes = append(source.Changes, snapshot.Change{Path: "pkg/x.go", Added: 60}, snapshot.Change{Path: "pkg/y.go", Added: 60})
 	s := snapshot.Build(source, conventions.Default(), snapshottest.Readings(t))
+	if len(s.Repeats.Listed) != 1 {
+		t.Fatalf("Build(two repeated functions).Repeats = %+v, want one pair", s.Repeats)
+	}
+	secrets := []string{"hunter2", "swordfish", "zzsecretLocal", "'zzsecret'", "zzsecret %d", "zzsecret comment"}
 	for _, m := range (Detector{}).Detect(s).Marks {
-		for _, line := range (Detector{}).Explain(s, m) {
-			if strings.Contains(line, "hunter2") || strings.Contains(line, "swordfish") || strings.Contains(line, "zzsecretLocal") || strings.Contains(line, "'zzsecret'") {
-				t.Errorf("Explain(%s) holds file content: %q", m.ID, line)
+		said := append([]string{(Detector{}).Wording(m), m.Hint, fmt.Sprintf("%+v %+v", m, m.Counterpart)}, (Detector{}).Explain(s, m)...)
+		for _, line := range said {
+			for _, secret := range secrets {
+				if strings.Contains(line, secret) {
+					t.Errorf("mark %s holds file content %q: %q", m.ID, secret, line)
+				}
 			}
+		}
+	}
+	for _, secret := range secrets {
+		if facts := fmt.Sprintf("%+v", s.Repeats); strings.Contains(facts, secret) {
+			t.Errorf("Build(repeated functions).Repeats holds file content %q: %s", secret, facts)
 		}
 	}
 }

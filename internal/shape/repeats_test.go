@@ -65,6 +65,27 @@ func TestFunctionRepeatsAreCountedAndWhatWasNotComparedIsSaid(t *testing.T) {
 	}
 }
 
+func TestExplainOfARepeatShowsBothFunctionsAndCapsTheLineRanges(t *testing.T) {
+	s := repeatsSnapshot()
+	for i := range 12 { // more ranges than explain shows
+		s.Repeats.Listed[0].Unpartnered = append(s.Repeats.Listed[0].Unpartnered, snapshot.LineRange{Start: 200 + 2*i, End: 200 + 2*i})
+	}
+	m := repeatMarks(s)[0]
+	got := strings.Join((shape.Detector{}).Explain(s, m), "\n")
+	for _, want := range []string{
+		"new in this change: lines 40–118 (420 tokens)",
+		"counterpart: `src/users/save.ts` `saveUser`, lines 12–88 (400 tokens), there before and unchanged",
+		"91% of its tokens are in runs of 10 tokens the counterpart holds (the limit is 80%); 90% of the counterpart's are in its",
+		"286 tokens in a row are covered, lines 52–101 (a covered stretch counts from 150 tokens)",
+		"and 4 more",
+		"searched: 120 functions in 30 product files",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("Explain(repeat) =\n%s\nwant it to hold %q", got, want)
+		}
+	}
+}
+
 func TestAFunctionThatRepeatsAnotherIsMarkedWithItsCounterpart(t *testing.T) {
 	marks := repeatMarks(repeatsSnapshot())
 	if len(marks) != 2 {

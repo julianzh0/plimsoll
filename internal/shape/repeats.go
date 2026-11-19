@@ -148,3 +148,49 @@ func duplicatesNotAnalysed(r snapshot.FunctionRepeats) []string {
 	}
 	return found
 }
+
+// explainedRanges is how many line ranges without a partner explain names on each side.
+const explainedRanges = 10
+
+// duplicateEvidence is what explain says of a pair: both places, both shares, the covered stretch, the lines without
+// a partner, and what was searched. Lines, counts, shares, paths and the two names only.
+func duplicateEvidence(s snapshot.Snapshot, m answer.Mark) []string {
+	r := s.Repeats
+	for _, p := range r.Listed {
+		if answer.ID(name, ruleDuplicate, functionID(snapshot.FunctionChange{Path: p.Path, Name: p.Name, Occurrence: p.Occurrence})) != m.ID {
+			continue
+		}
+		status := map[snapshot.CounterpartStatus]string{snapshot.CounterpartUnchanged: "there before and unchanged",
+			snapshot.CounterpartChanged: "there before, and this change changed it", snapshot.CounterpartNew: "also new in this change"}
+		lines := []string{
+			fmt.Sprintf("new in this change: lines %d–%d (%d tokens)", p.Start, p.End, p.Tokens),
+			fmt.Sprintf("counterpart: `%s` `%s`, lines %d–%d (%d tokens), %s", p.Counterpart.Path, p.Counterpart.Name, p.Counterpart.Start,
+				p.Counterpart.End, p.Counterpart.Tokens, status[p.Counterpart.Status]),
+			fmt.Sprintf("%d%% of its tokens are in runs of %d tokens the counterpart holds (the limit is %d%%); %d%% of the counterpart's are in its",
+				int(math.Floor(p.Share*100)), r.Rules.Run, int(r.Rules.Share*100), int(math.Floor(p.Reverse*100))),
+			fmt.Sprintf("%d tokens in a row are covered, lines %d–%d (a covered stretch counts from %d tokens)", p.Stretch, p.StretchStart, p.StretchEnd, r.Rules.Stretch),
+			"tokens: names, keywords and operators by their text, every literal the same, comments left out; a run counts as often as the counterpart holds it",
+		}
+		if p.GaveUp {
+			lines = append(lines, "the line comparison gave up: the lines without a partner are not listed")
+		} else {
+			lines = append(lines, fmt.Sprintf("%d of its %d lines that hold code have a partner; without one here: %s; there: %s",
+				p.Partnered, p.CodeLines, cappedRanges(p.Unpartnered), cappedRanges(p.CounterpartUnpartnered)))
+		}
+		return append(lines,
+			fmt.Sprintf("searched: %d functions in %d product files of its language; %s also met the limits", r.Searched, r.SearchedFiles, answer.Plural(p.Others, "other function")),
+			duplicateLeftOut+"; not checked as new: functions the change rewrote or moved")
+	}
+	return nil
+}
+
+// cappedRanges names at most explainedRanges ranges and counts the rest.
+func cappedRanges(list []snapshot.LineRange) string {
+	if len(list) == 0 {
+		return "none"
+	}
+	if len(list) <= explainedRanges {
+		return ranges(list)
+	}
+	return fmt.Sprintf("%s and %d more", ranges(list[:explainedRanges]), len(list)-explainedRanges)
+}
