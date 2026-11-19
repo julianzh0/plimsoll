@@ -252,11 +252,7 @@ func (rs *Readings) read(language conventions.Language, grammar string, content 
 		}
 		pass := functionPass{leaf: leafKindsFor(grammar, tree)}
 		functions := functionsOf(language.Functions, language.Tokens, *w.functionRules, tree, content, nil, pass)
-		functions, err = rs.readRewritten(language, grammar, content, *w.functionRules, functions, pass)
-		if err != nil { // a failure of the moment on the rewritten copy: answer now, read the file again later
-			r.functionsUnread = true
-			return r, false
-		}
+		functions = rs.readRewritten(language, grammar, content, *w.functionRules, functions, pass)
 		for _, f := range functions {
 			if !inSpans(r.testSpans, f.start) {
 				r.functions = append(r.functions, f)
@@ -290,23 +286,18 @@ func readByText(language conventions.Language, content []byte) reading {
 // readRewritten reads, for a language with macro rules and a file with functions it could not read as written, a
 // copy with those macros rewritten, and takes its functions where the written file gave none it could read. A copy
 // the parser cannot read leaves the functions as they were.
-//
-// The error is a failure of the moment (parse.ErrUnavailable) only; any other failure of the copy is no error.
 func (rs *Readings) readRewritten(language conventions.Language, grammar string, content []byte, rules conventions.FunctionRules,
-	functions []function, pass functionPass) ([]function, error) {
+	functions []function, pass functionPass) []function {
 	if len(language.Macros) == 0 || !slices.ContainsFunc(functions, func(f function) bool { return f.broken }) {
-		return functions, nil
+		return functions
 	}
 	rewritten := rewriteMacros(language.Macros, content)
 	if rewritten == nil {
-		return functions, nil
+		return functions
 	}
 	tree, err := rs.parser.Nodes(grammar, rewritten)
-	if errors.Is(err, parse.ErrUnavailable) {
-		return functions, err
-	}
 	if err != nil {
-		return functions, nil
+		return functions
 	}
 	var clean []function
 	for _, f := range functions {
@@ -319,7 +310,7 @@ func (rs *Readings) readRewritten(language conventions.Language, grammar string,
 	if pass.leaf != nil {
 		pass.leaf = leafKindsFor(grammar, tree)
 	}
-	return withRewritten(functions, functionsOf(language.Functions, language.Tokens, rules, tree, rewritten, within, pass)), nil
+	return withRewritten(functions, functionsOf(language.Functions, language.Tokens, rules, tree, rewritten, within, pass))
 }
 
 // leafKindsFor resolves a grammar's token kinds against a tree; nil for a grammar without them.

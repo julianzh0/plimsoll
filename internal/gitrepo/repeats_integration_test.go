@@ -30,7 +30,8 @@ func repeatsRead(t *testing.T, dir, base string) []string {
 // TestIntegrationRepeatsFollowTheReadersOwnInputs checks the function-repeat rule on what the reader itself decides:
 // the working tree, the repository's own file, the merge base and its rename detection.
 func TestIntegrationRepeatsFollowTheReadersOwnInputs(t *testing.T) {
-	col, fil, file := snapshottest.GoColumns, snapshottest.GoFiles, snapshottest.GoFile
+	col, file := snapshottest.GoColumns, snapshottest.GoFile
+	small := func(name string) string { return "func " + name + "() int { return 1 }\n" }
 	copied := []string{"pkg/b.go Copied <- pkg/a.go Original"}
 
 	t.Run("an uncommitted change of a tracked file", func(t *testing.T) {
@@ -64,7 +65,7 @@ func TestIntegrationRepeatsFollowTheReadersOwnInputs(t *testing.T) {
 	})
 
 	t.Run("a function kept in a renamed file", func(t *testing.T) {
-		kept := file(fil("Helper"), fil("Other"), fil("Third"))
+		kept := file(small("Helper"), small("Other"), small("Third"))
 		repo := gitrepotest.New(t, gitrepotest.Commit{Message: "base", Files: map[string]string{
 			"pkg/a.go": file(col("Original")), "pkg/old.go": kept, "README.md": "x\n", "docs/old.md": "y\n"}})
 		repo.Git("mv", "pkg/old.go", "pkg/new.go")
