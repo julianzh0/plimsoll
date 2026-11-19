@@ -154,6 +154,7 @@ func TestBuildFindsAFunctionThatRepeatsAnother(t *testing.T) {
 		{"a function moved and renamed", map[string]string{"pkg/a.go": snapshottest.GoFile(snapshottest.GoColumns("Original"), snapshottest.GoFiles("ToMove"))},
 			with(map[string]string{"pkg/c.go": snapshottest.GoFile(snapshottest.GoFiles("Moved"))}), nil},
 		{"a copy in test support", original, with(map[string]string{"pkg/testing/b.go": snapshottest.GoFile(snapshottest.GoColumns("Copied"))}), nil},
+		{"a copy in vendored code", original, with(map[string]string{"3rdparty/lib/b.go": snapshottest.GoFile(snapshottest.GoColumns("Copied"))}), nil},
 		{"two like functions added together", nil, map[string]string{"pkg/x.go": snapshottest.GoFile(snapshottest.GoColumns("First")), "pkg/y.go": snapshottest.GoFile(snapshottest.GoColumns("Second"))},
 			[]string{"pkg/y.go Second <- pkg/x.go First new"}},
 		{"a counterpart that was there wins", original,
