@@ -763,6 +763,8 @@ func TestEachStateOfAChangedFileCarriesItsReason(t *testing.T) {
 			map[string]string{"src/a.ts": "console.log(2);\n" + run}, "", snapshot.AsAWhole, snapshot.ReasonRemainder},
 		{"a syntax error written into a changed function", map[string]string{"src/a.cc": "int run() { return 1; }\n"},
 			map[string]string{"src/a.cc": "int run() { return 2 $$ ; }\n"}, "", snapshot.AsAWhole, snapshot.ReasonSyntaxError},
+		{"a deleted file missing a token", map[string]string{"a.go": "package a\n\nfunc Run( int { return 1 }\n"}, nil, "",
+			snapshot.Deleted, snapshot.ReasonSyntaxError},
 		{"a declaration changed", map[string]string{"src/a.ts": run}, map[string]string{"src/a.ts": "export function run() { return 2; }\n"},
 			"", snapshot.ByName, ""},
 		{"its line breaks changed, where they are code", map[string]string{"src/a.ts": run},
