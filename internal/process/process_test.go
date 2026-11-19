@@ -371,4 +371,17 @@ func TestTheProcessRulesThatRan(t *testing.T) {
 	if want := []string{"process.planning-file", "process.limit-change", "process.declaration-change"}; !slices.Equal(declared.RanRules, want) {
 		t.Errorf("an own file read on both sides: ran %q, want %q", declared.RanRules, want)
 	}
+	layout := map[string]string{".plimsoll.toml": "[layout]\ntest_folders = [\"checks\"]\n"}
+	if _, f := detect(t, snapshottest.Files(layout, layout)); !slices.Equal(f.RanRules, []string{"process.planning-file", "process.limit-change", "process.declaration-change"}) {
+		t.Errorf("an own file with a layout alone: ran %q, want all three", f.RanRules)
+	}
+	unread := snapshottest.Files(map[string]string{".plimsoll.toml": "[layout]\ntest_folders = [\"old\"]\n"}, layout)
+	for i := range unread.Before {
+		if unread.Before[i].Path == ".plimsoll.toml" {
+			unread.Before[i].Content, unread.Before[i].Binary = nil, true
+		}
+	}
+	if _, f := detect(t, unread); !slices.Equal(f.RanRules, []string{"process.planning-file"}) {
+		t.Errorf("an own file not read at the base: ran %q, want the planning rule alone", f.RanRules)
+	}
 }

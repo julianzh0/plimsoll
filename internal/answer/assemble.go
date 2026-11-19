@@ -126,11 +126,7 @@ func Assemble(q Question, version string, s snapshot.Snapshot, results []Result)
 }
 
 // headline builds the areas' states from every new and grown mark, the resolved items and the rules that ran.
-// A snapshot without areas, built by a test without conventions, has no headline.
 func headline(s snapshot.Snapshot, marks, resolved []Mark, ran []string) *Headline {
-	if len(s.Areas) == 0 {
-		return nil
-	}
 	h := &Headline{Areas: []HeadlineArea{}}
 	for _, area := range s.Areas {
 		deciding := func(kind string) bool {

@@ -3,6 +3,7 @@ package answer_test
 import (
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/julianzh0/plimsoll/internal/answer"
@@ -37,6 +38,7 @@ func TestTheHeadlineCountsAreasWorseAndBetterFromDecidingKindsOnly(t *testing.T)
 		headlineMark("shape.dependencies:go.mod", answer.New),
 		headlineMark("shape.file-size:a.go", answer.New),             // report-only: never moves size
 		headlineMark("shape.test-ratio:repository", answer.Resolved), // makes size better
+		headlineMark("shape.test-ratio:docs", answer.Resolved),       // listed in identifier order
 		headlineMark("co-change.pair:a+b", answer.Resolved),          // report-only resolved: wiring stays as it is
 		headlineMark("process.doc-churn:repository", answer.Resolved),
 		headlineMark("settings.defined-twice:X", answer.New), // new and resolved in one area: it fails, not better
@@ -58,14 +60,17 @@ func TestTheHeadlineCountsAreasWorseAndBetterFromDecidingKindsOnly(t *testing.T)
 	if f := areaOf(h, "functions"); f.State != answer.AreaFail || !slices.Equal(f.Marks, []string{"shape.function-complexity:a.go:f", "shape.function-complexity:a.go:g"}) {
 		t.Errorf("functions = %+v, want failing on both marks", f)
 	}
-	if size := areaOf(h, "size"); size.State != answer.AreaPass || !slices.Equal(size.Resolved, []string{"shape.test-ratio:repository"}) || len(size.Marks) != 0 {
+	if size := areaOf(h, "size"); size.State != answer.AreaPass || !slices.Equal(size.Resolved, []string{"shape.test-ratio:docs", "shape.test-ratio:repository"}) || len(size.Marks) != 0 {
 		t.Errorf("size = %+v, want passing and better through the resolved ratio; the report-only file size moves nothing", size)
 	}
 	if wiring := areaOf(h, "wiring"); wiring.State != answer.AreaPass || len(wiring.Resolved) != 0 {
 		t.Errorf("wiring = %+v, want passing with no resolved item: a resolved pair is report-only", wiring)
 	}
-	if settings := areaOf(h, "settings"); settings.State != answer.AreaFail {
+	if settings := areaOf(h, "settings"); settings.State != answer.AreaFail || settings.Better() {
 		t.Errorf("settings = %+v, want failing: new and resolved in one area fails", settings)
+	}
+	if want := "\nAreas: 3 worse (dependencies 1, functions 2, settings 1); 1 better (size)\n"; !strings.Contains(answer.Render(status, answer.Wording{}), want) {
+		t.Errorf("status text:\n%s\nwant the line %q", answer.Render(status, answer.Wording{}), want)
 	}
 	if report.Headline == nil || !reflect.DeepEqual(*status.Headline, *report.Headline) {
 		t.Errorf("status and report headlines differ: %+v and %+v", status.Headline, report.Headline)

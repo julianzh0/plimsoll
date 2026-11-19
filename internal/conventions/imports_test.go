@@ -363,3 +363,17 @@ func commentCases() map[string]string {
 		"s = \"/*\"; c = '\"'; x /* y */":            "s = \"/*\"; c = '\"'; x        ",
 	}
 }
+
+// A header language's headers are the suffixes it runs only through an include, never a source suffix.
+func TestHeadersAreTheSuffixesRunOnlyThroughAnInclude(t *testing.T) {
+	c, _ := Default().LanguageOf("a.c")
+	if got := c.Headers(); !slices.Equal(got, []string{".h"}) {
+		t.Errorf("C headers = %q, want .h alone", got)
+	}
+	cpp, _ := Default().LanguageOf("a.cpp")
+	for _, suffix := range cpp.Headers() {
+		if suffix == ".cpp" || suffix == ".cc" {
+			t.Errorf("C++ headers %q hold a source suffix", cpp.Headers())
+		}
+	}
+}
