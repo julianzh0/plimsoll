@@ -45,9 +45,8 @@ func atBase(s snapshot.Snapshot, before graph, file string, count func(path stri
 }
 
 // importers of the change: the direct ones, those behind them at any distance, and the files the change touched
-// among them. The changed files are the code files of the analysed languages that a change names now, apart from those
-// the blast radius does not count; a deleted or renamed file adds the files that imported its base path at the base and
-// exist now, under their path now.
+// among them. The changed files are the code files of the analysed languages that a change names now; a deleted or
+// renamed file adds the files that imported its base path at the base and exist now, under their path now.
 type changeImporters struct {
 	changedNow    []string        // the changed code files now, sorted
 	touched       map[string]bool // the paths a change names, on either side
@@ -57,12 +56,6 @@ type changeImporters struct {
 
 func importersOfChange(s snapshot.Snapshot, now, before graph) changeImporters {
 	r := changeImporters{touched: map[string]bool{}}
-	notCounted := map[string]bool{}
-	for _, c := range s.Radius.Changed {
-		if c.State == snapshot.NotCounted {
-			notCounted[c.Path], notCounted[c.BasePath] = true, true
-		}
-	}
 	nowPath := map[string]string{} // base path -> path now, for the files a change renamed
 	for _, ch := range s.Changes {
 		r.touched[ch.Path] = true
@@ -71,7 +64,7 @@ func importersOfChange(s snapshot.Snapshot, now, before graph) changeImporters {
 		}
 	}
 	for _, file := range now.files {
-		if r.touched[file] && !notCounted[file] {
+		if r.touched[file] {
 			r.changedNow = append(r.changedNow, file)
 		}
 	}
@@ -94,8 +87,8 @@ func importersOfChange(s snapshot.Snapshot, now, before graph) changeImporters {
 		}
 	}
 	for _, file := range before.files {
-		if !r.touched[file] || now.analysed(file) || notCounted[file] {
-			continue // unchanged, still here under the same path, or not counted
+		if !r.touched[file] || now.analysed(file) {
+			continue // unchanged, or still here under the same path
 		}
 		for _, importer := range before.importers(file) {
 			if moved, renamed := nowPath[importer]; renamed {
@@ -125,7 +118,7 @@ func importerRows(s snapshot.Snapshot, now, before graph, radius *answer.Radius)
 	r := importersOfChange(s, now, before)
 	radius.Direct, radius.Total = importersCount(now, r.direct), importersCount(now, r.total)
 	radius.Folders, radius.OtherFolders = answer.Folders(r.total)
-	radius.ProductCodeFiles, radius.ImportersInChange = rolesOf(now, now.files).product, r.inside
+	radius.ImportersInChange = r.inside
 	direct := answer.Plural(radius.Direct.Files, "file") + " directly"
 	if radius.Direct.Files > 0 {
 		direct += " (" + radius.Direct.Split() + ")"

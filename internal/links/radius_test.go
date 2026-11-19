@@ -298,8 +298,8 @@ func TestTheStateOfAChangedFileFollowsWhatItsDeclarationsDid(t *testing.T) {
 			"int run() { return 2 $$ ; }\n", snapshot.AsAWhole},
 		{"a TypeScript namespace renamed", "src/a.ts", "export namespace A {\n  export const x = 1;\n}\n",
 			"export namespace B {\n  export const x = 1;\n}\n", snapshot.AsAWhole},
-		{"a Go function with a non-ASCII name changed", "a.go", "package a\n\nfunc Café() int { return 1 }\n",
-			"package a\n\nfunc Café() int { return 2 }\n", snapshot.ByName},
+		{"a Go function whose name starts with a non-ASCII letter changed", "a.go", "package a\n\nfunc Über() int { return 1 }\n",
+			"package a\n\nfunc Über() int { return 2 }\n", snapshot.ByName},
 	}
 	for _, c := range cases {
 		states, _ := radiusOf(t, snapshottest.Files(map[string]string{c.path: c.base}, map[string]string{c.path: c.now}))
@@ -450,8 +450,15 @@ func TestNamesOfAnyLetterReachTheirUsers(t *testing.T) {
 	base := map[string]string{"src/a.ts": "export function $run() { return 1; }\n", "src/b.ts": "import { $run } from './a';\n$run();\n"}
 	now := maps.Clone(base)
 	now["src/a.ts"] = "export function $run() { return 2; }\n"
+	if f := detect(t, snapshottest.Files(base, now)); f.Radius == nil || !slices.Equal(f.Radius.Paths, []string{"src/b.ts"}) || f.Radius.ByName != 1 {
+		t.Errorf("a name with $: radius = %+v, want src/b.ts by name", f.Radius)
+	}
+	// A name the lexer ends at a non-ASCII space is the same word to the prefilter, warm or cold.
+	base = map[string]string{"src/a.ts": "export function Run() { return 1; }\n", "src/b.ts": "import * as a from './a';\na.Run\u00a0();\n"}
+	now = maps.Clone(base)
+	now["src/a.ts"] = "export function Run() { return 2; }\n"
 	if users := usersOf(t, snapshottest.Files(base, now)); !slices.Equal(users, []string{"src/b.ts"}) {
-		t.Errorf("a name with $: users = %q, want the file that calls $run", users)
+		t.Errorf("a name before a non-breaking space: users = %q, want the file that calls Run", users)
 	}
 }
 
@@ -460,11 +467,24 @@ func TestNamesOfAnyLetterReachTheirUsers(t *testing.T) {
 func TestAUserTheGateLeavesOutMakesALowerBound(t *testing.T) {
 	s := snapshot.Snapshot{Radius: snapshot.Radius{
 		Changed: []snapshot.ChangedFile{{Path: "a.go", Language: "go", State: snapshot.ByName}},
-		Users:   []snapshot.User{{Path: "src/u.ts", Role: snapshot.Product, ByName: true, Languages: []string{"go"}}},
+		Users:   []snapshot.User{{Path: "src/u.ts", Role: snapshot.Product, ByName: []string{"go"}, Outside: []string{"go"}}},
 	}}
 	r, _, _ := blastRadius(s, []snapshot.LanguageImports{{Language: "go"}}, graph{known: map[string]bool{}})
 	if r.State != answer.RadiusAtLeast || r.Files != 0 {
 		t.Errorf("radius = %+v, want at least 0: the TypeScript user is out of sight", r)
+	}
+}
+
+// A user reached by name only from a language whose links are not used, and as a whole from a used one, counts as a
+// whole: the gated language decides nothing about it.
+func TestAGatedLanguageDecidesNothingAboutAUser(t *testing.T) {
+	s := snapshot.Snapshot{Radius: snapshot.Radius{
+		Changed: []snapshot.ChangedFile{{Path: "a.go", Language: "go", State: snapshot.AsAWhole}, {Path: "src/b.ts", Language: "typescript", State: snapshot.ByName}},
+		Users:   []snapshot.User{{Path: "u.go", Role: snapshot.Product, Whole: []string{"go"}, ByName: []string{"typescript"}}},
+	}}
+	r, _, _ := blastRadius(s, []snapshot.LanguageImports{{Language: "go"}}, graph{known: map[string]bool{"u.go": true}})
+	if r.Files != 1 || r.AsWhole != 1 || r.ByName != 0 || r.Product != 1 {
+		t.Errorf("radius = %+v, want one product file counted as a whole", r)
 	}
 }
 
@@ -487,10 +507,17 @@ func TestTheGateHoldsWhenTwoLanguagesChangeTheSameName(t *testing.T) {
 	}
 	// The walk itself keeps the languages that reached a user: the TypeScript user was reached from TypeScript alone.
 	s := snapshot.Build(snapshottest.Files(base, now), conventions.Default(), snapshottest.Readings(t))
+	found := false
 	for _, u := range s.Radius.Users {
-		if u.Path == user && !slices.Equal(u.Languages, []string{"typescript"}) {
-			t.Errorf("the TypeScript user was reached from %q, want typescript alone", u.Languages)
+		if u.Path == user {
+			found = true
+			if !slices.Equal(u.ByName, []string{"typescript"}) {
+				t.Errorf("the TypeScript user was reached by name from %q, want typescript alone", u.ByName)
+			}
 		}
+	}
+	if !found {
+		t.Errorf("the walk did not reach the TypeScript user %s", user)
 	}
 }
 
@@ -574,5 +601,67 @@ func TestAChangedFileThatCouldNotBeReadIsNotCountedAndLowersTheBound(t *testing.
 	}
 	if r := detect(t, source).Radius; r == nil || r.State != answer.RadiusAtLeast {
 		t.Errorf("radius = %+v, want at least", r)
+	}
+}
+
+func TestAnUntouchedFileThatCouldNotBeReadLowersTheBound(t *testing.T) {
+	base := map[string]string{"src/a.ts": "export function run() { return 1; }\n", "src/u.ts": "import { run } from './a';\nrun();\n",
+		"src/b.ts": "export const b = 1;\n"}
+	now := maps.Clone(base)
+	now["src/a.ts"] = "export function run() { return 2; }\n"
+	source := snapshottest.Files(base, now)
+	for i, e := range source.Now {
+		if e.Path == "src/b.ts" {
+			source.Now[i].Content = nil // the read failed; the file is untouched
+		}
+	}
+	source.Unreadable = []string{"src/b.ts"}
+	if r := detect(t, source).Radius; r == nil || r.State != answer.RadiusAtLeast || r.Changed.NotCounted != 0 {
+		t.Errorf("radius = %+v, want at least, with no changed file left out", r)
+	}
+}
+
+func TestAnIgnoredChangeBesideACountedOneSeedsNoUsers(t *testing.T) {
+	base := map[string]string{".plimsoll.toml": "[ignore]\nfolders = [\"gen\"]\n", "gen/x.ts": "export function gen() { return 1; }\n",
+		"src/a.ts": "export function run() { return 1; }\n", "src/b.ts": "import { run } from './a';\nrun();\n",
+		"src/c.ts": "import { gen } from '../gen/x';\ngen();\n"}
+	now := maps.Clone(base)
+	now["gen/x.ts"] = "export function gen() { return 2; }\n"
+	now["src/a.ts"] = "export function run() { return 2; }\n"
+	f := detect(t, snapshottest.Files(base, now))
+	if f.Radius == nil || !slices.Equal(f.Radius.Paths, []string{"src/b.ts"}) || f.Radius.State != answer.RadiusAtLeast {
+		t.Errorf("radius = %+v, want src/b.ts alone, at least: the ignored file seeds no user", f.Radius)
+	}
+}
+
+func TestARenameIntoAnotherLanguageIsOneFileGoneAndOneNew(t *testing.T) {
+	base := map[string]string{"src/a.c": "int run(void) { return 1; }\n", "src/b.c": "#include \"a.c\"\nint use(void) { return run(); }\n"}
+	now := map[string]string{"src/a.cpp": base["src/a.c"], "src/b.c": base["src/b.c"]}
+	source := snapshottest.Files(base, now)
+	source.Changes = []snapshot.Change{{Path: "src/a.cpp", From: "src/a.c"}}
+	states, _ := radiusOf(t, source)
+	if want := []string{fmt.Sprintf("src/a.c %d ", snapshot.Deleted), fmt.Sprintf("src/a.cpp %d ", snapshot.NothingAltered)}; !slices.Equal(states, want) {
+		t.Errorf("states = %q, want %q", states, want)
+	}
+}
+
+func TestANestedSwiftTargetIsNoPeerOfTheOuterOne(t *testing.T) {
+	base := map[string]string{"Package.swift": "let package = Package(name: \"app\", targets: [\n    .target(name: \"App\", path: \"Sources/App\", exclude: [\"Inner\"]),\n    .target(name: \"Inner\", path: \"Sources/App/Inner\"),\n])\n",
+		"Sources/App/F.swift": "public func f0() -> Int { return 1 }\n", "Sources/App/Inner/U.swift": "let use = f0()\n",
+		"Sources/App/Core/V.swift": "let v = f0()\n"}
+	now := maps.Clone(base)
+	now["Sources/App/F.swift"] = "public func f0() -> Int { return 2 }\n"
+	if users := usersOf(t, snapshottest.Files(base, now)); !slices.Equal(users, []string{"Sources/App/Core/V.swift"}) {
+		t.Errorf("users = %q, want the outer target's file alone", users)
+	}
+}
+
+func TestTheProductDenominatorDoesNotDependOnTheImporterRow(t *testing.T) {
+	base := map[string]string{"src/a.ts": "export const a = 1;\n", "src/b.ts": "import { a } from './a';\nexport const b = a;\n"}
+	now := maps.Clone(base)
+	now["src/a.ts"] = "// a comment\nexport const a = 1;\n"
+	f := detect(t, snapshottest.Files(base, now))
+	if _, row := statisticNamed(f, "importers of the change"); row || f.Radius == nil || f.Radius.ProductCodeFiles != 2 {
+		t.Errorf("importer row %v, radius %+v; want no row and 2 product code files", row, f.Radius)
 	}
 }

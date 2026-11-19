@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/julianzh0/plimsoll/internal/conventions"
 )
@@ -35,8 +37,8 @@ type radiusWalk struct {
 	nowPrints, basePrints map[string]prints
 	byFolder              map[string][]File // the code files now by folder, made on first use
 	byPackage             map[string]map[string][]string
-	targets               []string            // the folders of the targets Package.swift declares, deepest first; nil until read
-	byTargetFolder        map[string][]string // per target folder: its code files of the target's language
+	targets               []string            // the folders of the declared targets, deepest first
+	byTarget              map[string][]string // per target folder: the code files it owns; nil until read
 }
 
 func newWalk(in radiusInput) *radiusWalk {
@@ -228,30 +230,23 @@ func (w *radiusWalk) packageFiles(language conventions.Language) map[string][]st
 	return found
 }
 
-// targetFiles are the code files of a language in the target a file belongs to: the deepest folder of a target the
-// language's prefix file at the root declares that holds it, at any depth; a file outside every declared target has
-// its folder's files.
-// Only the root manifest is read: the files of a package nested below the root have their folder's files.
+// targetFiles are the code files of a language in the target a file belongs to: each file belongs to the deepest
+// folder of a target the language's prefix file at the root declares that holds it, at any depth; a file outside
+// every declared target has its folder's files. Only the root manifest is read: the files of a package nested below
+// the root have their folder's files.
 func (w *radiusWalk) targetFiles(file string, language conventions.Language) []string {
-	if w.targets == nil {
+	if w.byTarget == nil {
 		folders, _ := swiftTargetFolders(w.in.nowContent[language.Imports.Prefix.File])
 		w.targets = slices.SortedFunc(maps.Values(folders), func(a, b string) int { return cmp.Or(len(b)-len(a), strings.Compare(a, b)) })
-		w.byTargetFolder = map[string][]string{}
-	}
-	for _, target := range w.targets {
-		if !strings.HasPrefix(file, target+"/") {
-			continue
-		}
-		found, made := w.byTargetFolder[target]
-		if !made {
-			for _, f := range w.in.now.Files {
-				if f.Language == language.Name && strings.HasPrefix(f.Path, target+"/") {
-					found = append(found, f.Path)
-				}
+		w.byTarget = map[string][]string{}
+		for _, f := range w.in.now.Files {
+			if target, found := w.targetOf(f.Path); found && f.Language == language.Name {
+				w.byTarget[target] = append(w.byTarget[target], f.Path)
 			}
-			w.byTargetFolder[target] = found
 		}
-		return found
+	}
+	if target, found := w.targetOf(file); found {
+		return w.byTarget[target]
 	}
 	var found []string
 	for _, f := range w.folderFiles(path.Dir(file)) {
@@ -260,6 +255,16 @@ func (w *radiusWalk) targetFiles(file string, language conventions.Language) []s
 		}
 	}
 	return found
+}
+
+// targetOf is the deepest declared target folder that holds a path.
+func (w *radiusWalk) targetOf(p string) (string, bool) {
+	for _, target := range w.targets {
+		if target == "." || strings.HasPrefix(p, target+"/") {
+			return target, true
+		}
+	}
+	return "", false
 }
 
 // packageOf is the package or namespace a content declares by a package line, or "".
@@ -378,8 +383,8 @@ func (w *radiusWalk) offer(file string, names nameSet, wholeLanguage string) {
 }
 
 // languagesOf are the languages of the changed files that altered or removed the names of a set.
-func (w *radiusWalk) languagesOf(names nameSet, more ...string) []string {
-	found := slices.Clone(more)
+func (w *radiusWalk) languagesOf(names nameSet) []string {
+	var found []string
 	names.each(func(i int) { found = appendNew(found, w.nameFrom[i]) })
 	return found
 }
@@ -420,7 +425,7 @@ func (w *radiusWalk) visit(file string) {
 			}
 		}
 	default:
-		w.mark(file, false, false, wholeNew)
+		w.mark(file, wholeNew, nil, nil)
 	}
 	if asked.empty() {
 		return
@@ -428,7 +433,7 @@ func (w *radiusWalk) visit(file string) {
 	w.readHeld(file, st)
 	used := asked.and(st.held)
 	if !used.empty() {
-		w.mark(file, true, used.and(st.outside).empty(), w.languagesOf(used))
+		w.mark(file, nil, w.languagesOf(used), w.languagesOf(used.and(st.outside)))
 	}
 	forward := used
 	if passes {
@@ -453,23 +458,31 @@ func (w *radiusWalk) readAhead(files []string) {
 	parallel(len(wanted), func(i int) { w.readHeld(wanted[i], w.files[wanted[i]]) })
 }
 
-// worth says whether a file holds one of the walk's names as a word of identifier bytes, so that every identifier
-// token a language reads is one such word.
+// worth says whether a file holds one of the walk's names as a word: a run of letters, digits, `_` and `$` read as
+// runes, the characters the languages' identifier tokens are made of, so every identifier token is one such word.
 func (w *radiusWalk) worth(file string) func() bool {
 	return func() bool {
-		hit := false
-		eachWord(w.in.nowContent[file], identifierByte, func(word []byte, _ int) {
-			if !hit {
-				_, hit = w.names[string(word)]
+		content, start := w.in.nowContent[file], -1
+		for i := 0; i <= len(content); {
+			r, size := utf8.DecodeRune(content[i:])
+			if i < len(content) && (r == '_' || r == '$' || unicode.IsLetter(r) || unicode.IsNumber(r)) {
+				if start < 0 {
+					start = i
+				}
+				i += size
+				continue
 			}
-		})
-		return hit
+			if start >= 0 {
+				if _, hit := w.names[string(content[start:i])]; hit {
+					return true
+				}
+				start = -1
+			}
+			i += max(size, 1)
+		}
+		return false
 	}
 }
-
-// identifierByte says whether a byte can be part of an identifier in a language plimsoll reads: an ASCII letter, digit,
-// `_` or `$`, or a byte of a non-ASCII letter.
-func identifierByte(r rune) bool { return wordByte(r) || r == '$' || r >= 0x80 }
 
 // readHeld reads, once per file, which of the walk's names a file holds as identifier tokens, and which of them
 // outside its test code. The file's identifiers are read once per content, and only after a plain word search finds
@@ -506,24 +519,22 @@ func (w *radiusWalk) readHeld(file string, st *walkState) {
 	}
 }
 
-// mark records a user.
-func (w *radiusWalk) mark(file string, byName, testsOnly bool, languages []string) {
+// mark records how a file uses what the change did, per language of the changed files that reached it.
+func (w *radiusWalk) mark(file string, whole, byName, outside []string) {
 	u := w.users[file]
 	if u == nil {
-		u = &User{Path: file, Role: w.roles[file], TestsOnly: true}
+		u = &User{Path: file, Role: w.roles[file]}
 		w.users[file] = u
 	}
-	if byName {
-		u.ByName, u.TestsOnly = true, u.TestsOnly && testsOnly
-	}
-	u.Languages = appendNew(u.Languages, languages...)
+	u.Whole, u.ByName, u.Outside = appendNew(u.Whole, whole...), appendNew(u.ByName, byName...), appendNew(u.Outside, outside...)
 }
 
 // results are the untouched users and the touched ones, sorted by path.
 func (w *radiusWalk) results() (users, touched []User) {
 	for _, u := range w.users {
-		slices.Sort(u.Languages)
-		u.TestsOnly = u.TestsOnly && u.ByName
+		slices.Sort(u.Whole)
+		slices.Sort(u.ByName)
+		slices.Sort(u.Outside)
 		if w.touched[u.Path] {
 			touched = append(touched, *u)
 		} else {

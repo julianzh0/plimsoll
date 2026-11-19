@@ -148,7 +148,11 @@ func printsOf(language conventions.Language, content []byte, units []unit, impor
 	p := prints{whole: hash(0, n, nil, ""), code: hash(0, n, imports, ""), remainder: hash(0, n, slices.Concat(unitSpans, imports), "")}
 	for _, u := range units {
 		lo, hi := tokensIn(toks, u.start, u.end)
-		p.units = append(p.units, hash(lo, hi, slices.Concat(u.inner, imports), u.context))
+		skip := imports // a leaf unit skips only the pure imports; a container also its inner units
+		if u.inner != nil {
+			skip = slices.Concat(u.inner, imports)
+		}
+		p.units = append(p.units, hash(lo, hi, skip, u.context))
 	}
 	return p
 }

@@ -45,8 +45,9 @@ type Radius struct {
 	Changed []ChangedFile // sorted by path now, then path at the base
 	Users   []User        // untouched users, sorted by path
 	Touched []User        // users the change itself touched, sorted by path
-	// MissingNow says a code file's content is missing now: some use may be out of sight.
-	MissingNow bool
+	// MissingNow are the languages of the code files whose content is missing now, sorted: some use of their language
+	// may be out of sight.
+	MissingNow []string
 }
 
 // ChangedFile is one changed code file: its path now ("" when deleted) and at the base ("" when new), its language,
@@ -59,13 +60,15 @@ type ChangedFile struct {
 
 // User is a file the walk reached: its role, whether it uses a name the change altered or removed (else it counts as
 // a user of a file counted as a whole), whether every such use lies in its test code, and the languages of the
-// changed files it was reached from.
+// User is a file the walk reached, with its role and, per language of the changed files that reached it, how: as a
+// user of a file counted as a whole, by a name it uses, and by a name it uses outside its test code. Kept per
+// language, so a language the links detector leaves out decides nothing about the user.
 type User struct {
-	Path      string
-	Role      Role
-	ByName    bool
-	TestsOnly bool
-	Languages []string
+	Path    string
+	Role    Role
+	Whole   []string // languages of the files counted as a whole that reach it
+	ByName  []string // languages of the changed files whose altered or removed names it uses
+	Outside []string // those of them whose names it uses outside its test code
 }
 
 // radiusInput is what the radius reads of one question.
@@ -84,8 +87,12 @@ type radiusInput struct {
 func blastRadius(in radiusInput) Radius {
 	var r Radius
 	for _, p := range slices.Concat(in.missing, in.unreadable) {
-		r.MissingNow = r.MissingNow || missingNow(in, p)
+		if language, missing := missingNow(in, p); missing {
+			r.MissingNow = appendNew(r.MissingNow, language)
+		}
 	}
+	slices.Sort(r.MissingNow)
+
 	if len(in.changes) == 0 {
 		return r
 	}
@@ -108,11 +115,11 @@ func blastRadius(in radiusInput) Radius {
 }
 
 // missingNow says whether a path is tracked now, of a language plimsoll reads and outside what it leaves out, with its
-// content missing.
-func missingNow(in radiusInput, p string) bool {
-	_, known := in.rules.LanguageOf(p)
+// content missing, and gives the language.
+func missingNow(in radiusInput, p string) (string, bool) {
+	language, known := in.rules.LanguageOf(p)
 	content, tracked := in.nowContent[p]
-	return known && tracked && content == nil && !excluded(in.rules, p)
+	return language.Name, known && tracked && content == nil && !excluded(in.rules, p)
 }
 
 // changed is a changed code file with what the walk needs of it.
@@ -205,24 +212,24 @@ func (w *radiusWalk) changedFiles(ch Change) []changed {
 	switch {
 	case !nowKnown && !baseKnown:
 		return nil
-	case !nowKnown && nowPath != "": // code renamed to a suffix no entry reads: its old path is gone
-		return w.changedFiles(Change{Path: basePath})
-	case !baseKnown:
-		basePath = "" // new, or renamed from a suffix no entry reads
+	case !nowKnown: // deleted, or renamed to a suffix no entry reads: its old path is gone
+		return []changed{w.changedFile(baseLanguage, "", basePath)}
+	case !baseKnown: // new, or renamed from a suffix no entry reads
+		return []changed{w.changedFile(nowLanguage, nowPath, "")}
+	case nowLanguage.Name != baseLanguage.Name, // renamed into another language: one file gone, another new
+		ch.From != "" && nowLanguage.Imports.Target == conventions.FolderTarget && path.Dir(ch.From) != path.Dir(nowPath):
+		// or moved into another folder of a language whose imports name folders
+		return []changed{w.changedFile(baseLanguage, "", basePath), w.changedFile(nowLanguage, nowPath, "")}
 	}
-	language := nowLanguage
-	if !nowKnown {
-		language = baseLanguage
-	}
-	if ch.From != "" && nowPath != "" && basePath != "" && language.Imports.Target == conventions.FolderTarget && path.Dir(ch.From) != path.Dir(nowPath) {
-		gone := w.changedFiles(Change{Path: ch.From})
-		moved := changed{file: ChangedFile{Path: nowPath, Language: language.Name}, language: language}
-		moved.file.State, moved.file.Reason, moved.names = w.state(language, nowPath, "")
-		return append(gone, moved)
-	}
+	return []changed{w.changedFile(nowLanguage, nowPath, basePath)}
+}
+
+// changedFile is one changed code file of a language, its path now ("" when gone) and at the base ("" when new), with
+// its state.
+func (w *radiusWalk) changedFile(language conventions.Language, nowPath, basePath string) changed {
 	c := changed{file: ChangedFile{Path: nowPath, BasePath: basePath, Language: language.Name}, language: language}
 	c.file.State, c.file.Reason, c.names = w.state(language, nowPath, basePath)
-	return []changed{c}
+	return c
 }
 
 // state decides a changed code file's state, with the names it altered or removed. The reasons not to count it are

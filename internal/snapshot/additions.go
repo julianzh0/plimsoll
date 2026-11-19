@@ -144,7 +144,7 @@ func withUses(rules conventions.Rules, found []Addition, entries []Entry, roles 
 		}
 		counts, inTests := map[string]int{}, map[string]bool{}
 		testSpans := readings[entry.Path].testSpans
-		eachWord(entry.Content, wordByte, func(word []byte, at int) {
+		eachWord(entry.Content, func(word []byte, at int) {
 			if _, wanted := byName[string(word)]; !wanted {
 				return
 			}
@@ -183,11 +183,11 @@ func isDataFile(rules conventions.Additions, filePath string) bool {
 	return slices.ContainsFunc(rules.DataFiles, func(pattern string) bool { return nameMatches(pattern, filePath) })
 }
 
-// eachWord calls found with every run of bytes inWord accepts in content, and its offset.
-func eachWord(content []byte, inWord func(rune) bool, found func(word []byte, at int)) {
+// eachWord calls found with every run of ASCII letters, digits and underscores in content, and its offset.
+func eachWord(content []byte, found func(word []byte, at int)) {
 	start := -1
 	for i := 0; i <= len(content); i++ {
-		if i < len(content) && inWord(rune(content[i])) {
+		if i < len(content) && wordByte(rune(content[i])) {
 			if start < 0 {
 				start = i
 			}

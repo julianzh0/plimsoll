@@ -41,6 +41,7 @@ func (Detector) Detect(s snapshot.Snapshot) answer.Findings {
 	radius, rows, notCounted := blastRadius(s, languages, now)
 	changedCode := altered(radius)
 	if len(languages) > 0 {
+		radius.ProductCodeFiles = rolesOf(now, now.files).product
 		f = withLinks(f, s, languages, now, before, radius, changedCode)
 	}
 	f.Radius, f.Statistics, f.NotAnalysed = radius, append(rows, f.Statistics...), append(f.NotAnalysed, notCounted...)
