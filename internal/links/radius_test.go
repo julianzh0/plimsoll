@@ -850,3 +850,24 @@ func TestTheWalkSeedsEachKindOfChangedFile(t *testing.T) {
 		}
 	}
 }
+
+// A change that alters more names than one word of the walk's name set holds still reaches the user of the last one.
+func TestAChangeOfManyNamesReachesTheUserOfTheLast(t *testing.T) {
+	declare := func(value int) string {
+		var b strings.Builder
+		b.WriteString("package a\n\n")
+		for i := range 70 {
+			fmt.Fprintf(&b, "func F%d() int { return %d }\n", i, value)
+		}
+		return b.String()
+	}
+	base := map[string]string{"go.mod": "module " + goModule + "\n", "internal/a/a.go": declare(1),
+		"internal/b/b.go": "package b\n\nimport \"" + goModule + "/internal/a\"\n\nvar _ = a.F69()\n",
+		"internal/c/c.go": "package c\n\nimport \"" + goModule + "/internal/a\"\n\nvar _ = a.F0\n"}
+	now := maps.Clone(base)
+	now["internal/a/a.go"] = declare(2)
+	now["internal/c/c.go"] = "package c\n\nimport \"" + goModule + "/internal/a\"\n\nvar _ = a.F0\n// seen\n"
+	if _, users := radiusOf(t, snapshottest.Files(base, now)); !slices.Equal(users, []string{"internal/b/b.go"}) {
+		t.Errorf("users = %q, want b, which calls F69", users)
+	}
+}
