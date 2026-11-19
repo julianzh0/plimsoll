@@ -2,6 +2,8 @@ package snapshot_test
 
 import (
 	"fmt"
+	"io/fs"
+	"os"
 	"strings"
 	"testing"
 
@@ -26,6 +28,58 @@ func repeats(t *testing.T, base, now map[string]string) ([]string, snapshot.Func
 		lines = append(lines, fmt.Sprintf("%s %s <- %s %s %s", r.Path, r.Name, r.Counterpart.Path, r.Counterpart.Name, r.Counterpart.Status))
 	}
 	return lines, found
+}
+
+// TestBuildFindsRepeatsInEveryLanguage copies each language's sample file: the copy beside the original repeats it,
+// and the copy that replaced it moved it. The rule's sizes are lowered to the samples' small functions.
+func TestBuildFindsRepeatsInEveryLanguage(t *testing.T) {
+	rules := conventions.Default()
+	rules.FunctionRules.Repeats.MinTokens, rules.FunctionRules.Repeats.Stretch = 15, 15
+	for _, path := range []string{"src/a.go", "src/a.py", "src/a.ts", "src/a.tsx", "src/a.rs", "src/a.dart", "src/A.java", "src/a.kt", "src/A.cs", "src/a.swift", "src/a.c", "src/a.cpp"} {
+		raw, err := fs.ReadFile(os.DirFS("testdata/functions/now"), path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		content, copied := string(raw), "src/copy/"+path[len("src/"):]
+		build := func(base, now map[string]string) snapshot.FunctionRepeats {
+			return snapshot.Build(snapshottest.Files(base, now), rules, snapshottest.Readings(t)).Repeats
+		}
+		beside := build(map[string]string{path: content}, map[string]string{path: content, copied: content})
+		if len(beside.Listed) == 0 || beside.Listed[0].Path != copied || beside.Listed[0].Counterpart.Path != path {
+			t.Errorf("Build(%s copied beside it).Repeats = %+v, want its functions repeating the original", path, beside.Listed)
+		}
+		moved := build(map[string]string{path: content}, map[string]string{copied: content})
+		if len(moved.Listed) != 0 || moved.Moved == 0 {
+			t.Errorf("Build(%s moved to %s).Repeats = %d listed, %d moved; want none listed, its functions moved", path, copied, len(moved.Listed), moved.Moved)
+		}
+	}
+}
+
+// TestRepeatsFromKeptReadingsEqualFreshOnes asks a run of questions on one set of kept readings: no candidate, a copy,
+// an edit of the copy, and a header whose language flips with the head tree's majority; each answer equals a fresh one.
+func TestRepeatsFromKeptReadingsEqualFreshOnes(t *testing.T) {
+	header := "int count(int *rows, int n) {\n  int total = 0;\n  for (int i = 0; i < n; i++) {\n    if (rows[i] > 0) { total += rows[i]; }\n    else if (rows[i] < -100) { return -1; }\n  }\n  return total;\n}\n"
+	rules := conventions.Default()
+	rules.FunctionRules.Repeats.MinTokens, rules.FunctionRules.Repeats.Stretch = 15, 15
+	base := map[string]string{"pkg/a.go": goFile(columns("Original")), "inc/a.h": header}
+	questions := []map[string]string{
+		{"pkg/a.go": goFile(columns("Original")), "inc/a.h": header, "pkg/z.go": goFile(files("Other"))},
+		{"pkg/a.go": goFile(columns("Original")), "inc/a.h": header, "pkg/b.go": goFile(columns("Copied"))},
+		{"pkg/a.go": goFile(columns("Original")), "inc/a.h": header, "pkg/b.go": goFile(strings.Replace(columns("Copied"), "v*2", "v*7", 1))},
+		{"pkg/a.go": goFile(columns("Original")), "inc/a.h": header, "inc/b.h": header, "src/x.c": "int x(void) { return 1; }\n"},
+		{"pkg/a.go": goFile(columns("Original")), "inc/a.h": header, "inc/b.h": header, "src/x.cpp": "int x() { return 1; }\n", "src/y.cpp": "int y() { return 2; }\n"},
+	}
+	kept := snapshottest.Readings(t)
+	for i, now := range questions {
+		got := snapshot.Build(snapshottest.Files(base, now), rules, kept).Repeats
+		fresh := snapshot.Build(snapshottest.Files(base, now), rules, snapshottest.Readings(t)).Repeats
+		if fmt.Sprintf("%+v", got) != fmt.Sprintf("%+v", fresh) {
+			t.Errorf("question %d: Build with kept readings = %+v\nwith fresh ones = %+v", i, got, fresh)
+		}
+		if (i == 0) != (len(got.Listed) == 0) {
+			t.Errorf("question %d: Build listed %d pairs, want pairs in every question but the first", i, len(got.Listed))
+		}
+	}
 }
 
 func TestBuildComparesNoRepeatsWithoutTheCodeItNeeds(t *testing.T) {
