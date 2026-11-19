@@ -565,7 +565,9 @@ func unpartnered(kept []bool, lines []int) []LineRange {
 	return ranges
 }
 
-// gramsOf are the hashes of every run of n tokens, each token first passed through view (nil keeps it).
+// gramsOf are the hashes of every run of n tokens, each token first passed through view (nil keeps it). A token's
+// number is mixed before it enters the rolling hash: the numbers differ by single bits (a name's top bit, the literal's
+// 1), which the hash's powers of an odd base would otherwise not keep apart between places.
 func gramsOf(tokens []uint64, n int, view func(uint64) uint64) []uint64 {
 	if len(tokens) < n {
 		return nil
@@ -576,9 +578,18 @@ func gramsOf(tokens []uint64, n int, view func(uint64) uint64) []uint64 {
 		if view != nil {
 			t = view(t)
 		}
-		w.push(t, func(_ int, hash uint64, _ int) { out = append(out, hash) })
+		w.push(mixed(t), func(_ int, hash uint64, _ int) { out = append(out, hash) })
 	}
 	return out
+}
+
+// mixed spreads a number's bits over all 64 (the finalizer of SplitMix64).
+func mixed(x uint64) uint64 {
+	x ^= x >> 30
+	x *= 0xbf58476d1ce4e5b9
+	x ^= x >> 27
+	x *= 0x94d049bb133111eb
+	return x ^ x>>31
 }
 
 func countGrams(grams []uint64) map[uint64]int {

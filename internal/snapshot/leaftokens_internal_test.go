@@ -8,6 +8,18 @@ import (
 	"github.com/julianzh0/plimsoll/internal/parse"
 )
 
+// TestRunsOfTokensWithNamesAndLiteralsSwappedDiffer checks that a run's hash tells where a name stands and where a
+// literal stands, in the view without names: a name and a literal in swapped places are no shared run.
+func TestRunsOfTokensWithNamesAndLiteralsSwappedDiffer(t *testing.T) {
+	name := tokenID(leafName, []byte("x"))
+	call, comma := tokenID(leafKeyword, []byte("(")), tokenID(leafKeyword, []byte(","))
+	a := []uint64{name, call, literalToken, comma, name, comma, literalToken, comma, name, call}
+	b := []uint64{literalToken, call, name, comma, name, comma, literalToken, comma, name, call}
+	if ga, gb := gramsOf(a, 10, withoutNames), gramsOf(b, 10, withoutNames); ga[0] == gb[0] {
+		t.Errorf("gramsOf(%v) = gramsOf(%v) = %x, want different runs", a, b, ga[0])
+	}
+}
+
 // TestLeafTokensFollowTheGrammarKinds checks the token kinds of every grammar on a small file: names, keywords and
 // operators by their text, a literal (a whole string with its interpolations, a number) as one token, comments dropped.
 // Each token of the want is I:<name>, K:<keyword or operator> or L.
