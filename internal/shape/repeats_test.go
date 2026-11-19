@@ -46,6 +46,9 @@ func TestFunctionRepeatsAreCountedAndWhatWasNotComparedIsSaid(t *testing.T) {
 	for _, st := range f.Statistics {
 		rows[st.Name] = st
 	}
+	if strings.Contains(strings.Join(f.NotAnalysed, "\n"), "repeats") || strings.Contains(strings.Join(f.NotAnalysed, "\n"), "counterpart") {
+		t.Errorf("Detect(nothing unread).NotAnalysed = %q, want no line of the repeat rule", f.NotAnalysed)
+	}
 	compared, repeating := rows["new functions compared for repeats"], rows["new functions that repeat another"]
 	if compared.Value == nil || *compared.Value != 5 || !strings.Contains(compared.Note, "against 120 functions of any size in 30 product files") ||
 		!strings.Contains(compared.Note, "left out as new: 2 moved from a function the change removed, 1 in a file from another project") ||

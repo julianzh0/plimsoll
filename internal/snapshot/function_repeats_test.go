@@ -121,6 +121,12 @@ func TestRepeatLimitsHoldAtTheirValues(t *testing.T) {
 		t.Fatalf("Build(an edited copy) = %+v, want one pair", measured.Listed)
 	}
 	p := measured.Listed[0]
+	// what differs: the two edited lines on each side, and the covered stretch ending at the first of them
+	if want := []snapshot.LineRange{{Start: 24, End: 24}, {Start: 35, End: 35}}; p.CodeLines != 47 || p.Partnered != 45 ||
+		!slices.Equal(p.Unpartnered, want) || !slices.Equal(p.CounterpartUnpartnered, want) || p.StretchStart != 3 || p.StretchEnd != 24 {
+		t.Errorf("Build(an edited copy) pair = %d of %d lines matched, without %v here and %v there, stretch lines %d-%d; want 45 of 47, lines 24 and 35 on both sides, stretch 3-24",
+			p.Partnered, p.CodeLines, p.Unpartnered, p.CounterpartUnpartnered, p.StretchStart, p.StretchEnd)
+	}
 	limits := []struct {
 		name string
 		set  func(r *conventions.RepeatRules, past bool)
@@ -252,6 +258,11 @@ func TestBuildFindsAFunctionThatRepeatsAnother(t *testing.T) {
 			map[string]string{"pkg/a.go": snapshottest.GoFile(edited("Near")), "pkg/z.go": snapshottest.GoFile(snapshottest.GoColumns("Original")),
 				"pkg/b.go": snapshottest.GoFile(snapshottest.GoColumns("Copied"))},
 			[]string{"pkg/b.go Copied <- pkg/z.go Original unchanged"}},
+		{"a counterpart in test support", map[string]string{"pkg/testing/a.go": snapshottest.GoFile(snapshottest.GoColumns("Original"))},
+			map[string]string{"pkg/testing/a.go": snapshottest.GoFile(snapshottest.GoColumns("Original")), "pkg/b.go": snapshottest.GoFile(snapshottest.GoColumns("Copied"))}, nil},
+		{"a counterpart the change edited", original,
+			map[string]string{"pkg/a.go": snapshottest.GoFile(edited("Original")), "pkg/b.go": snapshottest.GoFile(snapshottest.GoColumns("Copied"))},
+			[]string{"pkg/b.go Copied <- pkg/a.go Original changed"}},
 		{"a copy in test support", original, with(map[string]string{"pkg/testing/b.go": snapshottest.GoFile(snapshottest.GoColumns("Copied"))}), nil},
 		{"a copy in vendored code", original, with(map[string]string{"3rdparty/lib/b.go": snapshottest.GoFile(snapshottest.GoColumns("Copied"))}), nil},
 		{"two like functions added together", nil, map[string]string{"pkg/x.go": snapshottest.GoFile(snapshottest.GoColumns("First")), "pkg/y.go": snapshottest.GoFile(snapshottest.GoColumns("Second"))},
