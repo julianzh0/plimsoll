@@ -63,8 +63,9 @@ closures and boolean operators) and its token pattern live in that file too; a s
 `internal/snapshot/testdata/functions` checks that each language counts as the measurement did.
 
 To add a grammar: add its row to `pins.txt` and run `make grammars`, add its licence to `THIRD_PARTY_NOTICES.md`,
-name the grammar and write its query in the language's file, then extend the language's import cases and sample
-repository. Building a grammar takes zig and up to several gigabytes of memory for a large grammar, so it is not part
+name the grammar and write its query in the language's file, add its name and literal kinds to
+`internal/conventions/tokens.go` with a case in `internal/snapshot/leaftokens_internal_test.go` (the repeat rule's
+tokens), then extend the language's import cases and sample repository. Building a grammar takes zig and up to several gigabytes of memory for a large grammar, so it is not part
 of `make qa`.
 
 Before a grammar replaces a reader, read the field repositories with both and compare them file by file: a grammar
