@@ -74,7 +74,7 @@ resolved. Report-only kinds never move an area.
 | size | `shape.test-ratio` | `shape.file-size` |
 | dependencies | `shape.dependencies` | |
 | wiring | `links.cycle`, `links.never`, `links.only` | `links.test-import`, `links.folder-cycle`, `co-change.pair` |
-| functions | `shape.function-complexity` | `shape.function-nesting` |
+| functions | `shape.function-complexity`, `shape.function-duplicate` | `shape.function-nesting` |
 | settings | `settings.defined-twice` | `settings.compose-only`, `shape.settings` |
 | process | `process.planning-file`, `process.limit-change`, `process.declaration-change` | `process.doc-churn` |
 
