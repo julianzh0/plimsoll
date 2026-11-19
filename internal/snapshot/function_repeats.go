@@ -154,7 +154,11 @@ func functionRepeats(run repeatRun) FunctionRepeats {
 		if run.outside(change.Path) || !read || r.unread || r.functionsUnread {
 			continue
 		}
-		base := run.baseFunctions(cmp.Or(change.From, change.Path))
+		base, baseRead := run.baseFunctions(cmp.Or(change.From, change.Path))
+		if !baseRead {
+			result.Unwalked = append(result.Unwalked, change.Path)
+			continue
+		}
 		seen := map[string]int{}
 		for _, fn := range r.functions {
 			seen[fn.name]++
@@ -194,7 +198,8 @@ func (run repeatRun) gone() []repeatFn {
 				}
 			}
 		}
-		for _, fn := range run.baseFunctions(basePath) {
+		base, _ := run.baseFunctions(basePath)
+		for _, fn := range base {
 			if !fn.broken && !names[fn.name] {
 				found = append(found, repeatFn{path: basePath, fn: fn, entry: run.entryOf(basePath)})
 			}
@@ -204,17 +209,18 @@ func (run repeatRun) gone() []repeatFn {
 }
 
 // baseFunctions are the functions of a base version that is a measured product file, readable or not; none for a base
-// version that is no measured file, that the parser could not read, or that does not exist.
-func (run repeatRun) baseFunctions(basePath string) []function {
+// version that is no measured file or does not exist. read is false when the parser could not read the base version's
+// functions at all: then its old functions cannot be told from new ones.
+func (run repeatRun) baseFunctions(basePath string) (functions []function, read bool) {
 	f, found := run.baseFiles[basePath]
 	if !found || measuredFile(run.rules, f, run.baseContent[basePath]) != fileMeasured {
-		return nil
+		return nil, true
 	}
 	r := run.beforeReadings[basePath]
 	if r.unread || r.functionsUnread {
-		return nil
+		return nil, false
 	}
-	return r.functions
+	return r.functions, true
 }
 
 func (run repeatRun) entryOf(filePath string) string {
@@ -390,7 +396,8 @@ func (run repeatRun) score(c, s repeatFn, cw1, cw2 []uint64, sg *sourceGrams) (p
 }
 
 // status is whether a source existed at the base: its file unchanged, or its base version holding a function of its
-// name, readable or not; unchanged when that one is readable with the same tokens.
+// name, readable or not; unchanged when the function of its name at the same place among them (the first, the
+// second ...) is readable with the same tokens.
 func (run repeatRun) status(s repeatFn) CounterpartStatus {
 	i := slices.IndexFunc(run.changes, func(c Change) bool { return c.Path == s.path })
 	if i < 0 {
@@ -400,13 +407,19 @@ func (run repeatRun) status(s repeatFn) CounterpartStatus {
 	if _, atBase := run.baseFiles[basePath]; !atBase {
 		return CounterpartNew
 	}
-	for _, b := range run.baseFunctions(basePath) {
-		if b.name == s.fn.name {
-			if !b.broken && slices.Equal(b.tokens, s.fn.tokens) {
-				return CounterpartUnchanged
-			}
-			return CounterpartChanged
+	base, _ := run.baseFunctions(basePath)
+	namesakes := 0
+	for _, b := range base {
+		if b.name != s.fn.name {
+			continue
 		}
+		namesakes++
+		if namesakes == s.occurrence && !b.broken && slices.Equal(b.tokens, s.fn.tokens) {
+			return CounterpartUnchanged
+		}
+	}
+	if namesakes > 0 {
+		return CounterpartChanged
 	}
 	return CounterpartNew
 }

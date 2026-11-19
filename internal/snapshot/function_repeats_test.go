@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"maps"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 
@@ -137,6 +138,28 @@ func TestBuildComparesNoRepeatsWithoutTheCodeItNeeds(t *testing.T) {
 	}
 }
 
+// TestBuildComparesNoFunctionOfAFileWhoseBaseCannotBeRead splits a base file over the parser's memory cap: its old
+// functions cannot be told from new ones, so none is compared and the file is named.
+func TestBuildComparesNoFunctionOfAFileWhoseBaseCannotBeRead(t *testing.T) {
+	var big strings.Builder
+	for i := range 150_000 { // measured: the Go grammar needs more than its 128 MiB for this shape from 100,000 lines
+		fmt.Fprintf(&big, "var v%d = %d\n", i, i)
+	}
+	base := map[string]string{"pkg/a.go": snapshottest.GoFile(snapshottest.GoColumns("Original")) + big.String(),
+		"pkg/c.go": snapshottest.GoFile(snapshottest.GoColumns("Copied"))}
+	now := map[string]string{"pkg/a.go": snapshottest.GoFile(snapshottest.GoColumns("Original")), "pkg/c.go": base["pkg/c.go"]}
+	got := snapshot.Build(snapshottest.Files(base, now), conventions.Default(), snapshottest.Readings(t)).Repeats
+	if len(got.Listed) != 0 || !slices.Contains(got.Unwalked, "pkg/a.go") {
+		t.Errorf("Build(a base over the parser's cap).Repeats = %d listed, unwalked %q; want none listed, pkg/a.go unwalked", len(got.Listed), got.Unwalked)
+	}
+}
+
+// methods is a Go file of two methods named Run: first one of type A with the given code, then one of type B
+// holding the code of GoColumns.
+func methods(first string) string {
+	return snapshottest.GoFile(strings.Replace(first, "func Run(", "func (A) Run(", 1), strings.Replace(snapshottest.GoColumns("Run"), "func Run(", "func (B) Run(", 1))
+}
+
 func TestBuildFindsAFunctionThatRepeatsAnother(t *testing.T) {
 	original := map[string]string{"pkg/a.go": snapshottest.GoFile(snapshottest.GoColumns("Original"))}
 	with := func(extra map[string]string) map[string]string {
@@ -160,6 +183,9 @@ func TestBuildFindsAFunctionThatRepeatsAnother(t *testing.T) {
 		{"a counterpart that was there wins", original,
 			with(map[string]string{"pkg/b.go": snapshottest.GoFile(snapshottest.GoColumns("NewOne")), "pkg/c.go": snapshottest.GoFile(snapshottest.GoColumns("NewTwo"))}),
 			[]string{"pkg/b.go NewOne <- pkg/a.go Original unchanged", "pkg/c.go NewTwo <- pkg/a.go Original unchanged"}},
+		{"a counterpart after a namesake the change edited", map[string]string{"pkg/a.go": methods(snapshottest.GoFiles("Run"))},
+			map[string]string{"pkg/a.go": methods(strings.Replace(snapshottest.GoFiles("Run"), "keep(", "!keep(", 1)), "pkg/b.go": snapshottest.GoFile(snapshottest.GoColumns("Copied"))},
+			[]string{"pkg/b.go Copied <- pkg/a.go Run unchanged"}},
 		{"a function the change rewrote", map[string]string{"pkg/a.go": snapshottest.GoFile(snapshottest.GoColumns("Original")), "pkg/b.go": snapshottest.GoFile(snapshottest.GoFiles("Rewritten"))},
 			with(map[string]string{"pkg/b.go": snapshottest.GoFile(strings.Replace(snapshottest.GoColumns("Original"), "Original", "Rewritten", 1))}), nil},
 		{"a long switch beside a short one", map[string]string{"pkg/s.go": snapshottest.GoFile(snapshottest.GoCases("isHook", 8))},
