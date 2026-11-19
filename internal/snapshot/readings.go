@@ -17,7 +17,10 @@ import (
 // 23 MB. Only changed files are read with their declarations (2.4 KB a reading) or with their functions too (5.6 KB;
 // the 217 code files with function tables the field repositories changed in their last 20 commits): were every kept
 // reading one with functions, the bound would hold about 92 MB. A question never loses the readings it made itself: one larger than the bound keeps all of them, so the next
-// question about the same repository reads only what changed (swc, 43,434 code files: about 60 MB).
+// question about the same repository reads only what changed (swc, 43,434 code files: about 60 MB). A reading with
+// function tokens, kept only when a change added a function large enough to be compared, holds 16 bytes a token: swc's
+// 1,065 Rust files took 74 MB, json's 81 headers 8 MB (70 to 100 KB a reading), so a bound of such readings alone
+// would hold over 1 GB; their count is the files of the compared entries, which no measured repository brings near it.
 const KeptReadings = 16384
 
 // Readings keeps what each file's content says, by content, between questions: a second question about unchanged
