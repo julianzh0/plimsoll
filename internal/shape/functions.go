@@ -212,7 +212,7 @@ func functionsInStanding(items []answer.Mark, rule, one, many, most string, valu
 	if len(listed) == 1 {
 		return fmt.Sprintf("%s, %s (%s)", one, named, value(top.Measured.Value))
 	}
-	return fmt.Sprintf("%d %s, %s %s of them (%s)", len(listed), many, named, most, value(top.Measured.Value))
+	return fmt.Sprintf("%d %s, %s %s (%s)", len(listed), many, named, most, value(top.Measured.Value))
 }
 
 // words writes a small count as a word, as a sentence reads it: "three".

@@ -24,8 +24,8 @@ func (Detector) Wording(m answer.Mark) string {
 		return complexitySentence(m)
 	case ruleNesting:
 		return nestingSentence(m)
-	case ruleDuplicate:
-		return duplicateSentence(m)
+	case ruleRepeat:
+		return repeatSentence(m)
 	}
 	return m.ID
 }
@@ -178,10 +178,10 @@ func (Detector) Standing(items []answer.Mark) string {
 		fragments = append(fragments, answer.Plural(settings, "setting")+" added")
 	}
 	clauses := []string{
-		functionsInStanding(items, ruleNesting, "1 function nested deeper is listed", "functions nested deeper are listed", "the deepest",
+		functionsInStanding(items, ruleNesting, "1 function nested deeper is listed", "functions nested deeper are listed", "the deepest of them",
 			func(v float64) string { return fmt.Sprintf("%d levels", int(v)) }),
-		functionsInStanding(items, ruleDuplicate, "1 new function that repeats another is listed", "new functions that repeat another are listed",
-			"the fullest repeat", func(v float64) string { return answer.Count(v) + "%" }),
+		functionsInStanding(items, ruleRepeat, "1 new function that repeats another is listed", "new functions that repeat another are listed",
+			"with the highest share", func(v float64) string { return answer.Count(v) + "%" }),
 	}
 	for _, clause := range clauses {
 		if clause != "" {

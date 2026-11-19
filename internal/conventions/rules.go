@@ -504,16 +504,18 @@ func Default() Rules {
 		Additions:   defaultAdditions(),
 		// Seven outside reviewers judged real answers per kind of mark (2026-11-17); these they judged too noisy for
 		// status and worth keeping in report. A file crossing its line limit was worth acting on in 45 of 150 agent pull
-		// requests read blind (2026-11-18), under the bar of one in two.
+		// requests read blind (2026-11-18), under the bar of one in two. A function that repeats another was worth
+		// acting on in 26 of 40 marks read blind, but six readers of real answers (2026-11-19) preferred it in report
+		// over status: deliberate copies (merge templates, a fallback, a package split) would cost a status slot.
 		ReportOnly: []string{
 			"shape.file-size", "shape.settings", "process.doc-churn", "settings.compose-only",
-			"co-change.pair", "links.test-import", "links.folder-cycle", "shape.function-nesting",
+			"co-change.pair", "links.test-import", "links.folder-cycle", "shape.function-nesting", "shape.function-repeat",
 		},
 		Areas: []Area{
 			{Name: "size", Kinds: []string{"shape.test-ratio", "shape.file-size"}},
 			{Name: "dependencies", Kinds: []string{"shape.dependencies"}},
 			{Name: "wiring", Kinds: []string{"links.cycle", "links.never", "links.only", "links.test-import", "links.folder-cycle", "co-change.pair"}},
-			{Name: "functions", Kinds: []string{"shape.function-complexity", "shape.function-nesting", "shape.function-duplicate"}},
+			{Name: "functions", Kinds: []string{"shape.function-complexity", "shape.function-nesting", "shape.function-repeat"}},
 			{Name: "settings", Kinds: []string{"settings.defined-twice", "settings.compose-only", "shape.settings"}},
 			{Name: "process", Kinds: []string{"process.planning-file", "process.limit-change", "process.declaration-change", "process.doc-churn"}},
 		},

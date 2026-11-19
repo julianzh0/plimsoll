@@ -1,6 +1,7 @@
 package shape_test
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -30,7 +31,7 @@ func repeatsSnapshot() snapshot.Snapshot {
 func repeatMarks(s snapshot.Snapshot) []answer.Mark {
 	var found []answer.Mark
 	for _, m := range (shape.Detector{}).Detect(s).Marks {
-		if answer.RuleOf(m.ID) == "function-duplicate" {
+		if answer.RuleOf(m.ID) == "function-repeat" {
 			found = append(found, m)
 		}
 	}
@@ -45,20 +46,20 @@ func TestFunctionRepeatsAreCountedAndWhatWasNotComparedIsSaid(t *testing.T) {
 		rows[st.Name] = st
 	}
 	compared, repeating := rows["new functions compared for repeats"], rows["new functions that repeat another"]
-	if compared.Value == nil || *compared.Value != 5 || !strings.Contains(compared.Note, "against 120 functions in 30 product files") ||
+	if compared.Value == nil || *compared.Value != 5 || !strings.Contains(compared.Note, "against 120 functions of any size in 30 product files") ||
 		!strings.Contains(compared.Note, "left out on both sides: test, demo, example, vendored and generated code, folders with their own licence") {
 		t.Errorf("Detect rows: compared = %+v", compared)
 	}
-	if repeating.Value == nil || *repeating.Value != 4 || repeating.Note != "2 listed (at most three per measure, the fullest repeat first)" {
+	if repeating.Value == nil || *repeating.Value != 4 || repeating.Note != "2 listed (at most three per measure, the highest share first)" {
 		t.Errorf("Detect rows: repeating = %+v", repeating)
 	}
-	if !strings.Contains(strings.Join(f.Summaries, "\n"), "Function repeats: 2 of 4 new functions that repeat another are listed") {
+	if want := "Function repeats: `report` lists 2 of the 4 new functions that repeat another (the highest share first); the other 2 are counted, not listed."; !slices.Contains(f.Summaries, want) {
 		t.Errorf("Detect summaries = %q, want the cut list said", f.Summaries)
 	}
 
-	s.Repeats = snapshot.FunctionRepeats{Rules: s.Repeats.Rules, Unavailable: []string{"src/old.go"}, Unwalked: []string{"src/big.go"}}
+	s.Repeats = snapshot.FunctionRepeats{Rules: s.Repeats.Rules, Unavailable: []string{"src/old.go"}, Unwalked: []string{"src/big.go"}, Searched: 120, Unreadable: 3}
 	notAnalysed := strings.Join((shape.Detector{}).Detect(s).NotAnalysed, "\n")
-	for _, want := range []string{"`src/old.go`", "`src/big.go`"} {
+	for _, want := range []string{"`src/old.go`", "`src/big.go`", "3 of the 123 functions searched for a counterpart could not be read by the parser and were not compared"} {
 		if !strings.Contains(notAnalysed, want) {
 			t.Errorf("Detect(unavailable, unwalked).NotAnalysed = %q, want %s named", notAnalysed, want)
 		}
@@ -76,7 +77,7 @@ func TestExplainOfARepeatShowsBothFunctionsAndCapsTheLineRanges(t *testing.T) {
 		"new in this change: lines 40–118 (420 tokens)",
 		"counterpart: `src/users/save.ts` `saveUser`, lines 12–88 (400 tokens), there before and unchanged",
 		"91% of its tokens are in runs of 10 tokens the counterpart holds (the limit is 80%); 90% of the counterpart's are in its",
-		"286 tokens in a row are covered, lines 52–101 (a covered stretch counts from 150 tokens)",
+		"286 tokens in a row are covered, lines 52–101 (at least 150 needed)",
 		"and 4 more",
 		"searched: 120 functions in 30 product files",
 	} {
@@ -89,10 +90,10 @@ func TestExplainOfARepeatShowsBothFunctionsAndCapsTheLineRanges(t *testing.T) {
 func TestAFunctionThatRepeatsAnotherIsMarkedWithItsCounterpart(t *testing.T) {
 	marks := repeatMarks(repeatsSnapshot())
 	if len(marks) != 2 {
-		t.Fatalf("Detect(two repeats) = %d function-duplicate marks, want 2", len(marks))
+		t.Fatalf("Detect(two repeats) = %d function-repeat marks, want 2", len(marks))
 	}
 	first, second := marks[0], marks[1]
-	if first.ID != "shape.function-duplicate:src/orders/save.ts:saveOrder" || second.ID != "shape.function-duplicate:src/a.go:Second#2" {
+	if first.ID != "shape.function-repeat:src/orders/save.ts:saveOrder" || second.ID != "shape.function-repeat:src/a.go:Second#2" {
 		t.Errorf("Detect ids = %q, %q", first.ID, second.ID)
 	}
 	if c := first.Counterpart; c == nil || c.Path != "src/users/save.ts" || c.Name != "saveUser" || c.Status != "unchanged" {
@@ -105,10 +106,15 @@ func TestAFunctionThatRepeatsAnotherIsMarkedWithItsCounterpart(t *testing.T) {
 	if got, want := w.Wording(first), "`src/orders/save.ts` `saveOrder` is new in this change, and 91% of its tokens are in `src/users/save.ts` `saveUser`, which was there before. Limit: 80%, plimsoll's rule, read blind on agent pull requests."; got != want {
 		t.Errorf("Wording(first) =\n%s\nwant\n%s", got, want)
 	}
-	if got, want := w.Wording(second), "`src/a.go` `Second` (new in this change) and `src/a.go` `First` (also new, in the same file) are largely the same code: 85% of the first is in the second. Limit: 80%, plimsoll's rule, read blind on agent pull requests."; got != want {
+	if got, want := w.Wording(second), "`src/a.go` `Second` is new in this change, and 85% of its tokens are in `src/a.go` `First`, also new in this change. Limit: 80%, plimsoll's rule, read blind on agent pull requests."; got != want {
 		t.Errorf("Wording(second) =\n%s\nwant\n%s", got, want)
 	}
-	if want := "compare lines 40–118 with lines 12–88 of `src/users/save.ts`: 71 of the 75 lines that hold code have a partner there; without one: lines 44–46 and 104 here, 16–18 there; 286 tokens in a row of this function are covered, lines 52–101 (a covered stretch counts from 150 tokens); not compared: test, example, vendored and generated code, folders with their own licence."; first.Hint != want {
+	namesake := second
+	namesake.Counterpart = &answer.Counterpart{Path: "src/a.go", Name: "Second", Status: "new"}
+	if got, want := w.Wording(namesake), "`src/a.go` `Second` is new in this change, and 85% of its tokens are in another function of its name in the same file, also new in this change. Limit: 80%, plimsoll's rule, read blind on agent pull requests."; got != want {
+		t.Errorf("Wording(a namesake in the same file) =\n%s\nwant\n%s", got, want)
+	}
+	if want := "compare lines 40–118 of `src/orders/save.ts` with lines 12–88 of `src/users/save.ts`: 71 of its 75 lines that hold code have a matching line there; without one: lines 44–46 and 104 here, 16–18 there; the longest covered run is 286 tokens, lines 52–101 (at least 150 needed)."; first.Hint != want {
 		t.Errorf("Hint(first) =\n%s\nwant\n%s", first.Hint, want)
 	}
 	if !strings.Contains(second.Hint, "the line comparison gave up") {

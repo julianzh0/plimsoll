@@ -71,17 +71,17 @@ func (Detector) Detect(s snapshot.Snapshot) answer.Findings {
 	f.Statistics = append(f.Statistics, largest(s, s.Now.Files, "largest code file")...)
 	f.Marks = append(f.Marks, sizeMarks(s)...)
 	f.Marks = append(f.Marks, functionMarks(s)...)
-	f.Marks = append(f.Marks, duplicateMarks(s.Repeats)...)
+	f.Marks = append(f.Marks, repeatMarks(s.Repeats)...)
 	f.Statistics = append(f.Statistics, functionRows(s.Functions)...)
 	f.Summaries = append(f.Summaries, functionSummary(s.Functions)...)
 	f.NotAnalysed = append(f.NotAnalysed, functionsNotAnalysed(s.Functions)...)
-	f.Statistics = append(f.Statistics, duplicateRows(s.Repeats)...)
-	f.Summaries = append(f.Summaries, duplicateSummary(s.Repeats)...)
-	f.NotAnalysed = append(f.NotAnalysed, duplicatesNotAnalysed(s.Repeats)...)
+	f.Statistics = append(f.Statistics, repeatRows(s.Repeats)...)
+	f.Summaries = append(f.Summaries, repeatSummary(s.Repeats)...)
+	f.NotAnalysed = append(f.NotAnalysed, repeatsNotAnalysed(s.Repeats)...)
 	if s.Functions.Files > 0 {
 		f.Ran(answer.Kind(name, ruleComplexity))
 		if len(s.Repeats.Unavailable) == 0 {
-			f.Ran(answer.Kind(name, ruleDuplicate))
+			f.Ran(answer.Kind(name, ruleRepeat))
 		}
 	}
 
