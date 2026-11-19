@@ -88,6 +88,7 @@ type readingKey struct {
 	entry, grammar string
 	declarations   bool // the reading holds the file's declarations too
 	functions      bool // the reading holds the file's measured functions too
+	places         bool // the reading holds only its functions' places and tokens
 	content        [sha256.Size]byte
 }
 
@@ -130,12 +131,13 @@ func (rs *Readings) end(question uint64) {
 // a reading's key.
 type wanted struct {
 	declarations, functions bool
+	places                  bool // only the functions' places, names and leaf tokens (readPlaces)
 	functionRules           *conventions.FunctionRules
 }
 
 // of returns the reading of one file's content for its language entry and grammar, made once per content.
 func (rs *Readings) of(language conventions.Language, grammar string, content []byte, question uint64, w wanted) reading {
-	key := readingKey{entry: language.Name, grammar: grammar, declarations: w.declarations, functions: w.functions, content: sha256.Sum256(content)}
+	key := readingKey{entry: language.Name, grammar: grammar, declarations: w.declarations, functions: w.functions, places: w.places, content: sha256.Sum256(content)}
 	rs.mu.Lock()
 	if kept, found := rs.kept[key]; found {
 		kept.question = max(kept.question, question)
@@ -192,6 +194,9 @@ func (rs *Readings) read(language conventions.Language, grammar string, content 
 	if grammar == "" {
 		return readByText(language, content), true
 	}
+	if w.places {
+		return rs.readPlaces(language, grammar, content, *w.functionRules)
+	}
 	query := language.Query
 	if w.declarations {
 		query += language.Declarations + language.Units
@@ -221,8 +226,13 @@ func (rs *Readings) read(language conventions.Language, grammar string, content 
 			r.functionsUnread = true
 			return r, !errors.Is(err, parse.ErrUnavailable)
 		}
-		functions := functionsOf(language.Functions, language.Tokens, *w.functionRules, tree, content, nil)
-		functions = rs.readRewritten(language, grammar, content, *w.functionRules, functions)
+		pass := functionPass{leaf: leafKindsFor(grammar, tree)}
+		functions := functionsOf(language.Functions, language.Tokens, *w.functionRules, tree, content, nil, pass)
+		functions, err = rs.readRewritten(language, grammar, content, *w.functionRules, functions, pass)
+		if err != nil { // a failure of the moment on the rewritten copy: answer now, read the file again later
+			r.functionsUnread = true
+			return r, false
+		}
 		for _, f := range functions {
 			if !inSpans(r.testSpans, f.start) {
 				r.functions = append(r.functions, f)
@@ -244,18 +254,23 @@ func readByText(language conventions.Language, content []byte) reading {
 // readRewritten reads, for a language with macro rules and a file with functions it could not read as written, a
 // copy with those macros rewritten, and takes its functions where the written file gave none it could read. A copy
 // the parser cannot read leaves the functions as they were.
+//
+// The error is a failure of the moment (parse.ErrUnavailable) only; any other failure of the copy is no error.
 func (rs *Readings) readRewritten(language conventions.Language, grammar string, content []byte, rules conventions.FunctionRules,
-	functions []function) []function {
+	functions []function, pass functionPass) ([]function, error) {
 	if len(language.Macros) == 0 || !slices.ContainsFunc(functions, func(f function) bool { return f.broken }) {
-		return functions
+		return functions, nil
 	}
 	rewritten := rewriteMacros(language.Macros, content)
 	if rewritten == nil {
-		return functions
+		return functions, nil
 	}
 	tree, err := rs.parser.Nodes(grammar, rewritten)
+	if errors.Is(err, parse.ErrUnavailable) {
+		return functions, err
+	}
 	if err != nil {
-		return functions
+		return functions, nil
 	}
 	var clean []function
 	for _, f := range functions {
@@ -265,5 +280,33 @@ func (rs *Readings) readRewritten(language conventions.Language, grammar string,
 	}
 	// a function read cleanly as written is not measured again on the copy
 	within := func(start, end int) bool { return !overlapsAny(clean, function{start: start, end: end}) }
-	return withRewritten(functions, functionsOf(language.Functions, language.Tokens, rules, tree, rewritten, within))
+	if pass.leaf != nil {
+		pass.leaf = leafKindsFor(grammar, tree)
+	}
+	return withRewritten(functions, functionsOf(language.Functions, language.Tokens, rules, tree, rewritten, within, pass)), nil
+}
+
+// readPlaces reads one file for its functions' places, names and leaf tokens only: no query, no measure. The rule that
+// asks for it takes the file's test spans from the question's own reading.
+func (rs *Readings) readPlaces(language conventions.Language, grammar string, content []byte, rules conventions.FunctionRules) (reading, bool) {
+	tree, err := rs.parser.Nodes(grammar, content)
+	if err != nil {
+		return reading{functionsUnread: true}, !errors.Is(err, parse.ErrUnavailable)
+	}
+	pass := functionPass{leaf: leafKindsFor(grammar, tree), light: true}
+	functions, err := rs.readRewritten(language, grammar, content, rules, functionsOf(language.Functions, language.Tokens, rules, tree, content, nil, pass), pass)
+	if err != nil {
+		return reading{functionsUnread: true}, false
+	}
+	return reading{functions: functions}, true
+}
+
+// leafKindsFor resolves a grammar's token kinds against a tree; nil for a grammar without them.
+func leafKindsFor(grammar string, tree parse.Tree) *leafKinds {
+	kinds, known := conventions.TokenKindsOf(grammar)
+	if !known {
+		return nil
+	}
+	resolved := leafKindsOf(tree, kinds)
+	return &resolved
 }

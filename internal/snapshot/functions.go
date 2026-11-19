@@ -18,6 +18,14 @@ type function struct {
 	nesting, nestingLine int  // nestingLine is 0 when nesting is 0
 	broken               bool // its subtree holds an ERROR node: not measured
 	repeats              []repeat
+	tokens               []uint64 // its leaf tokens, when the walk was asked for them (leaftokens.go)
+}
+
+// functionPass says what a walk takes beside each function's place and name: its leaf tokens (leaf not nil), and
+// whether it measures complexity, nesting and repeated blocks (light false).
+type functionPass struct {
+	leaf  *leafKinds
+	light bool
 }
 
 // kindSet holds, by kind index, the kinds one field of a function table names.
@@ -130,9 +138,9 @@ func (l lineIndex) line(offset int) int {
 // nothing to the function around them. within, when not nil, says which byte spans are measured: a function outside
 // them is passed over.
 func functionsOf(kinds conventions.FunctionKinds, tokens *regexp.Regexp, rules conventions.FunctionRules, tree parse.Tree, content []byte,
-	within func(start, end int) bool) []function {
+	within func(start, end int) bool, pass functionPass) []function {
 	w := walk{t: tableOf(kinds, tree), s: shapeOf(tree.Nodes), tree: tree, content: content, lines: linesOf(content),
-		tokens: tokens, rules: rules, within: within}
+		tokens: tokens, rules: rules, within: within, pass: pass}
 	for i, n := range tree.Nodes {
 		switch {
 		case !n.Named:
@@ -157,6 +165,7 @@ type walk struct {
 	tokens  *regexp.Regexp
 	rules   conventions.FunctionRules
 	within  func(start, end int) bool
+	pass    functionPass
 	found   []function
 	inside  int // the end of the outermost function or listed closure seen so far
 	// the tokens of the outermost function seen so far, from its first byte: a function inside takes its part of
@@ -170,13 +179,31 @@ func (w *walk) declared(i int) {
 	if !ok || w.within != nil && !w.within(int(w.s.nodes[i].Start), w.t.extent(w.s, i, to)) {
 		return
 	}
-	f := w.t.measure(w.s, i, to, functionName(w.tree, w.s, w.t, i, w.content), w.content, w.lines)
-	if i >= w.inside {
-		w.outer = newTokenSpan(tokensOf(w.tokens, w.content[f.start:f.end], 0), f.start)
+	f := w.read(i, to, functionName(w.tree, w.s, w.t, i, w.content))
+	if !w.pass.light {
+		if i >= w.inside {
+			w.outer = newTokenSpan(tokensOf(w.tokens, w.content[f.start:f.end], 0), f.start)
+		}
+		f.repeats = repeatsOf(w.rules, w.tree, w.s, w.t, i, to, w.outer, w.lines)
 	}
-	f.repeats = repeatsOf(w.rules, w.tree, w.s, w.t, i, to, w.outer, w.lines)
 	w.found = append(w.found, f)
 	w.inside = max(w.inside, to)
+}
+
+// read is one function over the nodes [from, to): measured unless the pass is light, with its leaf tokens when asked.
+func (w *walk) read(from, to int, name string) function {
+	var f function
+	if w.pass.light {
+		f = function{name: name, start: int(w.s.nodes[from].Start), end: w.t.extent(w.s, from, to),
+			broken: w.s.errorsBefore[to] > w.s.errorsBefore[from]}
+		f.startLine, f.endLine = w.lines.line(f.start), w.lines.line(max(f.start, f.end-1))
+	} else {
+		f = w.t.measure(w.s, from, to, name, w.content, w.lines)
+	}
+	if w.pass.leaf != nil {
+		f.tokens = functionTokens(*w.pass.leaf, w.tree, w.s, from, to, w.content)
+	}
+	return f
 }
 
 // closure measures the closure at i, outside every function, when a name binds it.
@@ -189,9 +216,11 @@ func (w *walk) closure(i int) {
 	if name == "" {
 		return
 	}
-	f := w.t.measure(w.s, i, w.s.endOf(i), name, w.content, w.lines)
-	w.outer = newTokenSpan(tokensOf(w.tokens, w.content[f.start:f.end], 0), f.start)
-	f.repeats = repeatsOf(w.rules, w.tree, w.s, w.t, i, w.s.endOf(i), w.outer, w.lines)
+	f := w.read(i, w.s.endOf(i), name)
+	if !w.pass.light {
+		w.outer = newTokenSpan(tokensOf(w.tokens, w.content[f.start:f.end], 0), f.start)
+		f.repeats = repeatsOf(w.rules, w.tree, w.s, w.t, i, w.s.endOf(i), w.outer, w.lines)
+	}
 	w.found = append(w.found, f)
 	w.inside = w.s.endOf(i)
 }
