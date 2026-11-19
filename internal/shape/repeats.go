@@ -27,7 +27,7 @@ func repeatMarks(r snapshot.FunctionRepeats) []answer.Mark {
 			Confidence: answer.Candidate,
 			Measured: answer.Measured{Value: math.Floor(p.Share * 100), Limit: &limit,
 				LimitSource: "plimsoll's rule, read blind on agent pull requests", Unit: "% of its tokens"},
-			Counterpart: &answer.Counterpart{Path: p.Counterpart.Path, Name: p.Counterpart.Name, Status: p.Counterpart.Status.String()},
+			Counterpart: &answer.Counterpart{Path: p.Counterpart.Path, Name: p.Counterpart.Name, Status: string(p.Counterpart.Status)},
 			Hint: fmt.Sprintf("compare lines %d–%d of `%s` with lines %d–%d of %s; the longest covered run is %d tokens, lines %d–%d (at least %d needed).",
 				p.Start, p.End, p.Path, p.Counterpart.Start, p.Counterpart.End, there, p.Stretch, p.StretchStart, p.StretchEnd, r.Rules.Stretch),
 		})
@@ -50,9 +50,9 @@ func repeatSentence(m answer.Mark) string {
 	}
 	when := "which was there before"
 	switch m.Counterpart.Status {
-	case snapshot.CounterpartChanged.String():
+	case string(snapshot.CounterpartChanged):
 		when = "which was there before; this change edited it"
-	case snapshot.CounterpartNew.String():
+	case string(snapshot.CounterpartNew):
 		when = "also new in this change"
 	}
 	return fmt.Sprintf("`%s` `%s` is new in this change, and %s%% of its tokens are in %s, %s. Limit: %s%%, %s.",

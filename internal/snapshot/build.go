@@ -46,7 +46,7 @@ func Build(source Source, rules conventions.Rules, readings *Readings) Snapshot 
 	}
 	before := tree(rules, beforeEntries, unchanged)
 	measured := measuredFiles(rules, source.Changes, now, before, nowContent, beforeContent)
-	beforeReadings := readings.side(rules, beforeContent, before.Files, question, changed, repeatBaseFiles(rules, source.Changes, before, beforeContent, measured.base))
+	beforeReadings := readings.side(rules, beforeContent, before.Files, question, changed, measured.base)
 	withTestLines(before.Files, beforeReadings)
 	unreadable := slices.Clone(source.Unreadable)
 	now.Settings, before.Settings = settings(source.Now), settings(beforeEntries)

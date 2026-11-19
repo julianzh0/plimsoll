@@ -29,26 +29,14 @@ type FunctionRepeats struct {
 }
 
 // CounterpartStatus says whether a function's counterpart existed before the change.
-type CounterpartStatus int
+type CounterpartStatus string
 
 // The statuses of a counterpart.
 const (
-	CounterpartUnchanged CounterpartStatus = iota + 1 // it was there, with the same code as the rule sees it
-	CounterpartChanged                                // it was there, and the change changed it
-	CounterpartNew                                    // the change wrote it too
+	CounterpartUnchanged CounterpartStatus = "unchanged" // it was there, with the same code as the rule sees it
+	CounterpartChanged   CounterpartStatus = "changed"   // it was there, and the change changed it
+	CounterpartNew       CounterpartStatus = "new"       // the change wrote it too
 )
-
-func (s CounterpartStatus) String() string {
-	switch s {
-	case CounterpartUnchanged:
-		return "unchanged"
-	case CounterpartChanged:
-		return "changed"
-	case CounterpartNew:
-		return "new"
-	}
-	return ""
-}
 
 // FunctionRepeat is one function the change added and its counterpart.
 type FunctionRepeat struct {
@@ -99,23 +87,6 @@ type repeatRun struct {
 	licensed                    map[string]bool
 	lacking                     map[string]bool // base paths tracked without content: a partial clone lacks it
 	from                        *origins
-}
-
-// repeatBaseFiles are the base files read with their functions: those the function rules measure, and the base version
-// of every changed file that is itself a measured product file (the repeat rule tests each side on its own).
-func repeatBaseFiles(rules conventions.Rules, changes []Change, before Tree, beforeContent map[string][]byte, measured map[string]bool) map[string]bool {
-	files := filesByPath(before)
-	all := make(map[string]bool, len(measured))
-	for p := range measured {
-		all[p] = true
-	}
-	for _, change := range changes {
-		basePath := cmp.Or(change.From, change.Path)
-		if f, found := files[basePath]; found && measuredFile(rules, f, beforeContent[basePath]) == fileMeasured {
-			all[basePath] = true
-		}
-	}
-	return all
 }
 
 func filesByPath(t Tree) map[string]File {
