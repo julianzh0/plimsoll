@@ -448,14 +448,15 @@ func (run repeatRun) sources(entries map[string]bool, result *FunctionRepeats) [
 }
 
 // functionsNow are a file's functions now outside its test code: the question's own reading when it holds them,
-// otherwise the file's reading with its functions.
+// otherwise a light reading of their places and tokens.
 func (run repeatRun) functionsNow(language conventions.Language, filePath string) ([]function, bool) {
 	r := run.nowReadings[filePath]
-	if !r.unread && r.functions == nil && !r.functionsUnread {
-		r = run.readings.of(language, language.GrammarOf(filePath), run.nowContent[filePath], run.question,
-			wanted{functions: true, functionRules: &run.rules.FunctionRules})
+	if r.unread || r.functions != nil || r.functionsUnread {
+		return r.functions, !r.unread && !r.functionsUnread
 	}
-	return r.functions, !r.unread && !r.functionsUnread
+	light := run.readings.of(language, language.GrammarOf(filePath), run.nowContent[filePath], run.question,
+		wanted{places: true, functionRules: &run.rules.FunctionRules})
+	return slices.DeleteFunc(slices.Clone(light.functions), func(fn function) bool { return inSpans(r.testSpans, fn.start) }), !light.functionsUnread
 }
 
 // list keeps the outermost of nested marks, drops those whose file came from another project, and lists the fullest.

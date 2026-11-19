@@ -73,16 +73,6 @@ func TestFunctionRepeatsAreCountedAndWhatWasNotComparedIsSaid(t *testing.T) {
 	}
 }
 
-func TestExplainOfARepeatGivesBothSizesSharesAndTheSearch(t *testing.T) {
-	s := repeatsSnapshot()
-	m := repeatMarks(s)[0]
-	got := strings.Join((shape.Detector{}).Explain(s, m), "\n")
-	if want := "420 tokens against 400; 91% of its tokens are in runs of 10 tokens the counterpart holds, 90% of the counterpart's in its; " +
-		"searched: 120 functions in 30 product files"; got != want {
-		t.Errorf("Explain(repeat) =\n%s\nwant\n%s", got, want)
-	}
-}
-
 func TestAFunctionThatRepeatsAnotherIsMarkedWithItsCounterpart(t *testing.T) {
 	marks := repeatMarks(repeatsSnapshot())
 	if len(marks) != 2 {

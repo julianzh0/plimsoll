@@ -91,15 +91,3 @@ func repeatsNotAnalysed(r snapshot.FunctionRepeats) []string {
 	}
 	return found
 }
-
-// repeatEvidence is what explain says of a pair beside its verify line: both sizes, both shares and what was searched.
-func repeatEvidence(s snapshot.Snapshot, m answer.Mark) []string {
-	for _, p := range s.Repeats.Listed {
-		if repeatID(p) == m.ID {
-			return []string{fmt.Sprintf("%d tokens against %d; %d%% of its tokens are in runs of %d tokens the counterpart holds, %d%% of the counterpart's in its; "+
-				"searched: %d functions in %d product files", p.Tokens, p.Counterpart.Tokens, int(math.Floor(p.Share*100)),
-				s.Repeats.Rules.Run, int(math.Floor(p.Reverse*100)), s.Repeats.Searched, s.Repeats.SearchedFiles)}
-		}
-	}
-	return nil
-}

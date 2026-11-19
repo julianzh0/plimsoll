@@ -25,8 +25,6 @@ func (Detector) Explain(s snapshot.Snapshot, m answer.Mark) []string {
 		return settingsEvidence(s)
 	case ruleComplexity, ruleNesting:
 		return functionEvidence(s, m)
-	case ruleRepeat:
-		return repeatEvidence(s, m)
 	}
 	return nil
 }

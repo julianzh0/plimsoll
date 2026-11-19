@@ -22,9 +22,11 @@ type function struct {
 	tokenLines           []int    // the line, from 1, each of them starts on
 }
 
-// functionPass says what a walk takes beside each function's measures: its leaf tokens, when leaf is not nil.
+// functionPass says what a walk takes beside each function's place and name: its leaf tokens (leaf not nil), and
+// whether it measures complexity, nesting and repeated blocks (light false).
 type functionPass struct {
-	leaf *leafKinds
+	leaf  *leafKinds
+	light bool
 }
 
 // kindSet holds, by kind index, the kinds one field of a function table names.
@@ -183,17 +185,26 @@ func (w *walk) declared(i int) {
 		return
 	}
 	f := w.read(i, to, functionName(w.tree, w.s, w.t, i, w.content))
-	if i >= w.inside {
-		w.outer = newTokenSpan(tokensOf(w.tokens, w.content[f.start:f.end], 0), f.start)
+	if !w.pass.light {
+		if i >= w.inside {
+			w.outer = newTokenSpan(tokensOf(w.tokens, w.content[f.start:f.end], 0), f.start)
+		}
+		f.repeats = repeatsOf(w.rules, w.tree, w.s, w.t, i, to, w.outer, w.lines)
 	}
-	f.repeats = repeatsOf(w.rules, w.tree, w.s, w.t, i, to, w.outer, w.lines)
 	w.found = append(w.found, f)
 	w.inside = max(w.inside, to)
 }
 
-// read is one function over the nodes [from, to), measured, with its leaf tokens when asked.
+// read is one function over the nodes [from, to): measured unless the pass is light, with its leaf tokens when asked.
 func (w *walk) read(from, to int, name string) function {
-	f := w.t.measure(w.s, from, to, name, w.content, w.lines)
+	var f function
+	if w.pass.light {
+		f = function{name: name, start: int(w.s.nodes[from].Start), end: w.t.extent(w.s, from, to),
+			broken: w.s.errorsBefore[to] > w.s.errorsBefore[from]}
+		f.startLine, f.endLine = w.lines.line(f.start), w.lines.line(max(f.start, f.end-1))
+	} else {
+		f = w.t.measure(w.s, from, to, name, w.content, w.lines)
+	}
 	if w.pass.leaf != nil {
 		if from >= w.inside { // the outermost function: its tokens hold those of every function inside it
 			w.leafIDs, w.leafStarts = functionTokens(*w.pass.leaf, w.s, from, to, w.content)
@@ -220,8 +231,10 @@ func (w *walk) closure(i int) {
 		return
 	}
 	f := w.read(i, w.s.endOf(i), name)
-	w.outer = newTokenSpan(tokensOf(w.tokens, w.content[f.start:f.end], 0), f.start)
-	f.repeats = repeatsOf(w.rules, w.tree, w.s, w.t, i, w.s.endOf(i), w.outer, w.lines)
+	if !w.pass.light {
+		w.outer = newTokenSpan(tokensOf(w.tokens, w.content[f.start:f.end], 0), f.start)
+		f.repeats = repeatsOf(w.rules, w.tree, w.s, w.t, i, w.s.endOf(i), w.outer, w.lines)
+	}
 	w.found = append(w.found, f)
 	w.inside = w.s.endOf(i)
 }
