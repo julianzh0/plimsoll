@@ -293,7 +293,8 @@ func TestTheStateOfAChangedFileFollowsWhatItsDeclarationsDid(t *testing.T) {
 		{"a C++ function changed beside a syntax error elsewhere", "src/a.cc", "int run() { return 1; }\n\nint broken( {\n",
 			"int run() { return 2; }\n\nint broken( {\n", snapshot.ByName},
 		{"a C++ function changed where the syntax error is", "src/a.cc", "int run() { return 1; }\n\nint other() { return 1 $$ ; }\n",
-			"int run() { return 1; }\n\nint other() { return 2 $$ ; }\n", snapshot.AsAWhole}, {"a syntax error written into a changed function", "src/a.cc", "int run() { return 1; }\n",
+			"int run() { return 1; }\n\nint other() { return 2 $$ ; }\n", snapshot.AsAWhole},
+		{"a syntax error written into a changed function", "src/a.cc", "int run() { return 1; }\n",
 			"int run() { return 2 $$ ; }\n", snapshot.AsAWhole},
 		{"a TypeScript namespace renamed", "src/a.ts", "export namespace A {\n  export const x = 1;\n}\n",
 			"export namespace B {\n  export const x = 1;\n}\n", snapshot.AsAWhole},
@@ -422,24 +423,48 @@ func TestAnIncompleteZeroSaysSoAndTheRustRuleOnlyWithRust(t *testing.T) {
 	}
 }
 
-// usersOf gives the links findings of a change and the paths its radius lists, after the language gate.
-func usersOf(t *testing.T, source snapshot.Source) (answer.Findings, []string) {
+// usersOf gives the paths a change's radius lists, after the language gate.
+func usersOf(t *testing.T, source snapshot.Source) []string {
 	t.Helper()
 	f := detect(t, source)
 	if f.Radius == nil {
 		t.Fatal("no radius")
 	}
-	return f, f.Radius.Paths
+	return f.Radius.Paths
 }
 
-func TestANonASCIINameReachesItsUsers(t *testing.T) {
-	base := map[string]string{"go.mod": "module " + goModule + "\n",
-		"internal/a/a.go": "package a\n\nfunc Café() int { return 1 }\n",
-		"internal/b/b.go": "package b\n\nimport \"" + goModule + "/internal/a\"\n\nvar _ = a.Café()\n"}
+func TestNamesOfAnyLetterReachTheirUsers(t *testing.T) {
+	for _, tc := range []struct{ label, name, declare, file, user string }{
+		{"a non-ASCII letter inside", "Café", "func %s() int { return %d }\n", "internal/a/a.go", "var _ = a.%s()\n"},
+		{"a non-ASCII first letter", "Über", "func %s() int { return %d }\n", "internal/a/a.go", "var _ = a.%s()\n"},
+	} {
+		base := map[string]string{"go.mod": "module " + goModule + "\n",
+			tc.file:           "package a\n\n" + fmt.Sprintf(tc.declare, tc.name, 1),
+			"internal/b/b.go": "package b\n\nimport \"" + goModule + "/internal/a\"\n\n" + fmt.Sprintf(tc.user, tc.name)}
+		now := maps.Clone(base)
+		now[tc.file] = "package a\n\n" + fmt.Sprintf(tc.declare, tc.name, 2)
+		if users := usersOf(t, snapshottest.Files(base, now)); !slices.Equal(users, []string{"internal/b/b.go"}) {
+			t.Errorf("%s: users = %q, want the file that calls %s", tc.label, users, tc.name)
+		}
+	}
+	base := map[string]string{"src/a.ts": "export function $run() { return 1; }\n", "src/b.ts": "import { $run } from './a';\n$run();\n"}
 	now := maps.Clone(base)
-	now["internal/a/a.go"] = "package a\n\nfunc Café() int { return 2 }\n"
-	if _, users := usersOf(t, snapshottest.Files(base, now)); !slices.Equal(users, []string{"internal/b/b.go"}) {
-		t.Errorf("users = %q, want the file that calls Café", users)
+	now["src/a.ts"] = "export function $run() { return 2; }\n"
+	if users := usersOf(t, snapshottest.Files(base, now)); !slices.Equal(users, []string{"src/b.ts"}) {
+		t.Errorf("a name with $: users = %q, want the file that calls $run", users)
+	}
+}
+
+// A user the gate leaves out for its own language although a used language's change reached it makes the number a
+// lower bound, never an exact count.
+func TestAUserTheGateLeavesOutMakesALowerBound(t *testing.T) {
+	s := snapshot.Snapshot{Radius: snapshot.Radius{
+		Changed: []snapshot.ChangedFile{{Path: "a.go", Language: "go", State: snapshot.ByName}},
+		Users:   []snapshot.User{{Path: "src/u.ts", Role: snapshot.Product, ByName: true, Languages: []string{"go"}}},
+	}}
+	r, _, _ := blastRadius(s, []snapshot.LanguageImports{{Language: "go"}}, graph{known: map[string]bool{}})
+	if r.State != answer.RadiusAtLeast || r.Files != 0 {
+		t.Errorf("radius = %+v, want at least 0: the TypeScript user is out of sight", r)
 	}
 }
 
@@ -457,8 +482,15 @@ func TestTheGateHoldsWhenTwoLanguagesChangeTheSameName(t *testing.T) {
 	now := maps.Clone(base)
 	now[ta] = strings.Replace(now[ta], k.declare("Run", 1), k.declare("Run", 2), 1)
 	now["internal/a/a.go"] = "package a\n\nfunc Run() int { return 2 }\n"
-	if _, users := usersOf(t, snapshottest.Files(base, now)); !slices.Equal(users, []string{"internal/b/b.go"}) {
+	if users := usersOf(t, snapshottest.Files(base, now)); !slices.Equal(users, []string{"internal/b/b.go"}) {
 		t.Errorf("users = %q, want the Go user alone", users)
+	}
+	// The walk itself keeps the languages that reached a user: the TypeScript user was reached from TypeScript alone.
+	s := snapshot.Build(snapshottest.Files(base, now), conventions.Default(), snapshottest.Readings(t))
+	for _, u := range s.Radius.Users {
+		if u.Path == user && !slices.Equal(u.Languages, []string{"typescript"}) {
+			t.Errorf("the TypeScript user was reached from %q, want typescript alone", u.Languages)
+		}
 	}
 }
 
@@ -493,7 +525,7 @@ func TestASwiftTargetsFilesAreUsersWithoutAnImport(t *testing.T) {
 		"Sources/App/Core/F.swift": "public func f0() -> Int { return 1 }\n", "Sources/App/UI/U.swift": "let use = f0()\n"}
 	now := maps.Clone(base)
 	now["Sources/App/Core/F.swift"] = "public func f0() -> Int { return 2 }\n"
-	if _, users := usersOf(t, snapshottest.Files(base, now)); !slices.Equal(users, []string{"Sources/App/UI/U.swift"}) {
+	if users := usersOf(t, snapshottest.Files(base, now)); !slices.Equal(users, []string{"Sources/App/UI/U.swift"}) {
 		t.Errorf("users = %q, want the file of the same target in another folder", users)
 	}
 }
@@ -521,5 +553,26 @@ func TestADeletedFileWithABrokenDeclarationCountsAsAWhole(t *testing.T) {
 	states, _ := radiusOf(t, snapshottest.Files(base, map[string]string{"src/b.cc": base["src/b.cc"]}))
 	if want := fmt.Sprintf("src/a.cc %d %s", snapshot.Deleted, snapshot.ReasonSyntaxError); !slices.Contains(states, want) {
 		t.Errorf("states = %q, want %q", states, want)
+	}
+}
+
+func TestAChangedFileThatCouldNotBeReadIsNotCountedAndLowersTheBound(t *testing.T) {
+	base := map[string]string{"src/a.ts": "export function run() { return 1; }\n", "src/b.ts": "export function other() { return 1; }\n"}
+	now := maps.Clone(base)
+	now["src/a.ts"] = "export function run() { return 2; }\n"
+	now["src/b.ts"] = "export function other() { return 2; }\n"
+	source := snapshottest.Files(base, now)
+	for i, e := range source.Now {
+		if e.Path == "src/a.ts" {
+			source.Now[i].Content = nil // the read failed
+		}
+	}
+	source.Unreadable = []string{"src/a.ts"}
+	states, _ := radiusOf(t, source)
+	if want := fmt.Sprintf("src/a.ts %d %s", snapshot.NotCounted, snapshot.ReasonUnreadable); !slices.Contains(states, want) {
+		t.Errorf("states = %q, want %q", states, want)
+	}
+	if r := detect(t, source).Radius; r == nil || r.State != answer.RadiusAtLeast {
+		t.Errorf("radius = %+v, want at least", r)
 	}
 }

@@ -38,8 +38,8 @@ func (Detector) Detect(s snapshot.Snapshot) answer.Findings {
 	}
 	f := answer.Findings{NotAnalysed: notAnalysed}
 	now, before := graphsOf(s, languages)
-	changedCode := altered(s.Radius)
-	radius, rows, notCounted := blastRadius(s, languages)
+	radius, rows, notCounted := blastRadius(s, languages, now)
+	changedCode := altered(radius)
 	if len(languages) > 0 {
 		f = withLinks(f, s, languages, now, before, radius, changedCode)
 	}

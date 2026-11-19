@@ -82,10 +82,10 @@ const (
 // cLikeTokens splits code with // and /* */ comments into tokens; literals are the language's string forms.
 func cLikeTokens(literals string) *regexp.Regexp {
 	return regexp.MustCompile(`(?P<ws>\s+)|(?P<com>//[^\n]*|/\*[\s\S]*?(?:\*/|\z))|(?P<lit>` + literals +
-		`|[0-9][\pL\pN_.]*|\.[0-9][\pL\pN_]*)|(?P<id>[A-Za-z_$][\pL\pN_$]*)|(?P<p>.)`)
+		`|[0-9][\pL\pN_.]*|\.[0-9][\pL\pN_]*)|(?P<id>[\pL_$][\pL\pN_$]*)|(?P<p>.)`)
 }
 
-var pythonTokens = regexp.MustCompile(`(?P<ws>\s+)|(?P<com>#[^\n]*)|(?P<lit>(?i:[rbuf]{0,2})(?:"""[\s\S]*?"""|'''[\s\S]*?'''|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*')|[0-9][\pL\pN_.]*|\.[0-9][\pL\pN_]*)|(?P<id>[A-Za-z_][\pL\pN_]*)|(?P<p>.)`)
+var pythonTokens = regexp.MustCompile(`(?P<ws>\s+)|(?P<com>#[^\n]*)|(?P<lit>(?i:[rbuf]{0,2})(?:"""[\s\S]*?"""|'''[\s\S]*?'''|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*')|[0-9][\pL\pN_.]*|\.[0-9][\pL\pN_]*)|(?P<id>[\pL_][\pL\pN_]*)|(?P<p>.)`)
 
 // NOTE: Rust raw strings are matched with up to three `#`, since Go's regexp has no back-reference; a raw string with
 // four or more is split into ordinary tokens. Upgrade: a small scanner for Rust literals.

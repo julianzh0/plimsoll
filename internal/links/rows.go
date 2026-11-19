@@ -123,16 +123,16 @@ func importersOfChange(s snapshot.Snapshot, now, before graph) changeImporters {
 // direct importers.
 func importerRows(s snapshot.Snapshot, now, before graph, radius *answer.Radius) []answer.Statistic {
 	r := importersOfChange(s, now, before)
-	radius.Direct, radius.Total = importers(now, r.direct), importers(now, r.total)
+	radius.Direct, radius.Total = importersCount(now, r.direct), importersCount(now, r.total)
 	radius.Folders, radius.OtherFolders = answer.Folders(r.total)
 	radius.ProductCodeFiles, radius.ImportersInChange = rolesOf(now, now.files).product, r.inside
 	direct := answer.Plural(radius.Direct.Files, "file") + " directly"
 	if radius.Direct.Files > 0 {
-		direct += " (" + answer.RoleSplit(radius.Direct.Product, radius.Direct.Tests, radius.Direct.Other) + ")"
+		direct += " (" + radius.Direct.Split() + ")"
 	}
 	total := count(radius.Total.Files) + " at any distance"
 	if radius.Total.Files > radius.Direct.Files {
-		total += " (" + answer.RoleSplit(radius.Total.Product, radius.Total.Tests, radius.Total.Other) + ")"
+		total += " (" + radius.Total.Split() + ")"
 	}
 	parts := []string{direct + ", " + total}
 	if radius.Total.Files > 0 {
@@ -141,8 +141,8 @@ func importerRows(s snapshot.Snapshot, now, before graph, radius *answer.Radius)
 			parts = append(parts, count(radius.Total.Product)+" of "+answer.Plural(radius.ProductCodeFiles, "product code file"))
 		}
 	}
-	if r.inside > 0 {
-		parts = append(parts, answer.Agree(r.inside, "more importer is a file", "more importers are files")+" the change touched")
+	if radius.ImportersInChange > 0 {
+		parts = append(parts, answer.Agree(radius.ImportersInChange, "more importer is a file", "more importers are files")+" the change touched")
 	}
 	// A sentence, not a number compared with the base: importers the change adds are touched by it, so they count on
 	// neither side, and the value at the base would differ only through renames and deletions.
@@ -211,15 +211,14 @@ func rolesOf(g graph, files []string) roles {
 }
 
 // importers counts files by role.
-func importers(g graph, files []string) answer.Importers {
+func importersCount(g graph, files []string) answer.Importers {
 	r := rolesOf(g, files)
 	return answer.Importers{Files: len(files), Product: r.product, Tests: r.test, Other: r.other}
 }
 
 // split names how many importers are product, test and other code.
 func split(g graph, importers []string) string {
-	r := rolesOf(g, importers)
-	return answer.RoleSplit(r.product, r.test, r.other)
+	return importersCount(g, importers).Split()
 }
 
 // mostImportsRows are the files that import the most own targets now, with their count at the base.

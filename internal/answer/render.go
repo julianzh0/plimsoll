@@ -460,6 +460,9 @@ func radiusLine(r Radius) string {
 // Split is the radius's parts by role.
 func (r Radius) Split() string { return RoleSplit(r.Product, r.Tests, r.Other) }
 
+// Split is the importers' parts by role.
+func (i Importers) Split() string { return RoleSplit(i.Product, i.Tests, i.Other) }
+
 // RoleSplit says how many files are product, test and other code: "<n> product, <n> test", and ", <n> other" when
 // there are others.
 func RoleSplit(product, tests, other int) string {

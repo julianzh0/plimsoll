@@ -29,6 +29,7 @@ const (
 	ReasonSkipped      = "in a skipped folder"
 	ReasonIgnored      = "left out by the repository's own file"
 	ReasonMissing      = "its content is missing in this partial clone"
+	ReasonUnreadable   = "it could not be read"
 	ReasonGenerated    = "generated"
 	ReasonSyntaxError  = "its declarations hold a syntax error"
 	ReasonNotRead      = "the parser could not read it"
@@ -243,8 +244,12 @@ func (w *radiusWalk) state(language conventions.Language, nowPath, basePath stri
 		}
 	}
 	for _, side := range sides {
-		if side.p != "" && side.content == nil && slices.Contains(w.in.missing, side.p) {
+		switch {
+		case side.p == "" || side.content != nil:
+		case slices.Contains(w.in.missing, side.p):
 			return NotCounted, ReasonMissing, nil
+		case slices.Contains(w.in.unreadable, side.p):
+			return NotCounted, ReasonUnreadable, nil
 		}
 	}
 	for _, side := range sides { // content that could not be read for another reason is binary

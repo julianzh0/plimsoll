@@ -17,19 +17,17 @@ const radiusNote = "blast radius: untouched files that use a name the change alt
 // blastRadius counts the radius of the change over the languages whose links are used: a user counts when its own
 // language's links are used and a changed file of such a language reached it. It names the changed files left out for
 // a reason no other "not analysed" entry names.
-func blastRadius(s snapshot.Snapshot, used []snapshot.LanguageImports) (*answer.Radius, []answer.Statistic, []string) {
+// A user the gate drops for its own language although a used language reached it makes the number a lower bound.
+func blastRadius(s snapshot.Snapshot, used []snapshot.LanguageImports, now graph) (*answer.Radius, []answer.Statistic, []string) {
 	r := s.Radius
 	languages := map[string]bool{}
 	for _, l := range used {
 		languages[l.Language] = true
 	}
-	languageOf := map[string]string{}
-	for _, f := range s.Now.Files {
-		languageOf[f.Path] = f.Language
+	fromUsed := func(u snapshot.User) bool {
+		return slices.ContainsFunc(u.Languages, func(l string) bool { return languages[l] })
 	}
-	reached := func(u snapshot.User) bool {
-		return languages[languageOf[u.Path]] && slices.ContainsFunc(u.Languages, func(l string) bool { return languages[l] })
-	}
+	reached := func(u snapshot.User) bool { return now.analysed(u.Path) && fromUsed(u) }
 	radius := &answer.Radius{Paths: []string{}, Folders: []answer.FolderCount{}}
 	leftOut := map[string][]string{} // reason -> paths
 	for _, c := range r.Changed {
@@ -53,6 +51,7 @@ func blastRadius(s snapshot.Snapshot, used []snapshot.LanguageImports) (*answer.
 		radius.State = answer.RadiusNotAnalysed
 		return radius, radiusRows(radius, nil), notAnalysed
 	}
+	gated := slices.ContainsFunc(r.Users, func(u snapshot.User) bool { return fromUsed(u) && !now.analysed(u.Path) })
 	users := slices.DeleteFunc(slices.Clone(r.Users), func(u snapshot.User) bool { return !reached(u) })
 	// Product files first, then tests, then the rest, each in path order: the reader checks product code first.
 	slices.SortStableFunc(users, func(a, b snapshot.User) int { return roleOf(a) - roleOf(b) })
@@ -78,7 +77,7 @@ func blastRadius(s snapshot.Snapshot, used []snapshot.LanguageImports) (*answer.
 		}
 	}
 	radius.State = answer.RadiusCounted
-	if radius.Changed.NotCounted > 0 || r.MissingNow {
+	if radius.Changed.NotCounted > 0 || r.MissingNow || gated {
 		radius.State = answer.RadiusAtLeast
 	}
 	return radius, radiusRows(radius, &omitted), notAnalysed
@@ -130,12 +129,10 @@ func addRole(r *answer.Radius, u snapshot.User) {
 	}
 }
 
-// altered says whether a changed code file that is counted altered, removed or could not tell what it changed: then
-// the importers of the change are worth a look.
-func altered(r snapshot.Radius) bool {
-	return slices.ContainsFunc(r.Changed, func(c snapshot.ChangedFile) bool {
-		return c.State == snapshot.ByName || c.State == snapshot.AsAWhole || c.State == snapshot.Deleted
-	})
+// altered says whether a counted changed code file altered, removed or could not tell what it changed: then the
+// importers of the change are worth a look.
+func altered(r *answer.Radius) bool {
+	return r.Changed.ByName+r.Changed.AsWhole+r.Changed.Deleted > 0
 }
 
 // radiusRows are the report rows of the radius: its number with its parts, and the files it lists. omitted holds the
