@@ -62,7 +62,7 @@ type Snapshot struct {
 	Repeats FunctionRepeats
 	// Radius is the state of each changed code file and the files that use what it altered or removed.
 	Radius Radius
-	Named   []string // the files the caller named, cleaned, sorted, each once; nil when none
+	Named  []string // the files the caller named, cleaned, sorted, each once; nil when none
 }
 
 // PlanningMatch is the entry of the planning and review paths that a file matches, as an answer prints it: a default

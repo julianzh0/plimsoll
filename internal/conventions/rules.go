@@ -513,7 +513,7 @@ func Default() Rules {
 			{Name: "size", Kinds: []string{"shape.test-ratio", "shape.file-size"}},
 			{Name: "dependencies", Kinds: []string{"shape.dependencies"}},
 			{Name: "wiring", Kinds: []string{"links.cycle", "links.never", "links.only", "links.test-import", "links.folder-cycle", "co-change.pair"}},
-			{Name: "functions", Kinds: []string{"shape.function-complexity", "shape.function-nesting"}},
+			{Name: "functions", Kinds: []string{"shape.function-complexity", "shape.function-nesting", "shape.function-duplicate"}},
 			{Name: "settings", Kinds: []string{"settings.defined-twice", "settings.compose-only", "shape.settings"}},
 			{Name: "process", Kinds: []string{"process.planning-file", "process.limit-change", "process.declaration-change", "process.doc-churn"}},
 		},

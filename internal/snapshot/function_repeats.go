@@ -24,6 +24,7 @@ type FunctionRepeats struct {
 	Unreadable         int              // functions among those searched the parser could not read
 	Unwalked           []string         // files the rule needed whose functions could not be read
 	Unavailable        []string         // paths whose content the rule needs and lacks: then nothing is computed
+	PerMeasure         int              // the most pairs listed
 	Rules              conventions.RepeatRules
 }
 
@@ -133,7 +134,7 @@ func filesByPath(t Tree) map[string]File {
 
 // functionRepeats finds the functions the change added that are largely the code of one other function.
 func functionRepeats(run repeatRun) FunctionRepeats {
-	result := FunctionRepeats{Rules: run.rr}
+	result := FunctionRepeats{Rules: run.rr, PerMeasure: run.rules.FunctionRules.PerMeasure}
 	for _, p := range run.unavailable {
 		if _, code := run.rules.LanguageOf(p); code {
 			result.Unavailable = append(result.Unavailable, p)

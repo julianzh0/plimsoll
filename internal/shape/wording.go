@@ -24,6 +24,8 @@ func (Detector) Wording(m answer.Mark) string {
 		return complexitySentence(m)
 	case ruleNesting:
 		return nestingSentence(m)
+	case ruleDuplicate:
+		return duplicateSentence(m)
 	}
 	return m.ID
 }

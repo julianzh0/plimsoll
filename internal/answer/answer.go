@@ -114,6 +114,15 @@ type Mark struct {
 	Measured   Measured   `json:"measured"`
 	Confidence Confidence `json:"confidence"`
 	Hint       string     `json:"hint"` // one line on how to verify it
+	// Counterpart is the other function of a mark about two functions, the subject's first; nil on every other mark.
+	Counterpart *Counterpart `json:"counterpart,omitempty"`
+}
+
+// Counterpart is the other function of a pair: where it is, and whether it existed before the change.
+type Counterpart struct {
+	Path   string `json:"path"`
+	Name   string `json:"name"`
+	Status string `json:"status"` // unchanged, changed (both: it existed at the base) or new
 }
 
 // Subject is what a mark is about.
