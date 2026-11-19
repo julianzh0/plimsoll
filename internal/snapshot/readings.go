@@ -17,21 +17,30 @@ import (
 // 23 MB. Only changed files are read with their declarations (2.4 KB a reading) or with their functions too (5.6 KB;
 // the 217 code files with function tables the field repositories changed in their last 20 commits): were every kept
 // reading one with functions, the bound would hold about 92 MB. A question never loses the readings it made itself: one larger than the bound keeps all of them, so the next
-// question about the same repository reads only what changed (swc, 43,434 code files: about 60 MB). A reading with
-// function tokens, kept only when a change added a function large enough to be compared, holds 16 bytes a token: swc's
-// 1,065 Rust files took 74 MB, json's 81 headers 8 MB (70 to 100 KB a reading), so a bound of such readings alone
-// would hold over 1 GB; their count is the files of the compared entries, which no measured repository brings near it.
+// question about the same repository reads only what changed (swc, 43,434 code files: about 60 MB). Readings with
+// function tokens are larger (70 to 100 KB each) and have their own budget, KeptTokenBytes.
 const KeptReadings = 16384
+
+// KeptTokenBytes is how many bytes the function tokens of kept readings may take before those that no later question
+// used are dropped, apart from KeptReadings: a token takes 16 bytes (its number and its line). swc's Rust entry, the
+// largest measured, took 74 MB for one question's search; the budget holds it about three times over, so a few
+// questions about different entries keep their tokens.
+const KeptTokenBytes = 256 << 20
+
+// tokenBytes is what one kept token takes: its number and its line.
+const tokenBytes = 16
 
 // Readings keeps what each file's content says, by content, between questions: a second question about unchanged
 // files does not read them again. It may be used from any number of goroutines; questions that need the same content
 // at the same time share one reading.
 type Readings struct {
-	parser    *parse.Parser
-	bound     int
-	mu        sync.Mutex
-	kept      map[readingKey]*keptReading
-	questions uint64 // questions begun
+	parser     *parse.Parser
+	bound      int
+	tokenBound int // bytes the kept readings' function tokens may take (KeptTokenBytes)
+	tokens     int // function tokens the kept readings hold
+	mu         sync.Mutex
+	kept       map[readingKey]*keptReading
+	questions  uint64 // questions begun
 	// identifiers are what the blast radius walk asks of the files it reaches, and prints the fingerprints of the
 	// changed files it compares; each depends on a content alone and is kept and dropped like the readings.
 	identifiers byContent[identifiers]
@@ -101,11 +110,12 @@ type keptReading struct {
 	read     chan struct{}
 	r        reading
 	question uint64
+	tokens   int // function tokens it holds, counted once it is read
 }
 
 // NewReadings returns empty readings that read with the parser.
 func NewReadings(parser *parse.Parser) *Readings {
-	return &Readings{parser: parser, bound: KeptReadings, kept: map[readingKey]*keptReading{}}
+	return &Readings{parser: parser, bound: KeptReadings, tokenBound: KeptTokenBytes, kept: map[readingKey]*keptReading{}}
 }
 
 // begin numbers a new question; the readings it uses are kept until a later question needs the room.
@@ -122,8 +132,20 @@ func (rs *Readings) begin() uint64 {
 func (rs *Readings) end(question uint64) {
 	rs.mu.Lock()
 	defer rs.mu.Unlock()
+	drop := func(also func(*keptReading) bool) {
+		maps.DeleteFunc(rs.kept, func(_ readingKey, kept *keptReading) bool {
+			if kept.question >= question || !also(kept) {
+				return false
+			}
+			rs.tokens -= kept.tokens
+			return true
+		})
+	}
 	if len(rs.kept) > rs.bound {
-		maps.DeleteFunc(rs.kept, func(_ readingKey, kept *keptReading) bool { return kept.question < question })
+		drop(func(*keptReading) bool { return true })
+	}
+	if rs.tokens*tokenBytes > rs.tokenBound {
+		drop(func(kept *keptReading) bool { return kept.tokens > 0 })
 	}
 	rs.identifiers.drop(question, rs.bound)
 	rs.prints.drop(question, rs.bound)
@@ -154,13 +176,17 @@ func (rs *Readings) of(language conventions.Language, grammar string, content []
 	r, lasting := rs.read(language, grammar, content, w)
 	kept.r = r
 	close(kept.read)
-	if !lasting {
-		rs.mu.Lock()
-		if rs.kept[key] == kept {
-			delete(rs.kept, key)
-		}
-		rs.mu.Unlock()
+	rs.mu.Lock()
+	defer rs.mu.Unlock()
+	if rs.kept[key] != kept { // dropped while it was read
+		return r
 	}
+	if !lasting {
+		delete(rs.kept, key)
+		return r
+	}
+	kept.tokens = tokensHeld(r.functions)
+	rs.tokens += kept.tokens
 	return r
 }
 
@@ -243,6 +269,18 @@ func (rs *Readings) read(language conventions.Language, grammar string, content 
 		}
 	}
 	return r, true
+}
+
+// tokensHeld counts the tokens functions hold: an inner function's tokens are a part of its outer function's.
+func tokensHeld(functions []function) int {
+	n, end := 0, -1
+	for _, f := range functions {
+		if f.start >= end {
+			n += len(f.tokens)
+			end = f.end
+		}
+	}
+	return n
 }
 
 // readByText is the reading of one file by its entry's text patterns.
