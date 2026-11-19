@@ -206,6 +206,24 @@ func methods(first string) string {
 	return snapshottest.GoFile(strings.Replace(first, "func Run(", "func (A) Run(", 1), strings.Replace(snapshottest.GoColumns("Run"), "func Run(", "func (B) Run(", 1))
 }
 
+// TestBuildCountsWhatItCompared checks the counts beside the pairs: two new functions compared, both repeat, and the
+// later one has a second counterpart that also met the rule.
+func TestBuildCountsWhatItCompared(t *testing.T) {
+	base := map[string]string{"pkg/z.go": snapshottest.GoFile(snapshottest.GoColumns("Original"))}
+	now := map[string]string{"pkg/z.go": base["pkg/z.go"], "pkg/b.go": snapshottest.GoFile(snapshottest.GoColumns("NewOne")),
+		"pkg/c.go": snapshottest.GoFile(snapshottest.GoColumns("NewTwo"))}
+	_, got := repeats(t, base, now)
+	if got.Files != 2 || got.Compared != 2 || got.Found != 2 || len(got.Listed) != 2 || got.Listed[0].Others != 0 || got.Listed[1].Others != 1 {
+		t.Errorf("Build(two copies of one function).Repeats = files %d, compared %d, found %d, listed %+v; want 2, 2, 2, others 0 and 1",
+			got.Files, got.Compared, got.Found, got.Listed)
+	}
+}
+
+// edited is GoColumns with a few lines changed: it still repeats GoColumns, below a share of 1.
+func edited(name string) string {
+	return strings.NewReplacer("v*2", "v*2 + float64(n)", "v*3", "math.Abs(v*3)").Replace(snapshottest.GoColumns(name))
+}
+
 func TestBuildFindsAFunctionThatRepeatsAnother(t *testing.T) {
 	foreign := "// Copyright (c) Meta Platforms, Inc. and affiliates.\n"
 	original := map[string]string{"pkg/a.go": snapshottest.GoFile(snapshottest.GoColumns("Original"))}
@@ -223,6 +241,17 @@ func TestBuildFindsAFunctionThatRepeatsAnother(t *testing.T) {
 			[]string{"pkg/b.go Copied <- pkg/a.go Original unchanged"}},
 		{"a function moved and renamed", map[string]string{"pkg/a.go": snapshottest.GoFile(snapshottest.GoColumns("Original"), snapshottest.GoFiles("ToMove"))},
 			with(map[string]string{"pkg/c.go": snapshottest.GoFile(snapshottest.GoFiles("Moved"))}), nil},
+		{"a copy added beside its original", original,
+			map[string]string{"pkg/a.go": snapshottest.GoFile(snapshottest.GoColumns("Original"), snapshottest.GoColumns("Copied"))},
+			[]string{"pkg/a.go Copied <- pkg/a.go Original unchanged"}},
+		{"a counterpart that was there wins over a new one before it", map[string]string{"pkg/z.go": snapshottest.GoFile(snapshottest.GoColumns("Original"))},
+			map[string]string{"pkg/z.go": snapshottest.GoFile(snapshottest.GoColumns("Original")), "pkg/b.go": snapshottest.GoFile(snapshottest.GoColumns("NewOne")),
+				"pkg/c.go": snapshottest.GoFile(snapshottest.GoColumns("NewTwo"))},
+			[]string{"pkg/b.go NewOne <- pkg/z.go Original unchanged", "pkg/c.go NewTwo <- pkg/z.go Original unchanged"}},
+		{"the fuller of two counterparts that were there", map[string]string{"pkg/a.go": snapshottest.GoFile(edited("Near")), "pkg/z.go": snapshottest.GoFile(snapshottest.GoColumns("Original"))},
+			map[string]string{"pkg/a.go": snapshottest.GoFile(edited("Near")), "pkg/z.go": snapshottest.GoFile(snapshottest.GoColumns("Original")),
+				"pkg/b.go": snapshottest.GoFile(snapshottest.GoColumns("Copied"))},
+			[]string{"pkg/b.go Copied <- pkg/z.go Original unchanged"}},
 		{"a copy in test support", original, with(map[string]string{"pkg/testing/b.go": snapshottest.GoFile(snapshottest.GoColumns("Copied"))}), nil},
 		{"a copy in vendored code", original, with(map[string]string{"3rdparty/lib/b.go": snapshottest.GoFile(snapshottest.GoColumns("Copied"))}), nil},
 		{"two like functions added together", nil, map[string]string{"pkg/x.go": snapshottest.GoFile(snapshottest.GoColumns("First")), "pkg/y.go": snapshottest.GoFile(snapshottest.GoColumns("Second"))},
