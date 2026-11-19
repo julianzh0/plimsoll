@@ -84,14 +84,13 @@ func functionRows(fs snapshot.Functions) []answer.Statistic {
 	if fs.Files == 0 {
 		return nil
 	}
-	count := func(n int) *float64 { v := float64(n); return &v }
 	rows := []answer.Statistic{
-		{Name: "functions measured", Value: count(fs.Measured), Note: "in " + answer.Plural(fs.Files, "changed product file")},
-		{Name: "functions over the complexity limit", Value: count(fs.ComplexCrossed), Note: listedNote(len(fs.Complex), fs.ComplexCrossed, fs.PerMeasure)},
-		{Name: "functions nested deeper", Value: count(fs.DeeperCrossed), Note: listedNote(len(fs.Deeper), fs.DeeperCrossed, fs.PerMeasure)},
+		{Name: "functions measured", Value: new(float64(fs.Measured)), Note: "in " + answer.Plural(fs.Files, "changed product file")},
+		{Name: "functions over the complexity limit", Value: new(float64(fs.ComplexCrossed)), Note: listedNote(len(fs.Complex), fs.ComplexCrossed, fs.PerMeasure)},
+		{Name: "functions nested deeper", Value: new(float64(fs.DeeperCrossed)), Note: listedNote(len(fs.Deeper), fs.DeeperCrossed, fs.PerMeasure)},
 	}
 	if len(fs.LeftOut) > 0 {
-		rows = append(rows, answer.Statistic{Name: "functions left out as code that existed before", Value: count(len(fs.LeftOut)), Note: leftOutNote(fs.LeftOut)})
+		rows = append(rows, answer.Statistic{Name: "functions left out as code that existed before", Value: new(float64(len(fs.LeftOut))), Note: leftOutNote(fs.LeftOut)})
 	}
 	return rows
 }

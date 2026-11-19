@@ -24,7 +24,7 @@ func repeatMarks(r snapshot.FunctionRepeats) []answer.Mark {
 	var marks []answer.Mark
 	for _, p := range r.Listed {
 		marks = append(marks, answer.Mark{
-			ID:          answer.ID(name, ruleRepeat, functionID(snapshot.FunctionChange{Path: p.Path, Name: p.Name, Occurrence: p.Occurrence})),
+			ID:          repeatID(p),
 			Change:      answer.New,
 			Subject:     answer.Subject{Kind: "function", Paths: []string{p.Path}, Names: []string{p.Name}},
 			Confidence:  answer.Candidate,
@@ -36,6 +36,22 @@ func repeatMarks(r snapshot.FunctionRepeats) []answer.Mark {
 	return marks
 }
 
+// repeatID is a pair's mark identifier, named by its new function as the other function marks are.
+func repeatID(p snapshot.FunctionRepeat) string {
+	return answer.ID(name, ruleRepeat, functionID(snapshot.FunctionChange{Path: p.Path, Name: p.Name, Occurrence: p.Occurrence}))
+}
+
+// counterpartWhen says, by a counterpart's status, whether it was there before the change.
+func counterpartWhen(status string) string {
+	switch status {
+	case snapshot.CounterpartChanged.String():
+		return "which was there before; this change edited it"
+	case snapshot.CounterpartNew.String():
+		return "also new in this change"
+	}
+	return "which was there before"
+}
+
 // repeatSentence names the pair from the mark alone: the new function, its share, and its counterpart with whether it
 // was there before. A counterpart of the same path and name is named as such; the verify line gives both places.
 func repeatSentence(m answer.Mark) string {
@@ -44,11 +60,8 @@ func repeatSentence(m answer.Mark) string {
 	if m.Counterpart.Path == path && m.Counterpart.Name == fn {
 		other = "another function of its name in the same file"
 	}
-	when := map[string]string{snapshot.CounterpartUnchanged.String(): "which was there before",
-		snapshot.CounterpartChanged.String(): "which was there before; this change edited it",
-		snapshot.CounterpartNew.String():     "also new in this change"}[m.Counterpart.Status]
 	return fmt.Sprintf("`%s` `%s` is new in this change, and %s%% of its tokens are in %s, %s. Limit: %s%%, %s.",
-		path, fn, answer.Count(m.Measured.Value), other, when, answer.Count(*m.Measured.Limit), m.Measured.LimitSource)
+		path, fn, answer.Count(m.Measured.Value), other, counterpartWhen(m.Counterpart.Status), answer.Count(*m.Measured.Limit), m.Measured.LimitSource)
 }
 
 // repeatHint is the verify line: both places, the lines without a match, and the longest covered run.
@@ -100,13 +113,12 @@ func repeatRows(r snapshot.FunctionRepeats) []answer.Statistic {
 	if r.Compared == 0 {
 		return nil
 	}
-	count := func(n int) *float64 { v := float64(n); return &v }
 	compared := fmt.Sprintf("only functions of %d tokens and %d lines or more; against %d functions of any size in %d product files of their language; "+
 		"not checked as new: a function of a name its file held at the base, one moved from a function the change removed, smaller functions; %s",
 		r.Rules.MinTokens, r.Rules.MinLines, r.Searched, r.SearchedFiles, repeatLeftOut)
 	return []answer.Statistic{
-		{Name: "new functions compared for repeats", Value: count(r.Compared), Note: compared},
-		{Name: "new functions that repeat another", Value: count(r.Found), Note: repeatListed(len(r.Listed), r.Found, r.PerMeasure)},
+		{Name: "new functions compared for repeats", Value: new(float64(r.Compared)), Note: compared},
+		{Name: "new functions that repeat another", Value: new(float64(r.Found)), Note: repeatListed(len(r.Listed), r.Found, r.PerMeasure)},
 	}
 }
 
@@ -161,15 +173,13 @@ const explainedRanges = 10
 func repeatEvidence(s snapshot.Snapshot, m answer.Mark) []string {
 	r := s.Repeats
 	for _, p := range r.Listed {
-		if answer.ID(name, ruleRepeat, functionID(snapshot.FunctionChange{Path: p.Path, Name: p.Name, Occurrence: p.Occurrence})) != m.ID {
+		if repeatID(p) != m.ID {
 			continue
 		}
-		status := map[snapshot.CounterpartStatus]string{snapshot.CounterpartUnchanged: "there before and unchanged",
-			snapshot.CounterpartChanged: "there before, and this change changed it", snapshot.CounterpartNew: "also new in this change"}
 		lines := []string{
 			fmt.Sprintf("new in this change: lines %d–%d (%d tokens)", p.Start, p.End, p.Tokens),
 			fmt.Sprintf("counterpart: `%s` `%s`, lines %d–%d (%d tokens), %s", p.Counterpart.Path, p.Counterpart.Name, p.Counterpart.Start,
-				p.Counterpart.End, p.Counterpart.Tokens, status[p.Counterpart.Status]),
+				p.Counterpart.End, p.Counterpart.Tokens, counterpartWhen(p.Counterpart.Status.String())),
 			fmt.Sprintf("%d%% of its tokens are in runs of %d tokens the counterpart holds (the limit is %d%%); %d%% of the counterpart's are in its",
 				int(math.Floor(p.Share*100)), r.Rules.Run, int(r.Rules.Share*100), int(math.Floor(p.Reverse*100))),
 			fmt.Sprintf("%d tokens in a row are covered, lines %d–%d (at least %d needed)", p.Stretch, p.StretchStart, p.StretchEnd, r.Rules.Stretch),

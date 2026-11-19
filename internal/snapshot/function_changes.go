@@ -21,14 +21,7 @@ type measured struct {
 // at the base, their old paths and the changed product files gone since that it admits.
 func measuredFiles(rules conventions.Rules, changes []Change, now, before Tree, nowContent, beforeContent map[string][]byte) measured {
 	m := measured{now: map[string]bool{}, base: map[string]bool{}}
-	files := func(t Tree) map[string]File {
-		found := map[string]File{}
-		for _, f := range t.Files {
-			found[f.Path] = f
-		}
-		return found
-	}
-	nowFiles, baseFiles := files(now), files(before)
+	nowFiles, baseFiles := filesByPath(now), filesByPath(before)
 	for _, change := range changes {
 		basePath := cmp.Or(change.From, change.Path)
 		if f, found := nowFiles[change.Path]; found {

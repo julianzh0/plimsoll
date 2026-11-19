@@ -14,19 +14,17 @@ import (
 // FunctionRepeats is what the function-repeat rule found in a change: the functions the change added that are largely
 // the code of one other function, and what it compared. Names, places and numbers only, never code.
 type FunctionRepeats struct {
-	Listed             []FunctionRepeat // at most PerMeasure, the fullest repeat first
-	Found              int              // all pairs found, listed or not
-	Compared           int              // new functions compared
-	Moved              int              // new functions left out because their code moved from a gone function
-	FromAnotherProject int              // pairs left out because the new function's file came from another project
-	LeftOutFiles       int              // changed product files that are not the project's own maintained code
-	Searched           int              // functions searched for a counterpart
-	SearchedFiles      int              // files they are in
-	Unreadable         int              // functions among those searched the parser could not read
-	Unwalked           []string         // files the rule needed whose functions could not be read
-	Unavailable        []string         // paths whose content the rule needs and lacks: then nothing is computed
-	PerMeasure         int              // the most pairs listed
-	Rules              conventions.RepeatRules
+	Listed        []FunctionRepeat // at most PerMeasure, the fullest repeat first
+	Found         int              // all pairs found, listed or not
+	Compared      int              // new functions compared
+	Moved         int              // new functions left out because their code moved from a gone function
+	Searched      int              // functions searched for a counterpart
+	SearchedFiles int              // files they are in
+	Unreadable    int              // functions among those searched the parser could not read
+	Unwalked      []string         // files the rule needed whose functions could not be read
+	Unavailable   []string         // paths whose content the rule needs and lacks: then nothing is computed
+	PerMeasure    int              // the most pairs listed
+	Rules         conventions.RepeatRules
 }
 
 // CounterpartStatus says whether a function's counterpart existed before the change.
@@ -56,7 +54,6 @@ type FunctionRepeat struct {
 	Path, Name             string
 	Occurrence             int // 1 for the first function of its name in its file
 	Start, End, Tokens     int // lines from 1
-	FileNew                bool
 	Counterpart            RepeatCounterpart
 	Share, Reverse         float64 // of the new function's tokens in runs of the counterpart, and of the counterpart's in the new one's
 	Stretch                int     // the most tokens in a row of the new function the counterpart covers
@@ -85,8 +82,9 @@ type repeatFn struct {
 	entry      string
 }
 
-func (f repeatFn) before(g repeatFn) bool {
-	return cmp.Or(strings.Compare(f.path, g.path), f.fn.start-g.fn.start) < 0
+// compare orders functions by path, then offset.
+func (f repeatFn) compare(g repeatFn) int {
+	return cmp.Or(strings.Compare(f.path, g.path), f.fn.start-g.fn.start)
 }
 
 func (f repeatFn) holds(g repeatFn) bool {
@@ -145,6 +143,7 @@ func functionRepeats(run repeatRun) FunctionRepeats {
 		return result
 	}
 	gone := run.gone()
+	goneGrams := make([]map[uint64]int, len(gone)) // built on first use, once per question
 	var cands []repeatFn
 	for _, change := range run.changes {
 		f, found := run.nowFiles[change.Path]
@@ -152,11 +151,7 @@ func functionRepeats(run repeatRun) FunctionRepeats {
 		if !found || measuredFile(run.rules, f, run.nowContent[change.Path]) != fileMeasured {
 			continue
 		}
-		if run.outside(change.Path) {
-			result.LeftOutFiles++
-			continue
-		}
-		if !read || r.unread || r.functionsUnread {
+		if run.outside(change.Path) || !read || r.unread || r.functionsUnread {
 			continue
 		}
 		base := run.baseFunctions(cmp.Or(change.From, change.Path))
@@ -168,7 +163,7 @@ func functionRepeats(run repeatRun) FunctionRepeats {
 				slices.ContainsFunc(base, func(b function) bool { return b.name == fn.name }) {
 				continue
 			}
-			if run.moved(c, gone) {
+			if run.moved(c, gone, goneGrams) {
 				result.Moved++
 				continue
 			}
@@ -179,7 +174,7 @@ func functionRepeats(run repeatRun) FunctionRepeats {
 	if len(cands) == 0 {
 		return result
 	}
-	slices.SortFunc(cands, func(a, b repeatFn) int { return cmp.Or(strings.Compare(a.path, b.path), a.fn.start-b.fn.start) })
+	slices.SortFunc(cands, repeatFn.compare)
 	best, others := run.search(cands, &result)
 	run.list(cands, best, others, &result)
 	return result
@@ -227,17 +222,21 @@ func (run repeatRun) entryOf(filePath string) string {
 	return language.Name
 }
 
-// moved says whether a gone function of the candidate's entry covers MovedShare of it, names aside.
-func (run repeatRun) moved(c repeatFn, gone []repeatFn) bool {
+// moved says whether a gone function of the candidate's entry covers MovedShare of it, names aside. counts holds each
+// gone function's runs, filled on first use.
+func (run repeatRun) moved(c repeatFn, gone []repeatFn, counts []map[uint64]int) bool {
 	var grams []uint64
-	for _, g := range gone {
+	for k, g := range gone {
 		if g.entry != c.entry {
 			continue
 		}
 		if grams == nil {
 			grams = gramsOf(c.fn.tokens, run.rr.Run, withoutNames)
 		}
-		if share, _, _ := coverage(grams, len(c.fn.tokens), countGrams(gramsOf(g.fn.tokens, run.rr.Run, withoutNames)), run.rr.Run); share >= run.rr.MovedShare {
+		if counts[k] == nil {
+			counts[k] = countGrams(gramsOf(g.fn.tokens, run.rr.Run, withoutNames))
+		}
+		if share, _, _ := coverage(grams, len(c.fn.tokens), counts[k], run.rr.Run); share >= run.rr.MovedShare {
 			return true
 		}
 	}
@@ -327,29 +326,31 @@ func (run repeatRun) search(cands []repeatFn, result *FunctionRepeats) ([]*pairS
 		any := false
 		for i, c := range cands {
 			allowed[i] = c.entry == s.entry && (c.path != s.path || c.fn.start != s.fn.start) && !c.holds(s) && !s.holds(c) &&
-				(!isCand[place{s.path, s.fn.start}] || s.before(c))
+				(!isCand[place{s.path, s.fn.start}] || s.compare(c) < 0)
 			any = any || allowed[i]
 		}
 		return any
 	}
+	// a covered stretch of Stretch tokens takes at least Stretch/Run of the source's runs: a shorter source marks none
+	shortest := (run.rr.Stretch+n-1)/n + n - 1
 	best := make([]*pairScore, len(cands))
 	others := make([]int, len(cands))
 	for _, s := range run.sources(entries, result) {
-		if !partners(s) {
+		if len(s.fn.tokens) < shortest || !partners(s) {
 			continue
 		}
 		if byGram == nil {
 			index()
 		}
-		sw1 := gramsOf(s.fn.tokens, n, withoutNames)
+		sg := sourceGrams{w1: gramsOf(s.fn.tokens, n, withoutNames)}
 		seen := map[int]bool{}
-		for _, g := range sw1 {
+		for _, g := range sg.w1 {
 			for _, ci := range byGram[g] {
 				if seen[ci] || !allowed[ci] {
 					continue
 				}
 				seen[ci] = true
-				score, marks := run.score(cands[ci], s, cw1[ci], cw2[ci], sw1)
+				score, marks := run.score(cands[ci], s, cw1[ci], cw2[ci], &sg)
 				if !marks {
 					continue
 				}
@@ -366,16 +367,25 @@ func (run repeatRun) search(cands []repeatFn, result *FunctionRepeats) ([]*pairS
 	return best, others
 }
 
+// sourceGrams are a source's runs in both views and their counts, built on its first pair and kept for the others.
+type sourceGrams struct {
+	w1, w2 []uint64
+	c1, c2 map[uint64]int
+}
+
 // score compares a candidate with a source: whether the source marks it, and the numbers.
-func (run repeatRun) score(c, s repeatFn, cw1, cw2, sw1 []uint64) (pairScore, bool) {
+func (run repeatRun) score(c, s repeatFn, cw1, cw2 []uint64, sg *sourceGrams) (pairScore, bool) {
 	n := run.rr.Run
-	sw2 := gramsOf(s.fn.tokens, n, nil)
-	share, _, _ := coverage(cw2, len(c.fn.tokens), countGrams(sw2), n)
-	_, stretch, at := coverage(cw1, len(c.fn.tokens), countGrams(sw1), n)
+	if sg.c1 == nil {
+		sg.w2 = gramsOf(s.fn.tokens, n, nil)
+		sg.c1, sg.c2 = countGrams(sg.w1), countGrams(sg.w2)
+	}
+	share, _, _ := coverage(cw2, len(c.fn.tokens), sg.c2, n)
+	_, stretch, at := coverage(cw1, len(c.fn.tokens), sg.c1, n)
 	if share < run.rr.Share || stretch < run.rr.Stretch {
 		return pairScore{}, false
 	}
-	reverse, _, _ := coverage(sw2, len(s.fn.tokens), countGrams(cw2), n)
+	reverse, _, _ := coverage(sg.w2, len(s.fn.tokens), countGrams(cw2), n)
 	return pairScore{source: s, share: share, reverse: reverse, stretch: stretch, stretchAt: at, status: run.status(s)}, true
 }
 
@@ -461,7 +471,11 @@ func (run repeatRun) functionsNow(language conventions.Language, filePath string
 
 // list keeps the outermost of nested marks, drops those whose file came from another project, and lists the fullest.
 func (run repeatRun) list(cands []repeatFn, best []*pairScore, others []int, result *FunctionRepeats) {
-	var kept []FunctionRepeat
+	type pair struct {
+		FunctionRepeat
+		cand int
+	}
+	var kept []pair
 	for i, c := range cands {
 		if best[i] == nil {
 			continue
@@ -476,26 +490,23 @@ func (run repeatRun) list(cands []repeatFn, best []*pairScore, others []int, res
 			continue
 		}
 		if run.from.fromAnotherProject(c.path, run.nowContent[c.path]) {
-			result.FromAnotherProject++
 			continue
 		}
-		kept = append(kept, run.repeat(c, *best[i], others[i]))
+		kept = append(kept, pair{run.repeat(c, *best[i], others[i]), i})
 	}
 	result.Found = len(kept)
-	slices.SortStableFunc(kept, func(a, b FunctionRepeat) int {
+	slices.SortStableFunc(kept, func(a, b pair) int {
 		return cmp.Or(cmp.Compare(min(b.Share, b.Reverse), min(a.Share, a.Reverse)), strings.Compare(a.Path, b.Path), a.Start-b.Start)
 	})
-	result.Listed = kept[:min(run.rules.FunctionRules.PerMeasure, len(kept))]
-	for i := range result.Listed {
-		result.Listed[i] = run.aligned(result.Listed[i], cands, best)
+	for _, p := range kept[:min(run.rules.FunctionRules.PerMeasure, len(kept))] {
+		result.Listed = append(result.Listed, aligned(p.FunctionRepeat, cands[p.cand].fn, best[p.cand].source.fn))
 	}
 }
 
 // repeat is a listed pair's facts.
 func (run repeatRun) repeat(c repeatFn, s pairScore, others int) FunctionRepeat {
-	_, atBase := run.baseFiles[c.path]
 	r := FunctionRepeat{Path: c.path, Name: c.fn.name, Occurrence: c.occurrence, Start: c.fn.startLine, End: c.fn.endLine,
-		Tokens: len(c.fn.tokens), FileNew: !atBase && !slices.ContainsFunc(run.changes, func(ch Change) bool { return ch.Path == c.path && ch.From != "" }),
+		Tokens: len(c.fn.tokens),
 		Counterpart: RepeatCounterpart{Path: s.source.path, Name: s.source.fn.name, Occurrence: s.source.occurrence,
 			Start: s.source.fn.startLine, End: s.source.fn.endLine, Tokens: len(s.source.fn.tokens), Status: s.status},
 		Share: s.share, Reverse: s.reverse, Stretch: s.stretch, Others: others}
@@ -505,10 +516,9 @@ func (run repeatRun) repeat(c repeatFn, s pairScore, others int) FunctionRepeat 
 }
 
 // aligned adds what differs: the two functions' code lines aligned, each line taken as its tokens without names.
-func (run repeatRun) aligned(r FunctionRepeat, cands []repeatFn, best []*pairScore) FunctionRepeat {
-	i := slices.IndexFunc(cands, func(c repeatFn) bool { return c.path == r.Path && c.fn.startLine == r.Start && c.fn.name == r.Name })
-	hashesA, linesA := codeLines(cands[i].fn)
-	hashesB, linesB := codeLines(best[i].source.fn)
+func aligned(r FunctionRepeat, a, b function) FunctionRepeat {
+	hashesA, linesA := codeLines(a)
+	hashesB, linesB := codeLines(b)
 	ids := map[uint64]int32{}
 	var next int32
 	number := func(hashes []uint64) []int32 {
@@ -555,16 +565,9 @@ func codeLines(f function) (hashes []uint64, lines []int) {
 
 // unpartnered are the code lines not kept, as ranges of line numbers: consecutive code lines join one range.
 func unpartnered(kept []bool, lines []int) []LineRange {
-	var ranges []LineRange
-	for k, keep := range kept {
-		if keep {
-			continue
-		}
-		if n := len(ranges); n > 0 && k > 0 && !kept[k-1] {
-			ranges[n-1].End = lines[k]
-			continue
-		}
-		ranges = append(ranges, LineRange{Start: lines[k], End: lines[k]})
+	ranges := dropped(kept)
+	for k := range ranges {
+		ranges[k] = LineRange{Start: lines[ranges[k].Start-1], End: lines[ranges[k].End-1]}
 	}
 	return ranges
 }

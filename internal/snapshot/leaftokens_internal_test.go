@@ -1,6 +1,7 @@
 package snapshot
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -67,7 +68,8 @@ func TestLeafTokensFollowTheGrammarKinds(t *testing.T) {
 			t.Fatalf("TokenKindsOf(%s) = none, want the grammar's kinds", c.grammar)
 		}
 		var got []string
-		readable := eachLeafToken(leafKindsOf(tree, kinds), tree, shapeOf(tree.Nodes), 0, len(tree.Nodes), func(class leafClass, start, end int) {
+		readable := !slices.ContainsFunc(tree.Nodes, func(n parse.Node) bool { return n.Error })
+		eachLeafToken(leafKindsOf(tree, kinds), shapeOf(tree.Nodes), 0, len(tree.Nodes), func(class leafClass, start, end int) {
 			switch class {
 			case leafLiteral:
 				got = append(got, "L")

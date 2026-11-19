@@ -207,7 +207,7 @@ func (w *walk) read(from, to int, name string) function {
 	}
 	if w.pass.leaf != nil {
 		if from >= w.inside { // the outermost function: its tokens hold those of every function inside it
-			w.leafIDs, w.leafStarts = functionTokens(*w.pass.leaf, w.tree, w.s, from, to, w.content)
+			w.leafIDs, w.leafStarts = functionTokens(*w.pass.leaf, w.s, from, to, w.content)
 			w.leafLines = make([]int, len(w.leafStarts))
 			for k, start := range w.leafStarts {
 				w.leafLines[k] = w.lines.line(start)

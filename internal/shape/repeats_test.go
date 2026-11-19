@@ -75,7 +75,7 @@ func TestExplainOfARepeatShowsBothFunctionsAndCapsTheLineRanges(t *testing.T) {
 	got := strings.Join((shape.Detector{}).Explain(s, m), "\n")
 	for _, want := range []string{
 		"new in this change: lines 40–118 (420 tokens)",
-		"counterpart: `src/users/save.ts` `saveUser`, lines 12–88 (400 tokens), there before and unchanged",
+		"counterpart: `src/users/save.ts` `saveUser`, lines 12–88 (400 tokens), which was there before",
 		"91% of its tokens are in runs of 10 tokens the counterpart holds (the limit is 80%); 90% of the counterpart's are in its",
 		"286 tokens in a row are covered, lines 52–101 (at least 150 needed)",
 		"and 4 more",
