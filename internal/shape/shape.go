@@ -76,7 +76,6 @@ func (Detector) Detect(s snapshot.Snapshot) answer.Findings {
 	f.Summaries = append(f.Summaries, functionSummary(s.Functions)...)
 	f.NotAnalysed = append(f.NotAnalysed, functionsNotAnalysed(s.Functions)...)
 	f.Statistics = append(f.Statistics, repeatRows(s.Repeats)...)
-	f.Summaries = append(f.Summaries, repeatSummary(s.Repeats)...)
 	f.NotAnalysed = append(f.NotAnalysed, repeatsNotAnalysed(s.Repeats)...)
 	if s.Functions.Files > 0 {
 		f.Ran(answer.Kind(name, ruleComplexity))

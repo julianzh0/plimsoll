@@ -2,7 +2,6 @@ package snapshot
 
 import (
 	"cmp"
-	"hash/fnv"
 	"maps"
 	"path"
 	"regexp"
@@ -54,19 +53,15 @@ func (s CounterpartStatus) String() string {
 
 // FunctionRepeat is one function the change added and its counterpart.
 type FunctionRepeat struct {
-	Path, Name             string
-	Occurrence             int // 1 for the first function of its name in its file
-	Start, End, Tokens     int // lines from 1
-	Counterpart            RepeatCounterpart
-	Share, Reverse         float64 // of the new function's tokens in runs of the counterpart, and of the counterpart's in the new one's
-	Stretch                int     // the most tokens in a row of the new function the counterpart covers
-	StretchStart           int     // the lines of that stretch in the new function
-	StretchEnd             int
-	Others                 int // other functions that also met the rule for this one
-	CodeLines, Partnered   int // the new function's lines that hold code, and how many of them have a partner
-	Unpartnered            []LineRange
-	CounterpartUnpartnered []LineRange
-	GaveUp                 bool // the line comparison gave up: no partners or ranges
+	Path, Name         string
+	Occurrence         int // 1 for the first function of its name in its file
+	Start, End, Tokens int // lines from 1
+	Counterpart        RepeatCounterpart
+	Share, Reverse     float64 // of the new function's tokens in runs of the counterpart, and of the counterpart's in the new one's
+	Stretch            int     // the most tokens in a row of the new function the counterpart covers
+	StretchStart       int     // the lines of that stretch in the new function
+	StretchEnd         int
+	Others             int // other functions that also met the rule for this one
 }
 
 // RepeatCounterpart is the other function of a pair.
@@ -550,7 +545,7 @@ func (run repeatRun) list(cands []repeatFn, best []*pairScore, others []int, res
 		return cmp.Or(cmp.Compare(min(b.Share, b.Reverse), min(a.Share, a.Reverse)), strings.Compare(a.Path, b.Path), a.Start-b.Start)
 	})
 	for _, p := range kept[:min(run.rules.FunctionRules.PerMeasure, len(kept))] {
-		result.Listed = append(result.Listed, aligned(p.FunctionRepeat, cands[p.cand].fn, best[p.cand].source.fn))
+		result.Listed = append(result.Listed, p.FunctionRepeat)
 	}
 }
 
@@ -564,63 +559,6 @@ func (run repeatRun) repeat(c repeatFn, s pairScore, others int) FunctionRepeat 
 	r.StretchStart = c.fn.tokenLines[s.stretchAt]
 	r.StretchEnd = c.fn.tokenLines[s.stretchAt+s.stretch-1]
 	return r
-}
-
-// aligned adds what differs: the two functions' code lines aligned, each line taken as its tokens without names.
-func aligned(r FunctionRepeat, a, b function) FunctionRepeat {
-	hashesA, linesA := codeLines(a)
-	hashesB, linesB := codeLines(b)
-	ids := map[uint64]int32{}
-	var next int32
-	number := func(hashes []uint64) []int32 {
-		out := make([]int32, len(hashes))
-		for k, h := range hashes {
-			id, found := ids[h]
-			if !found {
-				id = next
-				ids[h] = id
-				next++
-			}
-			out[k] = id
-		}
-		return out
-	}
-	keptA, keptB, done := commonDone(number(hashesA), number(hashesB))
-	r.CodeLines = len(linesA)
-	if !done {
-		r.GaveUp = true
-		return r
-	}
-	r.Partnered = countFunc(keptA, func(k bool) bool { return k })
-	r.Unpartnered = unpartnered(keptA, linesA)
-	r.CounterpartUnpartnered = unpartnered(keptB, linesB)
-	return r
-}
-
-// codeLines are a function's lines that hold code, each as a hash of its tokens without names, and their numbers.
-func codeLines(f function) (hashes []uint64, lines []int) {
-	for k := 0; k < len(f.tokens); {
-		end := k
-		for end < len(f.tokens) && f.tokenLines[end] == f.tokenLines[k] {
-			end++
-		}
-		h := fnv.New64a()
-		for _, t := range f.tokens[k:end] {
-			writeUint64(h, withoutNames(t))
-		}
-		hashes, lines = append(hashes, h.Sum64()), append(lines, f.tokenLines[k])
-		k = end
-	}
-	return hashes, lines
-}
-
-// unpartnered are the code lines not kept, as ranges of line numbers: consecutive code lines join one range.
-func unpartnered(kept []bool, lines []int) []LineRange {
-	ranges := dropped(kept)
-	for k := range ranges {
-		ranges[k] = LineRange{Start: lines[ranges[k].Start-1], End: lines[ranges[k].End-1]}
-	}
-	return ranges
 }
 
 // gramsOf are the hashes of every run of n tokens, each token first passed through view (nil keeps it). A token's
