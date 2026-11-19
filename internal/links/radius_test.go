@@ -765,6 +765,12 @@ func TestEachStateOfAChangedFileCarriesItsReason(t *testing.T) {
 			map[string]string{"src/a.cc": "int run() { return 2 $$ ; }\n"}, "", snapshot.AsAWhole, snapshot.ReasonSyntaxError},
 		{"a declaration changed", map[string]string{"src/a.ts": run}, map[string]string{"src/a.ts": "export function run() { return 2; }\n"},
 			"", snapshot.ByName, ""},
+		{"its line breaks changed, where they are code", map[string]string{"src/a.ts": run},
+			map[string]string{"src/a.ts": "export function run() {\n  return 1;\n}\n"}, "", snapshot.ByName, ""},
+		{"its indentation changed, where it is code", map[string]string{"src/pkg/a.py": "def run(x):\n    if x:\n        x = 1\n    return x\n"},
+			map[string]string{"src/pkg/a.py": "def run(x):\n    if x:\n        x = 1\n        return x\n"}, "", snapshot.ByName, ""},
+		{"a member of a namespace changed", map[string]string{"src/a.ts": "export namespace N {\n  export const x = 1;\n  export const y = 1;\n}\n"},
+			map[string]string{"src/a.ts": "export namespace N {\n  export const x = 2;\n  export const y = 1;\n}\n"}, "", snapshot.ByName, ""},
 	}
 	for _, c := range cases {
 		source := snapshottest.Files(c.base, c.now)
@@ -805,7 +811,7 @@ func TestTheWalkSeedsEachKindOfChangedFile(t *testing.T) {
 	describe := func(us []snapshot.User) []string {
 		var d []string
 		for _, u := range us {
-			d = append(d, fmt.Sprintf("%s whole=%v byName=%v", u.Path, u.Whole, u.ByName))
+			d = append(d, fmt.Sprintf("%s whole=%v byName=%v outside=%v", u.Path, u.Whole, u.ByName, u.Outside))
 		}
 		return d
 	}
@@ -817,17 +823,23 @@ func TestTheWalkSeedsEachKindOfChangedFile(t *testing.T) {
 		users, touched []string
 	}{
 		{"a deleted file whose path its importers name", snapshottest.Files(map[string]string{"src/a.ts": ts, "src/b.ts": user},
-			map[string]string{"src/b.ts": user}), []string{"src/b.ts whole=[typescript] byName=[]"}, nil},
+			map[string]string{"src/b.ts": user}), []string{"src/b.ts whole=[typescript] byName=[] outside=[]"}, nil},
 		{"a deleted file of a package that lives on", snapshottest.Files(goPkg(nil), without(goPkg(nil), "internal/a/a.go")),
-			[]string{"internal/b/b.go whole=[] byName=[go]"}, nil},
+			[]string{"internal/b/b.go whole=[] byName=[go] outside=[go]"}, nil},
 		{"a deleted file with a broken declaration", snapshottest.Files(map[string]string{"src/a.cc": "int run() { return 1 $$ ; }\n",
 			"src/a.h": "int run();\n", "src/c.cc": "#include \"a.h\"\nint x = 0;\n"},
 			map[string]string{"src/a.h": "int run();\n", "src/c.cc": "#include \"a.h\"\nint x = 0;\n"}),
-			[]string{"src/a.h whole=[cpp] byName=[]", "src/c.cc whole=[cpp] byName=[]"}, nil},
-		{"a file renamed under importers that still name its old path", renamed, []string{"src/b.ts whole=[typescript] byName=[]"}, nil},
+			[]string{"src/a.h whole=[cpp] byName=[] outside=[]", "src/c.cc whole=[cpp] byName=[] outside=[]"}, nil},
+		{"a file renamed under importers that still name its old path", renamed, []string{"src/b.ts whole=[typescript] byName=[] outside=[]"}, nil},
+		{"a user whose use stands in its tests alone", snapshottest.Files(map[string]string{"Cargo.toml": "[package]\nname = \"app\"\n",
+			"src/lib.rs": "mod a;\nmod b;\n", "src/a.rs": "pub fn run() -> u8 { 1 }\n",
+			"src/b.rs": "pub fn other() -> u8 { 1 }\n\n#[cfg(test)]\nmod tests {\n    use crate::a::run;\n    #[test]\n    fn t() { run(); }\n}\n"},
+			map[string]string{"Cargo.toml": "[package]\nname = \"app\"\n", "src/lib.rs": "mod a;\nmod b;\n", "src/a.rs": "pub fn run() -> u8 { 2 }\n",
+				"src/b.rs": "pub fn other() -> u8 { 1 }\n\n#[cfg(test)]\nmod tests {\n    use crate::a::run;\n    #[test]\n    fn t() { run(); }\n}\n"}),
+			[]string{"src/b.rs whole=[] byName=[rust] outside=[]"}, nil},
 		{"a user the change touched", snapshottest.Files(map[string]string{"src/a.ts": ts, "src/b.ts": user},
 			map[string]string{"src/a.ts": "export function run() { return 2; }\n", "src/b.ts": user + "// seen\n"}),
-			nil, []string{"src/b.ts whole=[] byName=[typescript]"}},
+			nil, []string{"src/b.ts whole=[] byName=[typescript] outside=[typescript]"}},
 	}
 	for _, c := range cases {
 		r := snapshot.Build(c.source, conventions.Default(), snapshottest.Readings(t)).Radius

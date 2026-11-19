@@ -79,6 +79,7 @@ const pythonUnits = `
 (module (expression_statement (assignment left: (pattern_list (identifier) @unit.name))) @unit)
 `
 
+// typescriptUnits: an exported namespace is a container, never one unit, so its members are compared on their own.
 const typescriptUnits = `
 [(function_declaration name: (identifier) @unit.name) (generator_function_declaration name: (identifier) @unit.name)
   (class_declaration name: (type_identifier) @unit.name) (abstract_class_declaration name: (type_identifier) @unit.name)
@@ -86,7 +87,7 @@ const typescriptUnits = `
   (enum_declaration name: (identifier) @unit.name) (function_signature name: (identifier) @unit.name)] @unit
 [(lexical_declaration (variable_declarator name: (identifier) @unit.name))
   (variable_declaration (variable_declarator name: (identifier) @unit.name))] @unit
-(export_statement declaration: (_)) @unit
+((export_statement declaration: (_) @_declared) @unit (#not-match? @_declared "^(namespace|module)[ \t\n]"))
 (export_statement declaration: [(function_declaration name: (identifier) @unit.name)
   (generator_function_declaration name: (identifier) @unit.name) (class_declaration name: (type_identifier) @unit.name)
   (abstract_class_declaration name: (type_identifier) @unit.name) (interface_declaration name: (type_identifier) @unit.name)
