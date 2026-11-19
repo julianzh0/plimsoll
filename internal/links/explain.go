@@ -75,7 +75,8 @@ func folderEvidence(m answer.Mark, now, before graph) []string {
 	}
 	type direction struct{ from, to string }
 	byDirection := map[direction][]snapshot.Link{}
-	for _, imp := range g.siblingImports(g.rings(false)) {
+	rings, _ := g.rings()
+	for _, imp := range g.siblingImports(rings) {
 		if slices.Contains(members, imp.from) && slices.Contains(members, imp.to) {
 			d := direction{imp.from, imp.to}
 			byDirection[d] = append(byDirection[d], imp.link)

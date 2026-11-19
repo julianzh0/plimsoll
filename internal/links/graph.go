@@ -85,53 +85,78 @@ func (g graph) testTargets(path string) int {
 
 // rings are the groups of two or more files that all reach each other, each sorted, the groups sorted by their first
 // path. withTypeOnly counts type-only links as edges too.
-func (g graph) rings(withTypeOnly bool) [][]string {
-	isNode := map[string]bool{}
-	for _, n := range g.nodes {
-		isNode[n] = true
+func (g graph) rings() (rings, withTypeOnly [][]string) {
+	index := make(map[string]int, len(g.nodes))
+	for i, n := range g.nodes {
+		index[n] = i
 	}
-	edges := map[string][]string{}
-	for _, n := range g.nodes {
+	edges, all := make([][]int, len(g.nodes)), make([][]int, len(g.nodes))
+	for i, n := range g.nodes {
 		for _, link := range g.from[n] {
-			if link.TypeOnly && !withTypeOnly {
-				continue
-			}
 			for _, to := range link.Files {
-				if isNode[to] {
-					edges[n] = append(edges[n], to)
+				if j, node := index[to]; node {
+					all[i] = append(all[i], j)
+					if !link.TypeOnly {
+						edges[i] = append(edges[i], j)
+					}
 				}
 			}
 		}
 	}
-	return components(g.nodes, edges)
+	return groupsOf(g.nodes, edges), groupsOf(g.nodes, all)
 }
 
 // components are the groups of two or more nodes that all reach each other along the edges, each sorted, the groups
-// sorted by their first node. The search is iterative, so a long chain of edges cannot exhaust the stack.
+// sorted by their first node.
 func components(nodes []string, edges map[string][]string) [][]string {
-	type frame struct {
-		node string
-		next int
+	names := slices.Clone(nodes)
+	index := make(map[string]int, len(names))
+	for i, n := range names {
+		index[n] = i
 	}
-	index, low, onStack := map[string]int{}, map[string]int{}, map[string]bool{}
-	var stack []string
+	numbered := make([][]int, len(names))
+	for i := 0; i < len(names); i++ { // names grows by the targets that are no node, which the search visits too
+		for _, to := range edges[names[i]] {
+			j, known := index[to]
+			if !known {
+				j = len(names)
+				index[to], names = j, append(names, to)
+				numbered = append(numbered, nil)
+			}
+			numbered[i] = append(numbered[i], j)
+		}
+	}
+	return groupsOf(names, numbered)
+}
+
+// groupsOf is the search behind components over numbered nodes: Tarjan's, iterative, so a long chain of edges cannot
+// exhaust the stack; numbers instead of names keep a graph of many thousand files fast.
+func groupsOf(names []string, edges [][]int) [][]string {
+	type frame struct{ node, next int }
+	index, low := make([]int, len(names)), make([]int, len(names))
+	for i := range index {
+		index[i] = -1
+	}
+	onStack := make([]bool, len(names))
+	var stack []int
 	var groups [][]string
-	visit := func(n string) {
-		index[n], low[n] = len(index), len(index)
+	count := int(0)
+	visit := func(n int) {
+		index[n], low[n], count = count, count, count+1
 		stack, onStack[n] = append(stack, n), true
 	}
-	for _, root := range nodes {
-		if _, seen := index[root]; seen {
+	for root := range len(names) {
+		if index[root] >= 0 {
 			continue
 		}
 		visit(root)
 		work := []frame{{node: root}}
 		for len(work) > 0 {
 			top := &work[len(work)-1]
-			if top.next < len(edges[top.node]) {
+			if int(top.next) < len(edges[top.node]) {
 				next := edges[top.node][top.next]
 				top.next++
-				if _, seen := index[next]; !seen {
+				if index[next] < 0 {
 					visit(next)
 					work = append(work, frame{node: next})
 				} else if onStack[next] {
@@ -152,7 +177,7 @@ func components(nodes []string, edges map[string][]string) [][]string {
 			for {
 				member := stack[len(stack)-1]
 				stack, onStack[member] = stack[:len(stack)-1], false
-				group = append(group, member)
+				group = append(group, names[member])
 				if member == done {
 					break
 				}
