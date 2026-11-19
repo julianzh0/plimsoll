@@ -181,7 +181,7 @@ func (Detector) Standing(items []answer.Mark) string {
 		functionsInStanding(items, ruleNesting, "1 function nested deeper is listed", "functions nested deeper are listed", "the deepest of them",
 			func(v float64) string { return fmt.Sprintf("%d levels", int(v)) }),
 		functionsInStanding(items, ruleRepeat, "1 new function that repeats another is listed", "new functions that repeat another are listed",
-			"with the highest share", func(v float64) string { return answer.Count(v) + "%" }),
+			"the most alike", func(v float64) string { return answer.Count(v) + "%" }),
 	}
 	for _, clause := range clauses {
 		if clause != "" {

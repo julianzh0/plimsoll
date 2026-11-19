@@ -447,12 +447,8 @@ func TestShapeNamesTheDecidingRulesThatRan(t *testing.T) {
 	source := snapshottest.Files(map[string]string{"package.json": manifest("a"), "src/a.ts": "export const a = 1;\n"},
 		map[string]string{"package.json": manifest("a"), "src/a.ts": "export const a = 2;\n"})
 	read := detect(t, source, conventions.Default())
-	if want := []string{"shape.test-ratio", "shape.function-complexity", "shape.function-repeat", "shape.dependencies"}; !slices.Equal(read.RanRules, want) {
+	if want := []string{"shape.test-ratio", "shape.function-complexity", "shape.dependencies"}; !slices.Equal(read.RanRules, want) {
 		t.Errorf("a read manifest and changed product code: ran %q, want %q", read.RanRules, want)
-	}
-	source.Unavailable = []string{"src/old.ts"}
-	if lacking := detect(t, source, conventions.Default()); slices.Contains(lacking.RanRules, "shape.function-repeat") {
-		t.Errorf("a changed code file without its base content: ran %q, want no repeat rule", lacking.RanRules)
 	}
 	broken := detect(t, snapshottest.Files(map[string]string{"package.json": manifest("a")}, map[string]string{"package.json": `{"dependencies": {`}), conventions.Default())
 	if slices.Contains(broken.RanRules, "shape.dependencies") {

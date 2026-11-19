@@ -5,6 +5,7 @@ import (
 	"hash/fnv"
 	"maps"
 	"path"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -14,17 +15,19 @@ import (
 // FunctionRepeats is what the function-repeat rule found in a change: the functions the change added that are largely
 // the code of one other function, and what it compared. Names, places and numbers only, never code.
 type FunctionRepeats struct {
-	Listed        []FunctionRepeat // at most PerMeasure, the fullest repeat first
-	Found         int              // all pairs found, listed or not
-	Compared      int              // new functions compared
-	Moved         int              // new functions left out because their code moved from a gone function
-	Searched      int              // functions searched for a counterpart
-	SearchedFiles int              // files they are in
-	Unreadable    int              // functions among those searched the parser could not read
-	Unwalked      []string         // files the rule needed whose functions could not be read
-	Unavailable   []string         // paths whose content the rule needs and lacks: then nothing is computed
-	PerMeasure    int              // the most pairs listed
-	Rules         conventions.RepeatRules
+	Listed             []FunctionRepeat // at most PerMeasure, the most alike first
+	Found              int              // all pairs found, listed or not
+	Files              int              // changed product files of the project's own the rule looked at
+	Compared           int              // new functions compared
+	Moved              int              // new functions left out because their code moved from a gone function
+	FromAnotherProject int              // pairs left out because the new function's file came from another project
+	Searched           int              // functions searched for a counterpart
+	SearchedFiles      int              // files they are in
+	Unreadable         int              // functions among those searched the parser could not read
+	Unwalked           []string         // files the rule needed whose functions could not be read
+	Unavailable        []string         // paths whose content the rule needs and lacks: then nothing is computed
+	PerMeasure         int              // the most pairs listed
+	Rules              conventions.RepeatRules
 }
 
 // CounterpartStatus says whether a function's counterpart existed before the change.
@@ -69,7 +72,6 @@ type FunctionRepeat struct {
 // RepeatCounterpart is the other function of a pair.
 type RepeatCounterpart struct {
 	Path, Name         string
-	Occurrence         int
 	Start, End, Tokens int
 	Status             CounterpartStatus
 }
@@ -154,6 +156,7 @@ func functionRepeats(run repeatRun) FunctionRepeats {
 		if run.outside(change.Path) || !read {
 			continue
 		}
+		result.Files++
 		if r.unread || r.functionsUnread {
 			result.Unwalked = append(result.Unwalked, change.Path)
 			continue
@@ -296,7 +299,7 @@ func (run repeatRun) outside(filePath string) bool {
 }
 
 // licensedFolders are the folders below the root that hold their own licence file.
-func licensedFolders(paths []string, licence interface{ MatchString(string) bool }) map[string]bool {
+func licensedFolders(paths []string, licence *regexp.Regexp) map[string]bool {
 	found := map[string]bool{}
 	for _, p := range paths {
 		if dir := path.Dir(p); dir != "." && licence.MatchString(path.Base(p)) {
@@ -537,6 +540,7 @@ func (run repeatRun) list(cands []repeatFn, best []*pairScore, others []int, res
 			continue
 		}
 		if run.from.fromAnotherProject(c.path, run.nowContent[c.path]) {
+			result.FromAnotherProject++
 			continue
 		}
 		kept = append(kept, pair{run.repeat(c, *best[i], others[i]), i})
@@ -554,7 +558,7 @@ func (run repeatRun) list(cands []repeatFn, best []*pairScore, others []int, res
 func (run repeatRun) repeat(c repeatFn, s pairScore, others int) FunctionRepeat {
 	r := FunctionRepeat{Path: c.path, Name: c.fn.name, Occurrence: c.occurrence, Start: c.fn.startLine, End: c.fn.endLine,
 		Tokens: len(c.fn.tokens),
-		Counterpart: RepeatCounterpart{Path: s.source.path, Name: s.source.fn.name, Occurrence: s.source.occurrence,
+		Counterpart: RepeatCounterpart{Path: s.source.path, Name: s.source.fn.name,
 			Start: s.source.fn.startLine, End: s.source.fn.endLine, Tokens: len(s.source.fn.tokens), Status: s.status},
 		Share: s.share, Reverse: s.reverse, Stretch: s.stretch, Others: others}
 	r.StretchStart = c.fn.tokenLines[s.stretchAt]

@@ -80,9 +80,6 @@ func (Detector) Detect(s snapshot.Snapshot) answer.Findings {
 	f.NotAnalysed = append(f.NotAnalysed, repeatsNotAnalysed(s.Repeats)...)
 	if s.Functions.Files > 0 {
 		f.Ran(answer.Kind(name, ruleComplexity))
-		if len(s.Repeats.Unavailable) == 0 {
-			f.Ran(answer.Kind(name, ruleRepeat))
-		}
 	}
 
 	switch {

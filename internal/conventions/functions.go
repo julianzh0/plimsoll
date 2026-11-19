@@ -66,7 +66,7 @@ type RepeatRules struct {
 func defaultRepeatRules() RepeatRules {
 	return RepeatRules{
 		MinTokens: 150, MinLines: 6, Run: 10, Share: 0.8, Stretch: 150, MovedShare: 0.8,
-		OutsideFolders: regexp.MustCompile(`(?i)^(tests?|testing|__tests__|testdata|test[-_]?utils|fixtures|demos?|examples?|samples?|(third|3rd)[-_]?party|vendor(ed)?|external|generated|gen|dist|build|out|esm|cjs)$`),
+		OutsideFolders: regexp.MustCompile(`(?i)^(tests?|testing|__tests__|testdata|test[-_]?utils|fixtures|demos?|examples?|samples?|third[-_]?party|3rdparty|vendor(ed)?|external|generated|gen|dist|build|out|esm|cjs)$`),
 		OutsideNames:   regexp.MustCompile(`(?i)(^test_.*\.py$|(Tests?|_tests?|\.test|\.spec|_spec|_reversed|\.generated|\.g|\.pb|_pb2|\.min)\.[a-z0-9]+$)`),
 		Licence:        regexp.MustCompile(`(?i)^(licen[cs]e|copying)(\.[a-z0-9]+)?$`),
 	}

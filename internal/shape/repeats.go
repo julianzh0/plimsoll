@@ -86,11 +86,11 @@ func withoutPartner(here, there []snapshot.LineRange) string {
 	case len(here) == 0 && len(there) == 0:
 		return ""
 	case len(there) == 0:
-		return fmt.Sprintf("; without one: lines %s here", ranges(here))
+		return fmt.Sprintf("; without one: lines %s here", cappedRanges(here))
 	case len(here) == 0:
-		return fmt.Sprintf("; without one: lines %s there", ranges(there))
+		return fmt.Sprintf("; without one: lines %s there", cappedRanges(there))
 	}
-	return fmt.Sprintf("; without one: lines %s here, %s there", ranges(here), ranges(there))
+	return fmt.Sprintf("; without one: lines %s here, %s there", cappedRanges(here), cappedRanges(there))
 }
 
 // ranges writes line ranges as "44–46 and 104".
@@ -110,24 +110,27 @@ func ranges(list []snapshot.LineRange) string {
 
 // repeatRows are the report's rows of the rule: what was compared and what repeats, with what the rule leaves out.
 func repeatRows(r snapshot.FunctionRepeats) []answer.Statistic {
-	if r.Compared == 0 {
+	if r.Files == 0 {
 		return nil
 	}
 	compared := fmt.Sprintf("only functions of %d tokens and %d lines or more; against %d functions of any size in %d product files of their language; "+
 		"not checked as new: a function of a name its file held at the base, one moved from a function the change removed, smaller functions; %s",
 		r.Rules.MinTokens, r.Rules.MinLines, r.Searched, r.SearchedFiles, repeatLeftOut)
+	if r.Moved+r.FromAnotherProject > 0 {
+		compared += fmt.Sprintf("; left out as new: %d moved from a function the change removed, %d in a file from another project", r.Moved, r.FromAnotherProject)
+	}
 	return []answer.Statistic{
 		{Name: "new functions compared for repeats", Value: new(float64(r.Compared)), Note: compared},
 		{Name: "new functions that repeat another", Value: new(float64(r.Found)), Note: repeatListed(len(r.Listed), r.Found, r.PerMeasure)},
 	}
 }
 
-// repeatListed is "2 listed", or "2 listed (at most three per measure, the highest share first)" when more repeat.
+// repeatListed is "2 listed", or "2 listed (at most three per measure, the most alike first: ...)" when more repeat.
 func repeatListed(listed, found, perMeasure int) string {
 	if found <= listed {
 		return fmt.Sprintf("%d listed", listed)
 	}
-	return fmt.Sprintf("%d listed (at most %s per measure, the highest share first)", listed, words(perMeasure))
+	return fmt.Sprintf("%d listed (at most %s per measure, the most alike first: by the lower of the two shares)", listed, words(perMeasure))
 }
 
 // repeatSummary is the sentence when the list was cut: what report lists and what it only counts.
@@ -139,7 +142,7 @@ func repeatSummary(r snapshot.FunctionRepeats) []string {
 	if rest == 1 {
 		verb = "is"
 	}
-	return []string{fmt.Sprintf("Function repeats: `report` lists %d of the %d new functions that repeat another (the highest share first); the other %s %s counted, not listed.",
+	return []string{fmt.Sprintf("Function repeats: `report` lists %d of the %d new functions that repeat another (the most alike first); the other %s %s counted, not listed.",
 		len(r.Listed), r.Found, words(rest), verb)}
 }
 
@@ -192,7 +195,7 @@ func repeatEvidence(s snapshot.Snapshot, m answer.Mark) []string {
 				p.Partnered, p.CodeLines, cappedRanges(p.Unpartnered), cappedRanges(p.CounterpartUnpartnered)))
 		}
 		return append(lines,
-			fmt.Sprintf("searched: %d functions in %d product files of its language; %s also met the limits", r.Searched, r.SearchedFiles, answer.Plural(p.Others, "other function")),
+			fmt.Sprintf("searched: %d functions in %d product files of the languages compared; %s also met the limits", r.Searched, r.SearchedFiles, answer.Plural(p.Others, "other function")),
 			repeatLeftOut+"; not checked as new: a function of a name its file held at the base, one moved from a function the change removed")
 	}
 	return nil

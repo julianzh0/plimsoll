@@ -13,16 +13,17 @@ import (
 
 func repeatsSnapshot() snapshot.Snapshot {
 	return snapshot.Snapshot{Repeats: snapshot.FunctionRepeats{
-		Rules: conventions.Default().FunctionRules.Repeats, PerMeasure: 3, Found: 4, Compared: 5, Searched: 120, SearchedFiles: 30,
+		Rules: conventions.Default().FunctionRules.Repeats, PerMeasure: 3, Files: 3, Found: 4, Compared: 5, Moved: 2, FromAnotherProject: 1,
+		Searched: 120, SearchedFiles: 30,
 		Listed: []snapshot.FunctionRepeat{
 			{Path: "src/orders/save.ts", Name: "saveOrder", Occurrence: 1, Start: 40, End: 118, Tokens: 420,
-				Counterpart: snapshot.RepeatCounterpart{Path: "src/users/save.ts", Name: "saveUser", Occurrence: 1, Start: 12, End: 88,
+				Counterpart: snapshot.RepeatCounterpart{Path: "src/users/save.ts", Name: "saveUser", Start: 12, End: 88,
 					Tokens: 400, Status: snapshot.CounterpartUnchanged},
 				Share: 0.914, Reverse: 0.9, Stretch: 286, StretchStart: 52, StretchEnd: 101, CodeLines: 75, Partnered: 71,
 				Unpartnered:            []snapshot.LineRange{{Start: 44, End: 46}, {Start: 104, End: 104}},
 				CounterpartUnpartnered: []snapshot.LineRange{{Start: 16, End: 18}}},
 			{Path: "src/a.go", Name: "Second", Occurrence: 2, Start: 30, End: 60, Tokens: 200,
-				Counterpart: snapshot.RepeatCounterpart{Path: "src/a.go", Name: "First", Occurrence: 1, Start: 1, End: 28, Tokens: 210,
+				Counterpart: snapshot.RepeatCounterpart{Path: "src/a.go", Name: "First", Start: 1, End: 28, Tokens: 210,
 					Status: snapshot.CounterpartNew},
 				Share: 0.85, Reverse: 0.82, Stretch: 160, StretchStart: 31, StretchEnd: 50, CodeLines: 28, GaveUp: true},
 		}}}
@@ -47,14 +48,22 @@ func TestFunctionRepeatsAreCountedAndWhatWasNotComparedIsSaid(t *testing.T) {
 	}
 	compared, repeating := rows["new functions compared for repeats"], rows["new functions that repeat another"]
 	if compared.Value == nil || *compared.Value != 5 || !strings.Contains(compared.Note, "against 120 functions of any size in 30 product files") ||
+		!strings.Contains(compared.Note, "left out as new: 2 moved from a function the change removed, 1 in a file from another project") ||
 		!strings.Contains(compared.Note, "left out on both sides: test, demo, example, vendored and generated code, folders with their own licence") {
 		t.Errorf("Detect rows: compared = %+v", compared)
 	}
-	if repeating.Value == nil || *repeating.Value != 4 || repeating.Note != "2 listed (at most three per measure, the highest share first)" {
+	if repeating.Value == nil || *repeating.Value != 4 || repeating.Note != "2 listed (at most three per measure, the most alike first: by the lower of the two shares)" {
 		t.Errorf("Detect rows: repeating = %+v", repeating)
 	}
-	if want := "Function repeats: `report` lists 2 of the 4 new functions that repeat another (the highest share first); the other two are counted, not listed."; !slices.Contains(f.Summaries, want) {
+	if want := "Function repeats: `report` lists 2 of the 4 new functions that repeat another (the most alike first); the other two are counted, not listed."; !slices.Contains(f.Summaries, want) {
 		t.Errorf("Detect summaries = %q, want the cut list said", f.Summaries)
+	}
+
+	none := (shape.Detector{}).Detect(snapshot.Snapshot{Repeats: snapshot.FunctionRepeats{Rules: s.Repeats.Rules, Files: 2}})
+	if !slices.ContainsFunc(none.Statistics, func(st answer.Statistic) bool {
+		return st.Name == "new functions compared for repeats" && st.Value != nil && *st.Value == 0
+	}) {
+		t.Errorf("Detect(two changed files, no candidate) rows = %+v, want 0 compared", none.Statistics)
 	}
 
 	s.Repeats = snapshot.FunctionRepeats{Rules: s.Repeats.Rules, Unavailable: []string{"src/old.go"}, Unwalked: []string{"src/big.go"}, Searched: 120, Unreadable: 3}
@@ -72,6 +81,9 @@ func TestExplainOfARepeatShowsBothFunctionsAndCapsTheLineRanges(t *testing.T) {
 		s.Repeats.Listed[0].Unpartnered = append(s.Repeats.Listed[0].Unpartnered, snapshot.LineRange{Start: 200 + 2*i, End: 200 + 2*i})
 	}
 	m := repeatMarks(s)[0]
+	if !strings.Contains(m.Hint, "and 4 more") {
+		t.Errorf("Hint(14 ranges) = %q, want the ranges past the cap counted", m.Hint)
+	}
 	got := strings.Join((shape.Detector{}).Explain(s, m), "\n")
 	for _, want := range []string{
 		"new in this change: lines 40–118 (420 tokens)",

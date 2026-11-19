@@ -79,7 +79,7 @@ func TestStandingNamesTheRatioAndCountsFilesPerLimit(t *testing.T) {
 			"2 files crossed 1,500 lines, the largest `src/a.ts` at 1,700"},
 		{[]answer.Mark{nesting(answer.New, 4, nil), nesting(answer.New, 5, nil)}, "2 functions nested deeper are listed, `src/sync.ts` `syncAll` the deepest of them (5 levels)"},
 		{[]answer.Mark{nesting(answer.New, 4, nil)}, "1 function nested deeper is listed, `src/sync.ts` `syncAll` (4 levels)"},
-		{[]answer.Mark{repeatMark("src/b.ts", 85), repeatMark("src/c.ts", 100)}, "2 new functions that repeat another are listed, `src/c.ts` `syncAll` with the highest share (100%)"},
+		{[]answer.Mark{repeatMark("src/b.ts", 85), repeatMark("src/c.ts", 100)}, "2 new functions that repeat another are listed, `src/c.ts` `syncAll` the most alike (100%)"},
 		{[]answer.Mark{repeatMark("src/b.ts", 85)}, "1 new function that repeats another is listed, `src/b.ts` `syncAll` (85%)"},
 	}
 	for _, tc := range cases {
