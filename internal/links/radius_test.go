@@ -519,6 +519,11 @@ func TestTheGateHoldsWhenTwoLanguagesChangeTheSameName(t *testing.T) {
 	if !found {
 		t.Errorf("the walk did not reach the TypeScript user %s", user)
 	}
+	for _, u := range s.Radius.Users {
+		if u.Path == "internal/b/b.go" && !slices.Equal(u.ByName, []string{"go"}) {
+			t.Errorf("the Go user was reached by name from %q, want go alone", u.ByName)
+		}
+	}
 }
 
 func TestACodeFileRenamedToAnotherSuffixIsGone(t *testing.T) {
@@ -663,5 +668,52 @@ func TestTheProductDenominatorDoesNotDependOnTheImporterRow(t *testing.T) {
 	f := detect(t, snapshottest.Files(base, now))
 	if _, row := statisticNamed(f, "importers of the change"); row || f.Radius == nil || f.Radius.ProductCodeFiles != 2 {
 		t.Errorf("importer row %v, radius %+v; want no row and 2 product code files", row, f.Radius)
+	}
+}
+
+func TestTheRootTargetHoldsOnlyWhatNoDeeperTargetHolds(t *testing.T) {
+	base := map[string]string{"Package.swift": "let package = Package(name: \"app\", targets: [\n    .target(name: \"App\", path: \".\"),\n    .target(name: \"A\", path: \"A\"),\n])\n",
+		"A/F.swift": "public func f0() -> Int { return 1 }\n", "A/X.swift": "let x = f0()\n", "Main.swift": "let m = f0()\n"}
+	now := maps.Clone(base)
+	now["A/F.swift"] = "public func f0() -> Int { return 2 }\n"
+	if users := usersOf(t, snapshottest.Files(base, now)); !slices.Equal(users, []string{"A/X.swift"}) {
+		t.Errorf("users = %q, want the file of target A alone", users)
+	}
+}
+
+// Content missing in a language the gate judged and left out hides no user that could count: the number stays exact.
+func TestMissingContentOfALanguageLeftOutLeavesTheNumberExact(t *testing.T) {
+	s := snapshot.Snapshot{Radius: snapshot.Radius{
+		Changed:    []snapshot.ChangedFile{{Path: "a.go", Language: "go", State: snapshot.ByName}},
+		MissingNow: []string{"csharp"},
+	}}
+	s.Now.Links.Languages = []snapshot.LanguageImports{{Language: "go"}, {Language: "csharp"}}
+	if r, _, _ := blastRadius(s, []snapshot.LanguageImports{{Language: "go"}}, graph{known: map[string]bool{}}); r.State != answer.RadiusCounted {
+		t.Errorf("radius = %+v, want counted", r)
+	}
+	s.Radius.MissingNow = []string{"go"}
+	if r, _, _ := blastRadius(s, []snapshot.LanguageImports{{Language: "go"}}, graph{known: map[string]bool{}}); r.State != answer.RadiusAtLeast {
+		t.Errorf("missing Go content: radius = %+v, want at least", r)
+	}
+}
+
+// The importers of the change count every changed code file's importers, also those of a file the blast radius
+// does not count.
+func TestTheImportersOfTheChangeAreUnfiltered(t *testing.T) {
+	base := map[string]string{"src/a.ts": "export const a = 1;\n", "src/b.ts": "import { a } from './a';\nexport const b = a;\n",
+		"src/c.ts": "export function run() { return 1; }\n", "src/d.ts": "import { run } from './c';\nrun();\n"}
+	now := maps.Clone(base)
+	now["src/a.ts"] = "export const a = 2;\n"
+	now["src/c.ts"] = "export function run() { return 2; }\n"
+	source := snapshottest.Files(base, now)
+	for i, e := range source.Before {
+		if e.Path == "src/a.ts" {
+			source.Before[i].Content = nil // the partial clone lacks a's old content: a is not counted
+		}
+	}
+	source.Missing = []string{"src/a.ts"}
+	f := detect(t, source)
+	if f.Radius == nil || f.Radius.Changed.NotCounted != 1 || f.Radius.Direct.Files != 2 {
+		t.Errorf("radius = %+v, want a not counted and both b and d direct importers", f.Radius)
 	}
 }

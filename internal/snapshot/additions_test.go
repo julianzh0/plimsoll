@@ -144,6 +144,8 @@ func TestBuildSaysWhereAnAddedNameIsUsed(t *testing.T) {
 		{"nothing uses it", nil, lonely, nil, unused},
 		{"another file", nil, with(lonely, map[string]string{"src/b.ts": "import { lonely } from \"./a.ts\";\nlonely();\n"}), nil, used},
 		{"its own file", nil, map[string]string{"src/a.ts": "function lonely() {}\nlonely();\n"}, nil, used},
+		{"a longer identifier that holds it with a non-ASCII letter", nil, with(lonely, map[string]string{"src/b.ts": "lonelyé();\n"}), nil, unused},
+		{"its name before a non-breaking space", nil, with(lonely, map[string]string{"src/b.ts": "lonely\u00a0();\n"}), nil, used},
 		{"other code", nil, with(lonely, map[string]string{"scripts/x.ts": "lonely();\n"}), nil, used},
 		{"test code alone", nil, with(lonely, map[string]string{"tests/a.test.ts": "lonely();\n"}), nil,
 			[]string{"src/a.ts lonely function used=false tests=true"}},

@@ -58,8 +58,6 @@ type ChangedFile struct {
 	Reason                   string
 }
 
-// User is a file the walk reached: its role, whether it uses a name the change altered or removed (else it counts as
-// a user of a file counted as a whole), whether every such use lies in its test code, and the languages of the
 // User is a file the walk reached, with its role and, per language of the changed files that reached it, how: as a
 // user of a file counted as a whole, by a name it uses, and by a name it uses outside its test code. Kept per
 // language, so a language the links detector leaves out decides nothing about the user.

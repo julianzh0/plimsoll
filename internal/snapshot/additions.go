@@ -5,6 +5,8 @@ import (
 	"path"
 	"slices"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/julianzh0/plimsoll/internal/conventions"
 )
@@ -144,7 +146,7 @@ func withUses(rules conventions.Rules, found []Addition, entries []Entry, roles 
 		}
 		counts, inTests := map[string]int{}, map[string]bool{}
 		testSpans := readings[entry.Path].testSpans
-		eachWord(entry.Content, func(word []byte, at int) {
+		eachIdentifierWord(entry.Content, func(word []byte, at int) {
 			if _, wanted := byName[string(word)]; !wanted {
 				return
 			}
@@ -183,20 +185,24 @@ func isDataFile(rules conventions.Additions, filePath string) bool {
 	return slices.ContainsFunc(rules.DataFiles, func(pattern string) bool { return nameMatches(pattern, filePath) })
 }
 
-// eachWord calls found with every run of ASCII letters, digits and underscores in content, and its offset.
-func eachWord(content []byte, found func(word []byte, at int)) {
+// eachIdentifierWord calls found with every word of content and its offset: a run of letters, numbers, `_` and `$`,
+// read as runes, the characters the languages' identifier tokens are made of, so every identifier token is one word.
+func eachIdentifierWord(content []byte, found func(word []byte, at int)) {
 	start := -1
-	for i := 0; i <= len(content); i++ {
-		if i < len(content) && wordByte(rune(content[i])) {
+	for i := 0; i <= len(content); {
+		r, size := utf8.DecodeRune(content[i:])
+		if i < len(content) && (r == '_' || r == '$' || unicode.IsLetter(r) || unicode.IsNumber(r)) {
 			if start < 0 {
 				start = i
 			}
+			i += size
 			continue
 		}
 		if start >= 0 {
 			found(content[start:i], start)
 			start = -1
 		}
+		i += max(size, 1)
 	}
 }
 

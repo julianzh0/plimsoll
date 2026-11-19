@@ -8,8 +8,6 @@ import (
 	"regexp"
 	"slices"
 	"strings"
-	"unicode"
-	"unicode/utf8"
 
 	"github.com/julianzh0/plimsoll/internal/conventions"
 )
@@ -237,7 +235,13 @@ func (w *radiusWalk) packageFiles(language conventions.Language) map[string][]st
 func (w *radiusWalk) targetFiles(file string, language conventions.Language) []string {
 	if w.byTarget == nil {
 		folders, _ := swiftTargetFolders(w.in.nowContent[language.Imports.Prefix.File])
-		w.targets = slices.SortedFunc(maps.Values(folders), func(a, b string) int { return cmp.Or(len(b)-len(a), strings.Compare(a, b)) })
+		depth := func(folder string) int { // the root target holds every other one
+			if folder == "." {
+				return 0
+			}
+			return strings.Count(folder, "/") + 1
+		}
+		w.targets = slices.SortedFunc(maps.Values(folders), func(a, b string) int { return cmp.Or(depth(b)-depth(a), strings.Compare(a, b)) })
 		w.byTarget = map[string][]string{}
 		for _, f := range w.in.now.Files {
 			if target, found := w.targetOf(f.Path); found && f.Language == language.Name {
@@ -458,29 +462,16 @@ func (w *radiusWalk) readAhead(files []string) {
 	parallel(len(wanted), func(i int) { w.readHeld(wanted[i], w.files[wanted[i]]) })
 }
 
-// worth says whether a file holds one of the walk's names as a word: a run of letters, digits, `_` and `$` read as
-// runes, the characters the languages' identifier tokens are made of, so every identifier token is one such word.
+// worth says whether a file holds one of the walk's names as an identifier word.
 func (w *radiusWalk) worth(file string) func() bool {
 	return func() bool {
-		content, start := w.in.nowContent[file], -1
-		for i := 0; i <= len(content); {
-			r, size := utf8.DecodeRune(content[i:])
-			if i < len(content) && (r == '_' || r == '$' || unicode.IsLetter(r) || unicode.IsNumber(r)) {
-				if start < 0 {
-					start = i
-				}
-				i += size
-				continue
+		hit := false
+		eachIdentifierWord(w.in.nowContent[file], func(word []byte, _ int) {
+			if !hit {
+				_, hit = w.names[string(word)]
 			}
-			if start >= 0 {
-				if _, hit := w.names[string(content[start:i])]; hit {
-					return true
-				}
-				start = -1
-			}
-			i += max(size, 1)
-		}
-		return false
+		})
+		return hit
 	}
 }
 
