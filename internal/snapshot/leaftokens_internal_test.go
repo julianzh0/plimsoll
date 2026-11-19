@@ -73,7 +73,7 @@ func TestLeafTokensFollowTheGrammarKinds(t *testing.T) {
 				got = append(got, "L")
 			case leafName:
 				got = append(got, "I:"+c.code[start:end])
-			default:
+			case leafKeyword:
 				got = append(got, "K:"+c.code[start:end])
 			}
 		})

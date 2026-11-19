@@ -3,6 +3,7 @@ package snapshot
 import (
 	"cmp"
 	"hash/fnv"
+	"maps"
 	"path"
 	"slices"
 	"strings"
@@ -325,7 +326,7 @@ func (run repeatRun) search(cands []repeatFn, result *FunctionRepeats) ([]*pairS
 	partners := func(s repeatFn) bool {
 		any := false
 		for i, c := range cands {
-			allowed[i] = c.entry == s.entry && !(c.path == s.path && c.fn.start == s.fn.start) && !c.holds(s) && !s.holds(c) &&
+			allowed[i] = c.entry == s.entry && (c.path != s.path || c.fn.start != s.fn.start) && !c.holds(s) && !s.holds(c) &&
 				(!isCand[place{s.path, s.fn.start}] || s.before(c))
 			any = any || allowed[i]
 		}
@@ -498,8 +499,8 @@ func (run repeatRun) repeat(c repeatFn, s pairScore, others int) FunctionRepeat 
 		Counterpart: RepeatCounterpart{Path: s.source.path, Name: s.source.fn.name, Occurrence: s.source.occurrence,
 			Start: s.source.fn.startLine, End: s.source.fn.endLine, Tokens: len(s.source.fn.tokens), Status: s.status},
 		Share: s.share, Reverse: s.reverse, Stretch: s.stretch, Others: others}
-	r.StretchStart = int(c.fn.tokenLines[s.stretchAt])
-	r.StretchEnd = int(c.fn.tokenLines[s.stretchAt+s.stretch-1])
+	r.StretchStart = c.fn.tokenLines[s.stretchAt]
+	r.StretchEnd = c.fn.tokenLines[s.stretchAt+s.stretch-1]
 	return r
 }
 
@@ -509,13 +510,15 @@ func (run repeatRun) aligned(r FunctionRepeat, cands []repeatFn, best []*pairSco
 	hashesA, linesA := codeLines(cands[i].fn)
 	hashesB, linesB := codeLines(best[i].source.fn)
 	ids := map[uint64]int32{}
+	var next int32
 	number := func(hashes []uint64) []int32 {
 		out := make([]int32, len(hashes))
 		for k, h := range hashes {
 			id, found := ids[h]
 			if !found {
-				id = int32(len(ids))
+				id = next
 				ids[h] = id
+				next++
 			}
 			out[k] = id
 		}
@@ -544,7 +547,7 @@ func codeLines(f function) (hashes []uint64, lines []int) {
 		for _, t := range f.tokens[k:end] {
 			writeUint64(h, withoutNames(t))
 		}
-		hashes, lines = append(hashes, h.Sum64()), append(lines, int(f.tokenLines[k]))
+		hashes, lines = append(hashes, h.Sum64()), append(lines, f.tokenLines[k])
 		k = end
 	}
 	return hashes, lines
@@ -609,9 +612,7 @@ func coverage(aGrams []uint64, tokens int, b map[uint64]int, n int) (share float
 		return 0, 0, 0
 	}
 	left := make(map[uint64]int, len(b))
-	for h, k := range b {
-		left[h] = k
-	}
+	maps.Copy(left, b)
 	covered := make([]bool, tokens)
 	for i, h := range aGrams {
 		if left[h] > 0 {

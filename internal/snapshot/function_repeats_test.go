@@ -3,6 +3,7 @@ package snapshot_test
 import (
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"strings"
 	"testing"
@@ -10,13 +11,6 @@ import (
 	"github.com/julianzh0/plimsoll/internal/conventions"
 	"github.com/julianzh0/plimsoll/internal/snapshot"
 	"github.com/julianzh0/plimsoll/internal/snapshot/snapshottest"
-)
-
-var (
-	columns = snapshottest.GoColumns
-	files   = snapshottest.GoFiles
-	cases   = snapshottest.GoCases
-	goFile  = snapshottest.GoFile
 )
 
 // repeats lists the pairs the rule found: "<path> <name> <- <counterpart path> <counterpart name> <status>".
@@ -61,13 +55,13 @@ func TestRepeatsFromKeptReadingsEqualFreshOnes(t *testing.T) {
 	header := "int count(int *rows, int n) {\n  int total = 0;\n  for (int i = 0; i < n; i++) {\n    if (rows[i] > 0) { total += rows[i]; }\n    else if (rows[i] < -100) { return -1; }\n  }\n  return total;\n}\n"
 	rules := conventions.Default()
 	rules.FunctionRules.Repeats.MinTokens, rules.FunctionRules.Repeats.Stretch = 15, 15
-	base := map[string]string{"pkg/a.go": goFile(columns("Original")), "inc/a.h": header}
+	base := map[string]string{"pkg/a.go": snapshottest.GoFile(snapshottest.GoColumns("Original")), "inc/a.h": header}
 	questions := []map[string]string{
-		{"pkg/a.go": goFile(columns("Original")), "inc/a.h": header, "pkg/z.go": goFile(files("Other"))},
-		{"pkg/a.go": goFile(columns("Original")), "inc/a.h": header, "pkg/b.go": goFile(columns("Copied"))},
-		{"pkg/a.go": goFile(columns("Original")), "inc/a.h": header, "pkg/b.go": goFile(strings.Replace(columns("Copied"), "v*2", "v*7", 1))},
-		{"pkg/a.go": goFile(columns("Original")), "inc/a.h": header, "inc/b.h": header, "src/x.c": "int x(void) { return 1; }\n"},
-		{"pkg/a.go": goFile(columns("Original")), "inc/a.h": header, "inc/b.h": header, "src/x.cpp": "int x() { return 1; }\n", "src/y.cpp": "int y() { return 2; }\n"},
+		{"pkg/a.go": snapshottest.GoFile(snapshottest.GoColumns("Original")), "inc/a.h": header, "pkg/z.go": snapshottest.GoFile(snapshottest.GoFiles("Other"))},
+		{"pkg/a.go": snapshottest.GoFile(snapshottest.GoColumns("Original")), "inc/a.h": header, "pkg/b.go": snapshottest.GoFile(snapshottest.GoColumns("Copied"))},
+		{"pkg/a.go": snapshottest.GoFile(snapshottest.GoColumns("Original")), "inc/a.h": header, "pkg/b.go": snapshottest.GoFile(strings.Replace(snapshottest.GoColumns("Copied"), "v*2", "v*7", 1))},
+		{"pkg/a.go": snapshottest.GoFile(snapshottest.GoColumns("Original")), "inc/a.h": header, "inc/b.h": header, "src/x.c": "int x(void) { return 1; }\n"},
+		{"pkg/a.go": snapshottest.GoFile(snapshottest.GoColumns("Original")), "inc/a.h": header, "inc/b.h": header, "src/x.cpp": "int x() { return 1; }\n", "src/y.cpp": "int y() { return 2; }\n"},
 	}
 	kept := snapshottest.Readings(t)
 	for i, now := range questions {
@@ -86,9 +80,9 @@ func TestRepeatsFromKeptReadingsEqualFreshOnes(t *testing.T) {
 // past it, where it does not.
 func TestRepeatLimitsHoldAtTheirValues(t *testing.T) {
 	// the copy differs from its original in a few lines, so share and stretch are below 1 and its length
-	edited := strings.NewReplacer("v*2", "v*2 + float64(n)", "v*3", "math.Abs(v*3)").Replace(columns("Copied"))
-	base := map[string]string{"pkg/a.go": goFile(columns("Original"))}
-	now := map[string]string{"pkg/a.go": goFile(columns("Original")), "pkg/b.go": goFile(edited)}
+	edited := strings.NewReplacer("v*2", "v*2 + float64(n)", "v*3", "math.Abs(v*3)").Replace(snapshottest.GoColumns("Copied"))
+	base := map[string]string{"pkg/a.go": snapshottest.GoFile(snapshottest.GoColumns("Original"))}
+	now := map[string]string{"pkg/a.go": snapshottest.GoFile(snapshottest.GoColumns("Original")), "pkg/b.go": snapshottest.GoFile(edited)}
 	build := func(rules conventions.Rules) snapshot.FunctionRepeats {
 		return snapshot.Build(snapshottest.Files(base, now), rules, snapshottest.Readings(t)).Repeats
 	}
@@ -125,8 +119,8 @@ func b2i(b bool) int {
 }
 
 func TestBuildComparesNoRepeatsWithoutTheCodeItNeeds(t *testing.T) {
-	base := map[string]string{"pkg/a.go": goFile(columns("Original"))}
-	now := map[string]string{"pkg/a.go": goFile(columns("Original")), "pkg/b.go": goFile(columns("Copied"))}
+	base := map[string]string{"pkg/a.go": snapshottest.GoFile(snapshottest.GoColumns("Original"))}
+	now := map[string]string{"pkg/a.go": snapshottest.GoFile(snapshottest.GoColumns("Original")), "pkg/b.go": snapshottest.GoFile(snapshottest.GoColumns("Copied"))}
 	for _, tt := range []struct {
 		unavailable []string
 		listed      int
@@ -144,12 +138,10 @@ func TestBuildComparesNoRepeatsWithoutTheCodeItNeeds(t *testing.T) {
 }
 
 func TestBuildFindsAFunctionThatRepeatsAnother(t *testing.T) {
-	original := map[string]string{"pkg/a.go": goFile(columns("Original"))}
+	original := map[string]string{"pkg/a.go": snapshottest.GoFile(snapshottest.GoColumns("Original"))}
 	with := func(extra map[string]string) map[string]string {
-		m := map[string]string{"pkg/a.go": goFile(columns("Original"))}
-		for k, v := range extra {
-			m[k] = v
-		}
+		m := map[string]string{"pkg/a.go": snapshottest.GoFile(snapshottest.GoColumns("Original"))}
+		maps.Copy(m, extra)
 		return m
 	}
 	tests := []struct {
@@ -157,20 +149,20 @@ func TestBuildFindsAFunctionThatRepeatsAnother(t *testing.T) {
 		base, now map[string]string
 		want      []string
 	}{
-		{"a copy in a new file", original, with(map[string]string{"pkg/b.go": goFile(columns("Copied"))}),
+		{"a copy in a new file", original, with(map[string]string{"pkg/b.go": snapshottest.GoFile(snapshottest.GoColumns("Copied"))}),
 			[]string{"pkg/b.go Copied <- pkg/a.go Original unchanged"}},
-		{"a function moved and renamed", map[string]string{"pkg/a.go": goFile(columns("Original"), files("ToMove"))},
-			with(map[string]string{"pkg/c.go": goFile(files("Moved"))}), nil},
-		{"a copy in test support", original, with(map[string]string{"pkg/testing/b.go": goFile(columns("Copied"))}), nil},
-		{"two like functions added together", nil, map[string]string{"pkg/x.go": goFile(columns("First")), "pkg/y.go": goFile(columns("Second"))},
+		{"a function moved and renamed", map[string]string{"pkg/a.go": snapshottest.GoFile(snapshottest.GoColumns("Original"), snapshottest.GoFiles("ToMove"))},
+			with(map[string]string{"pkg/c.go": snapshottest.GoFile(snapshottest.GoFiles("Moved"))}), nil},
+		{"a copy in test support", original, with(map[string]string{"pkg/testing/b.go": snapshottest.GoFile(snapshottest.GoColumns("Copied"))}), nil},
+		{"two like functions added together", nil, map[string]string{"pkg/x.go": snapshottest.GoFile(snapshottest.GoColumns("First")), "pkg/y.go": snapshottest.GoFile(snapshottest.GoColumns("Second"))},
 			[]string{"pkg/y.go Second <- pkg/x.go First new"}},
 		{"a counterpart that was there wins", original,
-			with(map[string]string{"pkg/b.go": goFile(columns("NewOne")), "pkg/c.go": goFile(columns("NewTwo"))}),
+			with(map[string]string{"pkg/b.go": snapshottest.GoFile(snapshottest.GoColumns("NewOne")), "pkg/c.go": snapshottest.GoFile(snapshottest.GoColumns("NewTwo"))}),
 			[]string{"pkg/b.go NewOne <- pkg/a.go Original unchanged", "pkg/c.go NewTwo <- pkg/a.go Original unchanged"}},
-		{"a function the change rewrote", map[string]string{"pkg/a.go": goFile(columns("Original")), "pkg/b.go": goFile(files("Rewritten"))},
-			with(map[string]string{"pkg/b.go": goFile(strings.Replace(columns("Original"), "Original", "Rewritten", 1))}), nil},
-		{"a long switch beside a short one", map[string]string{"pkg/s.go": goFile(cases("isHook", 8))},
-			map[string]string{"pkg/s.go": goFile(cases("isHook", 8)), "pkg/e.go": goFile(cases("isEntity", 60))}, nil},
+		{"a function the change rewrote", map[string]string{"pkg/a.go": snapshottest.GoFile(snapshottest.GoColumns("Original")), "pkg/b.go": snapshottest.GoFile(snapshottest.GoFiles("Rewritten"))},
+			with(map[string]string{"pkg/b.go": snapshottest.GoFile(strings.Replace(snapshottest.GoColumns("Original"), "Original", "Rewritten", 1))}), nil},
+		{"a long switch beside a short one", map[string]string{"pkg/s.go": snapshottest.GoFile(snapshottest.GoCases("isHook", 8))},
+			map[string]string{"pkg/s.go": snapshottest.GoFile(snapshottest.GoCases("isHook", 8)), "pkg/e.go": snapshottest.GoFile(snapshottest.GoCases("isEntity", 60))}, nil},
 	}
 	for _, tt := range tests {
 		got, _ := repeats(t, tt.base, tt.now)
