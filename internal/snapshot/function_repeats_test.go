@@ -82,6 +82,48 @@ func TestRepeatsFromKeptReadingsEqualFreshOnes(t *testing.T) {
 	}
 }
 
+// TestRepeatLimitsHoldAtTheirValues sets each limit to a measured pair's own number, where it still marks, and one step
+// past it, where it does not.
+func TestRepeatLimitsHoldAtTheirValues(t *testing.T) {
+	// the copy differs from its original in a few lines, so share and stretch are below 1 and its length
+	edited := strings.NewReplacer("v*2", "v*2 + float64(n)", "v*3", "math.Abs(v*3)").Replace(columns("Copied"))
+	base := map[string]string{"pkg/a.go": goFile(columns("Original"))}
+	now := map[string]string{"pkg/a.go": goFile(columns("Original")), "pkg/b.go": goFile(edited)}
+	build := func(rules conventions.Rules) snapshot.FunctionRepeats {
+		return snapshot.Build(snapshottest.Files(base, now), rules, snapshottest.Readings(t)).Repeats
+	}
+	measured := build(conventions.Default())
+	if len(measured.Listed) != 1 {
+		t.Fatalf("Build(an edited copy) = %+v, want one pair", measured.Listed)
+	}
+	p := measured.Listed[0]
+	limits := []struct {
+		name string
+		set  func(r *conventions.RepeatRules, past bool)
+	}{
+		{"tokens", func(r *conventions.RepeatRules, past bool) { r.MinTokens = p.Tokens + b2i(past) }},
+		{"lines", func(r *conventions.RepeatRules, past bool) { r.MinLines = p.End - p.Start + 1 + b2i(past) }},
+		{"share", func(r *conventions.RepeatRules, past bool) { r.Share = p.Share + 1e-9*float64(b2i(past)) }},
+		{"stretch", func(r *conventions.RepeatRules, past bool) { r.Stretch = p.Stretch + b2i(past) }},
+	}
+	for _, l := range limits {
+		for _, past := range []bool{false, true} {
+			rules := conventions.Default()
+			l.set(&rules.FunctionRules.Repeats, past)
+			if got := len(build(rules).Listed); got != 1-b2i(past) {
+				t.Errorf("Build(%s limit at the pair's value, past it: %v) listed %d, want %d", l.name, past, got, 1-b2i(past))
+			}
+		}
+	}
+}
+
+func b2i(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
 func TestBuildComparesNoRepeatsWithoutTheCodeItNeeds(t *testing.T) {
 	base := map[string]string{"pkg/a.go": goFile(columns("Original"))}
 	now := map[string]string{"pkg/a.go": goFile(columns("Original")), "pkg/b.go": goFile(columns("Copied"))}
