@@ -103,6 +103,7 @@ type repeatRun struct {
 	question                    uint64
 	licensed                    map[string]bool
 	from                        *origins
+	unavailable                 []string // paths that changed and whose base content is missing (Source.Unavailable)
 }
 
 // repeatBaseFiles are the base files read with their functions: those the function rules measure, and the base version
@@ -133,6 +134,14 @@ func filesByPath(t Tree) map[string]File {
 // functionRepeats finds the functions the change added that are largely the code of one other function.
 func functionRepeats(run repeatRun) FunctionRepeats {
 	result := FunctionRepeats{Rules: run.rr}
+	for _, p := range run.unavailable {
+		if _, code := run.rules.LanguageOf(p); code {
+			result.Unavailable = append(result.Unavailable, p)
+		}
+	}
+	if len(result.Unavailable) > 0 { // a changed code file the rule cannot read at the base: compare nothing
+		return result
+	}
 	gone := run.gone()
 	var cands []repeatFn
 	for _, change := range run.changes {

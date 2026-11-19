@@ -91,6 +91,25 @@ func repeats(t *testing.T, base, now map[string]string) ([]string, snapshot.Func
 	return lines, found
 }
 
+func TestBuildComparesNoRepeatsWithoutTheCodeItNeeds(t *testing.T) {
+	base := map[string]string{"pkg/a.go": goFile(columns("Original"))}
+	now := map[string]string{"pkg/a.go": goFile(columns("Original")), "pkg/b.go": goFile(columns("Copied"))}
+	for _, tt := range []struct {
+		unavailable []string
+		listed      int
+	}{
+		{[]string{"pkg/old.go"}, 0},   // a changed code file whose base the clone lacks: nothing is compared
+		{[]string{"data/big.txt"}, 1}, // no code: the rule runs
+	} {
+		source := snapshottest.Files(base, now)
+		source.Unavailable = tt.unavailable
+		got := snapshot.Build(source, conventions.Default(), snapshottest.Readings(t)).Repeats
+		if len(got.Listed) != tt.listed || (tt.listed == 0) != (len(got.Unavailable) > 0) {
+			t.Errorf("Build(unavailable %q).Repeats = %d listed, unavailable %q; want %d listed", tt.unavailable, len(got.Listed), got.Unavailable, tt.listed)
+		}
+	}
+}
+
 func TestBuildFindsAFunctionThatRepeatsAnother(t *testing.T) {
 	original := map[string]string{"pkg/a.go": goFile(columns("Original"))}
 	with := func(extra map[string]string) map[string]string {

@@ -114,6 +114,9 @@ func (r *Reader) Read(ctx context.Context, repository, base string, wants snapsh
 		return snapshot.Source{}, err
 	}
 	source.Missing = slices.Compact(slices.Sorted(slices.Values(append(missing, absent...))))
+	if source.Unavailable, err = unavailable(run, source.Base, missing, absent); err != nil {
+		return snapshot.Source{}, err
+	}
 	since, err := run(nil, "rev-list", source.Base+"..HEAD")
 	if err != nil {
 		return snapshot.Source{}, gitFailed(err)
@@ -514,6 +517,29 @@ func missingContent(run runner) ([]string, error) {
 		return nil, gitFailed(err)
 	}
 	return pathsOfObjects(raw, lost), nil
+}
+
+// unavailable are the paths whose base content is missing although they differ between the base and the working
+// tree: the changed paths whose base content was absent, and the paths missing from some commit that differ (their
+// changes were left out of the diff). Comparing the two states needs only the trees and the working tree, no content.
+func unavailable(run runner, base string, missing, absent []string) ([]string, error) {
+	found := slices.Clone(absent)
+	if len(missing) > 0 {
+		out, err := run(nil, "diff", "--name-only", "--no-renames", "-z", base)
+		if err != nil {
+			return nil, gitFailed(err)
+		}
+		changed := map[string]bool{}
+		for _, p := range fields(out) {
+			changed[p] = true
+		}
+		for _, p := range missing {
+			if changed[p] {
+				found = append(found, p)
+			}
+		}
+	}
+	return slices.Compact(slices.Sorted(slices.Values(found))), nil
 }
 
 // withEveryCommit is the commits in the order of ids, each one read where it was, else with no files.

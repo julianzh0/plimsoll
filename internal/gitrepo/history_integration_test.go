@@ -230,6 +230,14 @@ func TestIntegrationAPartialCloneIsReadAroundItsMissingContent(t *testing.T) {
 	if want := []string{"data/big.txt"}; !slices.Equal(partial.Missing, want) {
 		t.Errorf("Read(partial clone).Missing = %q, want %q", partial.Missing, want)
 	}
+	// it changed since the base and its content there is missing: unavailable to a rule that compares the two states
+	if want := []string{"data/big.txt"}; !slices.Equal(partial.Unavailable, want) {
+		t.Errorf("Read(partial clone, HEAD~3).Unavailable = %q, want %q", partial.Unavailable, want)
+	}
+	// against the head itself nothing changed: content missing only from older commits is no gap
+	if same, err := read(t, clone, "HEAD"); err != nil || len(same.Unavailable) != 0 {
+		t.Errorf("Read(partial clone, HEAD) = %v, Unavailable %q; want none", err, same.Unavailable)
+	}
 	full, err := read(t, origin.Dir, "HEAD~3")
 	if err != nil {
 		t.Fatal(err)
