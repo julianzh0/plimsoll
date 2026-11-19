@@ -81,11 +81,13 @@ func withoutNames(id uint64) uint64 {
 	return id
 }
 
-// functionTokens are the tokens of the nodes [from, to): one function.
-func functionTokens(kinds leafKinds, tree parse.Tree, s shape, from, to int, content []byte) []uint64 {
+// functionTokens are the tokens of the nodes [from, to), one function, and the byte each starts at.
+func functionTokens(kinds leafKinds, tree parse.Tree, s shape, from, to int, content []byte) ([]uint64, []int) {
 	var ids []uint64
+	var starts []int
 	eachLeafToken(kinds, tree, s, from, to, func(class leafClass, start, end int) {
 		ids = append(ids, tokenID(class, content[start:end]))
+		starts = append(starts, start)
 	})
-	return ids
+	return ids, starts
 }

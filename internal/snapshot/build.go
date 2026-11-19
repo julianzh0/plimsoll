@@ -46,7 +46,7 @@ func Build(source Source, rules conventions.Rules, readings *Readings) Snapshot 
 	}
 	before := tree(rules, beforeEntries, unchanged)
 	measured := measuredFiles(rules, source.Changes, now, before, nowContent, beforeContent)
-	beforeReadings := readings.side(rules, beforeContent, before.Files, question, changed, measured.base)
+	beforeReadings := readings.side(rules, beforeContent, before.Files, question, changed, repeatBaseFiles(rules, source.Changes, before, beforeContent, measured.base))
 	withTestLines(before.Files, beforeReadings)
 	unreadable := slices.Clone(source.Unreadable)
 	now.Settings, before.Settings = settings(source.Now), settings(beforeEntries)
@@ -114,6 +114,11 @@ func Build(source Source, rules conventions.Rules, readings *Readings) Snapshot 
 		Radius: blastRadius(radiusInput{rules: rules, changes: source.Changes, nowContent: nowContent, baseContent: beforeContent,
 			now: now, before: before, nowReadings: nowReadings, beforeReadings: beforeReadings, missing: source.Missing, unreadable: source.Unreadable,
 			readings: readings, question: question}),
+		Repeats: functionRepeats(repeatRun{rules: rules, rr: rules.FunctionRules.Repeats, changes: source.Changes,
+			nowFiles: filesByPath(now), baseFiles: filesByPath(before), nowContent: nowContent, baseContent: beforeContent,
+			nowReadings: nowReadings, beforeReadings: beforeReadings, readings: readings, question: question,
+			licensed: licensedFolders(now.Paths, rules.FunctionRules.Repeats.Licence),
+			from:     &origins{rules: rules.FunctionRules, nowPaths: now.Paths, nowContent: nowContent, baseFiles: before.Files, base: beforeContent}}),
 	}
 }
 

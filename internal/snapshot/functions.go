@@ -19,6 +19,7 @@ type function struct {
 	broken               bool // its subtree holds an ERROR node: not measured
 	repeats              []repeat
 	tokens               []uint64 // its leaf tokens, when the walk was asked for them (leaftokens.go)
+	tokenLines           []int32  // the line, from 1, each of them starts on
 }
 
 // functionPass says what a walk takes beside each function's place and name: its leaf tokens (leaf not nil), and
@@ -171,6 +172,10 @@ type walk struct {
 	// the tokens of the outermost function seen so far, from its first byte: a function inside takes its part of
 	// them, so the file is tokenized once
 	outer tokenSpan
+	// the same for the leaf tokens of the repeat rule: their numbers, where each starts and its line
+	leafIDs    []uint64
+	leafStarts []int
+	leafLines  []int32
 }
 
 // declared measures the declared function at i, when it has a body and lies within the measured spans.
@@ -201,7 +206,16 @@ func (w *walk) read(from, to int, name string) function {
 		f = w.t.measure(w.s, from, to, name, w.content, w.lines)
 	}
 	if w.pass.leaf != nil {
-		f.tokens = functionTokens(*w.pass.leaf, w.tree, w.s, from, to, w.content)
+		if from >= w.inside { // the outermost function: its tokens hold those of every function inside it
+			w.leafIDs, w.leafStarts = functionTokens(*w.pass.leaf, w.tree, w.s, from, to, w.content)
+			w.leafLines = make([]int32, len(w.leafStarts))
+			for k, start := range w.leafStarts {
+				w.leafLines[k] = int32(w.lines.line(start))
+			}
+		}
+		lo, _ := slices.BinarySearch(w.leafStarts, f.start)
+		hi, _ := slices.BinarySearch(w.leafStarts, f.end)
+		f.tokens, f.tokenLines = w.leafIDs[lo:hi:hi], w.leafLines[lo:hi:hi]
 	}
 	return f
 }

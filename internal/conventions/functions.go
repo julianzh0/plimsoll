@@ -44,6 +44,30 @@ type FunctionRules struct {
 	Copyright, LicensedTo, PartOf     *regexp.Regexp
 	CodeHost, Ported                  *regexp.Regexp
 	HolderStopWords                   []string
+	Repeats                           RepeatRules
+}
+
+// RepeatRules are the numbers and the left-out code of the function-repeat rule: a function the change added that is
+// largely the code of one other function. They are the rule as measured on agent pull requests and human history.
+type RepeatRules struct {
+	MinTokens, MinLines int     // a function the change added is compared when it has at least this many tokens and lines
+	Run                 int     // tokens in one compared run
+	Share               float64 // the share of a new function's tokens in runs of another that marks it
+	Stretch             int     // and the tokens in a row of it that one other function covers, at least
+	MovedShare          float64 // a gone function covering this share of a new one (names aside) means it moved
+	// OutsideFolders and OutsideNames leave out, on both sides, code that is not the project's own maintained product
+	// code: test support, demos and examples, vendored, generated and built code; so does a folder below the root that
+	// holds its own licence file (Licence).
+	OutsideFolders, OutsideNames, Licence *regexp.Regexp
+}
+
+func defaultRepeatRules() RepeatRules {
+	return RepeatRules{
+		MinTokens: 150, MinLines: 6, Run: 10, Share: 0.8, Stretch: 150, MovedShare: 0.8,
+		OutsideFolders: regexp.MustCompile(`(?i)^(tests?|testing|__tests__|testdata|test[-_]?utils|fixtures|demos?|examples?|samples?|third[-_]?party|vendor(ed)?|external|generated|gen|dist|build|out|esm|cjs)$`),
+		OutsideNames:   regexp.MustCompile(`(?i)(^test_.*\.py$|(Tests?|_tests?|\.test|\.spec|_spec|_reversed|\.generated|\.g|\.pb|_pb2|\.min)\.[a-z0-9]+$)`),
+		Licence:        regexp.MustCompile(`(?i)^(licen[cs]e|copying)(\.[a-z0-9]+)?$`),
+	}
 }
 
 func defaultFunctionRules() FunctionRules {
@@ -67,6 +91,7 @@ func defaultFunctionRules() FunctionRules {
 			"corp", "co", "authors", "author", "contributors", "contributor", "project", "licensed", "to", "under", "this", "file",
 			"is", "part", "of", "its", "affiliates", "other", "others", "et", "al", "see", "for", "details", "license", "licence",
 			"spdx", "identifier"},
+		Repeats: defaultRepeatRules(),
 	}
 }
 
