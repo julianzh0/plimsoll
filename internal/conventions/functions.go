@@ -49,6 +49,8 @@ type FunctionRules struct {
 
 // RepeatRules are the numbers and the left-out code of the function-repeat rule: a function the change added that is
 // largely the code of one other function. They are the rule as measured on agent pull requests and human history.
+// There is no size bound: a first question whose change has a candidate added 0.55 s on swc (12.7 MB of Rust, about
+// 0.04 s a MB) and 0.55 s on json (2.3 MB of C++, about 0.24 s a MB); a change without one adds nothing.
 type RepeatRules struct {
 	MinTokens, MinLines int     // a function the change added is compared when it has at least this many tokens and lines
 	Run                 int     // tokens in one compared run
