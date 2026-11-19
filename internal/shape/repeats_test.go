@@ -53,7 +53,7 @@ func TestFunctionRepeatsAreCountedAndWhatWasNotComparedIsSaid(t *testing.T) {
 	if repeating.Value == nil || *repeating.Value != 4 || repeating.Note != "2 listed (at most three per measure, the highest share first)" {
 		t.Errorf("Detect rows: repeating = %+v", repeating)
 	}
-	if want := "Function repeats: `report` lists 2 of the 4 new functions that repeat another (the highest share first); the other 2 are counted, not listed."; !slices.Contains(f.Summaries, want) {
+	if want := "Function repeats: `report` lists 2 of the 4 new functions that repeat another (the highest share first); the other two are counted, not listed."; !slices.Contains(f.Summaries, want) {
 		t.Errorf("Detect summaries = %q, want the cut list said", f.Summaries)
 	}
 
@@ -117,7 +117,7 @@ func TestAFunctionThatRepeatsAnotherIsMarkedWithItsCounterpart(t *testing.T) {
 	if want := "compare lines 40–118 of `src/orders/save.ts` with lines 12–88 of `src/users/save.ts`: 71 of its 75 lines that hold code have a matching line there; without one: lines 44–46 and 104 here, 16–18 there; the longest covered run is 286 tokens, lines 52–101 (at least 150 needed)."; first.Hint != want {
 		t.Errorf("Hint(first) =\n%s\nwant\n%s", first.Hint, want)
 	}
-	if !strings.Contains(second.Hint, "the line comparison gave up") {
-		t.Errorf("Hint(second) = %q, want the comparison's give-up said", second.Hint)
+	if !strings.Contains(second.Hint, "of the same file: the line comparison gave up") {
+		t.Errorf("Hint(second) = %q, want the same file named once and the comparison's give-up said", second.Hint)
 	}
 }

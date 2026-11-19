@@ -53,7 +53,11 @@ func repeatSentence(m answer.Mark) string {
 
 // repeatHint is the verify line: both places, the lines without a match, and the longest covered run.
 func repeatHint(p snapshot.FunctionRepeat, stretch int) string {
-	places := fmt.Sprintf("compare lines %d–%d of `%s` with lines %d–%d of `%s`", p.Start, p.End, p.Path, p.Counterpart.Start, p.Counterpart.End, p.Counterpart.Path)
+	there := fmt.Sprintf("`%s`", p.Counterpart.Path)
+	if p.Counterpart.Path == p.Path {
+		there = "the same file"
+	}
+	places := fmt.Sprintf("compare lines %d–%d of `%s` with lines %d–%d of %s", p.Start, p.End, p.Path, p.Counterpart.Start, p.Counterpart.End, there)
 	run := fmt.Sprintf("the longest covered run is %d tokens, lines %d–%d (at least %d needed)", p.Stretch, p.StretchStart, p.StretchEnd, stretch)
 	if p.GaveUp {
 		return fmt.Sprintf("%s: the line comparison gave up, so the lines without a match are not listed; %s.", places, run)
@@ -119,9 +123,12 @@ func repeatSummary(r snapshot.FunctionRepeats) []string {
 	if r.Found <= len(r.Listed) {
 		return nil
 	}
-	rest := r.Found - len(r.Listed)
-	return []string{fmt.Sprintf("Function repeats: `report` lists %d of the %d new functions that repeat another (the highest share first); the other %s.",
-		len(r.Listed), r.Found, answer.Agree(rest, "is counted, not listed", "are counted, not listed"))}
+	rest, verb := r.Found-len(r.Listed), "are"
+	if rest == 1 {
+		verb = "is"
+	}
+	return []string{fmt.Sprintf("Function repeats: `report` lists %d of the %d new functions that repeat another (the highest share first); the other %s %s counted, not listed.",
+		len(r.Listed), r.Found, words(rest), verb)}
 }
 
 // repeatsNotAnalysed are what the rule could not see.
