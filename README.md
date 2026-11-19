@@ -48,7 +48,68 @@ Blast radius: 50 files outside the change use or import what it altered or remov
 - **Process leftovers:** a plan or review file committed, a setting defined twice or never read, and added code that
   nothing uses.
 
-Your limits, layout, ignored folders and reviewed exceptions go in an optional `.plimsoll.toml` ([rules](docs/rules.md)).
+## Your own rules
+
+An optional `.plimsoll.toml` at the repository's root, committed and reviewed like any other file, sets your own
+limits, tells plimsoll how your repository is laid out, and declares your architecture. Every key is optional:
+
+```toml
+[limits]
+file_lines = 1500                           # a code file's line limit (default 1,000)
+test_ratio = 3.0                            # test lines per product line (default 2.0)
+shared_commits = 8                          # commits two files share before they are a pair (default 5)
+hotspot_files = 5                           # files the report lists as hotspots (default 3)
+
+[layout]
+test_folders = ["checks", "tools/harness"]  # folders whose code is test code
+test_files = ["*_spec.rb", "*IT.java"]      # names of test files
+planning_folders = ["backlog"]              # folders of planning or review notes
+planning_files = ["*.plan.md"]              # names of planning or review notes
+
+[ignore]
+folders = ["src/test/resources/fixtures"]   # folders whose files plimsoll leaves out
+files = ["SPEC.md", "*.generated.go"]       # names of files plimsoll leaves out
+
+[defaults]
+base = "main"                               # the base of a question that names none
+
+[imports]
+never = ["src/domain -> src/adapters"]      # code under the first folder imports none under the second
+only = ["src/domain -> src/shared"]         # code under the first folder imports only there and in itself
+
+[acknowledged]                              # standing items reviewed and kept on purpose, each with a reason
+"process.planning-file:SPEC.md" = "a lasting specification, not a plan"
+```
+
+| Key | What it declares |
+|---|---|
+| `file_lines`, `test_ratio`, `shared_commits` | The limits of the file-size, test-ratio and co-change rules |
+| `hotspot_files` | How many files the report lists as hotspots |
+| `test_folders` | Folders, as paths from the root, whose code files count as test code, beside the defaults |
+| `test_files` | File names of code files that count as test code wherever they lie: `*` is any run of characters, `?` one |
+| `planning_folders` | Folders, as paths from the root, whose files are planning or review records, beside the default paths |
+| `planning_files` | File names, with the same patterns as `test_files` but without regard to case, of planning or review records wherever they lie |
+| `folders` under `[ignore]` | Folders, as paths from the root, whose files plimsoll leaves out: no code, no planning record, no documentation it reads |
+| `files` under `[ignore]` | File names, with the same patterns as `test_files`, of files plimsoll leaves out wherever they lie |
+| an entry of `[acknowledged]` | A mark identifier exactly as an answer printed it, and a reason: a standing item with that identifier is listed under "Acknowledged" in `report` instead of "Standing", and `status` counts such items in one line. The item is still measured and counted; when it grows, or a new item gets its identifier, it shows as usual. Function marks never stand, so they are not acknowledged. The reason is required and never printed |
+| `never`, `only` under `[imports]` | Import rules, each `"<folder> -> <folder>"` (below) |
+| `base` | The branch, remote branch or tag a question without a base compares with. A remote branch is named with its remote (`origin/main`): `main` alone finds no remote branch. A branch of the name comes before a remote branch, and a remote branch before a tag |
+
+A declaration adds to the defaults and takes none away. The file switches no rule off: an acknowledged item is still
+measured and counted, only listed apart, and `[ignore]` is the one way to leave files out. Every mark names its
+limit's source, for example "1,500 lines, set by `.plimsoll.toml`", and a limit or declaration changed since the base
+is itself a mark, so raising a limit to silence a finding shows in the answer.
+
+**Import rules** turn your architecture into marks. Each is one text `"<folder> -> <folder>"`, two folders from the
+root:
+
+- `never = ["a -> b"]`: product code under `a` imports no code under `b`.
+- `only = ["a -> b", "a -> c"]`: product code under `a` imports code only under `a` itself and the folders named; a
+  folder created later is outside until an entry names it.
+
+A change that writes an import breaking a rule gets a mark naming up to two such imports by file and line; a break
+already at the base is standing. A broken rule is information, never a gate or an exit code. What a rule cannot see
+in each language, and how invalid values are handled: [rules](docs/rules.md#your-own-limits-and-layout).
 
 ## Why you can trust it
 
@@ -152,8 +213,8 @@ hide: what it leaves out it counts ("3 more: `report` lists them"), and `report`
 
 ## Learn more
 
-- [What plimsoll checks](docs/rules.md): every rule, what it measures and its limit, and your own limits, layout,
-  ignored files and acknowledged items in `.plimsoll.toml`.
+- [What plimsoll checks](docs/rules.md): every rule, what it measures and its limit, and exactly how
+  `.plimsoll.toml` is read.
 - [How each language is read](docs/languages.md): the twelve languages, how their imports and test code are found.
 - [Guarantees and protocol](docs/guarantees.md): what plimsoll promises, with the tests that pin each promise.
 - [Development](docs/development.md): building, testing and the project's structure.

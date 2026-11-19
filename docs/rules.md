@@ -138,50 +138,9 @@ neither wrote the same import nor reached the same target.
 
 ### Your own limits and layout
 
-A repository may set its own limits and declare its layout in `.plimsoll.toml` at its root, committed and reviewed
-like any other file. Every key is optional:
-
-```toml
-[limits]
-file_lines = 1500                           # a code file's line limit (default 1,000)
-test_ratio = 3.0                            # test lines per product line (default 2.0)
-shared_commits = 8                          # commits two files share before they are a pair (default 5)
-hotspot_files = 5                           # files the report lists as hotspots (default 3)
-
-[layout]
-test_folders = ["checks", "tools/harness"]  # folders whose code is test code
-test_files = ["*_spec.rb", "*IT.java"]      # names of test files
-planning_folders = ["backlog"]              # folders of planning or review notes
-planning_files = ["*.plan.md"]              # names of planning or review notes
-
-[ignore]
-folders = ["src/test/resources/fixtures"]   # folders whose files plimsoll leaves out
-files = ["SPEC.md", "*.generated.go"]       # names of files plimsoll leaves out
-
-[defaults]
-base = "main"                               # the base of a question that names none
-
-[imports]
-never = ["src/domain -> src/adapters"]      # code under the first folder imports none under the second
-only = ["src/domain -> src/shared"]         # code under the first folder imports only there and in itself
-
-[acknowledged]                              # standing items reviewed and kept on purpose, each with a reason
-"process.planning-file:SPEC.md" = "a lasting specification, not a plan"
-```
-
-| Key | What it declares |
-|---|---|
-| `file_lines`, `test_ratio`, `shared_commits` | The limits of the file-size, test-ratio and co-change rules |
-| `hotspot_files` | How many files the report lists as hotspots |
-| `test_folders` | Folders, as paths from the root, whose code files count as test code, beside the defaults |
-| `test_files` | File names of code files that count as test code wherever they lie: `*` is any run of characters, `?` one |
-| `planning_folders` | Folders, as paths from the root, whose files are planning or review records, beside the default paths |
-| `planning_files` | File names, with the same patterns as `test_files` but without regard to case, of planning or review records wherever they lie |
-| `folders` under `[ignore]` | Folders, as paths from the root, whose files plimsoll leaves out: no code, no planning record, no documentation it reads |
-| `files` under `[ignore]` | File names, with the same patterns as `test_files`, of files plimsoll leaves out wherever they lie |
-| an entry of `[acknowledged]` | A mark identifier exactly as an answer printed it, and a reason: a standing item with that identifier is listed under "Acknowledged" in `report` instead of "Standing", and `status` counts such items in one line. The item is still measured and counted; when it grows, or a new item gets its identifier, it shows as usual. Function marks never stand, so they are not acknowledged. The reason is required and never printed |
-| `never`, `only` under `[imports]` | Import rules, each `"<folder> -> <folder>"` (below) |
-| `base` | The branch, remote branch or tag a question without a base compares with. A remote branch is named with its remote (`origin/main`): `main` alone finds no remote branch. A branch of the name comes before a remote branch, and a remote branch before a tag |
+A repository may set its own limits and declare its layout and import rules in `.plimsoll.toml` at its root. The
+example file, every key and the import rules are in the [README](../README.md#your-own-rules); this section holds how
+plimsoll reads the file.
 
 The function limits cannot be set in the file: they are the ones the measurement was read against.
 
