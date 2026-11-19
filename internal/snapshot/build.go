@@ -117,9 +117,9 @@ func Build(source Source, rules conventions.Rules, readings *Readings) Snapshot 
 		Repeats: functionRepeats(repeatRun{rules: rules, rr: rules.FunctionRules.Repeats, changes: source.Changes,
 			nowFiles: filesByPath(now), baseFiles: filesByPath(before), nowContent: nowContent, baseContent: beforeContent,
 			nowReadings: nowReadings, beforeReadings: beforeReadings, readings: readings, question: question,
-			licensed:    licensedFolders(now.Paths, rules.FunctionRules.Repeats.Licence),
-			from:        &origins{rules: rules.FunctionRules, nowPaths: now.Paths, nowContent: nowContent, baseFiles: before.Files, base: beforeContent},
-			unavailable: source.Unavailable}),
+			licensed: licensedFolders(now.Paths, rules.FunctionRules.Repeats.Licence),
+			from:     &origins{rules: rules.FunctionRules, nowPaths: now.Paths, nowContent: nowContent, baseFiles: before.Files, base: beforeContent},
+			lacking:  lackingContent(source.Before)}),
 	}
 }
 

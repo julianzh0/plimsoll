@@ -152,26 +152,28 @@ func b2i(b bool) int {
 	return 0
 }
 
-func TestBuildComparesNoRepeatsWithoutTheCodeItNeeds(t *testing.T) {
-	leftOut := map[string]string{"pkg/a_test.go": "package p\n", "vendor/lib/x.go": "package lib\n"}
-	base := map[string]string{"pkg/a.go": snapshottest.GoFile(snapshottest.GoColumns("Original"))}
-	now := map[string]string{"pkg/a.go": snapshottest.GoFile(snapshottest.GoColumns("Original")), "pkg/b.go": snapshottest.GoFile(snapshottest.GoColumns("Copied"))}
-	maps.Copy(base, leftOut)
-	maps.Copy(now, leftOut)
+// TestBuildNamesAChangedFileWhoseBaseContentIsMissing drops a changed file's base content, as a partial clone lacks
+// it: a measured product file is named and none of its functions is compared; test code the rule leaves out is no gap.
+func TestBuildNamesAChangedFileWhoseBaseContentIsMissing(t *testing.T) {
+	original, copied := snapshottest.GoFile(snapshottest.GoColumns("Original")), snapshottest.GoFile(snapshottest.GoColumns("Copied"))
 	for _, tt := range []struct {
-		unavailable []string
-		listed      int
+		missing  string
+		listed   int
+		unwalked []string
 	}{
-		{[]string{"pkg/old.go"}, 0},      // a changed code file whose base the clone lacks: nothing is compared
-		{[]string{"data/big.txt"}, 1},    // no code: the rule runs
-		{[]string{"pkg/a_test.go"}, 1},   // test code, which the rule leaves out on both sides: it runs
-		{[]string{"vendor/lib/x.go"}, 1}, // vendored code, left out too
+		{"pkg/a.go", 0, []string{"pkg/a.go"}}, // the counterpart's file: whether Original was there cannot be told
+		{"pkg/a_test.go", 1, nil},             // test code: the rule runs
 	} {
-		source := snapshottest.Files(base, now)
-		source.Unavailable = tt.unavailable
+		source := snapshottest.Files(map[string]string{"pkg/a.go": original, "pkg/a_test.go": "package p\n"},
+			map[string]string{"pkg/a.go": original + "\nvar edited = 1\n", "pkg/a_test.go": "package p\n\nvar t = 1\n", "pkg/b.go": copied})
+		for i := range source.Before {
+			if source.Before[i].Path == tt.missing {
+				source.Before[i].Content = nil
+			}
+		}
 		got := snapshot.Build(source, conventions.Default(), snapshottest.Readings(t)).Repeats
-		if len(got.Listed) != tt.listed || (tt.listed == 0) != (len(got.Unavailable) > 0) {
-			t.Errorf("Build(unavailable %q).Repeats = %d listed, unavailable %q; want %d listed", tt.unavailable, len(got.Listed), got.Unavailable, tt.listed)
+		if len(got.Listed) != tt.listed || !slices.Equal(got.Unwalked, tt.unwalked) {
+			t.Errorf("Build(no base content of %s).Repeats = %d listed, unwalked %q; want %d listed, unwalked %q", tt.missing, len(got.Listed), got.Unwalked, tt.listed, tt.unwalked)
 		}
 	}
 }

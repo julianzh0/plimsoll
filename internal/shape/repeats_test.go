@@ -64,11 +64,11 @@ func TestFunctionRepeatsAreCountedAndWhatWasNotComparedIsSaid(t *testing.T) {
 		t.Errorf("Detect(two changed files, no candidate) rows = %+v, want 0 compared", none.Statistics)
 	}
 
-	s.Repeats = snapshot.FunctionRepeats{Rules: s.Repeats.Rules, Unavailable: []string{"src/old.go"}, Unwalked: []string{"src/big.go"}, Searched: 120, Unreadable: 3}
+	s.Repeats = snapshot.FunctionRepeats{Rules: s.Repeats.Rules, Unwalked: []string{"src/big.go"}, Searched: 120, Unreadable: 3}
 	notAnalysed := strings.Join((shape.Detector{}).Detect(s).NotAnalysed, "\n")
-	for _, want := range []string{"`src/old.go`", "`src/big.go`", "3 of the 123 functions searched for a counterpart could not be read by the parser and were not compared"} {
+	for _, want := range []string{"`src/big.go`", "3 of the 123 functions searched for a counterpart could not be read by the parser and were not compared"} {
 		if !strings.Contains(notAnalysed, want) {
-			t.Errorf("Detect(unavailable, unwalked).NotAnalysed = %q, want %s named", notAnalysed, want)
+			t.Errorf("Detect(unwalked, unreadable).NotAnalysed = %q, want %s named", notAnalysed, want)
 		}
 	}
 }

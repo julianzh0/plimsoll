@@ -24,7 +24,6 @@ type FunctionRepeats struct {
 	SearchedFiles      int              // files they are in
 	Unreadable         int              // functions among those searched the parser could not read
 	Unwalked           []string         // files the rule needed whose functions could not be read
-	Unavailable        []string         // paths whose content the rule needs and lacks: then nothing is computed
 	PerMeasure         int              // the most pairs listed
 	Rules              conventions.RepeatRules
 }
@@ -99,8 +98,8 @@ type repeatRun struct {
 	readings                    *Readings
 	question                    uint64
 	licensed                    map[string]bool
+	lacking                     map[string]bool // base paths tracked without content: a partial clone lacks it
 	from                        *origins
-	unavailable                 []string // paths that changed and whose base content is missing (Source.Unavailable)
 }
 
 // repeatBaseFiles are the base files read with their functions: those the function rules measure, and the base version
@@ -131,14 +130,6 @@ func filesByPath(t Tree) map[string]File {
 // functionRepeats finds the functions the change added that are largely the code of one other function.
 func functionRepeats(run repeatRun) FunctionRepeats {
 	result := FunctionRepeats{Rules: run.rr, PerMeasure: run.rules.FunctionRules.PerMeasure}
-	for _, p := range run.unavailable {
-		if run.reads(p) {
-			result.Unavailable = append(result.Unavailable, p)
-		}
-	}
-	if len(result.Unavailable) > 0 { // a changed code file the rule cannot read at the base: compare nothing
-		return result
-	}
 	gone := run.gone()
 	goneGrams := make([]map[uint64]int, len(gone)) // built on first use, once per question
 	var cands []repeatFn
@@ -187,18 +178,6 @@ func functionRepeats(run repeatRun) FunctionRepeats {
 	return result
 }
 
-// reads says whether the rule reads a path's content: a code file of the project's own that is a measured product file
-// at the base or now, or one in neither tree (nothing tells it apart).
-func (run repeatRun) reads(p string) bool {
-	if _, code := run.rules.LanguageOf(p); !code || run.outside(p) {
-		return false
-	}
-	base, atBase := run.baseFiles[p]
-	now, atNow := run.nowFiles[p]
-	return !atBase && !atNow || atBase && measuredFile(run.rules, base, nil) == fileMeasured ||
-		atNow && measuredFile(run.rules, now, run.nowContent[p]) == fileMeasured
-}
-
 // gone are the readable functions of the measured base versions of changed files whose names no readable function of
 // the file has now: code that may have moved.
 func (run repeatRun) gone() []repeatFn {
@@ -227,18 +206,32 @@ func (run repeatRun) gone() []repeatFn {
 }
 
 // baseFunctions are the functions of a base version that is a measured product file, readable or not; none for a base
-// version that is no measured file or does not exist. read is false when the parser could not read the base version's
-// functions at all: then its old functions cannot be told from new ones.
+// version that is no measured file or does not exist. read is false when its functions could not be read at all (the
+// clone lacks the content, or the parser could not read it): then its old functions cannot be told from new ones.
 func (run repeatRun) baseFunctions(basePath string) (functions []function, read bool) {
 	f, found := run.baseFiles[basePath]
+	if !found && run.lacking[basePath] {
+		f, found = File{Path: basePath, Role: role(run.rules, basePath, nil)}, !run.outside(basePath)
+	}
 	if !found || measuredFile(run.rules, f, run.baseContent[basePath]) != fileMeasured {
 		return nil, true
 	}
-	r := run.beforeReadings[basePath]
-	if r.unread || r.functionsUnread {
+	r, read := run.beforeReadings[basePath] // none when the clone lacks the content, or it is binary
+	if !read || r.unread || r.functionsUnread {
 		return nil, false
 	}
 	return r.functions, true
+}
+
+// lackingContent are the entries tracked without content and not binary: the content a partial clone lacks.
+func lackingContent(entries []Entry) map[string]bool {
+	found := map[string]bool{}
+	for _, e := range entries {
+		if e.Content == nil && !e.Binary {
+			found[e.Path] = true
+		}
+	}
+	return found
 }
 
 // baseRead says whether a changed file's base version could be read, when it is a measured product file; true for a

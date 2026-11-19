@@ -14,10 +14,7 @@ type Source struct {
 	Unreadable   []string
 	// Missing are the paths whose content a partial clone lacks in some commit; their lines and history are not read.
 	Missing []string
-	// Unavailable are the paths that differ between the base and now and whose base content the partial clone lacks:
-	// a rule that compares the two states cannot read them.
-	Unavailable []string
-	Before      []Entry // tracked regular files at the base; Content only for wanted, changed paths
+	Before  []Entry // tracked regular files at the base; Content only for wanted, changed paths
 	// BaseOther are the tracked paths at the base that are no regular file (links, submodules): a file at such a path
 	// now was not added by the change.
 	BaseOther []string

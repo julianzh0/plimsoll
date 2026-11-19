@@ -81,10 +81,6 @@ func repeatRows(r snapshot.FunctionRepeats) []answer.Statistic {
 // repeatsNotAnalysed are what the rule could not see.
 func repeatsNotAnalysed(r snapshot.FunctionRepeats) []string {
 	var found []string
-	if len(r.Unavailable) > 0 {
-		found = append(found, fmt.Sprintf("new functions were not compared for repeats: the clone lacks the base content of %s that changed: %s",
-			answer.Plural(len(r.Unavailable), "code file"), answer.QuotedList(r.Unavailable)))
-	}
 	if len(r.Unwalked) > 0 {
 		found = append(found, fmt.Sprintf("the parser could not read the functions of %s searched for repeats: %s",
 			answer.Plural(len(r.Unwalked), "file"), answer.QuotedList(r.Unwalked)))
