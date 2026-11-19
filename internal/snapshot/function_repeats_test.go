@@ -7,6 +7,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/julianzh0/plimsoll/internal/conventions"
@@ -71,9 +72,37 @@ func TestRepeatsFromKeptReadingsEqualFreshOnes(t *testing.T) {
 		if fmt.Sprintf("%+v", got) != fmt.Sprintf("%+v", fresh) {
 			t.Errorf("question %d: Build with kept readings = %+v\nwith fresh ones = %+v", i, got, fresh)
 		}
+		// the same question twice at the same time on readings both share, none kept yet
+		shared := snapshottest.Readings(t)
+		var both [2]snapshot.FunctionRepeats
+		var wg sync.WaitGroup
+		for k := range both {
+			wg.Go(func() { both[k] = snapshot.Build(snapshottest.Files(base, now), rules, shared).Repeats })
+		}
+		wg.Wait()
+		if fmt.Sprintf("%+v", both[0]) != fmt.Sprintf("%+v", fresh) || fmt.Sprintf("%+v", both[1]) != fmt.Sprintf("%+v", fresh) {
+			t.Errorf("question %d: two Builds at the same time = %+v and %+v\nwant %+v", i, both[0], both[1], fresh)
+		}
 		if (i == 0) != (len(got.Listed) == 0) {
 			t.Errorf("question %d: Build listed %d pairs, want pairs in every question but the first", i, len(got.Listed))
 		}
+	}
+}
+
+// TestBuildMarksTheOutermostOfNestedRepeats copies a function with a function inside it: both repeat their originals,
+// only the outer one is listed.
+func TestBuildMarksTheOutermostOfNestedRepeats(t *testing.T) {
+	rules := conventions.Default()
+	rules.FunctionRules.Repeats.MinTokens, rules.FunctionRules.Repeats.Stretch = 15, 15
+	outer := func(name string) string {
+		return "export function " + name + "(x: number): number {\n  function inner(y: number): number {\n    const z = y * 2 + 1;\n" +
+			"    if (z > 10) {\n      return z - 3;\n    }\n    return z + 4;\n  }\n  return inner(x) + inner(x + 1);\n}\n"
+	}
+	base := map[string]string{"src/a.ts": outer("first")}
+	now := map[string]string{"src/a.ts": outer("first"), "src/b.ts": outer("second")}
+	got := snapshot.Build(snapshottest.Files(base, now), rules, snapshottest.Readings(t)).Repeats
+	if len(got.Listed) != 1 || got.Listed[0].Name != "second" {
+		t.Errorf("Build(a nested copy).Repeats = %+v, want only src/b.ts second listed", got.Listed)
 	}
 }
 
@@ -161,6 +190,7 @@ func methods(first string) string {
 }
 
 func TestBuildFindsAFunctionThatRepeatsAnother(t *testing.T) {
+	foreign := "// Copyright (c) Meta Platforms, Inc. and affiliates.\n"
 	original := map[string]string{"pkg/a.go": snapshottest.GoFile(snapshottest.GoColumns("Original"))}
 	with := func(extra map[string]string) map[string]string {
 		m := map[string]string{"pkg/a.go": snapshottest.GoFile(snapshottest.GoColumns("Original"))}
@@ -183,6 +213,13 @@ func TestBuildFindsAFunctionThatRepeatsAnother(t *testing.T) {
 		{"a counterpart that was there wins", original,
 			with(map[string]string{"pkg/b.go": snapshottest.GoFile(snapshottest.GoColumns("NewOne")), "pkg/c.go": snapshottest.GoFile(snapshottest.GoColumns("NewTwo"))}),
 			[]string{"pkg/b.go NewOne <- pkg/a.go Original unchanged", "pkg/c.go NewTwo <- pkg/a.go Original unchanged"}},
+		{"a copy in a folder with its own licence", original,
+			with(map[string]string{"pkg/lib/b.go": snapshottest.GoFile(snapshottest.GoColumns("Copied")), "pkg/lib/LICENSE": "zlib\n"}), nil},
+		{"a copy whose file came from another project", original,
+			with(map[string]string{"pkg/b.go": foreign + snapshottest.GoFile(snapshottest.GoColumns("Copied"))}), nil},
+		{"a counterpart whose file came from another project", map[string]string{"pkg/a.go": foreign + snapshottest.GoFile(snapshottest.GoColumns("Original"))},
+			map[string]string{"pkg/a.go": foreign + snapshottest.GoFile(snapshottest.GoColumns("Original")), "pkg/b.go": snapshottest.GoFile(snapshottest.GoColumns("Copied"))},
+			[]string{"pkg/b.go Copied <- pkg/a.go Original unchanged"}},
 		{"a counterpart after a namesake the change edited", map[string]string{"pkg/a.go": methods(snapshottest.GoFiles("Run"))},
 			map[string]string{"pkg/a.go": methods(strings.Replace(snapshottest.GoFiles("Run"), "keep(", "!keep(", 1)), "pkg/b.go": snapshottest.GoFile(snapshottest.GoColumns("Copied"))},
 			[]string{"pkg/b.go Copied <- pkg/a.go Run unchanged"}},
