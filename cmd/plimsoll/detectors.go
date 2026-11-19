@@ -11,7 +11,7 @@ import (
 )
 
 // version is plimsoll's version, changed by a release.
-const version = "0.8.0"
+const version = "0.9.0"
 
 // detectors are the detectors of the program, in the order of the report.
 func detectors() []answer.Detector {

@@ -21,7 +21,7 @@ After a change, your agent asks plimsoll and gets back the areas the change made
 what it altered, and a few findings, each measured, each with its limit and a way to check it. Here is a real answer for the last 30 commits of [Obtainium](https://github.com/ImranR98/Obtainium):
 
 ```text
-plimsoll 0.8.0 status: base `HEAD~30` e9087ce099, head 35c3e7fea4
+plimsoll 0.9.0 status: base `HEAD~30` e9087ce099, head 35c3e7fea4
 Areas: 3 worse (dependencies 1, wiring 1, functions 2); not analysed: settings
 Blast radius: 50 files outside the change use or import what it altered or removed (25 product, 25 test)
 3 new, 1 grown, 0 resolved; 14 more in `report` only
@@ -36,10 +36,19 @@ Blast radius: 50 files outside the change use or import what it altered or remov
 
 ## What it catches
 
+- **Which areas got worse:** one line per answer counts the areas the change made worse or better (size,
+  dependencies, wiring, functions, process), each backed by the marks it names. No score is invented.
+- **Blast radius:** how many files outside the change use or import what it altered or removed, product files first.
 - **New dependencies** a change slipped in, and whether a lockfile holds them.
-- **Functions the change made hard to read:** deep nesting or pasted blocks, in 11 languages.
-- **Wiring:** an import ring the change closed or grew, product code importing test code.
-- **Process leftovers:** a plan or review file committed, a setting defined twice or never read.
+- **Functions the change made hard to read:** deep nesting or pasted blocks, in 12 languages.
+- **Size:** code files past their line limit, and test code growing past twice the product code.
+- **Wiring:** an import ring the change closed or grew, folders depending on each other in a circle, product code
+  importing test code, and imports that break the rules your repository declares.
+- **Hidden coupling:** files that keep changing together in the same commits.
+- **Process leftovers:** a plan or review file committed, a setting defined twice or never read, and added code that
+  nothing uses.
+
+Your limits, layout, ignored folders and reviewed exceptions go in an optional `.plimsoll.toml` ([rules](docs/rules.md)).
 
 ## Why you can trust it
 
@@ -51,15 +60,15 @@ in the full report. MIT licensed. It works next to your linters and CI, not inst
 ## Speed
 
 The first question on a repository takes a few seconds; every later one, also after an edit, is much faster
-(about a quarter of a second on a few thousand files), because plimsoll keeps what it has read in memory while it runs. Measured with plimsoll 0.7.0 on an
-Apple M6 (12 cores, 32 GB) against the last 30 commits, while other work was running:
+(about a quarter of a second on a few thousand files), because plimsoll keeps what it has read in memory while it runs. Measured with plimsoll 0.9.0 on an
+Apple M6 (12 cores, 32 GB) against the last 30 commits, while other work was running (load average 5 to 7):
 
 | Repository | Files | First question | Later questions | Peak memory |
 |---|--:|--:|--:|--:|
-| [Obtainium](https://github.com/ImranR98/Obtainium) | 320 | 2.2 s | 0.17 s | 0.2 GB |
-| [LocalSend](https://github.com/localsend/localsend) | 1,037 | 2.2 s | 0.19 s | 0.3 GB |
-| [nlohmann/json](https://github.com/nlohmann/json) | 1,674 | 10 s | 0.25 s | 0.75 GB |
-| [swc](https://github.com/swc-project/swc) | 83,143 | 36 s | 5.1 s | 2.3 GB |
+| [Obtainium](https://github.com/ImranR98/Obtainium) | 320 | 2.4 s | 0.18 s | 0.2 GB |
+| [LocalSend](https://github.com/localsend/localsend) | 1,037 | 2.4 s | 0.20 s | 0.3 GB |
+| [nlohmann/json](https://github.com/nlohmann/json) | 1,674 | 11 s | 0.26 s | 0.7 GB |
+| [swc](https://github.com/swc-project/swc) | 83,143 | 39 s | 5.4 s | 2.4 GB |
 
 ## Install
 
@@ -145,7 +154,7 @@ hide: what it leaves out it counts ("3 more: `report` lists them"), and `report`
 
 - [What plimsoll checks](docs/rules.md): every rule, what it measures and its limit, and your own limits, layout,
   ignored files and acknowledged items in `.plimsoll.toml`.
-- [How each language is read](docs/languages.md): the eleven languages, how their imports and test code are found.
+- [How each language is read](docs/languages.md): the twelve languages, how their imports and test code are found.
 - [Guarantees and protocol](docs/guarantees.md): what plimsoll promises, with the tests that pin each promise.
 - [Development](docs/development.md): building, testing and the project's structure.
 
