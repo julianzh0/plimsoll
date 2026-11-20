@@ -12,7 +12,10 @@ import (
 var pubspecNameLine = regexp.MustCompile(`(?m)^name:[ \t]*["']?([A-Za-z_][A-Za-z0-9_]*)["']?[ \t]*(?:#[^\r\n]*)?\r?$`)
 
 // pubspecPath is a path key in a dependency's block or flow map, with its value: never a key that ends in "path".
-var pubspecPath = regexp.MustCompile(`(?:^|[\s{,])path:[ \t]*["']?([^"',}\s]+)`)
+var pubspecPath = regexp.MustCompile(`(?:^|[\s{,])path:[ \t]*(?:"([^"\n]*)"|'([^'\n]*)'|([^"',}\s]+))`)
+
+// pubspecComment is a comment: a # at the line start or after white space, to the line end.
+var pubspecComment = regexp.MustCompile(`(?:^|[ \t])#.*$`)
 
 // pubspecPackages reads every tracked pubspec.yaml with a name as a package, and every one with a workspace list as a
 // workspace whose entries, globs with * per segment included, name member folders. An import "package:<name>/x" is the
@@ -92,27 +95,55 @@ func pubspecPackages(content map[string][]byte, tracked map[string]bool) prefix 
 
 // pubspecPathDependencies are the folders a pubspec's dependencies name by a local path: an entry of dependencies,
 // dev_dependencies or dependency_overrides with a path key, in a block or a flow map (also on the key's own line),
-// resolved against the pubspec's folder.
+// quoted or plain, resolved against the pubspec's folder. A path inside a git entry is a folder of that repository,
+// not a local one.
 func pubspecPathDependencies(content []byte, folder string) []string {
 	var found []string
-	inBlock := false
+	inBlock, gitIndent := false, -1
 	for line := range strings.Lines(string(content)) {
-		code, _, _ := strings.Cut(line, " #")
-		if trimmed := strings.TrimSpace(code); trimmed == "" || strings.HasPrefix(trimmed, "#") {
+		code := pubspecComment.ReplaceAllString(strings.TrimRight(line, "\r\n"), "")
+		trimmed := strings.TrimSpace(code)
+		if trimmed == "" {
 			continue
 		}
-		if !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "\t") {
+		indent := len(code) - len(strings.TrimLeft(code, " \t"))
+		if indent == 0 {
 			key, value, _ := strings.Cut(code, ":")
+			key = strings.TrimSpace(key)
 			inBlock = key == "dependencies" || key == "dev_dependencies" || key == "dependency_overrides"
-			code = value
+			code, gitIndent = value, -1
 		}
-		for _, m := range pubspecPath.FindAllStringSubmatch(code, -1) {
-			if inBlock {
-				found = append(found, path.Join(folder, m[1]))
+		switch {
+		case gitIndent >= 0 && indent > gitIndent:
+			continue // a key of a git entry
+		case strings.HasPrefix(trimmed, "git:"):
+			gitIndent = indent
+		default:
+			gitIndent = -1
+		}
+		for _, m := range pubspecPath.FindAllStringSubmatchIndex(code, -1) {
+			if inBlock && !insideFlowGit(code[:m[0]]) {
+				found = append(found, path.Join(folder, pubspecPathValue(code, m)))
 			}
 		}
 	}
 	return found
+}
+
+// insideFlowGit says whether a flow map's git entry is still open at the end of a line's text.
+func insideFlowGit(before string) bool {
+	at := strings.LastIndex(before, "git:")
+	return at >= 0 && strings.Count(before[at:], "{") > strings.Count(before[at:], "}")
+}
+
+// pubspecPathValue is the value of a pubspecPath match: the quoted text, or the plain scalar.
+func pubspecPathValue(code string, m []int) string {
+	for i := 2; i+1 < len(m); i += 2 {
+		if m[i] >= 0 {
+			return code[m[i]:m[i+1]]
+		}
+	}
+	return ""
 }
 
 // pubspecNameOf is a pubspec.yaml's top-level name, or "" when it has none.

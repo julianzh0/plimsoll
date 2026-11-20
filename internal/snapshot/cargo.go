@@ -165,11 +165,12 @@ func newRustPackage(folder string, document map[string]any, documents map[string
 			}
 		}
 	}
-	switch build, stated := tomlAt(document, "package", "build"); {
-	case !stated || build == true:
+	switch build, _ := tomlAt(document, "package", "build"); {
+	case build == false: // no build script
+	case tomlText(document, "package", "build") != "":
+		add(tomlText(document, "package", "build"))
+	default: // unset, true, or no usable path
 		add("build.rs")
-	case build != false:
-		add(tomlText(document, "package", "build")) // a path; build = false is no build script
 	}
 	for folder, key := range map[string]string{"src/bin": "autobins", "examples": "autoexamples", "tests": "autotests", "benches": "autobenches"} {
 		value, stated := tomlAt(document, "package", key)

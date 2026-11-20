@@ -1,6 +1,7 @@
 package snapshot
 
 import (
+	"cmp"
 	"path"
 	"regexp"
 	"slices"
@@ -152,7 +153,7 @@ func catalogueCoordinate(entry any) string {
 	}
 	table, _ := entry.(map[string]any)
 	if module, isText := table["module"].(string); isText {
-		return coordinate(module)
+		return cmp.Or(coordinate(module), module) // "group:name", a version cut; a name without a group as written
 	}
 	group, _ := table["group"].(string)
 	name, _ := table["name"].(string)

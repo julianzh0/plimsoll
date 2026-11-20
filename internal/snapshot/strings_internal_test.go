@@ -106,3 +106,13 @@ func FuzzEachToken(f *testing.F) {
 		}
 	})
 }
+
+// Many R" that open no raw string, in a file of few literals, are read in one pass: each part of the file is searched
+// for literals once.
+func TestRawStringOpenersAreReadInOnePass(t *testing.T) {
+	cpp, _ := conventions.Default().LanguageOf("a.cpp")
+	content := []byte(strings.Repeat("x = R\"\n", 50000) + "int y = 1; // \"a\"\n")
+	if got := withoutRawStrings(cpp.Literals, content); string(got) != string(content) {
+		t.Errorf("withoutRawStrings blanked text that holds no raw string")
+	}
+}

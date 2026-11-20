@@ -65,6 +65,15 @@ func TestBuildFollowsGoImportsAcrossModules(t *testing.T) {
 			"a-copy/go.mod": "module example.com/lib\n", "a-copy/x/x.go": "package x\n",
 			"b/go.mod": "module example.com/lib\n", "b/x/x.go": "package x\n", "b/main.go": "package main\n\nimport \"example.com/lib/x\"\n",
 		}, []snapshot.Link{folderLink("b/main.go", 3, "b/x", "b/x/x.go")}},
+		{"two modules of one path: the importer's own, though it reaches a copy listed first", map[string]string{
+			"a/go.mod": "module example.com/m\n", "a/x/x.go": "package x\n",
+			"z/go.mod": "module example.com/m\n\nrequire example.com/m v1.0.0\n\nreplace example.com/m => ../a\n",
+			"z/x/x.go": "package x\n", "z/main.go": "package main\n\nimport \"example.com/m/x\"\n",
+		}, []snapshot.Link{folderLink("z/main.go", 3, "z/x", "z/x/x.go")}},
+		{"a longer module path the importer does not reach hides nothing", map[string]string{
+			"go.mod": "module example.com/root\n", "sub/x/x.go": "package x\n", "main.go": "package main\n\nimport \"example.com/root/sub/x\"\n",
+			"testdata/fixture/go.mod": "module example.com/root/sub\n", "testdata/fixture/x/x.go": "package x\n",
+		}, []snapshot.Link{folderLink("main.go", 3, "sub/x", "sub/x/x.go")}},
 		{"a module path is no prefix of a longer name", func() map[string]string {
 			files := app("module example.com/app\n\nrequire example.com/lib v1.0.0\n\nreplace example.com/lib => ../lib\n")
 			files["app/main.go"], files["lib/rary/x/x.go"] = "package main\n\nimport \"example.com/library/x\"\n", "package x\n"

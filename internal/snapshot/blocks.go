@@ -32,17 +32,16 @@ func masked(language conventions.Language, content []byte) []byte {
 
 // withoutRawStrings is the content with every C++ raw string blanked, line ends kept; the content itself when it holds
 // none. A raw string starts at an R" (with its prefix) that no name runs into and that no comment or ordinary literal
-// before it holds (the literals pattern read from the start, or from the end of the last raw string), and ends at its
-// closing delimiter.
+// before it holds (read once from the start, and on from the end of each raw string), and ends at its closing delimiter.
 func withoutRawStrings(literals *regexp.Regexp, content []byte) []byte {
 	out, cloned := content, false
-	read := 0 // read up to here by the literals pattern
+	cursor := literalCursor{literals: literals, content: content}
 	for at := 0; ; {
 		i := bytes.Index(content[at:], []byte(`R"`))
 		if i < 0 {
 			return out
 		}
-		if held := literalHolding(literals, content, &read, at+i); held > 0 {
+		if held := cursor.holding(at + i); held > 0 {
 			at = held
 			continue
 		}
@@ -66,29 +65,48 @@ func withoutRawStrings(literals *regexp.Regexp, content []byte) []byte {
 			out, cloned = slices.Clone(content), true
 		}
 		blankKeepingLines(out[start:end])
-		at, read = end, end
+		at = end
+		cursor.read, cursor.pending = end, false
 	}
 }
 
-// literalHolding is the end of the comment or ordinary literal that holds the offset, reading the literals pattern on
-// from *read (which it moves on), or 0 when none does.
-func literalHolding(literals *regexp.Regexp, content []byte, read *int, offset int) int {
-	for *read <= offset {
-		m := literals.FindIndex(content[*read:])
-		if m == nil || *read+m[0] > offset {
+// literalCursor reads a content's comments and ordinary literals once, left to right, for offsets asked in order: it
+// keeps the next match it found, so no part of the content is searched twice.
+type literalCursor struct {
+	literals *regexp.Regexp
+	content  []byte
+	read     int    // searched up to here
+	next     [2]int // the next match, when pending
+	pending  bool
+}
+
+// holding is the end of the comment or ordinary literal that holds the offset, or 0 when none does.
+func (c *literalCursor) holding(offset int) int {
+	for {
+		if !c.pending {
+			if c.read > offset {
+				return 0
+			}
+			m := c.literals.FindIndex(c.content[c.read:])
+			switch {
+			case m == nil:
+				c.read = len(c.content) // nothing left to hold an offset
+				return 0
+			case m[1] == m[0]:
+				c.read++
+				continue
+			}
+			c.next, c.pending = [2]int{c.read + m[0], c.read + m[1]}, true
+		}
+		switch {
+		case c.next[0] >= offset:
 			return 0
+		case c.next[1] > offset:
+			c.read, c.pending = c.next[1], false
+			return c.next[1]
 		}
-		if m[1] == m[0] {
-			*read++
-			continue
-		}
-		start, end := *read+m[0], *read+m[1]
-		*read = end
-		if start < offset && end > offset {
-			return end
-		}
+		c.read, c.pending = c.next[1], false
 	}
-	return 0
 }
 
 // identifierByte says whether a byte can stand in a C name.

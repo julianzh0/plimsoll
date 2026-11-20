@@ -71,22 +71,21 @@ func goModules(content map[string][]byte, tracked map[string]bool) prefix {
 		reaches := func(m goModuleFile) bool {
 			return m.folder == importer.folder || inWork && slices.Contains(work.uses, m.folder) || replacedBy(importer, work, inWork, m)
 		}
-		// The tracked module with the longest path the import lies under; of several with that path (copies, fixtures),
-		// the importer's own, else the first in folder order the importer reaches.
+		// Of the tracked modules the importer reaches, the one with the longest path the import lies under; of several
+		// with that path (copies, fixtures), the importer's own, else the first in folder order. A module it does not
+		// reach hides nothing.
 		var target goModuleFile
 		rest := ""
 		for _, folder := range folders {
 			m := modules[folder]
 			r, under := strings.CutPrefix(spec, m.module)
-			if !under || r != "" && r[0] != '/' || len(m.module) < len(target.module) {
-				continue
-			}
-			if len(m.module) == len(target.module) && (target.folder == importer.folder || reaches(target) || !reaches(m)) {
+			if !under || r != "" && r[0] != '/' || !reaches(m) || len(m.module) < len(target.module) ||
+				len(m.module) == len(target.module) && m.folder != importer.folder {
 				continue
 			}
 			target, rest = m, strings.TrimPrefix(r, "/")
 		}
-		if target.module == "" || !reaches(target) {
+		if target.module == "" {
 			return nil, false
 		}
 		folder := path.Join(target.folder, rest)

@@ -144,13 +144,13 @@ func historyView(run runner, top string, exclude []string) (string, error) {
 	if err != nil {
 		return "", gitFailed(err)
 	}
-	common := strings.TrimRight(string(out), "\r\n")
+	common := strings.TrimSuffix(string(out), "\n") // git's one line end; the path's own bytes stay
 	if !filepath.IsAbs(common) {
 		common = filepath.Join(top, common)
 	}
 	var view strings.Builder
 	view.WriteString(strings.Join(exclude, "\x00"))
-	root, err := os.OpenRoot(common)
+	root, err := os.OpenRoot(common) // the folder git just named: it holds the files when it opens
 	for _, name := range []string{"shallow", "info/attributes"} {
 		var content []byte
 		if err == nil {
