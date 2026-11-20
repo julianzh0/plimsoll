@@ -148,7 +148,7 @@ A declaration adds to the defaults and takes none away, and now's file applies t
 mark names its limit's source, for example "1,500 lines, set by `.plimsoll.toml`", every report names what the file
 declares, and a limit or a declaration that changed since the base is itself a mark. The file switches no rule off:
 an acknowledged item is still measured and counted, only listed apart, and `[ignore]` is the one way to leave files out of the count: test code declared here counts as test code. A folder is a plain path, and a
-bare name is a folder at the root. A test folder that is the root or a package root, a planning folder that is the
+bare name is a folder at the root. A file pattern matches a file's name in any folder, never a path across folders. A test folder that is the root or a package root, a planning folder that is the
 root, and a file name that is only `*`, are not applied. A file under a declared planning path is a planning record
 like one under a default path: it keeps its role and its lines, and is left out of hotspots, pairs, the churn rows and
 the footprint's documentation lines; so a planning folder that holds code takes that code out of them too. Values are
