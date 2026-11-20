@@ -207,8 +207,7 @@ var (
 	// widen the set once a field case needs it.
 	ownFolder = regexp.MustCompile(`^[A-Za-z0-9._+-]+(/[A-Za-z0-9._+-]+)*$`)
 	// ownName is a file-name pattern of path.Match: letters, digits, ._+- and the wildcards * and ?.
-	// NOTE: a pattern matches a file name, never a path across folders. Upgrade: match a folder path segment by
-	// segment.
+	// A pattern matches a file name, never a path across folders, as docs/rules.md states.
 	ownName = regexp.MustCompile(`^[A-Za-z0-9._+*?-]+$`)
 	// ownBase is a branch, remote-branch or tag name: segments of letters, digits and ._- joined by "/", so no
 	// revision expression (~, ^, @{, :) and nothing that depends on the user's git configuration.
