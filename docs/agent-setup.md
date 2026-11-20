@@ -72,7 +72,7 @@ command = "plimsoll"
 **OpenCode**
 
 ```sh
-opencode mcp add plimsoll -- plimsoll
+opencode mcp add --global plimsoll -- plimsoll
 ```
 
 **Any other MCP client**, in its server configuration:
@@ -110,7 +110,8 @@ Propose, each entry with the file that shows it:
 
 Show it as the existing file (if any) with your additions marked. One yes covers what you showed. Then write the
 file. A file this setup created is not read by plimsoll until git tracks it: stage it with `git add .plimsoll.toml`,
-which you named in the proposal. A file that was already tracked is never staged by you; one that existed untracked
+which you named in the proposal, and stage it again after every later entry you write on a yes, so the index never
+holds half of what the user approved. A file that was already tracked is never staged by you; one that existed untracked
 is staged only on its own yes. Before writing or staging, read the file and `git diff --cached -- .plimsoll.toml`
 again: if the user changed either since your proposal, show the difference and ask again. Stage only content you
 wrote yourself after the last yes.

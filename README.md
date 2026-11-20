@@ -190,7 +190,7 @@ command = "plimsoll"
 **OpenCode**
 
 ```sh
-opencode mcp add plimsoll -- plimsoll
+opencode mcp add --global plimsoll -- plimsoll
 ```
 
 **Any other MCP client** (Claude Desktop, Cursor, Antigravity and others), in its server configuration:
