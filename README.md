@@ -21,7 +21,7 @@ After a change, your agent asks plimsoll and gets back the areas the change made
 what it altered, and a few findings, each measured, each with its limit and a way to check it. Here is a real answer for the last 30 commits of [Obtainium](https://github.com/ImranR98/Obtainium):
 
 ```text
-plimsoll 0.9.0 status: base `HEAD~30` e9087ce099, head 35c3e7fea4
+plimsoll 0.10.0 status: base `HEAD~30` e9087ce099, head 35c3e7fea4
 Areas: 3 worse (dependencies 1, wiring 1, functions 2); not analysed: settings
 Blast radius: 50 files outside the change use or import what it altered or removed (25 product, 25 test)
 3 new, 1 grown, 0 resolved; 14 more in `report` only
@@ -34,6 +34,19 @@ Blast radius: 50 files outside the change use or import what it altered or remov
 …
 ```
 
+## Let your agent set it up
+
+Paste this into your coding agent (Claude Code, Codex, OpenCode, Cursor or any other with a shell). It installs
+plimsoll, connects it, reads your repository and proposes a `.plimsoll.toml`, writing nothing without your yes:
+
+```text
+Fetch https://raw.githubusercontent.com/julianzh0/plimsoll/main/docs/agent-setup.md with `curl -fsSL` and follow it.
+```
+
+In Windows PowerShell the command is `curl.exe -fsSL`; an agent without a shell needs
+[the setup page](docs/agent-setup.md) pasted in. Then ask it, for example: *"Use plimsoll to check what this branch
+did to the repository since `main`."* To install and connect by hand instead, see [Install](#install).
+
 ## What it catches
 
 - **Which areas got worse:** one line per answer counts the areas the change made worse or better (size,
@@ -41,7 +54,8 @@ Blast radius: 50 files outside the change use or import what it altered or remov
 - **Blast radius:** how many files outside the change use or import what it altered or removed, product files first.
 - **New dependencies** a change slipped in, and whether a lockfile holds them.
 - **Functions the change made hard to read:** deep nesting or pasted blocks, in 12 languages.
-- **Size:** code files past their line limit, and test code growing past twice the product code.
+- **Size:** code files past their line limit, test code growing past twice the product code, and the test lines of
+  each kind of test your repository declares.
 - **Wiring:** an import ring the change closed or grew, folders depending on each other in a circle, product code
   importing test code, and imports that break the rules your repository declares.
 - **Hidden coupling:** files that keep changing together in the same commits.
@@ -146,15 +160,15 @@ not know:
 ## Speed
 
 The first question on a repository takes a few seconds; every later one, also after an edit, is much faster
-(about a quarter of a second on a few thousand files), because plimsoll keeps what it has read in memory while it runs. Measured with plimsoll 0.9.0 on an
-Apple M6 (12 cores, 32 GB) against the last 30 commits, while other work was running (load average 5 to 7):
+(about a third of a second on a few thousand files), because plimsoll keeps what it has read in memory while it runs. Measured with plimsoll 0.10.0 on an
+Apple M6 (12 cores, 32 GB) against the last 30 commits, while other work was running (load average 7 to 12):
 
 | Repository | Files | First question | Later questions | Peak memory |
 |---|--:|--:|--:|--:|
-| [Obtainium](https://github.com/ImranR98/Obtainium) | 320 | 2.4 s | 0.18 s | 0.2 GB |
-| [LocalSend](https://github.com/localsend/localsend) | 1,037 | 2.4 s | 0.20 s | 0.3 GB |
-| [nlohmann/json](https://github.com/nlohmann/json) | 1,674 | 11 s | 0.26 s | 0.7 GB |
-| [swc](https://github.com/swc-project/swc) | 83,143 | 39 s | 5.4 s | 2.4 GB |
+| [Obtainium](https://github.com/ImranR98/Obtainium) | 320 | 3.0 s | 0.21 s | 0.2 GB |
+| [LocalSend](https://github.com/localsend/localsend) | 1,037 | 3.0 s | 0.25 s | 0.3 GB |
+| [nlohmann/json](https://github.com/nlohmann/json) | 1,674 | 12 s | 0.31 s | 0.7 GB |
+| [swc](https://github.com/swc-project/swc) | 83,143 | 54 s | 7.7 s | 2.5 GB |
 
 ## Install
 
@@ -222,7 +236,7 @@ opencode mcp add --global plimsoll -- plimsoll
 }
 ```
 
-Then ask your agent, for example: *"Use plimsoll to check what this branch did to the repository since `main`."*
+Or let your agent do all of this: see [Let your agent set it up](#let-your-agent-set-it-up).
 
 ## Tools
 
@@ -242,6 +256,8 @@ hide: what it leaves out it counts ("3 more: `report` lists them"), and `report`
   `.plimsoll.toml` is read.
 - [How each language is read](docs/languages.md): the twelve languages, how their imports and test code are found.
 - [Guarantees and protocol](docs/guarantees.md): what plimsoll promises, with the tests that pin each promise.
+- [Setting up with your agent](docs/agent-setup.md): the page your agent follows to install, connect and
+  configure plimsoll.
 - [Development](docs/development.md): building, testing and the project's structure.
 
 ## License
