@@ -135,7 +135,7 @@ func importCases() map[string]map[string][]string {
 			"use crate::a::B;\npub use self::c::D as E;\npub(crate) use super::f;\n":  {"crate::a::B", "self::c::D as E", "super::f"},
 			"use crate::{\n    a::B,\n    c::{self, D},\n};\n":                        {"crate::{\n    a::B,\n    c::{self, D},\n}"},
 			"    use std::fmt::Write;\n":                                              {"std::fmt::Write"},
-			"extern crate alloc;\npub extern crate grep_cli as cli;\n":                {"alloc", "grep_cli"},
+			"extern crate alloc;\npub extern crate grep_cli as cli;\n":                {"crate alloc", "crate grep_cli"},
 			"// use a::b;\n/// use a::b;\nlet used = 1;\nfn user() {}\nmodule!(x);\n": nil,
 			"use a::b;\r\nmod c;\r\n":                                                 {"a::b", "mod c"},
 		},
@@ -179,11 +179,9 @@ func targets(t *testing.T, l Language, fileName, text string) []string {
 		prefix, suffix := "", ""
 		for _, c := range match {
 			switch c.Name {
-			case "spec", "spec.mod":
+			case "spec", "spec.mod", "spec.extern":
 				specs = append(specs, c)
-				if c.Name == "spec.mod" {
-					prefix = "mod "
-				}
+				prefix = map[string]string{"spec.mod": "mod ", "spec.extern": "crate "}[c.Name]
 			case "type":
 				suffix += ":type"
 			case "everywhere":

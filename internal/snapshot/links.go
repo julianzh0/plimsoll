@@ -124,7 +124,9 @@ type statement struct {
 	names    []string // the names it imports out of its target; nil when it has no names group or names only "*"
 	line     int
 	typeOnly bool
-	within   []string // the inline modules it stands in, the outermost first
+	within   []string // the inline modules it stands in, the outermost first: a module's path attribute for its name
+	at       int      // where its target starts in the file
+	modPath  string   // the file a path attribute names for a module declared in its own file
 	// everywhere is a statement written once for every file of its project.
 	everywhere bool
 }
@@ -150,6 +152,13 @@ type reading struct {
 	// functions are the file's measured functions, when it was read with them; functionsUnread when the walk failed.
 	functions       []function
 	functionsUnread bool
+	// bindings are, per module place (its inline modules joined by "/"), the names the module's items bind; opaque
+	// the places where a macro call or an active attribute may bind others; exports the macros the file exports at
+	// its crate's root.
+	bindings map[string][]string
+	inlines  map[string]map[string]string // per module place, the modules written in braces there: name to place name
+	opaque   map[string]bool
+	exports  []string
 }
 
 // scan finds the import statements of one file's content, its literals blanked.
@@ -162,7 +171,7 @@ func scan(imports conventions.Imports, text []byte) reading {
 		spec := form.Pattern.SubexpIndex("spec")
 		for _, m := range form.Pattern.FindAllSubmatchIndex(text, -1) {
 			at, written := m[2*spec], string(text[m[2*spec]:m[2*spec+1]])
-			st := statement{line: 1 + bytes.Count(text[:at], []byte("\n"))}
+			st := statement{line: 1 + bytes.Count(text[:at], []byte("\n")), at: at}
 			targets := []string{written}
 			if imports.Grouped {
 				targets = grouped(written)
@@ -176,12 +185,20 @@ func scan(imports conventions.Imports, text []byte) reading {
 	return r
 }
 
+// within is the name a module in braces gives the place inside it: its path attribute, else its name.
+func (m span) within() string {
+	if m.pathed {
+		return m.folder
+	}
+	return m.name
+}
+
 // modulesAt are the names of the module spans that hold an offset, the outermost first.
 func modulesAt(modules []span, at int) []string {
 	var names []string
 	for _, m := range modules {
 		if m.start < at && at <= m.end {
-			names = append(names, m.name)
+			names = append(names, m.within())
 		}
 	}
 	return names

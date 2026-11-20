@@ -135,7 +135,7 @@ func languageCases() map[string]languageCase {
 		"swift":  swiftCase(),
 		"rust": {
 			// A library root that stays on every side: its crate's name leads from any file to a module by its path.
-			setup:    map[string]string{"Cargo.toml": "[package]\nname = \"app\"\n", "src/lib.rs": ""},
+			setup:    map[string]string{"Cargo.toml": "[package]\nname = \"app\"\nedition = \"2021\"\n", "src/lib.rs": ""},
 			product:  func(name string) string { return "src/" + name + ".rs" },
 			placed:   func(folder, name string) string { return "src/" + folder + "/" + name + ".rs" },
 			under:    "src",
@@ -148,7 +148,7 @@ func languageCases() map[string]languageCase {
 				var lines []string
 				for _, target := range targets {
 					module := strings.TrimSuffix(strings.TrimPrefix(target, "src/"), ".rs")
-					lines = append(lines, "use app::"+strings.ReplaceAll(module, "/", "::")+"::Item;")
+					lines = append(lines, "use app::"+strings.ReplaceAll(module, "/", "::")+";")
 				}
 				for _, spec := range specs {
 					lines = append(lines, "use "+spec+";")

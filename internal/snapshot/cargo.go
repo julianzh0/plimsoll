@@ -1,74 +1,209 @@
 package snapshot
 
 import (
+	"cmp"
 	"path"
 	"slices"
 	"strings"
 )
 
-// cargoCrates reads what Rust's own imports name. Every tracked Cargo.toml with a package name names a crate: the
-// name of its [lib] table, else the package name with "-" as "_"; the crate is own when src/lib.rs beside it is
-// tracked, its library root. The mod lines of the language's files make the module tree. mod lines and crate, self
-// and super paths are followed without any manifest; a path that starts with an own crate's name needs one.
-// NOTE: a file that no mod line declares is read as a crate root: one declared by a macro's output or under a path
-// attribute, whose mod line is looked for under the module's name. Upgrade: read the attribute's file name.
-// NOTE: a path whose first module is no file names the file it starts from, also when the module does not exist, so
-// a deleted module that is still imported is not "not found". Upgrade: none without a parser.
-// NOTE: a library root named by [lib] path, and a dependency under another name (package = "..."), are not read:
-// such paths count as outside. Upgrade: read both keys.
-// NOTE: in the 2015 edition "use a::B;" means crate::a::B; it counts as outside. Upgrade: read edition.
-// NOTE: for a crate root under another name, "mod x;" is looked for in the folder of that name first: with
-// src/bin/tool/x.rs beside src/bin/x.rs the first is taken, where the compiler takes the second. Upgrade: read the
-// targets of the manifest.
+// cargoCrates reads what Rust's own imports name. Every tracked Cargo.toml with a package name is a package: a file
+// belongs to the nearest one at or above it. A package's crate roots are its manifest's targets and the ones Cargo
+// discovers; its library root is [lib] path, else src/lib.rs. In a package, a dependency with a path to a tracked
+// crate is that crate, under the name code uses for it; any other first name is outside, except in the 2015 edition,
+// where it is read from the crate root. The mod lines of the language's files, a path attribute on one included, make
+// the module tree; a path is followed along it, and is "not found" where a file read whole binds no such name.
 func cargoCrates(manifest string, content map[string][]byte, tracked map[string]bool, readings map[string]reading) prefix {
-	m := rustModules{tracked: tracked, crates: map[string][]string{}, parents: map[string][]string{}, declared: map[declaration]bool{}}
-	state := PrefixAbsent
+	documents := map[string]map[string]any{} // a manifest's folder to its document; a file that is no TOML is none
 	for file := range tracked {
-		if path.Base(file) != manifest || content[file] == nil {
-			continue
+		if path.Base(file) == manifest && content[file] != nil {
+			if document, err := decodeTOML(content[file]); err == nil {
+				documents[path.Dir(file)] = document
+			}
 		}
-		document, _ := decodeTOML(content[file]) // a file that is no TOML names no crate
-		name := tomlText(document, "package", "name")
-		if name == "" {
-			continue
+	}
+	m := rustModules{
+		tracked: tracked, readings: readings, packages: map[string]*rustPackage{}, roots: map[string]bool{},
+		parents: map[string][]modPlace{}, declared: map[declaration]bool{}, modPaths: map[declaration]string{},
+		exported: map[string]bool{},
+	}
+	state := PrefixAbsent
+	for folder, document := range documents {
+		if tomlText(document, "package", "name") != "" {
+			state = PrefixRead
+			m.packages[folder] = newRustPackage(folder, document, documents, tracked, m.roots)
 		}
-		state = PrefixRead
-		if lib := tomlText(document, "lib", "name"); lib != "" {
-			name = lib
-		} else {
-			name = strings.ReplaceAll(name, "-", "_")
+	}
+	for _, p := range m.packages {
+		p.deps = m.dependencies(documents[p.folder], p.folder, documents)
+	}
+	for file := range tracked {
+		if p := m.packageOf(file); p != nil && strings.HasSuffix(file, ".rs") && p.discovers(strings.TrimPrefix(file, p.folder+"/")) {
+			m.roots[file] = true
 		}
-		if root := path.Join(path.Dir(file), "src/lib.rs"); tracked[root] {
-			m.crates[name] = append(m.crates[name], root)
+	}
+	for file, r := range readings {
+		for _, name := range r.exports {
+			m.exported[name] = true
+		}
+		for _, st := range r.statements {
+			if name, isMod := modName(st.spec); isMod {
+				at := declaredAt(file, st.within, name)
+				m.declared[at] = true
+				if st.modPath != "" {
+					m.modPaths[at] = st.modPath
+				}
+			}
 		}
 	}
 	for file, r := range readings {
 		for _, st := range r.statements {
-			name, isMod := modName(st.spec)
-			if !isMod {
-				continue
-			}
-			m.declared[declaredAt(file, st.within, name)] = true
-			if found := m.child(file, st.within, name); len(found) == 1 && found[0] != file {
-				m.parents[found[0]] = appendNew(m.parents[found[0]], file)
+			if name, isMod := modName(st.spec); isMod {
+				if found := m.child(file, st.within, name); len(found) == 1 && found[0] != file {
+					m.parents[found[0]] = append(m.parents[found[0]], modPlace{file, st.within})
+				}
 			}
 		}
 	}
-	for _, files := range m.crates {
-		slices.Sort(files)
-	}
-	for _, files := range m.parents {
-		slices.Sort(files)
+	for _, places := range m.parents {
+		slices.SortFunc(places, func(a, b modPlace) int { return cmp.Compare(a.file, b.file) })
 	}
 	return prefix{state: state, own: m.resolve}
+}
+
+// rustPackage is one tracked Cargo.toml with a package name.
+type rustPackage struct {
+	folder      string
+	lib         string // its library root, when tracked
+	libName     string // the name code uses for its library
+	edition2015 bool   // stated, absent, or inherited as such
+	deps        map[string]string
+	auto        map[string]bool // the target folders Cargo discovers roots in: src/bin, examples, tests, benches
+}
+
+// newRustPackage reads a package's manifest: its library, its edition and its targets, which it adds to roots.
+func newRustPackage(folder string, document map[string]any, documents map[string]map[string]any, tracked map[string]bool, roots map[string]bool) *rustPackage {
+	p := &rustPackage{folder: folder, auto: map[string]bool{}}
+	p.libName = cmp.Or(tomlText(document, "lib", "name"), strings.ReplaceAll(tomlText(document, "package", "name"), "-", "_"))
+	add := func(file string) string {
+		if file = path.Join(folder, file); tracked[file] {
+			roots[file] = true
+			return file
+		}
+		return ""
+	}
+	p.lib = add(cmp.Or(tomlText(document, "lib", "path"), "src/lib.rs"))
+	edition := tomlText(document, "package", "edition")
+	if inherits, _ := tomlAt(document, "package", "edition", "workspace"); inherits == true {
+		edition = tomlText(cargoWorkspaceRoot(folder, documents), "workspace", "package", "edition")
+	}
+	p.edition2015 = edition == "" || edition == "2015"
+	for _, kind := range []string{"bin", "example", "test", "bench"} {
+		targets, _ := tomlAt(document, kind)
+		list, _ := targets.([]any)
+		for _, target := range list {
+			if table, isTable := target.(map[string]any); isTable && tomlText(table, "path") != "" {
+				add(tomlText(table, "path"))
+			}
+		}
+	}
+	add(cmp.Or(tomlText(document, "package", "build"), "build.rs"))
+	for folder, key := range map[string]string{"src/bin": "autobins", "examples": "autoexamples", "tests": "autotests", "benches": "autobenches"} {
+		value, stated := tomlAt(document, "package", key)
+		p.auto[folder] = !stated || value != false
+	}
+	return p
+}
+
+// discovers says whether Cargo takes a file, by its path in the package, as a crate root of its own: src/main.rs,
+// and x.rs or x/main.rs under src/bin, examples, tests and benches, unless the manifest turns that off.
+func (p *rustPackage) discovers(file string) bool {
+	parts := strings.Split(file, "/")
+	if file == "src/main.rs" {
+		return p.auto["src/bin"]
+	}
+	if len(parts) > 2 && parts[0] == "src" && parts[1] == "bin" {
+		parts = append([]string{"src/bin"}, parts[2:]...)
+	}
+	return p.auto[parts[0]] && (len(parts) == 2 || len(parts) == 3 && parts[2] == "main.rs")
+}
+
+// cargoWorkspaceRoot is the document of the nearest manifest at or above a folder with a [workspace] table; nil for
+// none.
+func cargoWorkspaceRoot(folder string, documents map[string]map[string]any) map[string]any {
+	for f := range foldersUp(folder) {
+		if document := documents[f]; document["workspace"] != nil {
+			return document
+		}
+	}
+	return nil
+}
+
+// dependencies are a package's dependencies with a path to a tracked crate, by the name code uses for each: the key
+// with "-" as "_" when it is renamed (package = "..."), else the crate's library name. An entry with workspace = true
+// takes its path from the workspace's entry. Every dependency table counts: build, dev and target ones too.
+func (m rustModules) dependencies(document map[string]any, folder string, documents map[string]map[string]any) map[string]string {
+	tables := []map[string]any{}
+	for _, kind := range []string{"dependencies", "dev-dependencies", "build-dependencies"} {
+		tables = append(tables, tomlTableAt(document, kind))
+		for _, target := range tomlTableAt(document, "target") {
+			if platform, isTable := target.(map[string]any); isTable {
+				tables = append(tables, tomlTableAt(platform, kind))
+			}
+		}
+	}
+	workspace := cargoWorkspaceRoot(folder, documents)
+	found := map[string]string{}
+	for _, table := range tables {
+		for key := range table {
+			from, entry := folder, tomlTableAt(table, key)
+			if inherits, _ := tomlAt(entry, "workspace"); inherits == true && workspace != nil {
+				from, entry = workspaceFolder(folder, documents), tomlTableAt(workspace, "workspace", "dependencies", key)
+			}
+			dependency := tomlText(entry, "path")
+			if dependency == "" {
+				continue
+			}
+			crate := m.packages[path.Join(from, dependency)]
+			if crate == nil || crate.lib == "" {
+				continue
+			}
+			name := crate.libName
+			if tomlText(table, key, "package") != "" || tomlText(entry, "package") != "" {
+				name = strings.ReplaceAll(key, "-", "_")
+			}
+			found[name] = crate.lib
+		}
+	}
+	return found
+}
+
+// workspaceFolder is the folder of the nearest manifest at or above a folder with a [workspace] table.
+func workspaceFolder(folder string, documents map[string]map[string]any) string {
+	for f := range foldersUp(folder) {
+		if documents[f]["workspace"] != nil {
+			return f
+		}
+	}
+	return folder
 }
 
 // rustModules is one side's module tree, read from the mod lines of its Rust files.
 type rustModules struct {
 	tracked  map[string]bool
-	crates   map[string][]string  // an own crate's name to its library roots, sorted
-	parents  map[string][]string  // a module file to the files whose mod line names it alone, sorted
-	declared map[declaration]bool // every mod line
+	readings map[string]reading
+	packages map[string]*rustPackage // by folder
+	roots    map[string]bool         // every crate root a manifest names or Cargo discovers
+	parents  map[string][]modPlace   // a module file to the places whose mod line names it alone, by file
+	declared map[declaration]bool    // every mod line
+	modPaths map[declaration]string  // the file a path attribute names for a mod line
+	exported map[string]bool         // the macros a crate exports at its root
+}
+
+// modPlace is a place in a file where modules are declared: the file and the inline modules around it.
+type modPlace struct {
+	file   string
+	within []string
 }
 
 // declaration is a mod line: its file, the inline modules it stands in joined by "/", and the module it declares.
@@ -80,7 +215,7 @@ func modName(spec string) (string, bool) {
 	if len(words) != 2 || words[0] != "mod" {
 		return "", false
 	}
-	return words[1], true
+	return strings.TrimPrefix(words[1], "r#"), true
 }
 
 // declaresModule says whether a statement declares a module in its own file (a mod line, also one read from a macro
@@ -95,6 +230,19 @@ func declaredAt(file string, within []string, name string) declaration {
 	return declaration{file, strings.Join(within, "/"), name}
 }
 
+// packageOf is the package a file belongs to: the nearest one at or above it.
+func (m rustModules) packageOf(file string) *rustPackage {
+	for folder := range foldersUp(path.Dir(file)) {
+		if p := m.packages[folder]; p != nil {
+			return p
+		}
+	}
+	return nil
+}
+
+// builtinCrates are the crates every Rust crate can name without a manifest entry.
+func builtinCrates() []string { return []string{"std", "core", "alloc", "proc_macro", "test"} }
+
 // resolve gives the tracked files an import names: nil for outside, and for "not found" one path that is not tracked.
 func (m rustModules) resolve(from, spec string, within []string) ([]string, bool) {
 	if name, isMod := modName(spec); isMod {
@@ -107,76 +255,198 @@ func (m rustModules) resolve(from, spec string, within []string) ([]string, bool
 	if len(written) == 0 {
 		return nil, false
 	}
+	if written[0] == "crate" && len(written) == 2 { // extern crate
+		written = []string{written[1]}
+	}
 	names := slices.DeleteFunc(strings.Split(strings.TrimPrefix(written[0], "::"), "::"), func(n string) bool { return n == "" })
+	for i, n := range names { // a raw identifier names the module of its word
+		names[i] = strings.TrimPrefix(n, "r#")
+	}
 	for len(names) > 1 && (names[len(names)-1] == "*" || names[len(names)-1] == "self") {
 		names = names[:len(names)-1]
 	}
 	if len(names) == 0 {
 		return nil, false
 	}
-	var roots []string
-	switch first := names[0]; {
+	first, p := names[0], m.packageOf(from)
+	switch {
 	case first == "crate":
-		roots = m.roots(from)
+		return m.fromRoots(m.rootsOf(from), names[1:]), false
 	case first == "self" || first == "super" || m.declared[declaredAt(from, within, first)]:
 		return m.relative(from, names, within), false
-	default:
-		roots = m.crates[first]
+	case p == nil:
+		return nil, false
+	case p.deps[first] != "":
+		return m.follow(modPlace{file: p.deps[first]}, names[1:]), false
+	case first == p.libName && p.lib != "":
+		return m.follow(modPlace{file: p.lib}, names[1:]), false
+	case p.edition2015 && !slices.Contains(builtinCrates(), first) && !m.externCrate(from, first):
+		return m.fromRoots(m.rootsOf(from), names), false
 	}
+	return nil, false
+}
+
+// externCrate says whether an extern crate line of a file or of its crate roots names a crate.
+func (m rustModules) externCrate(from, name string) bool {
+	for _, file := range append([]string{from}, m.rootsOf(from)...) {
+		for _, st := range m.readings[file].statements {
+			if words := strings.Fields(st.spec); len(words) == 2 && words[0] == "crate" && words[1] == name {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// fromRoots follows a path from each crate root.
+func (m rustModules) fromRoots(roots, names []string) []string {
 	var found []string
 	for _, root := range roots {
-		found = appendNew(found, m.longest([]string{path.Dir(root)}, names[1:], []string{root})...)
+		found = appendNew(found, m.follow(modPlace{file: root}, names)...)
 	}
-	return found, false
+	return found
 }
 
 // relative resolves a path from the statement's place: self, super, or a module that a mod line there declares. Each
-// super first leaves the last inline module, then goes one module up, to the files that declare the importing file.
+// super leaves the last inline module, or goes to the places that declare the file; past a crate root it is not
+// found.
 func (m rustModules) relative(from string, names, within []string) []string {
 	rest := names
 	if rest[0] == "self" {
 		rest = rest[1:]
 	}
-	ups := 0
+	places := []modPlace{{from, within}}
 	for len(rest) > 0 && rest[0] == "super" {
-		rest, ups = rest[1:], ups+1
-	}
-	inside := min(ups, len(within))
-	within, ups = within[:len(within)-inside], ups-inside
-	if ups == 0 {
-		return m.longest(m.folders(from, within), rest, []string{from})
-	}
-	pastRoot := []string{path.Join(path.Dir(from), "super")}
-	base, owners := path.Base(from), m.parents[from]
-	if base == "lib.rs" || base == "main.rs" || len(owners) == 0 {
-		return pastRoot
-	}
-	folder := path.Dir(from)
-	if base == "mod.rs" {
-		folder = path.Dir(folder)
-	}
-	for range ups - 1 {
-		var above []string
-		for _, owner := range owners {
-			above = appendNew(above, m.parents[owner]...)
+		rest = rest[1:]
+		var up []modPlace
+		for _, place := range places {
+			switch {
+			case len(place.within) > 0:
+				up = append(up, modPlace{place.file, place.within[:len(place.within)-1]})
+			case len(m.parents[place.file]) > 0 && !m.isRoot(place.file):
+				up = append(up, m.parents[place.file]...)
+			}
 		}
-		slices.Sort(above)
-		owners, folder = above, path.Dir(folder)
+		if len(up) == 0 {
+			return []string{path.Join(path.Dir(from), "super")}
+		}
+		places = up
 	}
-	if len(owners) == 0 {
-		return pastRoot
+	var found []string
+	for _, place := range places {
+		found = appendNew(found, m.follow(place, rest)...)
 	}
-	return m.longest([]string{folder}, rest, owners)
+	return found
 }
 
-// folders are the folders of a place, where its submodules lie: the file's module folders, each with the inline
-// modules added. A lib.rs, main.rs or mod.rs holds its submodules in its own folder; any other x.rs in x/ first and
-// in its own folder second.
+// follow resolves a path's names from a module place, along the module tree: an inline module or a mod line there
+// moves on, and so does a module file in the place's folders that no mod line declares (one a macro may, or a
+// folder without a module file of its own); at the
+// first name that is none of these, the path names the place's file, or is not found (an untracked path) when that
+// file was read whole and binds no such name there. A path that ends at a module names its file.
+func (m rustModules) follow(place modPlace, names []string) []string {
+	for i := 0; i < len(names); i++ {
+		name := names[i]
+		if m.declared[declaredAt(place.file, place.within, name)] {
+			files := m.child(place.file, place.within, name)
+			if len(files) != 1 {
+				if len(files) == 0 {
+					return []string{path.Join(m.folders(place.file, place.within)[0], name+".rs")}
+				}
+				return files
+			}
+			place = modPlace{file: files[0]}
+			continue
+		}
+		if inside, inline := m.readings[place.file].inlines[strings.Join(place.within, "/")][name]; inline {
+			place.within = append(slices.Clone(place.within), inside)
+			continue
+		}
+		if files, k := m.moduleFiles(place, names[i:]); len(files) > 0 {
+			if len(files) > 1 {
+				return files
+			}
+			place, i = modPlace{file: files[0]}, i+k-1
+			continue
+		}
+		if m.unbound(place, name) {
+			return []string{path.Join(m.folders(place.file, place.within)[0], name)}
+		}
+		return []string{place.file}
+	}
+	return []string{place.file}
+}
+
+// moduleFiles are the files of the longest leading run of names that is a module path in the first of a place's
+// folders that holds one, and the length of the run; a folder without a module file of its own is passed through.
+func (m rustModules) moduleFiles(place modPlace, names []string) ([]string, int) {
+	for _, folder := range m.folders(place.file, place.within) {
+		for k := len(names); k > 0; k-- {
+			if found := m.files(path.Join(append([]string{folder}, names[:k]...)...)); len(found) > 0 {
+				return found, k
+			}
+		}
+	}
+	return nil, 0
+}
+
+// unbound says whether a place surely binds no such name: its file was read whole, nothing at the place may bring
+// names in unseen (a glob use, a macro call, an active attribute), and no item, use leaf, extern crate or exported
+// macro has it.
+func (m rustModules) unbound(place modPlace, name string) bool {
+	r, read := m.readings[place.file]
+	key := strings.Join(place.within, "/")
+	if !read || !r.parsed || r.syntaxError || r.opaque[key] || m.exported[name] || slices.Contains(r.bindings[key], name) {
+		return false
+	}
+	for _, st := range r.statements {
+		if strings.Join(st.within, "/") == key && boundBy(st.spec, name) {
+			return false
+		}
+	}
+	return true
+}
+
+// boundBy says whether a statement may bind a name: its alias or last segment, any name for a glob, the crate of an
+// extern crate line, the module of a mod line.
+func boundBy(spec, name string) bool {
+	words := strings.Fields(spec)
+	switch {
+	case len(words) == 0:
+		return false
+	case len(words) >= 3 && words[len(words)-2] == "as":
+		return words[len(words)-1] == name
+	case len(words) == 2 && (words[0] == "mod" || words[0] == "crate"):
+		return words[1] == name
+	}
+	segments := strings.Split(words[0], "::")
+	last := segments[len(segments)-1]
+	if last == "self" && len(segments) > 1 {
+		last = segments[len(segments)-2]
+	}
+	return last == "*" || last == name
+}
+
+// isRoot says whether a file is a crate root: one a manifest names or Cargo discovers, or a lib.rs or main.rs.
+func (m rustModules) isRoot(file string) bool {
+	base := path.Base(file)
+	return m.roots[file] || base == "lib.rs" || base == "main.rs"
+}
+
+// folders are the folders of a place, where its submodules lie, each with the inline modules added: a crate root or a
+// mod.rs holds them in its own folder; any other x.rs in x/. A crate root that is also mounted as a module is followed
+// in both.
 func (m rustModules) folders(file string, within []string) []string {
-	folder := path.Dir(file)
-	own := []string{folder}
-	if base := path.Base(file); base != "lib.rs" && base != "main.rs" && base != "mod.rs" {
-		own = []string{path.Join(folder, strings.TrimSuffix(base, ".rs")), folder}
+	folder, base := path.Dir(file), path.Base(file)
+	sub := path.Join(folder, strings.TrimSuffix(base, ".rs"))
+	own := []string{sub, folder}
+	if base == "mod.rs" {
+		own = []string{folder}
+	} else if m.isRoot(file) {
+		own = []string{folder}
+		if len(m.parents[file]) > 0 {
+			own = append(own, sub)
+		}
 	}
 	for i, f := range own {
 		own[i] = path.Join(append([]string{f}, within...)...)
@@ -195,8 +465,20 @@ func (m rustModules) files(base string) []string {
 	return found
 }
 
-// child are the files a mod line at a place names: x.rs and x/mod.rs in the first of the place's folders that holds one.
+// child are the files a mod line at a place names: the file its path attribute names, beside the declaring file
+// outside inline modules and under their folders inside them; else x.rs and x/mod.rs in the first of the place's
+// folders that holds one.
 func (m rustModules) child(file string, within []string, name string) []string {
+	if named := m.modPaths[declaredAt(file, within, name)]; named != "" {
+		at := path.Join(path.Dir(file), named)
+		if len(within) > 0 {
+			at = path.Join(m.folders(file, within)[0], named)
+		}
+		if m.tracked[at] {
+			return []string{at}
+		}
+		return nil
+	}
 	for _, folder := range m.folders(file, within) {
 		if found := m.files(path.Join(folder, name)); len(found) > 0 {
 			return found
@@ -205,33 +487,20 @@ func (m rustModules) child(file string, within []string, name string) []string {
 	return nil
 }
 
-// longest gives, for the first folder that holds one, the files of the longest leading run of names; when no folder
-// holds a run, the owners: the path names an item of theirs.
-func (m rustModules) longest(folders, names, owners []string) []string {
-	for _, folder := range folders {
-		for k := len(names); k > 0; k-- {
-			if found := m.files(path.Join(append([]string{folder}, names[:k]...)...)); len(found) > 0 {
-				return found
-			}
-		}
-	}
-	return owners
-}
-
-// roots are the crate roots of a file: the files without a parent that its parents lead up to.
-func (m rustModules) roots(file string) []string {
+// rootsOf are the crate roots of a file: the roots and the files without a parent that its parents lead up to.
+func (m rustModules) rootsOf(file string) []string {
 	seen, frontier := map[string]bool{file: true}, []string{file}
 	var roots []string
 	for len(frontier) > 0 {
 		f := frontier[len(frontier)-1]
 		frontier = frontier[:len(frontier)-1]
-		if len(m.parents[f]) == 0 {
+		if len(m.parents[f]) == 0 || m.roots[f] {
 			roots = append(roots, f)
 		}
 		for _, parent := range m.parents[f] {
-			if !seen[parent] {
-				seen[parent] = true
-				frontier = append(frontier, parent)
+			if !seen[parent.file] {
+				seen[parent.file] = true
+				frontier = append(frontier, parent.file)
 			}
 		}
 	}

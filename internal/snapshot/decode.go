@@ -15,18 +15,34 @@ import (
 // since a statement's target is read with the blank captures inside it, which come in later matches.
 func decode(language conventions.Language, result parse.Result, content []byte) reading {
 	var r reading
-	var targets, computed, names, typeBlocks, texts, blanks []parse.Capture
+	var targets, computed, names, typeBlocks, texts, blanks, opaque []parse.Capture
 	var modules, tests []span
+	var moduleNames []int // where each module's name starts
 	var imports []importCapture
+	var binds [][2]parse.Capture // a bound name and its item
+	paths := map[int]string{}    // a module's name start to the file its path attribute names
 	passes := map[parse.Span]bool{}
 	for _, match := range result.Matches {
 		var im importCapture
-		var module, moduleName, test, testEnd parse.Capture
+		var module, moduleName, test, testEnd, bind, bindAt, pathValue, pathOf parse.Capture
 		for _, c := range match {
 			switch c.Name {
-			case "spec", "spec.mod":
+			case "spec", "spec.mod", "spec.extern":
 				im.specs = append(im.specs, c)
 				im.declaration = im.declaration || c.Name == "spec.mod"
+				im.extern = im.extern || c.Name == "spec.extern"
+			case "path":
+				pathValue = c
+			case "path.of":
+				pathOf = c
+			case "bind":
+				bind = c
+			case "bind.at":
+				bindAt = c
+			case "opaque":
+				opaque = append(opaque, c)
+			case "export":
+				r.exports = append(r.exports, string(content[c.Start:c.End]))
 			case "import":
 				im.within = c
 			case "name":
@@ -60,6 +76,13 @@ func decode(language conventions.Language, result parse.Result, content []byte) 
 		}
 		if moduleName.End > 0 {
 			modules = append(modules, span{start: module.Start, end: module.End - 1, name: string(content[moduleName.Start:moduleName.End])})
+			moduleNames = append(moduleNames, moduleName.Start)
+		}
+		if pathOf.End > 0 {
+			paths[pathOf.Start] = unquoted(string(content[pathValue.Start:pathValue.End]))
+		}
+		if bind.End > 0 {
+			binds = append(binds, [2]parse.Capture{bind, bindAt})
 		}
 		if testEnd.End > test.Start {
 			tests = append(tests, span{start: test.Start, end: testEnd.End - 1})
@@ -69,8 +92,24 @@ func decode(language conventions.Language, result parse.Result, content []byte) 
 			targets = append(targets, im.specs[0])
 		}
 	}
+	for i, at := range moduleNames { // a path attribute on a module in braces names the folder of the modules inside
+		modules[i].folder, modules[i].pathed = paths[at], hasPath(paths, at)
+	}
+	for _, md := range modules {
+		place := strings.Join(modulesAt(modules, md.start), "/")
+		if r.inlines == nil {
+			r.inlines = map[string]map[string]string{}
+		}
+		if r.inlines[place] == nil {
+			r.inlines[place] = map[string]string{}
+		}
+		r.inlines[place][md.name] = md.within()
+	}
 	for _, im := range imports {
 		st := im.statement(content, blanks)
+		if im.declaration {
+			st.modPath = paths[im.specs[0].Start]
+		}
 		for _, n := range names {
 			if im.within.Start <= n.Start && n.End <= im.within.End {
 				st.names = append(st.names, string(content[n.Start:n.End]))
@@ -81,7 +120,20 @@ func decode(language conventions.Language, result parse.Result, content []byte) 
 		st.within = modulesAt(modules, at)
 		r.statements = append(r.statements, expanded(language.Imports, st)...)
 	}
-	r.statements = append(r.statements, readTexts(language.Imports, content, texts, blanks, modules)...)
+	for _, b := range binds {
+		place := strings.Join(modulesAt(modules, b[1].Start), "/")
+		if r.bindings == nil {
+			r.bindings = map[string][]string{}
+		}
+		r.bindings[place] = append(r.bindings[place], string(content[b[0].Start:b[0].End]))
+	}
+	for _, o := range opaque {
+		if r.opaque == nil {
+			r.opaque = map[string]bool{}
+		}
+		r.opaque[strings.Join(modulesAt(modules, o.Start), "/")] = true
+	}
+	r.statements = append(r.statements, readTexts(language, content, texts, blanks, modules)...)
 	for _, c := range computed {
 		if !slices.ContainsFunc(targets, func(t parse.Capture) bool { return c.Start <= t.Start && t.End <= c.End }) {
 			r.computed++
@@ -119,13 +171,14 @@ func declared(found []topName, capture, name string) []topName {
 // importCapture is one import match: the @import capture, which holds the statement's @name captures, its target
 // captures, and what the match says of it.
 type importCapture struct {
-	within                            parse.Capture
-	specs                             []parse.Capture
-	declaration, typeOnly, everywhere bool
+	within                                    parse.Capture
+	specs                                     []parse.Capture
+	declaration, extern, typeOnly, everywhere bool
 }
 
 // statement is the import as written, its comments and strings blanked; a target of several captures is joined
-// without spaces, and a declaration keeps the word mod, so it is told from a path.
+// without spaces, and a declaration keeps the word mod and an external crate the word crate, so each is told from a
+// path.
 func (im importCapture) statement(content []byte, blanks []parse.Capture) statement {
 	first, last := im.specs[0], im.specs[len(im.specs)-1]
 	written := string(blanked(content[first.Start:last.End], first.Start, blanks))
@@ -137,10 +190,13 @@ func (im importCapture) statement(content []byte, blanks []parse.Capture) statem
 			return c
 		}, written)
 	}
-	if im.declaration {
+	switch {
+	case im.declaration:
 		written = "mod " + written
+	case im.extern:
+		written = "crate " + written
 	}
-	return statement{spec: unquoted(written), line: first.Line, typeOnly: im.typeOnly, everywhere: im.everywhere}
+	return statement{spec: unquoted(written), line: first.Line, at: first.Start, typeOnly: im.typeOnly, everywhere: im.everywhere}
 }
 
 // expanded is one statement per target: a grouped target ("a::{b, c}") names each of its paths.
@@ -157,11 +213,9 @@ func expanded(imports conventions.Imports, st statement) []statement {
 }
 
 // readTexts reads the stretches the grammar keeps as tokens (macro bodies) by the entry's text forms, the rest of the
-// file and every comment and string blanked, so offsets and lines stay the file's.
-//
-// NOTE: the text forms see a macro body as flat text: a module written in braces inside one is not seen, and a
-// statement's modules are those around the line it starts on. Upgrade path: parse a body that holds items as items.
-func readTexts(imports conventions.Imports, content []byte, texts, blanks []parse.Capture, modules []span) []statement {
+// file and every comment and string blanked, so offsets and lines stay the file's. A module in braces inside a body,
+// found by the token scanner, holds the statements inside it, placed by their position.
+func readTexts(language conventions.Language, content []byte, texts, blanks []parse.Capture, modules []span) []statement {
 	if len(texts) == 0 {
 		return nil
 	}
@@ -169,9 +223,42 @@ func readTexts(imports conventions.Imports, content []byte, texts, blanks []pars
 	for _, t := range texts {
 		copy(b[t.Start:t.End], blanked(content[t.Start:t.End], t.Start, blanks))
 	}
-	found := scan(imports, b).statements
+	inBodies := slices.Clone(modules)
+	for _, t := range texts {
+		inBodies = append(inBodies, bracedModules(language.Tokens, b, t.Start, t.End)...)
+	}
+	found := scan(language.Imports, b).statements
 	for i, st := range found {
-		found[i].within = modulesAt(modules, lineStart(content, st.line))
+		found[i].within = modulesAt(inBodies, st.at)
+	}
+	return found
+}
+
+// bracedModules are the modules written as "mod name { … }" in a stretch of text, by its tokens: each from the word
+// mod to its closing brace, or the stretch's end when none closes it.
+func bracedModules(tokens conventions.Tokens, text []byte, start, end int) []span {
+	var toks []token
+	for t := range eachToken(tokens, text[start:end], 1) {
+		toks = append(toks, t)
+	}
+	word := func(i int) string { return string(text[start+toks[i].start : start+toks[i].end]) }
+	var found []span
+	for i := 0; i+2 < len(toks); i++ {
+		if !toks[i].identifier || word(i) != "mod" || !toks[i+1].identifier || word(i+2) != "{" {
+			continue
+		}
+		depth, closeAt := 0, end-1
+		for j := i + 2; j < len(toks); j++ {
+			if w := word(j); w == "{" {
+				depth++
+			} else if w == "}" {
+				if depth--; depth == 0 {
+					closeAt = start + toks[j].start
+					break
+				}
+			}
+		}
+		found = append(found, span{start: start + toks[i].start, end: closeAt, name: word(i + 1)})
 	}
 	return found
 }
@@ -215,19 +302,6 @@ func spanLines(content []byte, spans []span) int {
 	return counted
 }
 
-// lineStart is the offset where a line, from 1, starts.
-func lineStart(content []byte, line int) int {
-	at := 0
-	for l := 1; l < line; l++ {
-		next := bytes.IndexByte(content[at:], '\n')
-		if next < 0 {
-			return at
-		}
-		at += next + 1
-	}
-	return at
-}
-
 // unquoted removes one pair of quotes or backticks around a target.
 func unquoted(s string) string {
 	if len(s) >= 2 && strings.ContainsRune("\"'`", rune(s[0])) && s[len(s)-1] == s[0] {
@@ -259,4 +333,10 @@ func decodeDeclarations(result parse.Result, content []byte, tests []span) []top
 	return slices.DeleteFunc(found, func(d topName) bool {
 		return slices.ContainsFunc(declaredAt[d.name], func(at int) bool { return inSpans(tests, at) })
 	})
+}
+
+// hasPath says whether a module's name start carries a path attribute, an empty one included.
+func hasPath(paths map[int]string, at int) bool {
+	_, found := paths[at]
+	return found
 }

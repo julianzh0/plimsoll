@@ -205,5 +205,5 @@ language, besides:
 | TypeScript, JavaScript | aliases inherited from an extended file; any tsconfig other than the root one; `import()` and `require()` with a computed name |
 | Python | `import_module()` with a computed name |
 | Dart | nothing beyond the common list |
-| Rust | a path written in code without `use`; a module named by a `path` attribute |
+| Rust | a path written in code without `use`; a module or name a macro creates |
 | C, C++ | an include folder only the build knows; an include a macro names; C++ modules |

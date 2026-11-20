@@ -52,6 +52,8 @@ func withoutRawStrings(tokens conventions.Tokens, content []byte) []byte {
 type span struct {
 	start, end int
 	name       string
+	folder     string // a Rust module's path attribute: the folder its modules lie in, for its name, when pathed
+	pathed     bool
 }
 
 // closing is the offset of the bracket that closes the one at open, a parenthesis or a brace, or the text's last

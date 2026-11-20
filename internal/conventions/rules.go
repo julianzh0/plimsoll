@@ -441,7 +441,12 @@ type Language struct {
 	// Query is the tree-sitter query that reads, in one parse, everything the entry takes from a file. Its captures:
 	//   @import   an import statement; the @name captures inside it are the names it imports
 	//   @spec.mod a module declared in its own file: the target is "mod " and the name
+	//   @spec.extern  an external crate: the target is "crate " and the name
+	//   @path, @path.of  the file a path attribute names (quoted) for the module whose name is @path.of
 	//   @module, @module.name  a module a file holds in braces, and its name; a statement inside is resolved from it
+	//   @bind, @bind.at  a name an item binds in the module it stands in, and the item
+	//   @opaque   what may bind names in its module that no item shows (a macro call, an active attribute)
+	//   @export   a macro the crate exports at its root
 	//   @test, @test.end  test code inside a product file, from the start of the first to the end of the second
 	//   @text     a stretch the grammar keeps as tokens (a macro body): the entry's text forms read it
 	//   @blank    a comment or a string, blanked inside a target and inside @text

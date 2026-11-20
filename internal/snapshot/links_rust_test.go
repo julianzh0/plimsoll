@@ -1,6 +1,7 @@
 package snapshot_test
 
 import (
+	"maps"
 	"reflect"
 	"slices"
 	"strings"
@@ -27,12 +28,12 @@ func TestBuildListsRustFilesThatOnlyPassImportsOn(t *testing.T) {
 }
 
 // rustTree holds a library with an inline module, a module in both file forms, a module without a file, a second
-// package whose library has another name, statements inside a string and a nested comment, and an integration test
-// with a module of its own.
+// package whose library has another name, a path dependency on it, statements inside a string and a nested comment,
+// and an integration test with a module of its own.
 func rustTree() map[string]string {
 	return map[string]string{
-		"Cargo.toml":       "[package]\nname = \"app\"\n",
-		"core/Cargo.toml":  "[package]\nname = \"app-core\"\n\n[lib]\nname = \"corelib\"\n",
+		"Cargo.toml":       "[package]\nname = \"app\"\nedition = \"2021\"\n\n[dependencies]\napp-core = { path = \"core\" }\n",
+		"core/Cargo.toml":  "[package]\nname = \"app-core\"\nedition = \"2021\"\n\n[lib]\nname = \"corelib\"\n",
 		"core/src/lib.rs":  "pub mod util;\n",
 		"core/src/util.rs": "pub fn f() {}\n",
 		"src/lib.rs": strings.Join([]string{
@@ -41,14 +42,15 @@ func rustTree() map[string]string {
 			"use {std::fmt, crate::a::{self, sub::{S, T}}};", "extern crate corelib;",
 			"const TEXT: &str = \"", "use crate::gone_in_string;", "\";",
 			"/* a comment", "use crate::gone_in_comment;", "/* nested */", "use crate::gone_after_nested;", "*/",
+			"pub struct Root;",
 		}, "\n") + "\n",
 		"src/a.rs": strings.Join([]string{
 			"pub mod sub;", "use super::Root;", "use super::super::X;", "use self::sub::S;", "use crate::Root;",
-			"#[cfg(test)]", "mod tests {", "    use super::*;", "    use super::super::Root;", "}",
+			"#[cfg(test)]", "mod tests {", "    use super::*;", "    use super::super::Root;", "}", "pub struct A;",
 		}, "\n") + "\n",
-		"src/a/sub.rs": "pub struct S;\n", "src/both.rs": "", "src/both/mod.rs": "", "src/inline/deep.rs": "pub struct D;\n",
-		"tests/it.rs":         "mod common;\nuse app::a::A;\nuse crate::common::helper;\n",
-		"tests/common/mod.rs": "use super::thing;\nuse crate::common;\n",
+		"src/a/sub.rs": "pub struct S;\npub struct T;\n", "src/both.rs": "", "src/both/mod.rs": "", "src/inline/deep.rs": "pub struct D;\n",
+		"tests/it.rs":         "mod common;\nuse app::a::A;\nuse crate::common::helper;\nfn thing() {}\n",
+		"tests/common/mod.rs": "use super::thing;\nuse crate::common;\npub fn helper() {}\n",
 	}
 }
 
@@ -59,7 +61,7 @@ func TestBuildFollowsRustImportsToFiles(t *testing.T) {
 			PrefixFile: "Cargo.toml", Prefix: state,
 			NoRings:    "a crate's modules use each other, and Rust compiles them as one unit",
 			Implicit:   []string{"main.rs", "lib.rs", "build.rs"},
-			NotSeen:    "a path written in code without a `use` line, and a module named by a `path` attribute",
+			NotSeen:    "a path written in code without a `use` line, and a module or name a macro creates",
 			NoImporter: "a parent file that only declares a module (`mod x;`)",
 		}}
 	}
@@ -120,21 +122,18 @@ func TestBuildFollowsRustImportsToFiles(t *testing.T) {
 
 	// A package without a library: its name leads nowhere of its own.
 	check("a binary alone", linksOf(t, map[string]string{
-		"Cargo.toml": "[package]\nname = \"tool\"\n", "src/main.rs": "use tool::x;\nmod cli;\n", "src/cli.rs": "use crate::run;\n",
+		"Cargo.toml": "[package]\nname = \"tool\"\nedition = \"2021\"\n", "src/main.rs": "use tool::x;\nmod cli;\nfn run() {}\n", "src/cli.rs": "use crate::run;\n",
 	}), entry(2, 1, 0, 0, snapshot.PrefixRead), []snapshot.Link{link("src/cli.rs", 1, "src/main.rs"), modLink("src/main.rs", 2, "src/cli.rs")}, nil)
 
-	// A module that two crate roots declare: its crate paths agree, its parent does not. A file of one mod line
-	// only passes imports on.
+	// A module that two crate roots declare: its crate paths agree, its parent does not.
 	check("a module of two tests", linksOf(t, map[string]string{
-		"tests/a.rs": "mod common;\n", "tests/b.rs": "mod common;\n", "tests/common/mod.rs": "use crate::common::x;\nuse super::y;\n",
-	}), entry(3, 0, 1, 0, snapshot.PrefixAbsent), []snapshot.Link{modLink("tests/a.rs", 1, common), modLink("tests/b.rs", 1, common)},
-		[]string{"tests/a.rs", "tests/b.rs"})
+		"tests/a.rs": "mod common;\nfn y() {}\n", "tests/b.rs": "mod common;\nfn y() {}\n", "tests/common/mod.rs": "use crate::common::x;\nuse super::y;\n",
+	}), entry(3, 0, 1, 0, snapshot.PrefixAbsent), []snapshot.Link{modLink("tests/a.rs", 1, common), modLink("tests/b.rs", 1, common)}, nil)
 
 	// A package table without a name names no crate; the links by crate, self and super need none.
 	check("a package without a name", linksOf(t, map[string]string{
-		"Cargo.toml": "[package]\nversion = \"1\"\n", "src/lib.rs": "mod a;\n", "src/a.rs": "use crate::X;\n",
-	}), entry(2, 0, 0, 0, snapshot.PrefixAbsent), []snapshot.Link{link("src/a.rs", 1, "src/lib.rs"), modLink("src/lib.rs", 1, "src/a.rs")},
-		[]string{"src/lib.rs"})
+		"Cargo.toml": "[package]\nversion = \"1\"\n", "src/lib.rs": "mod a;\npub struct X;\n", "src/a.rs": "use crate::X;\n",
+	}), entry(2, 0, 0, 0, snapshot.PrefixAbsent), []snapshot.Link{link("src/a.rs", 1, "src/lib.rs"), modLink("src/lib.rs", 1, "src/a.rs")}, nil)
 
 	// A comment inside a group, holding a comma, is no part of a path; a character of several bytes before a macro
 	// body moves no line.
@@ -161,4 +160,88 @@ func modLink(from string, line int, to string) snapshot.Link {
 	l := link(from, line, to)
 	l.Declares = true
 	return l
+}
+
+// Each row of the Rust reader: crates from their manifests, crate roots from their targets, the 2015 edition, path
+// attributes, modules in macro bodies, and names no file binds.
+func TestBuildFollowsRustCratesAndModules(t *testing.T) {
+	const manifest = "[package]\nname = \"app\"\nedition = \"2021\"\n"
+	store := map[string]string{"store/Cargo.toml": "[package]\nname = \"notes-store\"\nedition = \"2021\"\n", "store/src/lib.rs": "pub fn f() {}\n"}
+	with := func(base map[string]string, files ...string) map[string]string {
+		out := maps.Clone(base)
+		for i := 0; i+1 < len(files); i += 2 {
+			out[files[i]] = files[i+1]
+		}
+		return out
+	}
+	for _, tc := range []struct {
+		name              string
+		files             map[string]string
+		want              []snapshot.Link
+		outside, notFound int
+	}{
+		{"a library root named by [lib] path", map[string]string{
+			"Cargo.toml": manifest + "\n[lib]\npath = \"lib/app.rs\"\n", "lib/app.rs": "pub mod util;\n", "lib/util.rs": "pub fn f() {}\n",
+			"src/main.rs": "use app::util::f;\n",
+		}, []snapshot.Link{modLink("lib/app.rs", 1, "lib/util.rs"), link("src/main.rs", 1, "lib/util.rs")}, 0, 0},
+		{"a renamed path dependency, by its key", with(store,
+			"Cargo.toml", manifest+"\n[dependencies]\nstore = { path = \"store\", package = \"notes-store\" }\n",
+			"src/lib.rs", "use store::f;\nuse notes_store::f;\n"),
+			[]snapshot.Link{link("src/lib.rs", 1, "store/src/lib.rs")}, 1, 0},
+		{"a dependency without a path, beside a local crate of its name", with(store,
+			"Cargo.toml", manifest+"\n[dependencies]\nnotes-store = \"1\"\n", "src/lib.rs", "use notes_store::f;\n"),
+			nil, 1, 0},
+		{"a path from the workspace's entry", with(store,
+			"Cargo.toml", "[workspace]\nmembers = [\"app\", \"store\"]\n\n[workspace.dependencies]\nnotes-store = { path = \"store\" }\n",
+			"app/Cargo.toml", manifest+"\n[dev-dependencies]\nnotes-store = { workspace = true }\n", "app/src/lib.rs", "use notes_store::f;\n"),
+			[]snapshot.Link{link("app/src/lib.rs", 1, "store/src/lib.rs")}, 0, 0},
+		{"the 2015 edition reads a first name from the crate root", map[string]string{
+			"Cargo.toml": "[package]\nname = \"app\"\n", "src/lib.rs": "mod a;\nmod b;\n", "src/a.rs": "use b::B;\nuse std::io;\n",
+			"src/b.rs": "pub struct B;\n",
+		}, []snapshot.Link{link("src/a.rs", 1, "src/b.rs"), modLink("src/lib.rs", 1, "src/a.rs"), modLink("src/lib.rs", 2, "src/b.rs")}, 1, 0},
+		{"the 2018 edition does not", map[string]string{
+			"Cargo.toml": manifest, "src/lib.rs": "mod a;\nmod b;\n", "src/a.rs": "use b::B;\n", "src/b.rs": "pub struct B;\n",
+		}, []snapshot.Link{modLink("src/lib.rs", 1, "src/a.rs"), modLink("src/lib.rs", 2, "src/b.rs")}, 1, 0},
+		{"a crate root under another name holds its modules in its own folder", map[string]string{
+			"Cargo.toml": manifest, "src/bin/tool.rs": "mod x;\n", "src/bin/x.rs": "", "src/bin/tool/x.rs": "",
+		}, []snapshot.Link{modLink("src/bin/tool.rs", 1, "src/bin/x.rs")}, 0, 0},
+		{"unless the manifest turns discovery off", map[string]string{
+			"Cargo.toml": manifest + "autobins = false\n", "src/bin/tool.rs": "mod x;\n", "src/bin/x.rs": "", "src/bin/tool/x.rs": "",
+		}, []snapshot.Link{modLink("src/bin/tool.rs", 1, "src/bin/tool/x.rs")}, 0, 0},
+		{"a name no file binds is not found", map[string]string{
+			"src/lib.rs": "mod a;\nuse a::Gone;\nuse a::Here;\n", "src/a.rs": "pub struct Here;\n",
+		}, []snapshot.Link{modLink("src/lib.rs", 1, "src/a.rs"), link("src/lib.rs", 3, "src/a.rs")}, 0, 1},
+		{"a glob use, a derive or a macro call may bind it", map[string]string{
+			"src/lib.rs": "mod a;\nmod b;\nmod c;\nuse a::Gone;\nuse b::FooBuilder;\nuse c::Made;\n",
+			"src/a.rs":   "pub use std::*;\n", "src/b.rs": "#[derive(Builder)]\npub struct Foo;\n", "src/c.rs": "make!(Made);\n",
+		}, []snapshot.Link{modLink("src/lib.rs", 1, "src/a.rs"), modLink("src/lib.rs", 2, "src/b.rs"), modLink("src/lib.rs", 3, "src/c.rs"),
+			link("src/lib.rs", 4, "src/a.rs"), link("src/lib.rs", 5, "src/b.rs"), link("src/lib.rs", 6, "src/c.rs")}, 1, 0},
+		{"a path attribute names the module's file", map[string]string{
+			"src/lib.rs": "#[path = \"other/x.rs\"]\nmod y;\nuse y::Z;\n", "src/other/x.rs": "pub struct Z;\n",
+		}, []snapshot.Link{modLink("src/lib.rs", 2, "src/other/x.rs"), link("src/lib.rs", 3, "src/other/x.rs")}, 0, 0},
+		{"a module that mounts itself ends the walk", map[string]string{
+			"src/lib.rs": "mod a;\nuse a::again::again::again::X;\n", "src/a.rs": "#[path = \"a.rs\"]\nmod again;\n",
+		}, []snapshot.Link{modLink("src/lib.rs", 1, "src/a.rs")}, 0, 1},
+		{"a path attribute on a module in braces names its folder", map[string]string{
+			"src/lib.rs": "#[path = \"thing\"]\nmod inner {\n    mod deep;\n}\n", "src/thing/deep.rs": "",
+		}, []snapshot.Link{modLink("src/lib.rs", 3, "src/thing/deep.rs")}, 0, 0},
+		{"an empty path attribute keeps the modules in braces in the file's folder", map[string]string{
+			"src/lib.rs": "mod rules;\nuse rules::lints::dot::Dot;\n", "src/rules/mod.rs": "#[path = \"\"]\nmod lints {\n    pub mod dot;\n}\n",
+			"src/rules/dot.rs": "pub struct Dot;\n",
+		}, []snapshot.Link{modLink("src/lib.rs", 1, "src/rules/mod.rs"), link("src/lib.rs", 2, "src/rules/dot.rs"),
+			modLink("src/rules/mod.rs", 3, "src/rules/dot.rs")}, 0, 0},
+		{"an extern crate alias and a raw identifier", map[string]string{
+			"src/lib.rs":  "pub extern crate alloc as heap;\nmod r#enum;\nuse heap::Vec;\nuse r#enum::E;\nuse crate::heap::Box;\n",
+			"src/enum.rs": "pub enum E {}\n",
+		}, []snapshot.Link{modLink("src/lib.rs", 2, "src/enum.rs"), link("src/lib.rs", 4, "src/enum.rs")}, 2, 0},
+		{"a module in braces inside a macro body", map[string]string{
+			"src/lib.rs": "m! {\n    mod inner {\n        mod deep;\n    }\n}\n", "src/inner/deep.rs": "",
+		}, []snapshot.Link{modLink("src/lib.rs", 3, "src/inner/deep.rs")}, 0, 0},
+	} {
+		got := linksOf(t, tc.files)
+		if !reflect.DeepEqual(got.List, tc.want) || got.Languages[0].Outside != tc.outside || got.Languages[0].NotFound != tc.notFound {
+			t.Errorf("%s: List = %+v, outside %d, not found %d; want %+v, %d, %d", tc.name, got.List, got.Languages[0].Outside,
+				got.Languages[0].NotFound, tc.want, tc.outside, tc.notFound)
+		}
+	}
 }
