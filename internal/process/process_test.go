@@ -306,6 +306,16 @@ func TestAChangeToTheRepositorysOwnFileIsMarked(t *testing.T) {
 		}
 	}
 
+	swapped, swappedFindings := detect(t, snapshottest.Files(files("[tests]\nunit = [\"a/**\"]\ne2e = [\"c/**\"]\n"), files("[tests]\ne2e = [\"c/**\"]\nunit = [\"a/**\"]\n")))
+	for _, mark := range swappedFindings.Marks {
+		if answer.RuleOf(mark.ID) == ruleDeclarationChange {
+			evidence := strings.Join(Detector{}.Explain(swapped, mark), "\n")
+			if !strings.Contains(evidence, "in order at the base: `unit: a/**`, `e2e: c/**`") || !strings.Contains(evidence, "in order now: `e2e: c/**`, `unit: a/**`") {
+				t.Errorf("kinds swapped: evidence %q, want both sides in their order", evidence)
+			}
+		}
+	}
+
 	s, f := detect(t, snapshottest.Files(files(layout("test_folders = [\"old\", \"checks\"]\n")), files(layout("test_folders = [\"checks\", \"e2e\"]\n"))))
 	var m answer.Mark
 	for _, mark := range f.Marks {

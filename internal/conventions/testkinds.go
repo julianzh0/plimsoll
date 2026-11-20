@@ -64,9 +64,6 @@ func NewPathPattern(value string) (PathPattern, bool) {
 			return PathPattern{}, false
 		}
 	}
-	if segments[len(segments)-1] == anyFolders {
-		segments = append(segments, "*")
-	}
 	return PathPattern{text: value, segments: segments}, true
 }
 
