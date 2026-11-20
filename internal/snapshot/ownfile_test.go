@@ -291,6 +291,11 @@ func TestBuildReadsTheTestsTableOfTheOwnFile(t *testing.T) {
 			"[tests]\nbad = [{\nunit = [\"tests/**\"]\nopen = [\"e2e/**\",\n[layout]\n",
 			[]snapshot.TestKind{{Name: "unit", Patterns: []string{"tests/**"}}},
 			[]string{"`[tests]` `bad` is not a list of text", "`[tests]` `open` is not a list of text"}},
+		{"a quoted name after a list left open is the next entry; a string left open ends the list",
+			"[tests]\nbad = [\n\"unit\" = [\"tests/**\"]\nopen = [\"e2e/**\n\"x/**\",\n]\n'e2e' = ['e2e/**']\n",
+			[]snapshot.TestKind{{Name: "unit", Patterns: []string{"tests/**"}}, {Name: "e2e", Patterns: []string{"e2e/**"}}},
+			[]string{"`[tests]` `bad` is not a list of text", "`[tests]` `open` is not a list of text",
+				"`[tests]`: 2 lines are no `name = [\"pattern\", …]` entries; they are not applied"}},
 		{"a string split over lines is no pattern",
 			"[tests]\nunit = [\"tests/\n**\"]\n",
 			nil, []string{"`[tests]` `unit` is not a list of text", "`[tests]`: 1 line is no `name = [\"pattern\", …]` entry; it is not applied"}},
@@ -320,8 +325,12 @@ func TestBuildReadsTheTestsTableOfTheOwnFile(t *testing.T) {
 		fmt.Fprintf(&many, "k%d = [\"a%d/**\", \"b%d/**\"]\n", k, k, k)
 	}
 	capped := snapshot.Build(snapshottest.Files(nil, map[string]string{"src/a.ts": "a\n", ".plimsoll.toml": many.String()}), conventions.Default(), snapshottest.Readings(t))
-	if kinds := capped.TestKinds.Kinds; len(kinds) != 50 || !slices.Equal(capped.OwnFileProblems, []string{"`[tests]`: 2 patterns are beyond the first 100 not used"}) {
-		t.Errorf("102 patterns: %d kinds, problems %q; want 50 kinds and the 2 patterns beyond the cap counted", len(kinds), capped.OwnFileProblems)
+	kinds := capped.TestKinds.Kinds
+	if last := kinds[len(kinds)-1]; len(kinds) != 51 || len(last.Patterns) != 0 || last.Over != 2 || kinds[49].Over != 0 || len(capped.OwnFileProblems) != 0 {
+		t.Errorf("102 patterns: %d kinds, the last %+v, problems %q; want 51 kinds, the last with its 2 patterns over the cap", len(kinds), last, capped.OwnFileProblems)
+	}
+	if pairs := capped.Declarations[0].Now; len(pairs) != 102 {
+		t.Errorf("102 patterns: %d declared pairs, want every pattern declared, the cap only limits matching", len(pairs))
 	}
 
 	ordered := snapshot.Build(snapshottest.Files(

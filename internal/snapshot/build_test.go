@@ -518,10 +518,11 @@ func TestBuildMeasuresEachDeclaredTestKind(t *testing.T) {
 		t.Errorf("a kind owning only an empty test file: %+v, want it to own the file and be taken by none", kind)
 	}
 	partialTable := "[tests]\nunit = [\"tests/unit/**\"]\n"
-	partialBase := map[string]string{"src/a.go": "package a\n", ".plimsoll.toml": partialTable,
+	partialBase := map[string]string{"src/a.go": "package a\n", ".plimsoll.toml": partialTable, "src/lib.rs": "fn a() {}\n",
 		"tests/unit/a_test.go": "package u\n", "tests/unit/c_test.go": "package u\n", "tests/other/b_test.go": "package o\n"}
 	partialNow := maps.Clone(partialBase)
 	partialNow["tests/unit/a_test.go"], partialNow["tests/other/b_test.go"] = "package u\n\n", "package o\n\n"
+	partialNow["src/a.go"], partialNow["src/lib.rs"] = "package a\n\n", "fn a() {}\n\n"
 	lacks := func(lacking ...string) snapshot.TestKinds {
 		source := snapshottest.Lacking(snapshottest.Files(partialBase, partialNow), lacking, []string{"tests/unit/c_test.go"})
 		return snapshot.Build(source, conventions.Default(), snapshottest.Readings(t)).TestKinds
@@ -529,8 +530,19 @@ func TestBuildMeasuresEachDeclaredTestKind(t *testing.T) {
 	if kinds := lacks(); kinds.Kinds[0].BaseMissing || kinds.RemainderBaseMissing {
 		t.Errorf("a partial clone lacking only an older commit's content of an unchanged path: %+v, want every base known", kinds)
 	}
-	if kinds := lacks("tests/unit/a_test.go"); !kinds.Kinds[0].BaseMissing || kinds.RemainderBaseMissing {
-		t.Errorf("the base of a changed path the kind owns is lacking: %+v, want only the kind's base unknown", kinds)
+	if kinds := lacks("tests/unit/a_test.go", "src/a.go"); !kinds.Kinds[0].BaseMissing || kinds.RemainderBaseMissing {
+		t.Errorf("the bases of a changed path the kind owns and of Go product code are lacking: %+v, want only the kind's base unknown", kinds)
+	}
+	gone := map[string]string{"src/a.go": "package a\n", "tests/unit/b_test.go": "package u\n", "tests/legacy/old_test.go": "package l\n",
+		".plimsoll.toml": "[tests]\nunit = [\"tests/legacy/**\", \"tests/unit/**\"]\n"}
+	goneNow := maps.Clone(gone)
+	delete(goneNow, "tests/legacy/old_test.go")
+	lost := snapshot.Build(snapshottest.Lacking(snapshottest.Files(gone, goneNow), []string{"tests/legacy/old_test.go"}, nil), conventions.Default(), snapshottest.Readings(t))
+	if kind := lost.TestKinds.Kinds[0]; !kind.BaseMissing || !slices.Equal(kind.InUse, []string{"tests/legacy/**", "tests/unit/**"}) {
+		t.Errorf("a deleted file whose base content is lacking: %+v, want the base unknown and its pattern in use", kind)
+	}
+	if kinds := lacks("src/lib.rs"); kinds.Kinds[0].BaseMissing || !kinds.RemainderBaseMissing {
+		t.Errorf("the base of a Rust product file, which can hold test code, is lacking: %+v, want the remainder's base unknown", kinds)
 	}
 	if kinds := lacks("tests/other/b_test.go"); kinds.Kinds[0].BaseMissing || !kinds.RemainderBaseMissing {
 		t.Errorf("the base of a changed test path no kind owns is lacking: %+v, want only the remainder's base unknown", kinds)

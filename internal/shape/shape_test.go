@@ -514,7 +514,24 @@ func TestDeclaredTestKindsGetRowsThatAddUpToTheTestLines(t *testing.T) {
 		}
 	}
 	one := detect(t, snapshottest.Files(nil, map[string]string{"src/a.go": "package a\n", "tests/a_test.go": "package a\n",
-		"docs/x.md": "x\n", ".plimsoll.toml": "[tests]\nunit = [\"tests/**\", \"docs/**\"]\nall = [\"src/**\", \"**\"]\n"}), conventions.Default())
+		"docs/x.md": "x\n", ".plimsoll.toml": "[tests]\nunit = [\"tests/**\", \"docs/**\", \"tests/a_test.go\"]\nall = [\"src/**\", \"**\"]\n"}), conventions.Default())
+	if !slices.Contains(one.Notes, "test kinds declared in `.plimsoll.toml` (`[tests]`), in order: `unit`: `tests/**`, `tests/a_test.go`") {
+		t.Errorf("notes %q lack both patterns of unit that match its file", one.Notes)
+	}
+	var many strings.Builder
+	many.WriteString("[tests]\nunit = [\"tests/**\"]\n")
+	for k := range 100 {
+		fmt.Fprintf(&many, "k%d = [\"k%d/**\"]\n", k, k)
+	}
+	capped := detect(t, snapshottest.Files(nil, map[string]string{"src/a.go": "package a\n", "tests/a_test.go": "package a\n", ".plimsoll.toml": many.String()}), conventions.Default())
+	if !slices.Contains(capped.NotAnalysed, "`.plimsoll.toml` `[tests]` `k99`: 1 pattern lies beyond the table's first 100 patterns; it is not used") {
+		t.Errorf("not analysed %q lacks the kind whose pattern lies beyond the cap", capped.NotAnalysed)
+	}
+	unowned := detect(t, snapshottest.Files(nil, map[string]string{"src/a.go": "package a\n", "tests/a_test.go": "package a\n",
+		".plimsoll.toml": "[tests]\nunit = [\"unit/**\"]\n"}), conventions.Default())
+	if remainder, found := statistic(unowned, "test lines of no declared kind", ""); !found || *remainder.Value == 0 {
+		t.Errorf("a table none of whose kinds owns test code: remainder %+v, want every test line in it", remainder)
+	}
 	for _, sentence := range []string{
 		"`.plimsoll.toml` `[tests]` `unit`: `docs/**` matches no test code this kind owns; it is not used",
 		"`.plimsoll.toml` `[tests]` `all`: `src/**` matches 1 product code file; a kind labels test code only, so it is not counted",

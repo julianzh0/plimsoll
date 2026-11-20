@@ -415,6 +415,10 @@ type Language struct {
 	Library *Library
 }
 
+// HoldsTestCode says whether the language's product files can hold test code (its query captures @test), so their
+// lines can count as test lines.
+func (l Language) HoldsTestCode() bool { return strings.Contains(l.Query, "@test") }
+
 // GrammarOf names the grammar that reads a file of the entry, or "" when the entry reads by text.
 func (l Language) GrammarOf(filePath string) string {
 	if grammar, found := l.GrammarBySuffix[Suffix(filePath)]; found {

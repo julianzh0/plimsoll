@@ -29,7 +29,7 @@ func Build(source Source, rules conventions.Rules, readings *Readings) Snapshot 
 	importRules, ruleRecords := importRules(rules, ownNow)
 	layout.Rules = ruleRecords
 	rules = withLayout(rules, layout)
-	rules.TestKinds = ownNow.tests.kinds
+	rules.TestKinds = ownNow.tests.used()
 	rules = withSharedSuffixes(rules, source.Now)
 	limits, declaredLimits := declaredLimits(rules, ownNow, ownBefore)
 	rules.Limits = limits

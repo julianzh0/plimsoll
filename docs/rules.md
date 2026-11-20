@@ -209,8 +209,8 @@ language, besides:
 `[tests]` names the kinds of test code a repository runs or names apart, by its own words, each with its path
 patterns: `integration = ["**/*_integration_test.go", "tests/integration/**"]`. `report` then counts, at the base and
 now, the test lines of each kind that owns a test-code file (an empty one included) and the test lines of no declared
-kind; the rows add up to the test lines. A note names the kinds in order with their patterns in use: each kind's
-patterns that are the first of its patterns to match a file it owns. `status` shows no row, and no kind is a mark.
+kind; the rows add up to the test lines (the row of no declared kind shows whenever a kind has a usable pattern). A
+note names the kinds in order with their patterns in use: each kind's patterns that match a file it owns. `status` shows no row, and no kind is a mark.
 
 - A name is 1 to 200 ASCII letters, digits, `_` and `-`, written bare or quoted. Any other name is counted under
   "not analysed", never printed, and its patterns are not used. A name set twice keeps its first entry.
@@ -222,13 +222,14 @@ patterns that are the first of its patterns to match a file it owns. `status` sh
   `test_files`. A pattern with a leading or trailing `/`, an empty, `.` or `..` segment, `**` inside a longer segment,
   any other character (`[`, `{`, `!`, `\`, a space), or over 200 characters is unusable: counted per kind, never
   matched. A runner's glob is translated, not copied: one pattern per brace alternative. The first 100 usable
-  patterns, in file order, are used; any beyond are counted under "not analysed".
+  patterns of the table, in file order, are matched; any beyond are declared (a change to them is marked) but not
+  matched, and named per kind under "not analysed".
 - A test-code file belongs to the first kind, in the table's order, with a pattern that matches its path; the order of
   one kind's patterns means nothing. A kind labels test code only: whether a file is test code is decided as before,
   by the shared rules, the project's own files and `[layout]`.
 - Now's table applies to both sides. When a partial clone lacks the base content of a changed test file, the row of
-  the kind that owns it (or the row of no declared kind) gives the lines now and leaves the base uncounted; the other
-  rows stay exact.
+  the kind that owns it (or the row of no declared kind, also for a product file of a language whose product files hold
+  test code, such as Rust) gives the lines now and leaves the base uncounted; the other rows stay exact.
 - Under "not analysed": an unusable pattern; a pattern that matches no tracked file (with `<folder>/**` named when it
   is a folder that holds files); a pattern that matches product code, with how many files; a pattern of a kind that
   owns test code but matches none of it; and a kind with usable patterns that owns no test code, with why: its files

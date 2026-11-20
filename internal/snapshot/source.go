@@ -12,7 +12,8 @@ type Source struct {
 	Untracked    int
 	Submodules   []string
 	Unreadable   []string
-	// Missing are the paths whose content a partial clone lacks in some commit; their lines and history are not read.
+	// Missing are the paths whose content a partial clone lacks in some commit, sorted; their lines and history are
+	// not read.
 	Missing []string
 	Before  []Entry // tracked regular files at the base; Content only for wanted, changed paths
 	// BaseOther are the tracked paths at the base that are no regular file (links, submodules): a file at such a path
