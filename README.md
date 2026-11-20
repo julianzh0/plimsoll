@@ -118,6 +118,23 @@ only reads: no network, no telemetry, nothing written into your repository, noth
 on real agent pull requests before it was allowed into the short answer, and marks that failed that test show only
 in the full report. MIT licensed. It works next to your linters and CI, not instead of them. [Guarantees and their tests](docs/guarantees.md).
 
+## What plimsoll does not read
+
+plimsoll reads tracked files and runs nothing but `git`. What only running or configuring your build can tell, it does
+not know:
+
+- **CMake.** Include folders named through variables, a target's own sources, `*.cmake` modules, project functions and
+  other build systems; a sub-project built on its own.
+- **Gradle.** What build scripts and convention plugins add, a catalogue declared in a settings script, and test code
+  shared between modules by script.
+- **Maven.** Profiles, a parent outside the repository, and properties set outside the pom.
+- **MSBuild.** Package references that come through `Choose` or an imported file.
+- **Package.swift.** Anything beyond literal names, paths and dependency lists.
+- **vcpkg.** Dependencies of features that are not default.
+- **Macros.** What a C or C++ macro stands for, and a module or name a Rust macro creates.
+- **tsconfig.** A base configuration that comes from an installed package.
+- **trigger.dev.** Task folders that `dirs` computes in code.
+
 ## Speed
 
 The first question on a repository takes a few seconds; every later one, also after an edit, is much faster
@@ -151,8 +168,8 @@ irm https://raw.githubusercontent.com/julianzh0/plimsoll/main/install.ps1 | iex
 ```
 
 The script does the same and puts `plimsoll.exe` in `%LOCALAPPDATA%\plimsoll`, which it adds to your user PATH
-(`$env:PLIMSOLL_INSTALL_DIR` and `$env:PLIMSOLL_VERSION` work as above). The Windows build is checked by compiling it,
-not by a Windows test run.
+(`$env:PLIMSOLL_INSTALL_DIR` and `$env:PLIMSOLL_VERSION` work as above). Every change runs the unit and integration
+tests on Windows too.
 
 plimsoll is listed in the [official MCP registry](https://registry.modelcontextprotocol.io) as
 `io.github.julianzh0/plimsoll`: clients that install from there get an MCP bundle with the binaries above.

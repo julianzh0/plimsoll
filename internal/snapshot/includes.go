@@ -38,8 +38,8 @@ func cmakeKeyword(argument string) bool {
 // brackets, the tracked files of its path under the include folders: one is the target, several are ambiguous. One
 // in quotes that is found nowhere is the project's own, and not found, when a tracked file ends in its path; any
 // other is outside.
-// NOTE: every file is given every include folder, whatever target a build file names it for. Upgrade: read the
-// targets' sources.
+// Every file is given every include folder, whatever target a build file names it for: which sources a target builds
+// is the build's to decide (README, "What plimsoll does not read").
 func includeFolders(imports conventions.Imports, content map[string][]byte, tracked map[string]bool) prefix {
 	holds := map[string]bool{}      // every folder that holds a tracked file, at any depth
 	byName := map[string][]string{} // a file name to the tracked paths that carry it
@@ -117,8 +117,8 @@ func includeFolders(imports conventions.Imports, content map[string][]byte, trac
 
 // projectFolders are the folders of the nearest and of the farthest prefix file, at or above a folder, that calls
 // project(): the project's own source folder and the top of the build. Both are the repository root when none does.
-// NOTE: a project built on its own from a folder below another is taken for part of the one above. Upgrade: none
-// by text; the build decides.
+// A project built on its own from a folder below another is taken for part of the one above: the build decides that
+// (README, "What plimsoll does not read").
 func projectFolders(projects map[string]bool, folder string) (nearest, farthest string) {
 	nearest, farthest = ".", "."
 	found := false
@@ -140,8 +140,9 @@ func projectFolders(projects map[string]bool, folder string) (nearest, farthest 
 // ${CMAKE_CURRENT_LIST_DIR}, ${PROJECT_SOURCE_DIR} or ${CMAKE_SOURCE_DIR}, also inside $<BUILD_INTERFACE:...>.
 // An argument that holds any other variable or generator expression, an absolute path and a path that leaves the
 // repository name no folder.
-// NOTE: only CMakeLists.txt is read, by text: a folder named through any other variable, in a *.cmake module, by a
-// function of the project or by another build system is not known. Upgrade: follow set(...) of a path.
+// Only CMakeLists.txt is read, by text: a folder named through any other variable, in a *.cmake module, by a function
+// of the project or by another build system is known only to the configured build (README, "What plimsoll does not
+// read").
 func cmakeIncludeFolders(text, here, project, top string) []string {
 	var folders []string
 	raw := []byte(text)
