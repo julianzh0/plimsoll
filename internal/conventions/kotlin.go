@@ -9,9 +9,13 @@ func kotlinLanguage() Language {
 	}
 }
 
-// kotlinQuery reads an import (with its wildcard; an alias is not part of the target).
+// kotlinQuery reads an import (with its wildcard; an alias is not part of the target), and the top-level names a
+// file declares, which an import narrows by.
 const kotlinQuery = `
 (import_header (identifier) @spec (wildcard_import)? @spec) @import
+(source_file [(class_declaration (type_identifier) @bind) (object_declaration (type_identifier) @bind)
+  (function_declaration (simple_identifier) @bind) (property_declaration (variable_declaration (simple_identifier) @bind))
+  (type_alias (type_identifier) @bind)] @bind.at)
 `
 
 // kotlinDeclarations reads the top-level names a file declares, for the list of code a change added that nothing uses: run

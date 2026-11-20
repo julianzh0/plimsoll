@@ -8,19 +8,18 @@ import (
 	"github.com/julianzh0/plimsoll/internal/conventions"
 )
 
-// declaredNamespaces finds the namespaces that the language's tracked files declare: a namespace is all folders
-// whose files declare it, wherever they lie. An import names exactly one namespace. One that no tracked file
-// declares is outside when it only holds declared namespaces; it is the project's own, and not found, when it
-// begins with the name of a tracked project file; else it is outside.
-// NOTE: a folder whose files declare several namespaces is reached whole. Upgrade: reach only the declaring files.
-// NOTE: a namespace declared inside another's block is not read, and a root namespace set in a project file is not
-// used. Upgrade: join a nested name to its enclosing one; read RootNamespace.
+// declaredNamespaces finds the namespaces that the language's tracked files declare: a namespace is the files that
+// declare it, wherever they lie, a block inside another's declaring the joined name, as the grammar reads them; a
+// file the grammar cannot read declares what its namespace lines say. An import names exactly one namespace; an
+// alias (using N = A.B) names A.B when it is declared, else A. One that no tracked file declares is outside when it
+// only holds declared namespaces; it is the project's own, and not found, when it begins with the name of a tracked
+// project file; else it is outside. RootNamespace in a project file names embedded resources, not code: not read.
 // NOTE: a using line under an inactive #if is read: every branch is. Upgrade: evaluate the build's defines.
-func declaredNamespaces(language conventions.Language, content map[string][]byte, tracked map[string]bool) prefix {
+func declaredNamespaces(language conventions.Language, content map[string][]byte, tracked map[string]bool, readings map[string]reading) prefix {
 	imports := language.Imports
 	declared := imports.PackageLine.SubexpIndex("package")
-	folders := map[string][]string{} // a namespace to its folders
-	projects := map[string]string{}  // a project file's name without its suffix to the first such file by path
+	files := map[string][]string{}  // a namespace to the files that declare it
+	projects := map[string]string{} // a project file's name without its suffix to the first such file by path
 	for file := range tracked {
 		if matched, _ := path.Match(imports.Prefix.Projects, path.Base(file)); matched {
 			name := strings.TrimSuffix(path.Base(file), conventions.Suffix(file))
@@ -31,18 +30,25 @@ func declaredNamespaces(language conventions.Language, content map[string][]byte
 		if !slices.Contains(language.Extensions, conventions.Suffix(file)) {
 			continue
 		}
-		for _, m := range imports.PackageLine.FindAllSubmatch(content[file], -1) {
-			name := strings.ReplaceAll(string(m[declared]), "@", "")
-			folders[name] = append(folders[name], path.Dir(file))
+		names := readings[file].namespaces
+		if r, read := readings[file]; !read || !r.parsed || r.syntaxError {
+			names = nil
+			for _, m := range imports.PackageLine.FindAllSubmatch(content[file], -1) {
+				names = append(names, string(m[declared]))
+			}
+		}
+		for _, name := range names {
+			name = strings.ReplaceAll(strings.Join(strings.Fields(name), ""), "@", "")
+			files[name] = append(files[name], file)
 		}
 	}
-	if len(folders) == 0 {
+	if len(files) == 0 {
 		return prefix{state: PrefixAbsent}
 	}
 	parents := map[string]bool{} // every name that holds a declared namespace
-	for name := range folders {
-		slices.Sort(folders[name])
-		folders[name] = slices.Compact(folders[name])
+	for name := range files {
+		slices.Sort(files[name])
+		files[name] = slices.Compact(files[name])
 		for i, r := range name {
 			if r == '.' {
 				parents[name[:i]] = true
@@ -51,7 +57,14 @@ func declaredNamespaces(language conventions.Language, content map[string][]byte
 	}
 	return prefix{state: PrefixRead, own: func(_, spec string, _ []string) ([]string, bool) {
 		name := strings.ReplaceAll(spec, "@", "")
-		if found := folders[name]; len(found) > 0 {
+		if aliased, isAlias := strings.CutPrefix(name, "= "); isAlias {
+			aliased, _, _ = strings.Cut(aliased, "<") // a generic type's arguments
+			name = aliased
+			if found := files[name]; len(found) == 0 && strings.Contains(name, ".") {
+				name = name[:strings.LastIndexByte(name, '.')] // a type: its namespace
+			}
+		}
+		if found := files[name]; len(found) > 0 {
 			return found, false
 		}
 		if parents[name] {

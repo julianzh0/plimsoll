@@ -445,10 +445,8 @@ func TestBuildFollowsJavaAndKotlinImportsToPackages(t *testing.T) {
 		return entry("java", resolved, outside, notFound, "package-info.java", "module-info.java")
 	}
 	notes, notesTest := "src/main/java/com/acme/notes", "src/test/java/com/acme/notes"
-	store := []string{notes + "/store/NoteStore.java", notes + "/store/package-info.java"}
 	tasks, legacy, tasksTest := "src/main/kotlin/com/acme/tasks", "src/main/java/com/acme/tasks/legacy", "src/test/kotlin/com/acme/tasks/data"
 	device := "src/androidTest/kotlin/com/acme/tasks/MainScreenTest.kt"
-	data := []string{tasks + "/data/Loaders.kt", tasks + "/data/TaskRepository.kt"}
 	a, aTest, bTest := "app/src/main/java/com/acme/a/A.java", "app/src/test/java/com/acme/a/ATest.java", "lib/src/test/kotlin/com/acme/b/BTest.kt"
 	demo, mainB := "app/src/demo/kotlin/com/acme/b", "app/src/main/kotlin/com/acme/b"
 	cases := []struct {
@@ -457,28 +455,27 @@ func TestBuildFollowsJavaAndKotlinImportsToPackages(t *testing.T) {
 		languages []snapshot.LanguageImports
 		list      []snapshot.Link
 	}{
-		// App.java reaches the store folder under src/main only; AppTest.java also the one under src/test. The
-		// import of the generated NoteProto resolves and gives no link.
+		// App.java and AppTest.java reach the file of the store package that declares NoteStore: the one under
+		// src/test declares no such class. The import of the generated NoteProto resolves and gives no link.
 		{"the Maven sample", snapshot.Build(snapshottest.Load(t, "testdata/java"), conventions.Default(), snapshottest.Readings(t)).Now.Links,
 			[]snapshot.LanguageImports{java(7, 5, 0)},
 			[]snapshot.Link{
 				folderLink(notes+"/App.java", 3, notes+"/model", notes+"/model/Note.java"),
-				folderLink(notes+"/App.java", 6, notes+"/store", store...),
+				folderLink(notes+"/App.java", 6, notes+"/store", notes+"/store/NoteStore.java"),
 				folderLink(notes+"/store/NoteStore.java", 3, notes+"/model", notes+"/model/Note.java"),
 				folderLink(notes+"/store/NoteStore.java", 4, notes+"/model", notes+"/model/Note.java"),
-				folderLink(notesTest+"/AppTest.java", 5, notes+"/store", store...),
-				folderLink(notesTest+"/AppTest.java", 5, notesTest+"/store", notesTest+"/store/FakeClock.java", notesTest+"/store/NoteStoreTest.java"),
+				folderLink(notesTest+"/AppTest.java", 5, notes+"/store", notes+"/store/NoteStore.java"),
 				folderLink(notesTest+"/store/NoteStoreTest.java", 3, notes+"/model", notes+"/model/Note.java"),
 			}},
-		// Kotlin reaches the Java class and Java the Kotlin one; a top-level function is a member of its package.
+		// Kotlin reaches the Java class and Java the Kotlin one; a top-level function is a member of its package. An
+		// import reaches the file that declares its name.
 		{"the Gradle sample", snapshot.Build(snapshottest.Load(t, "testdata/kotlin"), conventions.Default(), snapshottest.Readings(t)).Now.Links,
 			[]snapshot.LanguageImports{java(1, 0, 0), entry("kotlin", 10, 3, 0)},
 			[]snapshot.Link{
-				folderLink(device, 3, tasks+"/data", data...),
-				folderLink(device, 3, tasksTest, tasksTest+"/TaskRepositoryTest.kt", tasksTest+"/TestTaskDao.kt"),
+				folderLink(device, 3, tasks+"/data", tasks+"/data/TaskRepository.kt"),
 				folderLink(legacy+"/Clock.java", 3, tasks+"/model", tasks+"/model/Task.kt"),
-				folderLink(tasks+"/Main.kt", 3, tasks+"/data", data...),
-				folderLink(tasks+"/Main.kt", 4, tasks+"/data", data...),
+				folderLink(tasks+"/Main.kt", 3, tasks+"/data", tasks+"/data/TaskRepository.kt"),
+				folderLink(tasks+"/Main.kt", 4, tasks+"/data", tasks+"/data/Loaders.kt"),
 				folderLink(tasks+"/Main.kt", 5, legacy, legacy+"/Clock.java"),
 				folderLink(tasks+"/data/Loaders.kt", 3, tasks+"/model", tasks+"/model/Task.kt"),
 				folderLink(tasks+"/data/Loaders.kt", 4, tasks+"/model", tasks+"/model/Task.kt"),
@@ -488,13 +485,13 @@ func TestBuildFollowsJavaAndKotlinImportsToPackages(t *testing.T) {
 				folderLink(tasksTest+"/TestTaskDao.kt", 3, tasks+"/model", tasks+"/model/Task.kt"),
 			}},
 		// A.java: fakes lies under a test source set only (outside), gen.proto is no tracked package (not found),
-		// com.other shares no package (outside). BTest.kt imports its own package and gets no link to itself.
+		// com.other shares no package (outside). BTest.kt imports its own package and gets no link to itself; ATest.java
+		// does not see the tests of the lib module.
 		{"a package in several folders", linksOf(t, jvmTree()),
 			[]snapshot.LanguageImports{java(3, 2, 1), entry("kotlin", 1, 0, 0)},
 			[]snapshot.Link{
 				folderLink(a, 3, demo, demo+"/Demo.kt"), folderLink(a, 3, mainB, mainB+"/B.kt"),
 				folderLink(aTest, 3, demo, demo+"/Demo.kt"), folderLink(aTest, 3, mainB, mainB+"/B.kt"),
-				folderLink(aTest, 3, "lib/src/test/kotlin/com/acme/b", bTest),
 				folderLink(aTest, 4, "app/src/test/java/com/acme/fakes", "app/src/test/java/com/acme/fakes/Fake.java"),
 				folderLink(bTest, 3, demo, demo+"/Demo.kt"), folderLink(bTest, 3, mainB, mainB+"/B.kt"),
 			}},
@@ -664,7 +661,7 @@ func TestBuildFollowsCSharpUsingsToNamespaces(t *testing.T) {
 			[]snapshot.LanguageImports{csharp(6, 5, 1, 1)},
 			[]snapshot.Link{
 				folderLink(invoice, 1, extras, extras+"/More.cs"), folderLink(invoice, 1, core, coreFiles...),
-				folderLink(invoice, 4, core, coreFiles...),
+				folderLink(invoice, 4, core, core+"/Money.cs"),
 				folderLink(invoice, 5, extras, extras+"/More.cs"), folderLink(invoice, 5, core, coreFiles...),
 				folderLink(invoice, 6, extras, extras+"/More.cs"), folderLink(invoice, 6, core, coreFiles...),
 				folderLink(invoiceTests, 2, "src/Acme/Billing", invoice),
@@ -692,6 +689,18 @@ func TestBuildFollowsCSharpUsingsToNamespaces(t *testing.T) {
 	delete(noProject, "src/Acme/Acme.csproj")
 	if got := linksOf(t, noProject); !reflect.DeepEqual(got.Languages, []snapshot.LanguageImports{csharp(6, 6, 1, 0)}) || !reflect.DeepEqual(got.List, want.List) {
 		t.Errorf("without a project file: %+v, want the import of Acme.Grpc outside and the same links", got)
+	}
+	// A block inside another's declares the joined name, also inside a file-scoped namespace; a using reaches the
+	// declaring files; an alias names the namespace when one is declared, else the one before its last name.
+	nested := linksOf(t, map[string]string{
+		"src/Outer.cs": "namespace Acme\n{\n    namespace Store\n    {\n    }\n}\n", "src/Other.cs": "namespace Acme.Web;\n",
+		"src/Scoped.cs": "namespace Acme;\n\nnamespace Jobs\n{\n}\n",
+		"app/App.cs":    "using Acme.Store;\nusing Acme.Jobs;\nusing S = Acme.Store;\nusing T = Acme.Web.Thing;\nusing L = Acme.Web.List<int>;\n",
+	})
+	if want := []snapshot.Link{folderLink("app/App.cs", 1, "src", "src/Outer.cs"), folderLink("app/App.cs", 2, "src", "src/Scoped.cs"),
+		folderLink("app/App.cs", 3, "src", "src/Outer.cs"), folderLink("app/App.cs", 4, "src", "src/Other.cs"),
+		folderLink("app/App.cs", 5, "src", "src/Other.cs")}; !reflect.DeepEqual(nested.List, want) {
+		t.Errorf("nested namespaces and aliases: List = %+v, want %+v", nested.List, want)
 	}
 	bare := linksOf(t, map[string]string{"src/A.cs": "using Acme.B;\n", "src/B.cs": "class B {}\n"})
 	if l := bare.Languages[0]; l.Prefix != snapshot.PrefixAbsent || l.Outside != 1 || len(bare.List) != 0 {
@@ -935,5 +944,50 @@ func TestBuildReadsImportsAroundASyntaxError(t *testing.T) {
 	}
 	if want := []string{"main.go", "pkg/a.py"}; !slices.Equal(s.SyntaxErrors, want) || len(s.Unparsed) != 0 {
 		t.Errorf("Build(an unfinished edit) = syntax errors %q, unparsed %q; want %q and nothing unparsed", s.SyntaxErrors, s.Unparsed, want)
+	}
+}
+
+// A test file sees its own module's tests, another module's test fixtures when its build file asks for them, and
+// another module's tests when its pom depends on their test-jar; an import narrows to the declaring file only when
+// every file of the package's folders was read whole.
+func TestBuildNarrowsJavaImportsByModuleAndName(t *testing.T) {
+	const fixture = "package com.acme.f;\n\npublic class Fixture {}\n"
+	consumer := "package com.acme.c;\n\nimport com.acme.f.Fixture;\n"
+	for _, tc := range []struct {
+		name  string
+		files map[string]string
+		want  []snapshot.Link
+	}{
+		{"test fixtures by project path", map[string]string{
+			"a/build.gradle.kts":    "dependencies { testImplementation(testFixtures(project(\":lib:core\"))) }\n",
+			"lib/core/build.gradle": "", "lib/core/src/testFixtures/java/com/acme/f/Fixture.java": fixture,
+			"lib/core/src/test/java/com/acme/f/Other.java": fixture,
+			"a/src/test/java/com/acme/c/C.java":            consumer,
+		}, []snapshot.Link{folderLink("a/src/test/java/com/acme/c/C.java", 3, "lib/core/src/testFixtures/java/com/acme/f",
+			"lib/core/src/testFixtures/java/com/acme/f/Fixture.java")}},
+		{"test fixtures by accessor", map[string]string{
+			"a/build.gradle.kts":            "dependencies { testImplementation(testFixtures(projects.lib.coreApi)) }\n",
+			"lib/core-api/build.gradle.kts": "", "lib/core-api/src/testFixtures/java/com/acme/f/Fixture.java": fixture,
+			"a/src/test/java/com/acme/c/C.java": consumer,
+		}, []snapshot.Link{folderLink("a/src/test/java/com/acme/c/C.java", 3, "lib/core-api/src/testFixtures/java/com/acme/f",
+			"lib/core-api/src/testFixtures/java/com/acme/f/Fixture.java")}},
+		{"a test-jar", map[string]string{
+			"a/pom.xml": "<project><groupId>com.acme</groupId><artifactId>a</artifactId><dependencies><dependency>" +
+				"<groupId>com.acme</groupId><artifactId>lib</artifactId><type>test-jar</type></dependency></dependencies></project>\n",
+			"lib/pom.xml": "<project><groupId>com.acme</groupId><artifactId>lib</artifactId></project>\n",
+			"lib/src/test/java/com/acme/f/Fixture.java": fixture, "a/src/test/java/com/acme/c/C.java": consumer,
+		}, []snapshot.Link{folderLink("a/src/test/java/com/acme/c/C.java", 3, "lib/src/test/java/com/acme/f", "lib/src/test/java/com/acme/f/Fixture.java")}},
+		{"no such dependency", map[string]string{
+			"lib/src/test/java/com/acme/f/Fixture.java": fixture, "a/src/test/java/com/acme/c/C.java": consumer,
+		}, nil},
+		{"a file of the package that is not read whole keeps the folder", map[string]string{
+			"lib/src/main/java/com/acme/f/Fixture.java": fixture, "lib/src/main/java/com/acme/f/Broken.java": "package com.acme.f;\n\nclass {\n",
+			"a/src/main/java/com/acme/c/C.java": consumer,
+		}, []snapshot.Link{folderLink("a/src/main/java/com/acme/c/C.java", 3, "lib/src/main/java/com/acme/f",
+			"lib/src/main/java/com/acme/f/Broken.java", "lib/src/main/java/com/acme/f/Fixture.java")}},
+	} {
+		if got := linksOf(t, tc.files).List; !reflect.DeepEqual(got, tc.want) {
+			t.Errorf("%s: List = %+v, want %+v", tc.name, got, tc.want)
+		}
 	}
 }

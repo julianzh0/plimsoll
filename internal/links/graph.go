@@ -18,6 +18,8 @@ type graph struct {
 	known map[string]bool            // the code files of the analysed languages
 	byDir map[string]bool            // the code files of languages whose imports name folders
 	runs  map[string]bool            // the code files their language runs without an import of them
+	// reached are the folders an import names: a file of such a package may be used by its peers without one.
+	reached map[string]bool
 }
 
 // graphsOf are the graphs of both sides.
@@ -32,7 +34,7 @@ func graphOf(tree snapshot.Tree, languages []snapshot.LanguageImports) graph {
 	}
 	g := graph{
 		roles: map[string]snapshot.Role{}, from: map[string][]snapshot.Link{}, to: map[string][]snapshot.Link{},
-		known: map[string]bool{}, byDir: map[string]bool{}, runs: map[string]bool{},
+		known: map[string]bool{}, byDir: map[string]bool{}, runs: map[string]bool{}, reached: map[string]bool{},
 	}
 	for _, file := range tree.Files {
 		g.roles[file.Path] = file.Role
@@ -50,6 +52,7 @@ func graphOf(tree snapshot.Tree, languages []snapshot.LanguageImports) graph {
 	}
 	for _, link := range tree.Links.List {
 		if g.known[link.From] {
+			g.reached[link.To] = g.reached[link.To] || link.Folder
 			g.from[link.From] = append(g.from[link.From], link)
 			for _, file := range link.Files {
 				g.to[file] = append(g.to[file], link)

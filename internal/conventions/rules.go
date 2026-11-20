@@ -448,6 +448,10 @@ type Language struct {
 	//   @opaque   what may bind names in its module that no item shows (a macro call, an active attribute)
 	//   @export   a macro the crate exports at its root
 	//   @alias    the name an external crate is given
+	//   @aliasing the statement gives its target a name of its own (C#'s using N = A.B): the target is "= " and the name
+	//   @namespace, @namespace.name  a namespace a file declares in a block, and its name; a block inside another's
+	//             declares the joined name
+	//   @namespace.file  a namespace a file declares for the whole file: every block namespace in it lies inside
 	//   @test, @test.end  test code inside a product file, from the start of the first to the end of the second
 	//   @text     a stretch the grammar keeps as tokens (a macro body): the entry's text forms read it
 	//   @blank    a comment or a string, blanked inside a target and inside @text

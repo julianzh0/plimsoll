@@ -161,6 +161,8 @@ type reading struct {
 	exports  []string
 	// externAliases are the names extern crate lines give their crates.
 	externAliases []string
+	// namespaces are the full names of the namespaces the file declares, when the grammar read it.
+	namespaces []string
 }
 
 // isModLine says whether a statement declares a module in its own file (a mod line, also one read from a macro body).
@@ -338,9 +340,23 @@ func (s side) resolve(language conventions.Language, own prefix, from string, st
 	}
 	if imports.Target == conventions.FolderTarget {
 		var reached []target
+		chosen := map[string][]string{} // a folder to the code files of the entry the prefix chose in it
 		for _, base := range bases {
-			if t, outcome := s.folder(language, base); outcome == resolved {
+			if s.tracked[base] && slices.Contains(language.Extensions, conventions.Suffix(base)) {
+				if _, seen := chosen[path.Dir(base)]; !seen {
+					reached = append(reached, target{to: path.Dir(base), folder: true})
+					chosen[path.Dir(base)] = []string{}
+				}
+				if _, isCode := s.code[base]; isCode { // a generated file resolves the import and gives no link
+					chosen[path.Dir(base)] = append(chosen[path.Dir(base)], base)
+				}
+			} else if t, outcome := s.folder(language, base); outcome == resolved {
 				reached = append(reached, t)
+			}
+		}
+		for i, t := range reached { // a folder the prefix chose files in reaches those files only
+			if files, isChosen := chosen[t.to]; isChosen && t.files == nil {
+				reached[i].files = files
 			}
 		}
 		if len(reached) == 0 {

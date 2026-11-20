@@ -16,7 +16,8 @@ import (
 func decode(language conventions.Language, result parse.Result, content []byte) reading {
 	var r reading
 	var targets, computed, names, typeBlocks, texts, blanks, opaque []parse.Capture
-	var modules, tests []span
+	var modules, tests, namespaces []span
+	var fileNamespace string
 	var moduleNames []int // where each module's name starts
 	var imports []importCapture
 	var binds [][2]parse.Capture // a bound name and its item
@@ -24,7 +25,7 @@ func decode(language conventions.Language, result parse.Result, content []byte) 
 	passes := map[parse.Span]bool{}
 	for _, match := range result.Matches {
 		var im importCapture
-		var module, moduleName, test, testEnd, bind, bindAt, pathValue, pathOf parse.Capture
+		var module, moduleName, test, testEnd, bind, bindAt, pathValue, pathOf, namespace, namespaceName parse.Capture
 		for _, c := range match {
 			switch c.Name {
 			case "spec", "spec.mod", "spec.extern":
@@ -45,6 +46,14 @@ func decode(language conventions.Language, result parse.Result, content []byte) 
 				r.exports = append(r.exports, string(content[c.Start:c.End]))
 			case "alias":
 				r.externAliases = append(r.externAliases, string(content[c.Start:c.End]))
+			case "aliasing":
+				im.aliasing = true
+			case "namespace":
+				namespace = c
+			case "namespace.name":
+				namespaceName = c
+			case "namespace.file":
+				fileNamespace = string(content[c.Start:c.End])
 			case "import":
 				im.within = c
 			case "name":
@@ -81,6 +90,9 @@ func decode(language conventions.Language, result parse.Result, content []byte) 
 			modules = append(modules, span{start: module.Start, end: module.End - 1, name: name, place: name})
 			moduleNames = append(moduleNames, moduleName.Start)
 		}
+		if namespaceName.End > 0 {
+			namespaces = append(namespaces, span{start: namespace.Start, end: namespace.End - 1, name: string(content[namespaceName.Start:namespaceName.End])})
+		}
 		if pathOf.End > 0 {
 			paths[pathOf.Start] = unquoted(string(content[pathValue.Start:pathValue.End]))
 		}
@@ -100,6 +112,7 @@ func decode(language conventions.Language, result parse.Result, content []byte) 
 			modules[i].place = folder
 		}
 	}
+	r.namespaces = declaredNamespacesOf(namespaces, fileNamespace)
 	r.inlines = map[string]map[string]string{}
 	for _, md := range modules {
 		place := strings.Join(modulesAt(modules, md.start), "/")
@@ -181,9 +194,9 @@ func declared(found []topName, capture, name string) []topName {
 // importCapture is one import match: the @import capture, which holds the statement's @name captures, its target
 // captures, and what the match says of it.
 type importCapture struct {
-	within                                    parse.Capture
-	specs                                     []parse.Capture
-	declaration, extern, typeOnly, everywhere bool
+	within                                              parse.Capture
+	specs                                               []parse.Capture
+	declaration, extern, aliasing, typeOnly, everywhere bool
 }
 
 // statement is the import as written, its comments and strings blanked; a target of several captures is joined
@@ -205,6 +218,8 @@ func (im importCapture) statement(content []byte, blanks []parse.Capture) statem
 		written = "mod " + written
 	case im.extern:
 		written = "crate " + written
+	case im.aliasing:
+		written = "= " + written
 	}
 	return statement{spec: unquoted(written), line: first.Line, at: first.Start, typeOnly: im.typeOnly, everywhere: im.everywhere}
 }
@@ -352,4 +367,26 @@ func decodeDeclarations(result parse.Result, content []byte, tests []span) []top
 	return slices.DeleteFunc(found, func(d topName) bool {
 		return slices.ContainsFunc(declaredAt[d.name], func(at int) bool { return inSpans(tests, at) })
 	})
+}
+
+// declaredNamespacesOf are the full names of the namespaces a file declares: a block's name joined to those of the
+// blocks around it and to the file's own namespace; the file's own alone when it has no block.
+func declaredNamespacesOf(blocks []span, fileNamespace string) []string {
+	var found []string
+	if fileNamespace != "" {
+		found = append(found, fileNamespace)
+	}
+	for _, b := range blocks {
+		var names []string
+		if fileNamespace != "" {
+			names = append(names, fileNamespace)
+		}
+		for _, outer := range blocks {
+			if outer.start < b.start && b.end <= outer.end {
+				names = append(names, outer.name)
+			}
+		}
+		found = append(found, strings.Join(append(names, b.name), "."))
+	}
+	return found
 }

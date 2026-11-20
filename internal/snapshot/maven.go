@@ -1,6 +1,7 @@
 package snapshot
 
 import (
+	"cmp"
 	"encoding/xml"
 	"strings"
 )
@@ -9,9 +10,10 @@ import (
 // whether it lists modules, and the dependencies it declares for itself. Managed, plugin and profile dependencies lie
 // on other paths.
 type pomProject struct {
-	XMLName xml.Name
-	GroupID string `xml:"groupId"`
-	Parent  struct {
+	XMLName    xml.Name
+	GroupID    string `xml:"groupId"`
+	ArtifactID string `xml:"artifactId"`
+	Parent     struct {
 		GroupID string `xml:"groupId"`
 	} `xml:"parent"`
 	Properties struct {
@@ -26,6 +28,8 @@ type pomProject struct {
 			GroupID    string `xml:"groupId"`
 			ArtifactID string `xml:"artifactId"`
 			Scope      string `xml:"scope"`
+			Type       string `xml:"type"`
+			Classifier string `xml:"classifier"`
 		} `xml:"dependency"`
 	} `xml:"dependencies"`
 }
@@ -71,4 +75,23 @@ func pomDependencies(content []byte) (names []string, manifest, readable bool) {
 		}
 	}
 	return names, true, true
+}
+
+// pomTestJars reads a pom's own coordinate ("groupId:artifactId", the parent's group when it has none) and the
+// coordinates of the modules whose tests it depends on: a dependency of type test-jar or classifier tests. Nothing
+// when the XML cannot be read.
+func pomTestJars(content []byte) (coordinate string, testJars []string) {
+	var project pomProject
+	if err := xml.Unmarshal(content, &project); err != nil || project.XMLName.Local != "project" {
+		return "", nil
+	}
+	group := cmp.Or(strings.TrimSpace(project.GroupID), strings.TrimSpace(project.Parent.GroupID))
+	if project.Dependencies != nil {
+		for _, d := range project.Dependencies.Dependency {
+			if strings.TrimSpace(d.Type) == "test-jar" || strings.TrimSpace(d.Classifier) == "tests" {
+				testJars = append(testJars, strings.ReplaceAll(strings.TrimSpace(d.GroupID), "${project.groupId}", group)+":"+strings.TrimSpace(d.ArtifactID))
+			}
+		}
+	}
+	return group + ":" + strings.TrimSpace(project.ArtifactID), testJars
 }

@@ -891,3 +891,23 @@ func TestTheRingRuleRunsWhereItsLanguagesLinksAreUsed(t *testing.T) {
 		t.Errorf("the gate beside a checked Go rule: ran %q, want links.never alone", ran)
 	}
 }
+
+// An import that names one class of a package reaches that class's file; a new file beside it may be used by its
+// peers without an import, so it is not listed as one without an importer.
+func TestANewFileOfAnImportedPackageIsNotListedWithoutAnImporter(t *testing.T) {
+	pkg := "src/main/java/com/acme/p/"
+	base := map[string]string{"src/main/java/com/acme/a/A.java": "package com.acme.a;\n"}
+	now := map[string]string{
+		"src/main/java/com/acme/a/A.java": "package com.acme.a;\n\nimport com.acme.p.Used;\n",
+		pkg + "Used.java":                 "package com.acme.p;\n\npublic class Used { Helper h; }\n",
+		pkg + "Helper.java":               "package com.acme.p;\n\nclass Helper {}\n",
+		"src/main/java/com/acme/q/Q.java": "package com.acme.q;\n\nclass Q {}\n",
+	}
+	var listed []string
+	for _, s := range statisticsNamed(detect(t, snapshottest.Files(base, now)), "new product file without an importer") {
+		listed = append(listed, s.Subject)
+	}
+	if !slices.Equal(listed, []string{"src/main/java/com/acme/q/Q.java"}) {
+		t.Errorf("new files without an importer = %q, want only the file of a package no import names", listed)
+	}
+}

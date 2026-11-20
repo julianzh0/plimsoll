@@ -16,17 +16,19 @@ func csharpLanguage() Language {
 	}
 }
 
-// csharpQuery reads using directives: one that names a namespace, and a using static or a using alias, which names a
-// type whose namespace is the part before its last name; global:: is no part of the name, and a global using is
-// written once for every file of its project.
-// NOTE: an alias of a namespace (using N = A.B;) is read as the type B of A. Upgrade: try the whole name first.
+// csharpQuery reads using directives: one that names a namespace, a using static, which names a type whose namespace
+// is the part before its last name, and a using alias, which names a namespace or a type; global:: is no part of the
+// name, and a global using is written once for every file of its project. It reads the namespaces a file declares,
+// block and file-scoped, nested ones included.
 const csharpQuery = `
 ((using_directive "global"? @everywhere !name [(identifier) (qualified_name) (alias_qualified_name)] @spec) @import
   (#not-match? @import "^(global[ \t]+)?using[ \t]+static[ \t]") (#strip-prefix! @spec "global::"))
 ((using_directive "global"? @everywhere "static" (qualified_name qualifier: (_) @spec)) @import
   (#strip-prefix! @spec "global::"))
-((using_directive "global"? @everywhere name: (identifier) (qualified_name qualifier: (_) @spec)) @import
+((using_directive "global"? @everywhere name: (identifier) @aliasing [(identifier) (qualified_name)] @spec) @import
   (#strip-prefix! @spec "global::"))
+(namespace_declaration name: (_) @namespace.name) @namespace
+(file_scoped_namespace_declaration name: (_) @namespace.file)
 `
 
 // dotnetProject is the file-name pattern of a .NET project file: a manifest of dependencies, and a name of the

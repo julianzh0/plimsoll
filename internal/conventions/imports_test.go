@@ -1,6 +1,7 @@
 package conventions
 
 import (
+	"cmp"
 	"slices"
 	"strings"
 	"testing"
@@ -154,9 +155,9 @@ func importCases() map[string]map[string][]string {
 		"csharp": {
 			"using System;\nusing Acme.Billing;\nglobal using Acme.Core;\n": {"Acme.Billing", "Acme.Core:everywhere", "System"},
 			"using static Acme.Billing.Invoice;\nusing Money = Acme.Billing.Money;\nglobal using static Acme.Core.Guard;\n": {
-				"Acme.Billing", "Acme.Billing", "Acme.Core:everywhere",
+				"= Acme.Billing.Money", "Acme.Billing", "Acme.Core:everywhere",
 			},
-			"using global::Autofac;\nusing Map = System.Collections.Generic.Dictionary<string, int>;\n":                               {"Autofac", "System.Collections.Generic"},
+			"using global::Autofac;\nusing Map = System.Collections.Generic.Dictionary<string, int>;\n":                               {"= System.Collections.Generic.Dictionary<string, int>", "Autofac"},
 			"namespace A\n{\n    using B.C;\n}\n":                                                                                     {"B.C"},
 			"        using var scope = factory.CreateScope();\n        using (var x = Open())\n        await using var y = Make();\n": nil,
 			"// using A.B;\nvar s = \"using A.B;\";\nusing static PipelineTests;\nusing P = (int X, int Y);\n":                        nil,
@@ -181,7 +182,9 @@ func targets(t *testing.T, l Language, fileName, text string) []string {
 			switch c.Name {
 			case "spec", "spec.mod", "spec.extern":
 				specs = append(specs, c)
-				prefix = map[string]string{"spec.mod": "mod ", "spec.extern": "crate "}[c.Name]
+				prefix = cmp.Or(map[string]string{"spec.mod": "mod ", "spec.extern": "crate "}[c.Name], prefix)
+			case "aliasing":
+				prefix = "= "
 			case "type":
 				suffix += ":type"
 			case "everywhere":

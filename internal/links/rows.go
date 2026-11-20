@@ -228,11 +228,13 @@ func mostImportsRows(s snapshot.Snapshot, now, before graph) []answer.Statistic 
 	return top(rows)
 }
 
-// newFileRows list each product file new since the base that no link reaches.
+// newFileRows list each product file new since the base that no link reaches; a file of a package an import names is
+// reached, as its peers use it without one.
 func newFileRows(s snapshot.Snapshot, now, before graph) []answer.Statistic {
 	var rows []answer.Statistic
 	for _, file := range now.files {
-		if now.roles[file] != snapshot.Product || now.runs[file] || before.has(s.BasePath(file)) || len(now.to[file]) > 0 {
+		if now.roles[file] != snapshot.Product || now.runs[file] || before.has(s.BasePath(file)) || len(now.to[file]) > 0 ||
+			now.byDir[file] && now.reached[path.Dir(file)] {
 			continue
 		}
 		rows = append(rows, answer.Statistic{

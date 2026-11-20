@@ -13,15 +13,25 @@ func javaLanguage() Language {
 }
 
 // javaQuery reads an import (plain, static or a wildcard, the wildcard part of its target; an import of a module is
-// none of the repository's code).
+// none of the repository's code), and the top-level types a file declares, which an import narrows by.
 const javaQuery = `
 ((import_declaration [(identifier) (scoped_identifier)] @spec (asterisk)? @spec) @import
   (#not-match? @import "^import[ \t]+module[ \t]"))
+(program [(class_declaration name: (identifier) @bind) (interface_declaration name: (identifier) @bind)
+  (enum_declaration name: (identifier) @bind) (record_declaration name: (identifier) @bind)
+  (annotation_type_declaration name: (identifier) @bind)] @bind.at)
 `
 
 // jvmPackage is the package a file declares, its first statement. It stays a pattern: it is also read from generated
 // files, which are not code files and are not parsed.
 var jvmPackage = regexp.MustCompile("(?m)^[ \\t]*package[ \\t]+(?P<package>(?:[A-Za-z_$][\\w$]*|`[^`\\n]+`)(?:\\.(?:[A-Za-z_$][\\w$]*|`[^`\\n]+`))*)")
+
+// JVMTestDependencies are how a Gradle build file asks for another module's test fixtures: by project path
+// (testFixtures(project(":a:b"))) and by type-safe accessor (testFixtures(projects.a.b)).
+func JVMTestDependencies() (byPath, byAccessor *regexp.Regexp) {
+	return regexp.MustCompile(`testFixtures\(\s*project\(\s*["']:([^"']+)["']\s*\)\s*\)`),
+		regexp.MustCompile(`testFixtures\(\s*projects\.([\w.]+)\s*\)`)
+}
 
 // jvmImports is what the Java and Kotlin entries share: also names the other entry's extensions that share their
 // package folders, implicit the files that run without an import of them.
