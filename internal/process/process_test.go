@@ -274,6 +274,21 @@ func TestAChangeToTheRepositorysOwnFileIsMarked(t *testing.T) {
 		{"an import rule loosened", ruleDeclarationChange, "[imports]\nnever = [\"src/domain -> src/adapters\"]\n", "[imports]\nnever = [\"./src/domain/ -> src/web\"]\n",
 			[]string{"This change altered the `never` import rules declared in `.plimsoll.toml`: added `src/domain -> src/web`, removed 1; 1 declared now, 1 at the base."}},
 		{"a reason edited", ruleDeclarationChange, "[acknowledged]\n\"links.cycle:a\" = \"x\"\n", "[acknowledged]\n\"links.cycle:a\" = \"\"\n", nil},
+		{"a pattern added to a kind", ruleDeclarationChange, "[tests]\nunit = [\"**/*_test.go\"]\n", "[tests]\nunit = [\"**/*_test.go\", \"tests/**\"]\n",
+			[]string{"This change altered the test kinds declared in `.plimsoll.toml`: added `unit: tests/**`; 2 declared now, 1 at the base."}},
+		{"a pattern moved between kinds", ruleDeclarationChange, "[tests]\nunit = [\"a/**\", \"b/**\"]\ne2e = [\"c/**\"]\n", "[tests]\nunit = [\"a/**\"]\ne2e = [\"c/**\", \"b/**\"]\n",
+			[]string{"This change altered the test kinds declared in `.plimsoll.toml`: added `e2e: b/**`, removed 1; 3 declared now, 3 at the base."}},
+		{"kinds swapped", ruleDeclarationChange, "[tests]\nunit = [\"a/**\"]\ne2e = [\"c/**\"]\n", "[tests]\ne2e = [\"c/**\"]\nunit = [\"a/**\"]\n",
+			[]string{"This change altered the test kinds and their order declared in `.plimsoll.toml`; 2 declared now, 2 at the base."}},
+		{"a kind appended", ruleDeclarationChange, "[tests]\nunit = [\"a/**\"]\n", "[tests]\nunit = [\"a/**\"]\ne2e = [\"c/**\"]\n",
+			[]string{"This change altered the test kinds declared in `.plimsoll.toml`: added `e2e: c/**`; 2 declared now, 1 at the base."}},
+		{"a kind added before a swap", ruleDeclarationChange, "[tests]\nunit = [\"a/**\"]\ne2e = [\"c/**\"]\n", "[tests]\nsmoke = [\"s/**\"]\ne2e = [\"c/**\"]\nunit = [\"a/**\"]\n",
+			[]string{"This change altered the test kinds and their order declared in `.plimsoll.toml`: added `smoke: s/**`; 3 declared now, 2 at the base."}},
+		{"a kind deleted", ruleDeclarationChange, "[tests]\nunit = [\"a/**\"]\ne2e = [\"c/**\"]\n", "[tests]\nunit = [\"a/**\"]\n",
+			[]string{"This change altered the test kinds declared in `.plimsoll.toml`: removed 1; 1 declared now, 2 at the base."}},
+		{"a kind's patterns reordered", ruleDeclarationChange, "[tests]\nunit = [\"a/**\", \"b/**\"]\n", "[tests]\nunit = [\"b/**\", \"a/**\"]\n", nil},
+		{"the table removed now", ruleDeclarationChange, "[tests]\nunit = [\"a/**\"]\n", "[limits]\nfile_lines = 1500\n",
+			[]string{"This change altered the test kinds declared in `.plimsoll.toml`: removed 1; 0 declared now, 1 at the base."}},
 	}
 	for _, tc := range cases {
 		s, f := detect(t, snapshottest.Files(files(tc.base), files(tc.now)))

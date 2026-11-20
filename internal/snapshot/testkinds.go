@@ -96,8 +96,8 @@ func (t *testsTable) read(table string, lines []string, i int) int {
 	}
 	kind := TestKind{Name: name}
 	for _, item := range items {
-		if formed, usable := conventions.TestKindPatterns.Form(item); usable {
-			kind.Patterns = appendNew(kind.Patterns, formed)
+		if _, usable := conventions.NewPathPattern(item); usable {
+			kind.Patterns = appendNew(kind.Patterns, item)
 		} else {
 			kind.Unusable++
 		}

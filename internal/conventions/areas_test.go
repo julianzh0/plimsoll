@@ -4,7 +4,9 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -86,3 +88,39 @@ func TestEveryKindOfMarkIsInExactlyOneArea(t *testing.T) {
 		}
 	}
 }
+
+// The rules page and the setup page name every mark the code can give, and no other: the setup page links to the
+// definitions instead of restating them, so the three lists are the only thing that could drift.
+func TestDocumentsNameEveryMarkOfTheCode(t *testing.T) {
+	read := func(content []byte, err error) string {
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(content)
+	}
+	tableIDs := func(content string) (ids []string, rows []string) {
+		for line := range strings.Lines(content) {
+			if id := markRow.FindStringSubmatch(line); id != nil {
+				ids, rows = append(ids, id[1]), append(rows, line)
+			}
+		}
+		slices.Sort(ids)
+		return ids, rows
+	}
+	code := ruleKinds(t)
+	slices.Sort(code)
+	rules, _ := tableIDs(read(os.ReadFile("../../docs/rules.md")))
+	setup, rows := tableIDs(read(os.ReadFile("../../docs/agent-setup.md")))
+	if !slices.Equal(rules, code) || !slices.Equal(setup, code) {
+		t.Errorf("mark identifiers: docs/rules.md %q, docs/agent-setup.md %q; want the code's %q on both", rules, setup, code)
+	}
+	for _, row := range rows {
+		cells := strings.Split(row, "|")
+		if len(cells) < 5 || strings.TrimSpace(cells[3]) == "" || strings.ContainsAny(row, "0123456789") {
+			t.Errorf("setup page row %q: want an identifier, what it measures and a suggestion, and no limit number", strings.TrimSpace(row))
+		}
+	}
+}
+
+// markRow is a table row that starts with a mark identifier: "| `detector.rule` …" or "| `detector.rule:<subject>` …".
+var markRow = regexp.MustCompile("^\\| `([a-z]+(?:-[a-z]+)*\\.[a-z]+(?:-[a-z]+)*)[`:]")

@@ -172,8 +172,6 @@ const (
 	PlanningFolderPaths
 	// PlanningFileNames are file-name patterns of planning or review records.
 	PlanningFileNames
-	// TestKindPatterns are path patterns from the repository root of one kind of test code (PathPattern).
-	TestKindPatterns
 )
 
 // OwnValueLength is the longest value an own key may hold: the longest tracked folder path of sixteen repositories is
@@ -233,12 +231,6 @@ func (v OwnValue) Form(value string) (formed string, usable bool) {
 	}
 	if v == BaseName {
 		if !ownBase.MatchString(value) || strings.Contains(value, "..") || strings.HasPrefix(value, "-") {
-			return "", false
-		}
-		return value, true
-	}
-	if v == TestKindPatterns {
-		if _, usable := NewPathPattern(value); !usable {
 			return "", false
 		}
 		return value, true
@@ -308,7 +300,7 @@ func (v OwnValue) Shape() string {
 		return "import rule of the form `folder -> folder` (two different folders from the root, neither inside the other)"
 	case OnlyImportRules:
 		return "import rule of the form `folder -> folder` (two folders from the root)"
-	case TestFolderPaths, TestFileNames, BaseName, IgnoredFolderPaths, IgnoredFileNames, PlanningFolderPaths, PlanningFileNames, TestKindPatterns:
+	case TestFolderPaths, TestFileNames, BaseName, IgnoredFolderPaths, IgnoredFileNames, PlanningFolderPaths, PlanningFileNames:
 	}
 	return ""
 }

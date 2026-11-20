@@ -108,6 +108,9 @@ func tableEvidence(ownFile string, d snapshot.DeclaredValues) []string {
 		fmt.Sprintf("`%s` `[%s]` at the base: %s", ownFile, d.Table, entries(d.Before)),
 		fmt.Sprintf("`%s` `[%s]` now: %s", ownFile, d.Table, entries(d.Now)),
 	}
+	if d.OrderChanged {
+		lines = append(lines, "in order at the base: "+answer.QuotedList(d.Before), "in order now: "+answer.QuotedList(d.Now))
+	}
 	for _, id := range answer.Added(d.Before, d.Now) {
 		lines = append(lines, fmt.Sprintf("added: `%s`", id))
 	}

@@ -176,15 +176,6 @@ func TestOwnValuesAreBroughtToTheirForm(t *testing.T) {
 		{OnlyImportRules, "src/domain -> src/shared", "src/domain -> src/shared"}, {OnlyImportRules, "a -> a", "a -> a"},
 		{OnlyImportRules, "src -> src/legacy", "src -> src/legacy"}, {OnlyImportRules, "a -> .", ""},
 		{OnlyImportRules, "a -> b -> c", ""}, {OnlyImportRules, strings.Repeat(" ", 420) + "a -> b", ""}, {OnlyImportRules, "src-x -> src", "src-x -> src"},
-		{TestKindPatterns, "e2e/**", "e2e/**"}, {TestKindPatterns, "**/*IT.java", "**/*IT.java"},
-		{TestKindPatterns, "**/src/androidTest/**", "**/src/androidTest/**"}, {TestKindPatterns, "*.test.js", "*.test.js"},
-		{TestKindPatterns, "packages/foo/**/*.integration.test.ts", "packages/foo/**/*.integration.test.ts"},
-		{TestKindPatterns, "spec/*Spec.js", "spec/*Spec.js"}, {TestKindPatterns, "c++/t?st/**", "c++/t?st/**"},
-		{TestKindPatterns, long, long}, {TestKindPatterns, long + "a", ""}, {TestKindPatterns, "", ""},
-		{TestKindPatterns, "e2e/", ""}, {TestKindPatterns, "/tests/**", ""}, {TestKindPatterns, "a//b", ""},
-		{TestKindPatterns, "./e2e/**", ""}, {TestKindPatterns, "a/../b", ""}, {TestKindPatterns, "src/**.ts", ""},
-		{TestKindPatterns, "tests/[ab]/**", ""}, {TestKindPatterns, "**/*.{ts,tsx}", ""}, {TestKindPatterns, `e2e\**`, ""},
-		{TestKindPatterns, "!tests/**", ""}, {TestKindPatterns, "my tests/**", ""}, {TestKindPatterns, "café/**", ""},
 	}
 	for _, c := range cases {
 		if formed, usable := c.kind.Form(c.value); formed != c.formed || usable != (c.formed != "") {
@@ -285,6 +276,16 @@ func TestPathPatternsMatchWholePathsFromTheRoot(t *testing.T) {
 		{"spec/*Spec.js", "spec/lib/common.js", false}, {"t?st/**", "test/a.go", true}, {"t?st/**", "toast/a.go", false},
 		{"**", "any/path.go", true}, {"a/**/b/**/c.go", "a/x/b/y/z/c.go", true}, {"a/**/b/**/c.go", "a/x/y/c.go", false},
 		{"Tests/**", "tests/a.swift", false},
+	}
+	long := strings.Repeat("a", 200)
+	for _, value := range []string{long + "a", "", "e2e/", "/tests/**", "a//b", "./e2e/**", "a/../b", "src/**.ts", "tests/[ab]/**",
+		"**/*.{ts,tsx}", `e2e\**`, "!tests/**", "my tests/**", "café/**"} {
+		if _, usable := NewPathPattern(value); usable {
+			t.Errorf("NewPathPattern(%q) is usable, want not: it is outside the form", value)
+		}
+	}
+	if pattern, usable := NewPathPattern(long); !usable || pattern.Text() != long {
+		t.Errorf("NewPathPattern of 200 characters = %q, %v; want it as written", pattern.Text(), usable)
 	}
 	for _, c := range cases {
 		pattern, usable := NewPathPattern(c.pattern)

@@ -79,6 +79,11 @@ only = ["src/domain -> src/shared"]         # code under the first folder import
 
 [acknowledged]                              # standing items reviewed and kept on purpose, each with a reason
 "process.planning-file:SPEC.md" = "a lasting specification, not a plan"
+
+[tests]                                     # your kinds of tests, by your own names; the first that matches wins
+integration = ["**/*_integration_test.go", "tests/integration/**"]
+e2e = ["e2e/**"]
+unit = ["**/*_test.go", "tests/**"]
 ```
 
 | Key | What it declares |
@@ -93,6 +98,7 @@ only = ["src/domain -> src/shared"]         # code under the first folder import
 | `files` under `[ignore]` | File names, with the same patterns as `test_files`, of files plimsoll leaves out wherever they lie |
 | an entry of `[acknowledged]` | A mark identifier exactly as an answer printed it, and a reason: a standing item with that identifier is listed under "Acknowledged" in `report` instead of "Standing", and `status` counts such items in one line. The item is still measured and counted; when it grows, or a new item gets its identifier, it shows as usual. Function marks never stand, so they are not acknowledged. The reason is required and never printed |
 | `never`, `only` under `[imports]` | Import rules, each `"<folder> -> <folder>"` (below) |
+| an entry of `[tests]` | A kind of test code by the repository's own name (letters, digits, `_`, `-`) and its path patterns from the root: `*` and `?` within one folder level, `**` for any depth (`e2e/**`, `**/*IT.java`). A test-code file belongs to the first kind listed that matches it; `report` counts each kind's test lines and the rest. A kind never makes a file test code: declare that in `[layout]` |
 | `base` | The branch, remote branch or tag a question without a base compares with. A remote branch is named with its remote (`origin/main`): `main` alone finds no remote branch. A branch of the name comes before a remote branch, and a remote branch before a tag |
 
 A declaration adds to the defaults and takes none away. The file switches no rule off: an acknowledged item is still
@@ -197,6 +203,15 @@ opencode mcp add plimsoll -- plimsoll
 }
 ```
 
+**Let your agent set it up.** Paste this line into your agent; it installs and connects plimsoll, reads your
+repository and proposes a `.plimsoll.toml`, writing nothing without your yes:
+
+```text
+Fetch https://raw.githubusercontent.com/julianzh0/plimsoll/main/docs/agent-setup.md with `curl -fsSL` and follow it.
+```
+
+In Windows PowerShell the command is `curl.exe -fsSL`; an agent without a shell needs the page pasted in.
+
 Then ask your agent, for example: *"Use plimsoll to check what this branch did to the repository since `main`."*
 
 ## Tools
@@ -215,6 +230,8 @@ hide: what it leaves out it counts ("3 more: `report` lists them"), and `report`
 
 - [What plimsoll checks](docs/rules.md): every rule, what it measures and its limit, and exactly how
   `.plimsoll.toml` is read.
+- [Setting up with your agent](docs/agent-setup.md): the page your agent follows to install, connect and
+  configure plimsoll.
 - [How each language is read](docs/languages.md): the twelve languages, how their imports and test code are found.
 - [Guarantees and protocol](docs/guarantees.md): what plimsoll promises, with the tests that pin each promise.
 - [Development](docs/development.md): building, testing and the project's structure.

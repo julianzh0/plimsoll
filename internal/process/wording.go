@@ -41,8 +41,12 @@ func (Detector) Wording(m answer.Mark) string {
 		if removed := before + len(m.Subject.Names) - now; removed > 0 {
 			parts = append(parts, fmt.Sprintf("removed %d", removed))
 		}
-		return fmt.Sprintf("This change altered the %s declared in `%s`: %s; %d declared now, %d at the base.", m.Measured.Unit, m.Subject.Paths[0],
-			strings.Join(parts, ", "), now, before)
+		what := ""
+		if len(parts) > 0 {
+			what = ": " + strings.Join(parts, ", ")
+		}
+		return fmt.Sprintf("This change altered the %s declared in `%s`%s; %d declared now, %d at the base.", m.Measured.Unit, m.Subject.Paths[0],
+			what, now, before)
 	case ruleDocChurn:
 		return fmt.Sprintf("Documentation churn since the base, summed over its commits, is %s, above product plus test churn of %s; the footprint counts the net change instead.",
 			answer.Plural(int(m.Measured.Value), "line"), answer.Plural(int(*m.Measured.Limit), "line"))

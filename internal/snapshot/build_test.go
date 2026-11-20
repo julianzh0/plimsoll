@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/julianzh0/plimsoll/internal/conventions"
@@ -515,4 +516,28 @@ func TestBuildMeasuresEachDeclaredTestKind(t *testing.T) {
 	if plain := snapshot.Build(snapshottest.Files(nil, map[string]string{"tests/a_test.go": "package a\n"}), conventions.Default(), snapshottest.Readings(t)); len(plain.TestKinds.Kinds) != 0 {
 		t.Errorf("no tests table: kinds %+v, want none", plain.TestKinds.Kinds)
 	}
+}
+
+func TestQuestionsWithOppositeKindOrdersKeepTheirOwnKinds(t *testing.T) {
+	readings := snapshottest.Readings(t)
+	tree := func(table string) snapshot.Source {
+		files := map[string]string{"src/a.go": "package a\n", "tests/integration/b_test.go": "package b\n", ".plimsoll.toml": table}
+		return snapshottest.Files(files, files)
+	}
+	orders := map[string]string{
+		"integration": "[tests]\nintegration = [\"tests/integration/**\"]\nunit = [\"tests/**\"]\n",
+		"unit":        "[tests]\nunit = [\"tests/**\"]\nintegration = [\"tests/integration/**\"]\n",
+	}
+	var group sync.WaitGroup
+	for want, table := range orders {
+		for range 8 {
+			group.Go(func() {
+				s := snapshot.Build(tree(table), conventions.Default(), readings)
+				if owner := s.TestKinds.Kinds[0]; owner.Name != want || !owner.Owns {
+					t.Errorf("a question whose table lists %q first: its first kind %+v, want it to own the file", want, owner)
+				}
+			})
+		}
+	}
+	group.Wait()
 }

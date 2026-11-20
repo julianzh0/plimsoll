@@ -1,6 +1,7 @@
 package snapshot_test
 
 import (
+	"math/rand/v2"
 	"reflect"
 	"slices"
 	"strings"
@@ -319,4 +320,89 @@ func TestBuildReadsTheTestsTableOfTheOwnFile(t *testing.T) {
 		conventions.Default(), snapshottest.Readings(t)); len(only.OwnFileProblems) != 0 {
 		t.Errorf("a file holding only [tests]: problems %q, want none", only.OwnFileProblems)
 	}
+}
+
+// Property: a tests table written in any of TOML's ways (quoted or bare names, either quote, lists over lines, comments)
+// reads back as the kinds it was written from, in order.
+func TestTheTestsTableReadsBackWhatWasWritten(t *testing.T) {
+	random := rand.New(rand.NewPCG(70, 7))
+	word := func(alphabet string) string {
+		b := make([]byte, 1+random.IntN(8))
+		for i := range b {
+			b[i] = alphabet[random.IntN(len(alphabet))]
+		}
+		return string(b)
+	}
+	for range 300 {
+		var file strings.Builder
+		file.WriteString("[tests]\n")
+		var want []snapshot.TestKind
+		seen := map[string]bool{}
+		for range 1 + random.IntN(5) {
+			name := word("abzAZ09_-")
+			if seen[name] {
+				continue
+			}
+			seen[name] = true
+			kind := snapshot.TestKind{Name: name}
+			for range 1 + random.IntN(4) {
+				segments := make([]string, 1+random.IntN(4))
+				for i := range segments {
+					segments[i] = []string{"**", "*", "a" + word("abc._+-"), "*" + word("abc") + "?"}[random.IntN(4)]
+				}
+				kind.Patterns = appendOnce(kind.Patterns, strings.Join(segments, "/"))
+			}
+			quote := []string{"", "\"", "'"}[random.IntN(3)]
+			file.WriteString(quote + name + quote + " = [")
+			for i, p := range kind.Patterns {
+				if i > 0 {
+					file.WriteString([]string{", ", ",\n  ", ", # note\n"}[random.IntN(3)])
+				}
+				q := []string{"\"", "'"}[random.IntN(2)]
+				file.WriteString(q + p + q)
+			}
+			file.WriteString([]string{"]\n", ",\n]\n", "] # done\n"}[random.IntN(3)])
+			want = append(want, kind)
+		}
+		s := snapshot.Build(snapshottest.Files(nil, map[string]string{"src/a.ts": "a\n", ".plimsoll.toml": file.String()}), conventions.Default(), snapshottest.Readings(t))
+		var got []snapshot.TestKind
+		for _, k := range s.TestKinds.Kinds {
+			got = append(got, snapshot.TestKind{Name: k.Name, Patterns: k.Patterns})
+		}
+		if !reflect.DeepEqual(got, want) || len(s.OwnFileProblems) != 0 {
+			t.Fatalf("reading\n%s\ngave %+v, problems %q; want %+v", file.String(), got, s.OwnFileProblems, want)
+		}
+	}
+}
+
+func appendOnce(values []string, value string) []string {
+	if slices.Contains(values, value) {
+		return values
+	}
+	return append(values, value)
+}
+
+func FuzzTheOwnFile(f *testing.F) {
+	for _, seed := range []string{
+		"[tests]\nintegration = [\"**/*_integration_test.go\",\n  \"tests/integration/**\", # x\n]\n\"e2e\" = ['e2e/**']\n",
+		"[tests]\nbad = {a = 1\nunit = [\"tests/**\"]\n", "[tests]\n\"a=b\" = [\"x/**\"]\n'a\"b' = [\"x/**\"]\n",
+		"[layout]\ntest_folders = [\"checks\"]\n[acknowledged]\n\"links.cycle:a\" = \"x\"\n[imports]\nnever = [\"a -> b\"]\n",
+		"[limits]\nfile_lines = 1500\n[defaults]\nbase = \"main\"\n",
+	} {
+		f.Add(seed)
+	}
+	readings := snapshottest.Readings(f)
+	f.Fuzz(func(t *testing.T, own string) {
+		s := snapshot.Build(snapshottest.Files(nil, map[string]string{"tests/a_test.go": "package a\n", ".plimsoll.toml": own}), conventions.Default(), readings)
+		for _, k := range s.TestKinds.Kinds {
+			if !conventions.KindName(k.Name) {
+				t.Fatalf("kind name %q is outside its form", k.Name)
+			}
+			for _, p := range k.Patterns {
+				if _, usable := conventions.NewPathPattern(p); !usable {
+					t.Fatalf("pattern %q of %q is outside its form", p, k.Name)
+				}
+			}
+		}
+	})
 }
