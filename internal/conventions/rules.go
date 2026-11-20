@@ -89,7 +89,29 @@ type Manifest struct {
 	Lockfiles []string // the names of the lockfiles that record what its dependencies resolved to, in its folder or above
 	// Recipes are folders whose files of this name describe other packages, not the project's own: vcpkg's ports.
 	Recipes []string
+	// Name is the form of a dependency name in its ecosystem. A manifest that lists a name outside it is unreadable,
+	// so no text of a file reaches an answer as a dependency name.
+	Name *regexp.Regexp
 }
+
+// coordinatePattern is a Maven coordinate, group and artifact and an optional third part, each plain or an unresolved
+// property reference with a plain name.
+const coordinatePattern = `(?:[A-Za-z0-9._-]+|\$\{[A-Za-z0-9._-]+\})(?::(?:[A-Za-z0-9._-]+|\$\{[A-Za-z0-9._-]+\})){1,2}`
+
+// Dependency name forms, by ecosystem. Maven and Gradle coordinates may hold an unresolved property reference with a
+// plain name, Gradle a catalogue accessor or a project path; each is printed as written.
+var (
+	npmName    = regexp.MustCompile(`^(@[A-Za-z0-9._~-]+/)?[A-Za-z0-9._~-]+$`)
+	goModule   = regexp.MustCompile(`^[A-Za-z0-9._~+-]+(/[A-Za-z0-9._~+-]+)*$`)
+	pythonName = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`) // after PEP 503 normalisation
+	pubName    = regexp.MustCompile(`^[a-z_][a-z0-9_]*$`)
+	coordinate = regexp.MustCompile(`^` + coordinatePattern + `$`)
+	gradleName = regexp.MustCompile(`^(?:` + coordinatePattern + `|libs(?:\.[A-Za-z0-9_-]+)+|:[A-Za-z0-9._-]+(?::[A-Za-z0-9._-]+)*)$`)
+	crateName  = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
+	nugetID    = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9._-]*$`)
+	swiftID    = regexp.MustCompile(`^[a-z0-9._-]+$`)
+	vcpkgPort  = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
+)
 
 // ManifestFormat says how a manifest lists its runtime dependencies.
 type ManifestFormat int
@@ -518,17 +540,17 @@ func Default() Rules {
 		TestDefinition:     testDefinition,
 		Generated:          generated,
 		Manifests: []Manifest{
-			{File: "package.json", Format: JSONDependencies, Lockfiles: []string{"package-lock.json", "pnpm-lock.yaml", "yarn.lock"}},
-			{File: "go.mod", Format: GoModRequire, Lockfiles: []string{"go.sum"}},
-			{File: "pyproject.toml", Format: PyprojectDependencies, Lockfiles: []string{"uv.lock", "poetry.lock"}},
-			{File: "pubspec.yaml", Format: PubspecDependencies, Lockfiles: []string{"pubspec.lock"}},
-			{File: "pom.xml", Format: PomDependencies},
-			{File: "build.gradle", Format: GradleDependencies},
-			{File: "build.gradle.kts", Format: GradleDependencies},
-			{File: "Cargo.toml", Format: CargoDependencies, Lockfiles: []string{"Cargo.lock"}},
-			{File: dotnetProject, Format: CsprojDependencies},
-			{File: "Package.swift", Format: SwiftDependencies, Lockfiles: []string{"Package.resolved"}},
-			{File: "vcpkg.json", Format: VcpkgDependencies, Recipes: []string{"ports"}},
+			{File: "package.json", Format: JSONDependencies, Lockfiles: []string{"package-lock.json", "pnpm-lock.yaml", "yarn.lock"}, Name: npmName},
+			{File: "go.mod", Format: GoModRequire, Lockfiles: []string{"go.sum"}, Name: goModule},
+			{File: "pyproject.toml", Format: PyprojectDependencies, Lockfiles: []string{"uv.lock", "poetry.lock"}, Name: pythonName},
+			{File: "pubspec.yaml", Format: PubspecDependencies, Lockfiles: []string{"pubspec.lock"}, Name: pubName},
+			{File: "pom.xml", Format: PomDependencies, Name: coordinate},
+			{File: "build.gradle", Format: GradleDependencies, Name: gradleName},
+			{File: "build.gradle.kts", Format: GradleDependencies, Name: gradleName},
+			{File: "Cargo.toml", Format: CargoDependencies, Lockfiles: []string{"Cargo.lock"}, Name: crateName},
+			{File: dotnetProject, Format: CsprojDependencies, Name: nugetID},
+			{File: "Package.swift", Format: SwiftDependencies, Lockfiles: []string{"Package.resolved"}, Name: swiftID},
+			{File: "vcpkg.json", Format: VcpkgDependencies, Recipes: []string{"ports"}, Name: vcpkgPort},
 		},
 		OwnFile:           ".plimsoll.toml",
 		LimitsTable:       "limits",

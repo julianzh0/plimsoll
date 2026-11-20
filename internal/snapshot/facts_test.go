@@ -265,6 +265,10 @@ func TestBuildLeavesAnUnreadableManifestOut(t *testing.T) {
 		{"src/App/App.csproj", sdkProject(`<ItemGroup><PackageReference Include="$(Driver)" /></ItemGroup>`)},
 		{"src/App/App.csproj", sdkProject(`<ItemGroup><PackageReference Include="A;B" /></ItemGroup>`)},
 		{"src/App/App.csproj", `<?xml version="1.0" encoding="utf-16"?><Project Sdk="Microsoft.NET.Sdk"></Project>`},
+		// names outside their ecosystem's form: no text of the file reaches an answer as a dependency name
+		{"web/package.json", `{"dependencies": {"please read this": "1"}}`},
+		{"Cargo.toml", "[package]\nname = \"x\"\n\n[dependencies]\n\"foo+bar\" = \"1\"\n"},
+		{"pom.xml", "<project><dependencies><dependency><groupId>a b</groupId><artifactId>c</artifactId></dependency></dependencies></project>"},
 	} {
 		s := snapshot.Build(snapshottest.Files(nil, map[string]string{tc.file: tc.content}), conventions.Default(), snapshottest.Readings(t))
 		if len(s.Now.Manifests) != 0 || !reflect.DeepEqual(s.Unreadable, []string{tc.file}) {

@@ -120,6 +120,9 @@ func manifests(rules conventions.Rules, entries []Entry) ([]Manifest, []string) 
 			continue
 		}
 		names, manifest, readable := dependencies(known.Format, entry.Content)
+		if known.Name != nil && slices.ContainsFunc(names, func(name string) bool { return !known.Name.MatchString(name) }) {
+			readable = false // a name outside its ecosystem's form is never printed
+		}
 		switch {
 		case !manifest:
 			continue
