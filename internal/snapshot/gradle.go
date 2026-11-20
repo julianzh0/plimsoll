@@ -102,12 +102,15 @@ func gradleDependencies(content []byte, catalogue map[string][]string) (names []
 	return names, true, true
 }
 
+// gradleCatalogueFile is where a Gradle build keeps its version catalogue, below its root folder.
+const gradleCatalogueFile = "gradle/libs.versions.toml"
+
 // gradleCatalogue maps each accessor of the nearest tracked gradle/libs.versions.toml at or above a folder to the
 // coordinates (group:name) it stands for: libs.<alias> for a library, its "-", "_" and "." all read as dots, and
 // libs.bundles.<name> for each library of a bundle. nil when there is none or it cannot be read.
 func gradleCatalogue(content map[string][]byte, folder string) map[string][]string {
 	for {
-		if file := content[path.Join(folder, "gradle/libs.versions.toml")]; file != nil {
+		if file := content[path.Join(folder, gradleCatalogueFile)]; file != nil {
 			document, err := decodeTOML(file)
 			if err != nil {
 				return nil

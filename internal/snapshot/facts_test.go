@@ -488,7 +488,7 @@ func TestWantsNamesWhatTheReaderReads(t *testing.T) {
 		"src/Acme/Acme.csproj": true, "Acme.csproj": true, "tests/Acme.Tests/Acme.Tests.csproj": false, "Acme.Tests/Acme.Tests.csproj": false,
 		"examples/Demo/Demo.csproj": false, "node_modules/x/X.csproj": false, "Directory.Packages.props": false,
 		"Package.swift": true, "Package.resolved": true, "CMakeLists.txt": true, "tests/CMakeLists.txt": true, "vendor/x/CMakeLists.txt": false, "build/CMakeLists.txt": false, "cmake/Find.cmake": true, "src/a.c": true, "include/a.h": true, "nlohmann_json.natvis": false, "vcpkg.json": true, "ports/x/vcpkg.json": false, "conanfile.txt": false,
-		"Cargo.toml": true, "Cargo.lock": true, "crates/cli/Cargo.toml": true, "vendor/x/Cargo.toml": false, "src/main.rs": true,
+		"Cargo.toml": true, "Cargo.lock": true, "tools/x/Cargo.lock": true, "web/pnpm-lock.yaml": true, "gradle/libs.versions.toml": true, "app/gradle/libs.versions.toml": true, "tests/Cargo.lock": false, "crates/cli/Cargo.toml": true, "vendor/x/Cargo.toml": false, "src/main.rs": true,
 		"pubspec.yaml": true, "app/pubspec.yaml": true, "packages/core/pubspec.yaml": true, "node_modules/x/pubspec.yaml": false,
 		"docs/.env.example": false, "node_modules/x/a.js": false, "assets/logo.bin": true,
 		"docker-compose.yml": true, "deploy/compose.prod.yaml": true, "node_modules/x/compose.yml": false, "compose.txt": false,

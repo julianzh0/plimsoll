@@ -32,7 +32,8 @@ func WantsOf(rules conventions.Rules) Wants {
 			if !strings.Contains(path, "/") && rules.FunctionRules.RootLicence.MatchString(path) {
 				return true
 			}
-			if _, known := manifestOf(rules, path); known || isLockfile(rules, path) {
+			if _, known := manifestOf(rules, path); known || isLockfile(rules, path) ||
+				(path == gradleCatalogueFile || strings.HasSuffix(path, "/"+gradleCatalogueFile)) && manifestPlace(rules, path) {
 				return true
 			}
 			if onPaths(rules, path, rules.ComposeFiles) {
