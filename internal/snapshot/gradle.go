@@ -1,30 +1,51 @@
 package snapshot
 
 import (
+	"path"
 	"regexp"
 	"slices"
 	"strings"
 )
 
 var (
-	gradleBlock   = regexp.MustCompile(`^dependencies[ \t]*\{[ \t]*(?://.*)?$`)
-	gradleRuntime = regexp.MustCompile(`^(?:implementation|api|runtimeOnly)\b`)
-	gradleEntry   = regexp.MustCompile(`^(?:implementation|api|runtimeOnly)\b[ \t]*\(?[ \t]*(?:(?:platform|enforcedPlatform)[ \t]*\(?[ \t]*)?(?:["'](?P<coordinate>[^"'\n]+)["']|project\([ \t]*(?:path[ \t]*[:=][ \t]*)?["'](?P<project>:[^"'\n]*)["']|(?P<accessor>[A-Za-z_]\w*(?:\.\w+)+))`)
+	gradleBlock = regexp.MustCompile(`^dependencies[ \t]*\{[ \t]*(?://.*)?$`)
+	// gradleLine is a dependency line: its configuration and what follows it.
+	gradleLine  = regexp.MustCompile(`^([a-z][A-Za-z0-9]*)\b[ \t]*(.*)$`)
+	gradleEntry = regexp.MustCompile(`^\(?[ \t]*(?:(?:platform|enforcedPlatform)[ \t]*\(?[ \t]*)?(?:["'](?P<coordinate>[^"'\n]+)["']|project\([ \t]*(?:path[ \t]*[:=][ \t]*)?["'](?P<project>:[^"'\n]*)["']|(?P<accessor>[A-Za-z_]\w*(?:\.\w+)+))`)
 )
 
-// gradleDependencies reads the runtime dependencies of a build.gradle or build.gradle.kts by text: the
-// implementation, api and runtimeOnly lines one level below the dependencies block at the first column, as a
-// coordinate's group:artifact, a project's path, or a catalogue name as written. manifest is false when the file has
-// no dependencies block at the first column; readable is false when a runtime line of the block is written in a
-// form the reader does not take.
-// NOTE: a catalogue name is kept as written and gradle/libs.versions.toml is not read; dependencies of the modules'
-// own build files, of convention plugins (build-logic/, buildSrc/) and of variant configurations are not counted.
-// Upgrade: read the catalogue and every tracked build file.
-func gradleDependencies(content []byte) (names []string, manifest, readable bool) {
-	text := string(content)
+// gradleRuntime says whether a configuration puts its dependencies on the runtime classpath, as Gradle's Java Library
+// plugin documents it: implementation, api and runtimeOnly, and a variant's (debugImplementation, commonMainApi), but
+// not one whose variant is a test source set by the shared rules (testImplementation, androidTestApi, intTest...,
+// testFixtures...) and no compile-only or tool configuration (compileOnly, kapt, ksp, annotationProcessor).
+func gradleRuntime(configuration string) bool {
+	if strings.HasSuffix(configuration, "CompileOnly") || strings.HasSuffix(configuration, "CompileOnlyApi") {
+		return false
+	}
+	for _, kind := range []string{"implementation", "api", "runtimeOnly"} {
+		if configuration == kind {
+			return true
+		}
+		variant, found := strings.CutSuffix(configuration, strings.ToUpper(kind[:1])+kind[1:])
+		if found && variant != "" {
+			return !strings.HasPrefix(variant, "test") && !strings.Contains(variant, "Test")
+		}
+	}
+	return false
+}
+
+// gradleDependencies reads the runtime dependencies of a build.gradle or build.gradle.kts by text: the lines of a
+// runtime configuration one level below the dependencies block at the first column, as a coordinate's
+// group:artifact, or a catalogue accessor named by the coordinate its alias stands for in the catalogue (each library
+// of a bundle). An accessor the catalogue does not hold stays as written. Modules of the build itself (project(...),
+// projects.x) are no dependency. manifest is false when the file has no dependencies block at the first column;
+// readable is false when a runtime line of the block is written in a form the reader does not take.
+// What convention plugins (build-logic/, buildSrc/) or script logic add is known only to a running Gradle (README,
+// "What plimsoll does not read").
+func gradleDependencies(content []byte, catalogue map[string][]string) (names []string, manifest, readable bool) {
 	inBlock, indent := false, ""
 	names = []string{}
-	for line := range strings.Lines(text) {
+	for line := range strings.Lines(string(content)) {
 		line = strings.TrimRight(line, "\r\n")
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" || strings.HasPrefix(trimmed, "//") {
@@ -47,32 +68,95 @@ func gradleDependencies(content []byte) (names []string, manifest, readable bool
 		if indent == "" {
 			indent = lead
 		}
-		if lead != indent || !gradleRuntime.MatchString(trimmed) {
+		entry := gradleLine.FindStringSubmatch(trimmed)
+		if lead != indent || entry == nil || !gradleRuntime(entry[1]) {
 			continue
 		}
-		m := gradleEntry.FindStringSubmatch(trimmed)
+		m := gradleEntry.FindStringSubmatch(entry[2])
 		if m == nil {
 			return nil, true, false
 		}
-		var name string
-		switch {
+		var found []string
+		switch accessor := m[gradleEntry.SubexpIndex("accessor")]; {
 		case m[gradleEntry.SubexpIndex("coordinate")] != "":
 			parts := strings.Split(m[gradleEntry.SubexpIndex("coordinate")], ":")
 			if len(parts) < 2 || parts[0] == "" || parts[1] == "" {
 				return nil, true, false
 			}
-			name = parts[0] + ":" + parts[1]
-		case m[gradleEntry.SubexpIndex("project")] != "":
-			name = m[gradleEntry.SubexpIndex("project")]
+			found = []string{parts[0] + ":" + parts[1]}
+		case m[gradleEntry.SubexpIndex("project")] != "", strings.HasPrefix(accessor, "projects."):
+		case catalogue[accessor] != nil:
+			found = catalogue[accessor]
 		default:
-			name = m[gradleEntry.SubexpIndex("accessor")]
+			found = []string{accessor}
 		}
-		if !slices.Contains(names, name) {
-			names = append(names, name)
+		for _, name := range found {
+			if !slices.Contains(names, name) {
+				names = append(names, name)
+			}
 		}
 	}
 	if !manifest {
 		return nil, false, true
 	}
 	return names, true, true
+}
+
+// gradleCatalogue maps each accessor of the nearest tracked gradle/libs.versions.toml at or above a folder to the
+// coordinates (group:name) it stands for: libs.<alias> for a library, its "-", "_" and "." all read as dots, and
+// libs.bundles.<name> for each library of a bundle. nil when there is none or it cannot be read.
+func gradleCatalogue(content map[string][]byte, folder string) map[string][]string {
+	for {
+		if file := content[path.Join(folder, "gradle/libs.versions.toml")]; file != nil {
+			document, err := decodeTOML(file)
+			if err != nil {
+				return nil
+			}
+			accessor := func(prefix, alias string) string {
+				return prefix + strings.NewReplacer("-", ".", "_", ".").Replace(alias)
+			}
+			catalogue := map[string][]string{}
+			libraries := tomlTableAt(document, "libraries")
+			for alias, entry := range libraries {
+				if coordinate := catalogueCoordinate(entry); coordinate != "" {
+					catalogue[accessor("libs.", alias)] = []string{coordinate}
+				}
+			}
+			for bundle, members := range tomlTableAt(document, "bundles") {
+				aliases, _ := tomlTexts(members)
+				for _, alias := range aliases {
+					if coordinate := catalogue[accessor("libs.", alias)]; coordinate != nil {
+						catalogue[accessor("libs.bundles.", bundle)] = append(catalogue[accessor("libs.bundles.", bundle)], coordinate...)
+					}
+				}
+			}
+			return catalogue
+		}
+		if folder == "." {
+			return nil
+		}
+		folder = path.Dir(folder)
+	}
+}
+
+// catalogueCoordinate is a catalogue library's group:name: "group:name:version", module = "group:name", or group and
+// name keys.
+func catalogueCoordinate(entry any) string {
+	if text, isText := entry.(string); isText {
+		parts := strings.Split(text, ":")
+		if len(parts) >= 2 {
+			return parts[0] + ":" + parts[1]
+		}
+		return ""
+	}
+	table, _ := entry.(map[string]any)
+	if module, isText := table["module"].(string); isText {
+		return module
+	}
+	group, _ := table["group"].(string)
+	name, _ := table["name"].(string)
+	if group == "" || name == "" {
+		return ""
+	}
+	return group + ":" + name
 }

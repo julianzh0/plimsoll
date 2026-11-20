@@ -96,16 +96,23 @@ func TestBuildReadsRuntimeDependencies(t *testing.T) {
 		{"rust", snapshottest.Load(t, "testdata/rust"), append(dependenciesOf("Cargo.toml", "anyhow", "clap", "libc", "log", "notes-store", "serde"),
 			dependenciesOf("crates/notes-store/Cargo.toml")...)},
 		{"java", snapshottest.Load(t, "testdata/java"), dependenciesOf("pom.xml", "com.fasterxml.jackson.core:jackson-databind", "org.postgresql:postgresql")},
-		{"kotlin", snapshottest.Load(t, "testdata/kotlin"), dependenciesOf("build.gradle.kts", ":shared", "io.ktor:ktor-bom", "io.ktor:ktor-client-core", "libs.kotlinx.coroutines.core", "org.slf4j:slf4j-simple")},
+		{"kotlin", snapshottest.Load(t, "testdata/kotlin"), dependenciesOf("build.gradle.kts", "io.ktor:ktor-bom", "io.ktor:ktor-client-core", "org.jetbrains.kotlinx:kotlinx-coroutines-core", "org.slf4j:slf4j-simple")},
 		{"a Groovy build file", oneFile("build.gradle", "dependencies {\n  implementation 'org.springframework.boot:spring-boot-starter-web'\n"+
 			"  runtimeOnly \"org.postgresql:postgresql:$pg\"\n  implementation platform('g:bom:1')\n  implementation project(':core')\n"+
 			"  implementation libs.guava\n  implementation libs.guava\n  testImplementation 'junit:junit:4.13'\n}\n"),
-			dependenciesOf("build.gradle", ":core", "g:bom", "libs.guava", "org.postgresql:postgresql", "org.springframework.boot:spring-boot-starter-web")},
+			dependenciesOf("build.gradle", "g:bom", "libs.guava", "org.postgresql:postgresql", "org.springframework.boot:spring-boot-starter-web")},
 		{"a Gradle root that declares plugins only", oneFile("build.gradle.kts", "plugins {\n    alias(libs.plugins.android.application) apply false\n}\n"), nil},
 		{"Gradle dependencies of the build script and of subprojects left out", oneFile("build.gradle.kts",
 			"buildscript {\n    dependencies {\n        classpath(\"g:a:1\")\n    }\n}\nsubprojects {\n    dependencies {\n        implementation(\"g:b:1\")\n    }\n}\n"), nil},
 		{"a Gradle block with tabs and CRLF that ends with the file", oneFile("build.gradle.kts", "dependencies {\r\n\timplementation(\"g:a:1\") // why\r\n\tapi(project(path = \":x\"))\r\n"),
-			dependenciesOf("build.gradle.kts", ":x", "g:a")},
+			dependenciesOf("build.gradle.kts", "g:a")},
+		{"Gradle configurations: variants count, test and compile-only ones do not, a bundle by its libraries, modules are none",
+			snapshottest.Files(nil, map[string]string{"app/build.gradle.kts": "dependencies {\n    debugImplementation(libs.okhttp)\n    prodImplementation(platform(libs.firebase.bom))\n" +
+				"    testImplementation(libs.junit)\n    androidTestImplementation(\"g:t:1\")\n    intTestImplementation(\"g:i:1\")\n    debugCompileOnlyApi(\"g:c:1\")\n" +
+				"    kapt(\"g:k:1\")\n    implementation(projects.core.common)\n    implementation(project(\":core:data\"))\n    implementation(libs.bundles.net)\n}\n",
+				"gradle/libs.versions.toml": "[libraries]\nokhttp = \"com.squareup.okhttp3:okhttp:4.12.0\"\nfirebase-bom = { group = \"com.google.firebase\", name = \"firebase-bom\", version = \"33\" }\n" +
+					"retrofit_core = { module = \"com.squareup.retrofit2:retrofit\" }\njunit = \"junit:junit:4\"\n\n[bundles]\nnet = [\"okhttp\", \"retrofit_core\"]\n"}),
+			dependenciesOf("app/build.gradle.kts", "com.google.firebase:firebase-bom", "com.squareup.okhttp3:okhttp", "com.squareup.retrofit2:retrofit")},
 		{"a Gradle block with test and compile-only lines alone", oneFile("build.gradle.kts", "dependencies {\n    testImplementation(kotlin(\"test\"))\n    compileOnly(\"g:a:1\")\n}\n"),
 			dependenciesOf("build.gradle.kts")},
 		{"a nested build file", oneFile("app/build.gradle.kts", "dependencies {\n    implementation(\"g:a:1\")\n}\n"), dependenciesOf("app/build.gradle.kts", "g:a")},

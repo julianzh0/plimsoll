@@ -73,7 +73,7 @@ func TestDetectOnEachLanguageSample(t *testing.T) {
 		{"java", 43, 31, 0, 0.7, []string{"src/main/java/com/acme/notes/store/NoteStore.java", "src/main/java/com/acme/notes/App.java", "src/test/java/com/acme/notes/AppTest.java"},
 			map[string]string{"pom.xml": "com.fasterxml.jackson.core:jackson-databind, org.postgresql:postgresql"}, []string{"no `.env.example`, so no settings were counted or compared"}},
 		{"kotlin", 57, 32, 0, 0.6, []string{"build.gradle.kts", "src/androidTest/kotlin/com/acme/tasks/MainScreenTest.kt", "src/main/kotlin/com/acme/tasks/Main.kt"},
-			map[string]string{"build.gradle.kts": ":shared, io.ktor:ktor-bom, io.ktor:ktor-client-core, libs.kotlinx.coroutines.core, org.slf4j:slf4j-simple"},
+			map[string]string{"build.gradle.kts": "io.ktor:ktor-bom, io.ktor:ktor-client-core, org.jetbrains.kotlinx:kotlinx-coroutines-core, org.slf4j:slf4j-simple"},
 			[]string{"no `.env.example`, so no settings were counted or compared"}},
 		{"csharp", 48, 26, 0, 0.5, []string{"Acme.Notes/Store/NoteStore.cs", "Acme.Notes.Tests/NoteStoreTests.cs", "Acme.Notes.Tests/Support/FixedClock.cs"},
 			map[string]string{"Acme.Notes/Acme.Notes.csproj": "Microsoft.Extensions.Configuration, Npgsql, System.Text.Json"},

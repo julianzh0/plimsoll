@@ -116,7 +116,7 @@ func manifests(rules conventions.Rules, entries []Entry) ([]Manifest, []string) 
 		if !isManifest || entry.Content == nil {
 			continue
 		}
-		names, manifest, readable := dependencies(known.Format, entry.Content, func() map[string]any { return cargoWorkspace(content, path.Dir(entry.Path)) })
+		names, manifest, readable := dependencies(known.Format, entry.Content, around{content: content, folder: path.Dir(entry.Path)})
 		if known.Name != nil && slices.ContainsFunc(names, func(name string) bool { return !known.Name.MatchString(name) }) {
 			readable = false // a name outside its ecosystem's form is never printed
 		}
@@ -159,6 +159,12 @@ func manifests(rules conventions.Rules, entries []Entry) ([]Manifest, []string) 
 	return found, unreadable
 }
 
+// around is a manifest's place: the folder it lies in and the content of every tracked path of its side.
+type around struct {
+	content map[string][]byte
+	folder  string
+}
+
 // nearestLockfiles are the lockfiles of the given names in the nearest folder, at or above a manifest's, that holds
 // one: a workspace's members share the lockfile at its root. Only lockfiles that were read count.
 func nearestLockfiles(content map[string][]byte, folder string, names []string) (paths []string, locks [][]byte) {
@@ -176,13 +182,13 @@ func nearestLockfiles(content map[string][]byte, folder string, names []string) 
 }
 
 // dependencies reads a manifest's runtime dependencies. manifest is false when the file declares no project at all;
-// readable is false when it does but its dependencies cannot be read. workspace gives a Cargo manifest's workspace
-// dependencies.
-func dependencies(format conventions.ManifestFormat, content []byte, workspace func() map[string]any) (names []string, manifest, readable bool) {
+// readable is false when it does but its dependencies cannot be read. at gives the files around it that a format
+// reads too: a Cargo workspace, a Gradle catalogue.
+func dependencies(format conventions.ManifestFormat, content []byte, at around) (names []string, manifest, readable bool) {
 	names = []string{}
 	switch format {
 	case conventions.CargoDependencies:
-		return cargoDependencies(content, workspace())
+		return cargoDependencies(content, cargoWorkspace(at.content, at.folder))
 	case conventions.PyprojectDependencies:
 		return pyprojectDependencies(content)
 	case conventions.PubspecDependencies:
@@ -190,7 +196,7 @@ func dependencies(format conventions.ManifestFormat, content []byte, workspace f
 	case conventions.PomDependencies:
 		return pomDependencies(content)
 	case conventions.GradleDependencies:
-		return gradleDependencies(content)
+		return gradleDependencies(content, gradleCatalogue(at.content, at.folder))
 	case conventions.CsprojDependencies:
 		return csprojDependencies(content)
 	case conventions.SwiftDependencies:
