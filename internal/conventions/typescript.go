@@ -42,7 +42,7 @@ func typescriptImports() Imports {
 	extensions := []string{".ts", ".tsx", ".d.ts", ".js", ".jsx"}
 	return Imports{
 		Relative: DotSlash,
-		Prefix:   Prefix{File: "tsconfig.json", Format: TSConfigPaths},
+		Prefix:   Prefix{File: "tsconfig.json", Format: TSConfigPaths, Members: true},
 		Target:   FileTarget,
 		Candidates: Candidates{
 			Swap: []Swap{

@@ -493,7 +493,7 @@ func TestWantsNamesWhatTheReaderReads(t *testing.T) {
 	w := snapshot.WantsOf(conventions.Default())
 	paths := map[string]bool{
 		"src/a.ts": true, "README.md": false, "package.json": true, "web/package.json": true, ".env.example": true,
-		"tsconfig.json": true, "web/tsconfig.json": false, "go.mod": true, "web/go.mod": true, "pyproject.toml": true, "web/pyproject.toml": true, "pytest.ini": true, "pytest.toml": true, "setup.cfg": true, "tox.ini": true,
+		"tsconfig.json": true, "web/tsconfig.json": true, "go.mod": true, "web/go.mod": true, "pyproject.toml": true, "web/pyproject.toml": true, "pytest.ini": true, "pytest.toml": true, "setup.cfg": true, "tox.ini": true,
 		"src/main/resources/application.properties": false, "docs/design.pdf": false, "src/main/resources/META-INF/services/a.B": false,
 		"pom.xml": true, "core/pom.xml": true, "build.gradle": true, "build.gradle.kts": true,
 		"Acme.sln": false, "Acme.slnx": false, "Directory.Build.props": true, "eng/Common.targets": false, "NuGet.Config": false,

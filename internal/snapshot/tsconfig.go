@@ -49,9 +49,11 @@ type tsConfigJSON struct {
 
 // tsConfigs reads tracked tsconfig files on demand, each once, its extends chain followed through tracked files.
 type tsConfigs struct {
-	content map[string][]byte
-	tracked map[string]bool
-	read    map[string]*tsConfig // nil for a file that is no readable config
+	content  map[string][]byte
+	tracked  map[string]bool
+	read     map[string]*tsConfig // nil for a file that is no readable config
+	of       map[string]*tsConfig // a file's config, once looked up
+	packages map[string][]workspacePackage
 }
 
 // load reads a config and its chain: the bases of extends, one text or a list, in order, a later one replacing an
@@ -87,21 +89,21 @@ func (c *tsConfigs) load(file string, chain []string) *tsConfig {
 	own := tsConfig{}
 	options := raw.CompilerOptions
 	if options.BaseURL != nil {
-		own.baseURL = path.Join(folder, *options.BaseURL)
+		own.baseURL = configPath(folder, *options.BaseURL)
 	}
 	if options.Paths != nil {
 		own.paths, own.pathsFolder = options.Paths, folder
 	}
 	if options.OutDir != nil {
-		own.outDir = path.Join(folder, *options.OutDir)
+		own.outDir = configPath(folder, *options.OutDir)
 	}
 	if options.RootDir != nil {
-		own.rootDir = path.Join(folder, *options.RootDir)
+		own.rootDir = configPath(folder, *options.RootDir)
 	}
 	relative := func(patterns []string) []string {
 		var out []string
 		for _, p := range patterns {
-			out = append(out, path.Join(folder, p))
+			out = append(out, configPath(folder, p))
 		}
 		return out
 	}
@@ -142,13 +144,37 @@ func (cfg *tsConfig) override(other *tsConfig) {
 	}
 }
 
-// extended is the tracked config a relative extends or reference names: the file, the file with .json, or the
-// tsconfig.json of the folder; a package name is no tracked file.
-func (c *tsConfigs) extended(folder, name string) (string, bool) {
-	if !strings.HasPrefix(name, ".") && !strings.HasPrefix(name, "/") {
-		return "", false
+// configDir is the placeholder a shared config writes for the folder of the config that uses it.
+const configDir = "${configDir}"
+
+// configPath is a path option of a config relative to its folder; one that starts with ${configDir} is kept as
+// written, to be resolved for the config that uses it (expand).
+func configPath(folder, value string) string {
+	if strings.HasPrefix(value, configDir) {
+		return value
 	}
+	return path.Join(folder, value)
+}
+
+// expand resolves ${configDir} to the folder of the config in use.
+func (cfg *tsConfig) expand(value string) string {
+	if rest, found := strings.CutPrefix(value, configDir); found {
+		return path.Join(path.Dir(cfg.file), rest)
+	}
+	return value
+}
+
+// extended is the tracked config an extends or reference names: relative, the file, the file with .json, or the
+// tsconfig.json of the folder; by a package name, the same under the tracked workspace package of that name.
+func (c *tsConfigs) extended(folder, name string) (string, bool) {
 	at := path.Join(folder, name)
+	if !strings.HasPrefix(name, ".") && !strings.HasPrefix(name, "/") {
+		owner, packages := workspacePackageOf(c.packages, name)
+		if len(packages) != 1 {
+			return "", false
+		}
+		at = path.Join(packages[0].folder, strings.TrimPrefix(name, owner))
+	}
 	for _, candidate := range []string{at, at + ".json", path.Join(at, "tsconfig.json")} {
 		if c.tracked[candidate] {
 			return candidate, true
@@ -160,20 +186,39 @@ func (c *tsConfigs) extended(folder, name string) (string, bool) {
 // takes says whether a config takes a file: listed in its files, or matched by its include patterns (every file when
 // it has neither files nor include) and by none of its exclude patterns.
 func (cfg *tsConfig) takes(file string) bool {
-	if slices.Contains(cfg.files, file) {
+	if slices.ContainsFunc(cfg.files, func(f string) bool { return cfg.expand(f) == file }) {
 		return true
 	}
 	include := cfg.include
 	if !cfg.filesSet && !cfg.includeSet {
 		include = []string{path.Join(path.Dir(cfg.file), "**/*")}
 	}
-	return slices.ContainsFunc(include, func(p string) bool { return globMatches(p, file) }) &&
-		!slices.ContainsFunc(cfg.exclude, func(p string) bool { return globMatches(p, file) })
+	return slices.ContainsFunc(include, func(p string) bool { return globMatches(cfg.expand(p), file) }) &&
+		!slices.ContainsFunc(cfg.exclude, func(p string) bool { return globMatches(cfg.expand(p), file) })
 }
 
 // configOf is a file's config: the nearest tracked tsconfig.json at or above it when it takes the file; else, when that
-// one references others, the one referenced config that takes it; nil when none or several do.
+// one references others, the one referenced config that takes it; nil when none or several do. Looked up once per file.
 func (c *tsConfigs) configOf(file string) *tsConfig {
+	if cfg, known := c.of[file]; known {
+		return cfg
+	}
+	cfg := c.lookUp(file)
+	c.of[file] = cfg
+	return cfg
+}
+
+// nearest is the nearest tracked tsconfig.json at or above a folder, read; nil for none.
+func (c *tsConfigs) nearest(folder string) *tsConfig {
+	for f := range foldersUp(folder) {
+		if at := path.Join(f, "tsconfig.json"); c.tracked[at] {
+			return c.load(at, nil)
+		}
+	}
+	return nil
+}
+
+func (c *tsConfigs) lookUp(file string) *tsConfig {
 	for folder := range foldersUp(path.Dir(file)) {
 		at := path.Join(folder, "tsconfig.json")
 		if !c.tracked[at] {
@@ -227,7 +272,8 @@ func globMatches(pattern, file string) bool {
 	return match(strings.Split(path.Clean(pattern), "/"), strings.Split(file, "/"))
 }
 
-// workspacePackage is a tracked package.json with a name: its folder and what it says of its entry points.
+// workspacePackage is a tracked package.json with a name, where manifests count: its folder and what it says of its
+// entry points.
 type workspacePackage struct {
 	folder  string
 	exports any      // nil when it has none
@@ -242,10 +288,10 @@ type workspacePackage struct {
 // under the package's outDir is looked for under its rootDir, else under src, lib and the package folder. An own
 // import whose target has no tracked source is not readable, never outside.
 func typescriptImports(rules conventions.Rules, language conventions.Language, content map[string][]byte, tracked map[string]bool) prefix {
-	configs := &tsConfigs{content: content, tracked: tracked, read: map[string]*tsConfig{}}
-	packages := map[string]workspacePackage{}
-	for file := range tracked {
-		if path.Base(file) != "package.json" || inFolders(file, rules.SkippedFolders) || inFolders(file, []string{"node_modules"}) {
+	packages := map[string][]workspacePackage{}
+	configs := &tsConfigs{content: content, tracked: tracked, read: map[string]*tsConfig{}, of: map[string]*tsConfig{}, packages: packages}
+	for _, file := range slices.Sorted(maps.Keys(tracked)) {
+		if path.Base(file) != "package.json" || !manifestPlace(rules, file) || inFolders(file, []string{"node_modules"}) {
 			continue
 		}
 		var manifest map[string]any
@@ -262,20 +308,18 @@ func typescriptImports(rules conventions.Rules, language conventions.Language, c
 				p.fields = append(p.fields, value)
 			}
 		}
-		if other, taken := packages[name]; !taken || p.folder < other.folder {
-			packages[name] = p
-		}
+		packages[name] = append(packages[name], p)
 	}
 	state := PrefixAbsent
-	if tracked["tsconfig.json"] {
+	if tracked["tsconfig.json"] && configs.load("tsconfig.json", nil) == nil {
+		state = PrefixUnreadable
+	} else if tracked["tsconfig.json"] || len(packages) > 0 {
 		state = PrefixRead
-		if root := configs.load("tsconfig.json", nil); root == nil {
-			state = PrefixUnreadable
-		} else if root.baseUnread {
+	}
+	for file := range tracked { // a config whose extends names no tracked file: its base was not read
+		if cfg := configs.load(file, nil); path.Base(file) == "tsconfig.json" && state == PrefixRead && cfg != nil && cfg.baseUnread {
 			state = PrefixExtends
 		}
-	} else if len(packages) > 0 {
-		state = PrefixRead
 	}
 	exists := func(base string) (string, bool) {
 		for _, candidate := range append([]string{base}, candidatesOf(language.Imports.Candidates, base)...) {
@@ -290,7 +334,11 @@ func typescriptImports(rules conventions.Rules, language conventions.Language, c
 			if pattern, star, matched := bestAlias(cfg.paths, spec); matched {
 				var bases []string
 				for _, target := range cfg.paths[pattern] {
-					base := path.Join(cmp.Or(cfg.baseURL, cfg.pathsFolder), strings.Replace(target, "*", star, 1))
+					target = strings.Replace(target, "*", star, 1)
+					base := path.Join(cfg.expand(cmp.Or(cfg.baseURL, cfg.pathsFolder)), target)
+					if strings.HasPrefix(target, configDir) {
+						base = cfg.expand(target)
+					}
 					if !leaves(base) && !inFolders(base, rules.SkippedFolders) {
 						bases = append(bases, base)
 					}
@@ -298,20 +346,30 @@ func typescriptImports(rules conventions.Rules, language conventions.Language, c
 				return bases, strings.HasPrefix(pattern, "*")
 			}
 		}
-		name, p, found := workspacePackageOf(packages, spec)
-		if !found {
+		name, candidates := workspacePackageOf(packages, spec)
+		if len(candidates) == 0 {
 			return nil, false
 		}
-		targets, exported := p.targets(strings.TrimPrefix(spec, name))
-		if !exported {
-			return []string{path.Join(p.folder, "\x00not exported")}, false
+		if mine := slices.IndexFunc(candidates, func(p workspacePackage) bool { return strings.HasPrefix(from, p.folder+"/") }); mine >= 0 {
+			candidates = candidates[mine : mine+1] // a package imports itself; other packages of its name are copies
 		}
-		cfg := configs.configOf(path.Join(p.folder, "package.json"))
 		var sources []string
-		for _, target := range targets {
-			for _, base := range sourcesOf(cfg, p.folder, path.Join(p.folder, target)) {
-				if file, ok := exists(base); ok {
-					sources = appendNew(sources, file)
+		for _, p := range candidates {
+			targets, exported := p.targets(strings.TrimPrefix(spec, name))
+			if !exported {
+				sources = append(sources, path.Join(p.folder, "\x00not exported"))
+				continue
+			}
+			cfg := configs.nearest(p.folder)
+			for _, target := range targets {
+				found := false
+				for _, base := range sourcesOf(cfg, p.folder, path.Join(p.folder, target)) {
+					if file, ok := exists(base); ok {
+						sources, found = appendNew(sources, file), true
+						break
+					}
+				}
+				if found && p.exports == nil { // without exports, the first field with a source names the package
 					break
 				}
 			}
@@ -323,15 +381,15 @@ func typescriptImports(rules conventions.Rules, language conventions.Language, c
 	}}
 }
 
-// workspacePackageOf is the workspace package an import names: the one whose name it is, or lies under.
-func workspacePackageOf(packages map[string]workspacePackage, spec string) (string, workspacePackage, bool) {
-	var best string
-	for name := range packages {
-		if (spec == name || strings.HasPrefix(spec, name+"/")) && len(name) > len(best) {
-			best = name
-		}
+// workspacePackageOf are the workspace packages an import names: those whose name it is, or lies under; an npm name
+// is one segment, or two for a scope.
+func workspacePackageOf(packages map[string][]workspacePackage, spec string) (string, []workspacePackage) {
+	parts := strings.SplitN(spec, "/", 3)
+	name := parts[0]
+	if strings.HasPrefix(name, "@") && len(parts) > 1 {
+		name += "/" + parts[1]
 	}
-	return best, packages[best], best != ""
+	return name, packages[name]
 }
 
 // targets are the paths, relative to the package, that an import of a subpath ("" or "/x") of the package names, and
@@ -344,7 +402,11 @@ func (p workspacePackage) targets(subpath string) ([]string, bool) {
 		return append(slices.Clone(p.fields), "index"), true
 	}
 	entries, isMap := p.exports.(map[string]any)
-	if !isMap || !slices.ContainsFunc(keysOf(entries), func(k string) bool { return strings.HasPrefix(k, ".") }) {
+	subpaths := false
+	for key := range entries {
+		subpaths = subpaths || strings.HasPrefix(key, ".")
+	}
+	if !isMap || !subpaths {
 		entries = map[string]any{".": p.exports}
 	}
 	key := "." + subpath
@@ -389,16 +451,14 @@ func conditionTargets(value any, star string) []string {
 	return nil
 }
 
-func keysOf(m map[string]any) []string { return slices.Collect(maps.Keys(m)) }
-
 // sourcesOf are the paths to look for a package's target at, in order: under the config's outDir, the same path under
 // its rootDir, else under src, lib and the package folder; a declaration file also as its source.
 func sourcesOf(cfg *tsConfig, folder, target string) []string {
 	var bases []string
 	if cfg != nil && cfg.outDir != "" {
-		if rel, under := strings.CutPrefix(target, cfg.outDir+"/"); under {
+		if rel, under := strings.CutPrefix(target, cfg.expand(cfg.outDir)+"/"); under {
 			if cfg.rootDir != "" {
-				bases = append(bases, path.Join(cfg.rootDir, rel))
+				bases = append(bases, path.Join(cfg.expand(cfg.rootDir), rel))
 			} else {
 				bases = append(bases, path.Join(folder, "src", rel), path.Join(folder, "lib", rel), path.Join(folder, rel))
 			}

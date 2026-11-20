@@ -155,7 +155,7 @@ func (m *goModuleFile) directive(name string, words []string) {
 		if at < 1 || at+1 >= len(words) {
 			return
 		}
-		target := unquote(words[at+1])
+		target := strings.ReplaceAll(unquote(words[at+1]), `\`, "/") // .\x and ..\x are local folders too
 		if !strings.HasPrefix(target, "./") && !strings.HasPrefix(target, "../") && target != "." && target != ".." {
 			return // a replacement by another module, not by a local folder
 		}

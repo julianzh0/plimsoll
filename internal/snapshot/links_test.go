@@ -416,6 +416,14 @@ func TestBuildFollowsImportsIntoDartWorkspaceMembers(t *testing.T) {
 	if !reflect.DeepEqual(got.List, want) || got.Languages[0].Outside != 2 || got.Languages[0].NotFound != 0 {
 		t.Errorf("links = %+v, languages %+v; want the members' packages as own and http and other's import outside", got.List, got.Languages)
 	}
+	// A self-import reads the importer's own package, not a fixture of its name.
+	self := linksOf(t, map[string]string{
+		"fixtures/foo/pubspec.yaml": "name: foo\n", "fixtures/foo/lib/b.dart": "",
+		"packages/foo/pubspec.yaml": "name: foo\n", "packages/foo/lib/b.dart": "", "packages/foo/lib/a.dart": "import 'package:foo/b.dart';\n",
+	})
+	if want := []snapshot.Link{link("packages/foo/lib/a.dart", 1, "packages/foo/lib/b.dart")}; !reflect.DeepEqual(self.List, want) {
+		t.Errorf("a self-import beside a fixture of the same name: links = %+v, want %+v", self.List, want)
+	}
 	// A glob names members; a path dependency is own outside a workspace.
 	globbed := linksOf(t, map[string]string{
 		"pubspec.yaml": "name: _ws\nworkspace:\n  - packages/*\n", "packages/a/pubspec.yaml": "name: a\n",
@@ -1053,6 +1061,13 @@ func TestBuildFollowsGoImportsAcrossModules(t *testing.T) {
 			files["go.work"] = "go 1.22\n\nuse ./app\n\nreplace example.com/lib => ./lib\n"
 			return files
 		}(), reaches},
+		{"a workspace that uses its own folder", func() map[string]string {
+			files := maps.Clone(lib)
+			files["go.mod"], files["main.go"] = "module example.com/app\n", "package main\n\nimport \"example.com/lib/x\"\n"
+			files["go.work"] = "go 1.22\n\nuse .\nuse ./lib\n"
+			return files
+		}(), []snapshot.Link{folderLink("main.go", 3, "lib/x", "lib/x/x.go")}},
+		{"a replacement written with backslashes", app("module example.com/app\n\nrequire example.com/lib v1.0.0\n\nreplace example.com/lib => ..\\lib\n"), reaches},
 		{"a nested module is no part of the module above", map[string]string{
 			"go.mod": "module example.com/root\n", "main.go": "package main\n\nimport \"example.com/root/tools/y\"\n",
 			"tools/go.mod": "module example.com/tools\n", "tools/y/y.go": "package y\n",
@@ -1110,6 +1125,34 @@ func TestBuildFollowsTypeScriptConfigsAndWorkspacePackages(t *testing.T) {
 			"packages/core/lib/index.ts":  "", "packages/core/util.ts": "",
 			"app/a.ts": imp("core", "core/util", "left-pad"),
 		}, []snapshot.Link{link("app/a.ts", 1, "packages/core/lib/index.ts"), link("app/a.ts", 2, "packages/core/util.ts")}, 0, 0, 1},
+		{"exclude, and include with a suffix", map[string]string{
+			"tsconfig.json": `{"include": ["src/**/*.ts"], "exclude": ["src/gen"], "compilerOptions": {"paths": {"@/*": ["./src/*"]}}}`,
+			"src/a.ts":      imp("@/b"), "src/b.ts": "", "src/gen/g.ts": imp("@/b"),
+		}, []snapshot.Link{link("src/a.ts", 1, "src/b.ts")}, 0, 0, 1}, // the excluded file has no config: its alias is outside
+		{"a package's own config with include maps its build output", map[string]string{
+			"packages/core/package.json":  `{"name": "core", "main": "./dist/index.js"}`,
+			"packages/core/tsconfig.json": `{"include": ["src"], "compilerOptions": {"outDir": "dist", "rootDir": "src"}}`,
+			"packages/core/src/index.ts":  "", "app/a.ts": imp("core"),
+		}, []snapshot.Link{link("app/a.ts", 1, "packages/core/src/index.ts")}, 0, 0, 0},
+		{"without exports, the first field with a source", map[string]string{
+			"packages/ui/package.json": `{"name": "ui", "types": "./index.d.ts", "main": "./index.js"}`,
+			"packages/ui/index.d.ts":   "", "packages/ui/index.js": "", "app/a.ts": imp("ui"),
+		}, []snapshot.Link{link("app/a.ts", 1, "packages/ui/index.d.ts")}, 0, 0, 0},
+		{"${configDir} in a shared base", map[string]string{
+			"config/base.json":  `{"compilerOptions": {"paths": {"@/*": ["${configDir}/src/*"]}}}`,
+			"app/tsconfig.json": `{"extends": "../config/base.json"}`, "app/src/a.ts": imp("@/b"), "app/src/b.ts": "",
+		}, []snapshot.Link{link("app/src/a.ts", 1, "app/src/b.ts")}, 0, 0, 0},
+		{"a base config from a workspace package", map[string]string{
+			"packages/tsconfig/package.json": `{"name": "@repo/tsconfig"}`, "packages/tsconfig/base.json": `{"compilerOptions": {"baseUrl": ".", "paths": {"~/*": ["${configDir}/*"]}}}`,
+			"apps/web/tsconfig.json": `{"extends": "@repo/tsconfig/base.json"}`, "apps/web/a.ts": imp("~/b"), "apps/web/b.ts": "",
+		}, []snapshot.Link{link("apps/web/a.ts", 1, "apps/web/b.ts")}, 0, 0, 0},
+		{"a package imports itself, not its copy under examples", map[string]string{
+			"examples/ui/package.json": `{"name": "@acme/ui"}`, "examples/ui/index.ts": "",
+			"packages/ui/package.json": `{"name": "@acme/ui"}`, "packages/ui/index.ts": "", "packages/ui/b.ts": imp("@acme/ui"),
+		}, []snapshot.Link{link("packages/ui/b.ts", 1, "packages/ui/index.ts")}, 0, 0, 0},
+		{"a test package named like a dependency is no workspace package", map[string]string{
+			"test/fixtures/react/package.json": `{"name": "react"}`, "test/fixtures/react/index.js": "", "src/a.ts": imp("react"),
+		}, nil, 0, 0, 1},
 		{"a target with no tracked source is not readable", map[string]string{
 			"packages/gen/package.json": `{"name": "gen", "main": "./dist/index.js"}`, "app/a.ts": imp("gen"),
 		}, nil, 0, 1, 0},

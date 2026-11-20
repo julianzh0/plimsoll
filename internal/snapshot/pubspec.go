@@ -51,10 +51,13 @@ func pubspecPackages(content map[string][]byte, tracked map[string]bool) prefix 
 			workspaceOf[root] = appendNew(workspaceOf[root], root)
 		}
 	}
+	pathDependencies := map[string][]string{} // a package's folder to the folders it depends on by path
+	for folder := range names {
+		pathDependencies[folder] = pubspecPathDependencies(content[path.Join(folder, "pubspec.yaml")], folder)
+	}
 	return prefix{state: PrefixRead, own: func(from, spec string, _ []string) ([]string, bool) {
 		packageName, rest, found := strings.Cut(strings.TrimPrefix(spec, "package:"), "/")
-		target, known := packages[packageName]
-		if !strings.HasPrefix(spec, "package:") || !found || !known || rest == "" || leaves(rest) {
+		if !strings.HasPrefix(spec, "package:") || !found || rest == "" || leaves(rest) {
 			return nil, false
 		}
 		var importer string
@@ -64,12 +67,22 @@ func pubspecPackages(content map[string][]byte, tracked map[string]bool) prefix 
 				break
 			}
 		}
-		sameWorkspace := slices.ContainsFunc(workspaceOf[importer], func(root string) bool { return slices.Contains(workspaceOf[target], root) })
-		pathDependency := slices.Contains(pubspecPathDependencies(content[path.Join(importer, "pubspec.yaml")], importer), target)
-		if importer == "" || target != importer && !sameWorkspace && !pathDependency {
+		if importer == "" {
 			return nil, false
 		}
-		return []string{path.Join(target, "lib", rest)}, false
+		// the importing package itself, then a package it depends on by path, then a member of its workspace
+		candidates := append([]string{importer}, pathDependencies[importer]...)
+		for folder := range names {
+			if slices.ContainsFunc(workspaceOf[importer], func(root string) bool { return slices.Contains(workspaceOf[folder], root) }) {
+				candidates = append(candidates, folder)
+			}
+		}
+		for _, folder := range candidates {
+			if names[folder] == packageName {
+				return []string{path.Join(folder, "lib", rest)}, false
+			}
+		}
+		return nil, false
 	}}
 }
 
@@ -88,8 +101,9 @@ func pubspecPathDependencies(content []byte, folder string) []string {
 			inBlock = key == "dependencies" || key == "dev_dependencies" || key == "dependency_overrides"
 			continue
 		}
-		if value, isPath := strings.CutPrefix(trimmed, "path:"); inBlock && isPath {
-			found = append(found, path.Join(folder, strings.Trim(strings.TrimSpace(value), `"'`)))
+		if _, value, isPath := strings.Cut(trimmed, "path:"); inBlock && isPath { // a block entry, or a flow map {path: ../b}
+			value, _, _ = strings.Cut(value, ",")
+			found = append(found, path.Join(folder, strings.Trim(strings.TrimSpace(value), `"'} `)))
 		}
 	}
 	return found
