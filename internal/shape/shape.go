@@ -97,9 +97,16 @@ func (Detector) Detect(s snapshot.Snapshot) answer.Findings {
 	}
 
 	if len(s.Now.Manifests) == 0 {
-		f.NotAnalysed = append(f.NotAnalysed, "no known dependency manifest, at the root or as a project file outside test and other code, so no dependency count")
+		f.NotAnalysed = append(f.NotAnalysed, "no known dependency manifest outside test and other code, so no dependency count")
 	}
+	var byText []string
 	for _, manifest := range s.Now.Manifests {
+		for _, lockfile := range manifest.ByText {
+			if !slices.Contains(byText, lockfile) {
+				byText = append(byText, lockfile)
+				f.NotAnalysed = append(f.NotAnalysed, fmt.Sprintf("`%s` is in a layout plimsoll does not read; its names were matched by text", lockfile))
+			}
+		}
 		if slices.Contains(s.Before.Broken, manifest.Path) {
 			f.NotAnalysed = append(f.NotAnalysed, fmt.Sprintf("`%s` could not be read at the base, so no dependencies were compared", manifest.Path))
 			continue

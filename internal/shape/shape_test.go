@@ -79,7 +79,7 @@ func TestDetectOnEachLanguageSample(t *testing.T) {
 			map[string]string{"Acme.Notes/Acme.Notes.csproj": "Microsoft.Extensions.Configuration, Npgsql, System.Text.Json"},
 			[]string{"no `.env.example`, so no settings were counted or compared"}},
 		{"c", 45, 9, 0, 0.2, []string{"src/tally.c", "src/buffer.c", "tests/test_tally.c"}, nil, []string{
-			"no `.env.example`, so no settings were counted or compared", "no known dependency manifest, at the root or as a project file outside test and other code, so no dependency count",
+			"no `.env.example`, so no settings were counted or compared", "no known dependency manifest outside test and other code, so no dependency count",
 		}},
 		{"cpp", 66, 15, 0, 0.2, []string{"src/store.cc", "include/notes/store.hpp", "src/main.cpp"},
 			map[string]string{"vcpkg.json": "fmt, sqlite3"}, []string{"no `.env.example`, so no settings were counted or compared"}},
@@ -92,7 +92,7 @@ func TestDetectOnEachLanguageSample(t *testing.T) {
 		{"python-declared", 9, 12, 0, 1.3, []string{"checks/test_flow.py", "src/app/service.py", "tests/test_service.py"},
 			map[string]string{"pyproject.toml": ""}, []string{"no `.env.example`, so no settings were counted or compared"}},
 		{"unproven", 4, 3, 0, 0.8, []string{"bin/run.sh", "tests/check.sh"}, nil, []string{
-			"no `.env.example`, so no settings were counted or compared", "no known dependency manifest, at the root or as a project file outside test and other code, so no dependency count",
+			"no `.env.example`, so no settings were counted or compared", "no known dependency manifest outside test and other code, so no dependency count",
 		}},
 	}
 	for _, tc := range cases {
@@ -456,5 +456,16 @@ func TestShapeNamesTheDecidingRulesThatRan(t *testing.T) {
 	none := detect(t, snapshottest.Files(map[string]string{"README.md": "a\n"}, map[string]string{"README.md": "b\n"}), conventions.Default())
 	if len(none.RanRules) != 0 {
 		t.Errorf("no manifest, no code: ran %q, want none", none.RanRules)
+	}
+}
+
+// A lockfile in a layout plimsoll does not read is matched by text, and the answer says so once.
+func TestALockfileMatchedByTextIsNamed(t *testing.T) {
+	files := map[string]string{"package.json": `{"dependencies": {"a": "1"}}`, "web/package.json": `{"dependencies": {"b": "1"}}`,
+		"package-lock.json": `{"lockfileVersion": 9, "packages": {}}`, "src/a.ts": "a\n"}
+	f := detect(t, snapshottest.Files(nil, files), conventions.Default())
+	want := "`package-lock.json` is in a layout plimsoll does not read; its names were matched by text"
+	if n := slices.Index(f.NotAnalysed, want); n < 0 || slices.Contains(f.NotAnalysed[n+1:], want) {
+		t.Errorf("not analysed %q, want %q once", f.NotAnalysed, want)
 	}
 }

@@ -171,6 +171,7 @@ type Manifest struct {
 	Dependencies []string
 	Lockfiles    []string // the manifest's lockfiles that are tracked; nil when none is
 	Unlocked     []string // dependencies whose name no tracked lockfile holds; nil when no lockfile is tracked
+	ByText       []string // its lockfiles in a layout plimsoll does not read, whose names were matched by text
 }
 
 // Lines counts lines added and removed.

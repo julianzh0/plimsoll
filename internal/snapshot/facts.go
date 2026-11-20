@@ -109,6 +109,11 @@ func manifests(rules conventions.Rules, entries []Entry) ([]Manifest, []string) 
 	for _, entry := range entries {
 		content[entry.Path] = entry.Content
 	}
+	type lockRead struct {
+		names map[string]bool
+		ok    bool
+	}
+	read := map[string]lockRead{} // each lockfile is read once, however many manifests share it
 	for _, entry := range entries {
 		known, isManifest := manifestOf(rules, entry.Path)
 		if !isManifest || entry.Content == nil {
@@ -126,10 +131,24 @@ func manifests(rules conventions.Rules, entries []Entry) ([]Manifest, []string) 
 		m := Manifest{Path: entry.Path, Dependencies: names}
 		var locks [][]byte
 		m.Lockfiles, locks = nearestLockfiles(content, path.Dir(entry.Path), known.Lockfiles)
+		holds := make([]func(string) bool, len(m.Lockfiles))
+		for i, lockfile := range m.Lockfiles {
+			r, seen := read[lockfile]
+			if !seen {
+				r.names, r.ok = lockNames(lockfile, locks[i])
+				read[lockfile] = r
+			}
+			if !r.ok {
+				m.ByText = append(m.ByText, lockfile)
+				holds[i] = func(name string) bool { return holdsName(locks[i], name) }
+				continue
+			}
+			holds[i] = func(name string) bool { return lockHolds(r.names, lockfile, name) }
+		}
 		if len(m.Lockfiles) > 0 {
 			m.Unlocked = []string{}
 			for _, name := range names {
-				if !slices.ContainsFunc(locks, func(lock []byte) bool { return holdsName(lock, name) }) {
+				if !slices.ContainsFunc(holds, func(held func(string) bool) bool { return held(name) }) {
 					m.Unlocked = append(m.Unlocked, name)
 				}
 			}
