@@ -514,7 +514,7 @@ func TestDeclaredTestKindsGetRowsThatAddUpToTheTestLines(t *testing.T) {
 		}
 	}
 	one := detect(t, snapshottest.Files(nil, map[string]string{"src/a.go": "package a\n", "tests/a_test.go": "package a\n",
-		"docs/x.md": "x\n", ".plimsoll.toml": "[tests]\nunit = [\"tests/**\", \"docs/**\", \"tests/a_test.go\"]\nall = [\"src/**\", \"**\"]\n"}), conventions.Default())
+		"docs/x.md": "x\n", ".plimsoll.toml": "[tests]\nunit = [\"tests/**\", \"docs/**\", \"tests/a_test.go\", \"gone/**\"]\nall = [\"src/**\", \"**\"]\n"}), conventions.Default())
 	if !slices.Contains(one.Notes, "test kinds of `.plimsoll.toml` (`[tests]`) with the patterns that match their files, in order: `unit`: `tests/**`, `tests/a_test.go`") {
 		t.Errorf("notes %q lack both patterns of unit that match its file", one.Notes)
 	}
@@ -539,6 +539,7 @@ func TestDeclaredTestKindsGetRowsThatAddUpToTheTestLines(t *testing.T) {
 		}
 	}
 	if want := []string{
+		"`.plimsoll.toml` `[tests]` `unit`: `gone/**` matches no tracked file; it is not used",
 		"`.plimsoll.toml` `[tests]` `unit`: `docs/**` matches no test code this kind owns; it is not used",
 		"`.plimsoll.toml` `[tests]` `all`: `src/**` matches 1 product code file; a kind labels test code only, so it is not counted",
 		"`.plimsoll.toml` `[tests]` `all`: `**` matches 1 product code file; a kind labels test code only, so it is not counted",
