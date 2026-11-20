@@ -27,7 +27,7 @@ import (
 
 // aRepository is an absolute path on every system (a leading slash alone is not one on Windows), written with "/"
 // so it can stand in JSON.
-var aRepository = filepath.ToSlash(filepath.Join(os.TempDir(), "repository"))
+func aRepository() string { return filepath.ToSlash(filepath.Join(os.TempDir(), "repository")) }
 
 // check validates a decoded JSON value against the keywords the output schema uses: type, required, properties,
 // items, enum and a local $ref. A member the schema does not name is a problem too: the schema lists every member.
@@ -149,8 +149,8 @@ func TestEveryAnswerMatchesTheOutputSchema(t *testing.T) {
 			Detectors: []answer.Detector{shape.Detector{}, process.Detector{}, settings.Detector{}, hotspots.Detector{}, cochange.Detector{}, links.Detector{}},
 			Version:   "0.1.0",
 		}
-		status, _ := q.Status(context.Background(), aRepository, "main")
-		report, _ := q.Report(context.Background(), aRepository, "main", nil)
+		status, _ := q.Status(context.Background(), aRepository(), "main")
+		report, _ := q.Report(context.Background(), aRepository(), "main", nil)
 		answers := []answer.Answer{status, report}
 		kinds := map[string]bool{}
 		for _, m := range slices.Concat(report.Marks, report.ReportOnly) {
@@ -158,7 +158,7 @@ func TestEveryAnswerMatchesTheOutputSchema(t *testing.T) {
 				continue
 			}
 			kinds[m.Subject.Kind] = true
-			explained, err := q.Explain(context.Background(), aRepository, "main", m.ID)
+			explained, err := q.Explain(context.Background(), aRepository(), "main", m.ID)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -252,16 +252,16 @@ func TestReportTakesAnOptionalListOfFiles(t *testing.T) {
 		}
 		return content.Text
 	}
-	named := call("report", `{"repository":"`+aRepository+`","base":"main","files":["src/b.ts"]}`)
+	named := call("report", `{"repository":"`+aRepository()+`","base":"main","files":["src/b.ts"]}`)
 	if named.IsError || !strings.Contains(text(named), "named file `src/b.ts`") {
 		t.Errorf("report with files = %+v, want the named row", named.Content)
 	}
-	for _, arguments := range []string{`{"repository":"` + aRepository + `","base":"main","files":"src/a.ts"}`, `{"repository":"` + aRepository + `","base":"main","files":[1]}`} {
+	for _, arguments := range []string{`{"repository":"` + aRepository() + `","base":"main","files":"src/a.ts"}`, `{"repository":"` + aRepository() + `","base":"main","files":[1]}`} {
 		if r := call("report", arguments); !r.IsError || text(r) != "The argument `files` must be a list of text." {
 			t.Errorf("report(%s) = %+v, want the list refusal", arguments, r.Content)
 		}
 	}
-	if r := call("status", `{"repository":"`+aRepository+`","base":"main","files":[]}`); !r.IsError || text(r) != "Unknown argument `files`." {
+	if r := call("status", `{"repository":"`+aRepository()+`","base":"main","files":[]}`); !r.IsError || text(r) != "Unknown argument `files`." {
 		t.Errorf("status with files = %+v, want an unknown argument", r.Content)
 	}
 }
@@ -294,7 +294,7 @@ func TestBaseIsOptionalInEveryTool(t *testing.T) {
 		if q.name == "explain" {
 			mark = `,"mark":"shape.file-size:src/a.ts"`
 		}
-		for _, arguments := range []string{`{"repository":"` + aRepository + `"` + mark + `}`, `{"repository":"` + aRepository + `","base":""` + mark + `}`} {
+		for _, arguments := range []string{`{"repository":"` + aRepository() + `"` + mark + `}`, `{"repository":"` + aRepository() + `","base":""` + mark + `}`} {
 			asked = nil
 			request := &mcp.CallToolRequest{Params: &mcp.CallToolParamsRaw{Name: q.name, Arguments: json.RawMessage(arguments)}}
 			if _, err := s.handler(q, make(chan struct{}, concurrentAnswers))(context.Background(), request); err != nil {
@@ -304,7 +304,7 @@ func TestBaseIsOptionalInEveryTool(t *testing.T) {
 				t.Errorf("%s(%s) asked for the bases %q, want one empty base", q.name, arguments, asked)
 			}
 		}
-		request := &mcp.CallToolRequest{Params: &mcp.CallToolParamsRaw{Name: q.name, Arguments: json.RawMessage(`{"repository":"` + aRepository + `","base":7` + mark + `}`)}}
+		request := &mcp.CallToolRequest{Params: &mcp.CallToolParamsRaw{Name: q.name, Arguments: json.RawMessage(`{"repository":"` + aRepository() + `","base":7` + mark + `}`)}}
 		result, err := s.handler(q, make(chan struct{}, concurrentAnswers))(context.Background(), request)
 		if err != nil {
 			t.Fatal(err)

@@ -22,7 +22,7 @@ import (
 
 // aRepository is an absolute path on every system (a leading slash alone is not one on Windows), written with "/"
 // so it can stand in JSON.
-var aRepository = filepath.ToSlash(filepath.Join(os.TempDir(), "repository"))
+func aRepository() string { return filepath.ToSlash(filepath.Join(os.TempDir(), "repository")) }
 
 func questions(t testing.TB, source snapshot.Source, err error) (answer.Questions, *bool) {
 	t.Helper()
@@ -48,12 +48,12 @@ func grown() snapshot.Source {
 
 func TestQuestionsAnswerWithARealDetector(t *testing.T) {
 	q, _ := questions(t, grown(), nil)
-	status, err := q.Status(context.Background(), aRepository, "main")
+	status, err := q.Status(context.Background(), aRepository(), "main")
 	if err != nil || status.Question != answer.Status || status.Version != "0.1.0" || len(status.Detectors) != 1 ||
 		len(status.Marks) != 0 || len(status.ReportOnly) != 1 || status.ReportOnly[0].ID != "shape.file-size:src/a.ts" || status.Sections != nil {
 		t.Fatalf("Status = %+v, %v; want one size mark, in report only, and no sections", status, err)
 	}
-	report, err := q.Report(context.Background(), aRepository, "main", nil)
+	report, err := q.Report(context.Background(), aRepository(), "main", nil)
 	if err != nil || report.Question != answer.Report || len(report.Marks) != 0 || len(report.ReportOnly) != 1 || len(report.Sections) != 1 ||
 		report.Sections[0].Statistics[0].Name != "product lines" {
 		t.Fatalf("Report = %+v, %v; want the mark and one shape section", report, err)
@@ -87,14 +87,14 @@ func TestQuestionsRefuseInOnePlainSentence(t *testing.T) {
 	}
 	for _, c := range cases {
 		q, _ := questions(t, snapshot.Source{}, &c.refusal)
-		_, err := q.Report(context.Background(), aRepository, "nope", nil)
+		_, err := q.Report(context.Background(), aRepository(), "nope", nil)
 		if refusal, ok := errors.AsType[*answer.Refusal](err); !ok || refusal.Sentence != c.want {
 			t.Errorf("Report(refusal %+v) = %v, want %q", c.refusal, err, c.want)
 		}
 	}
 	boom := errors.New("boom")
 	q, _ = questions(t, snapshot.Source{}, boom)
-	if _, err := q.Status(context.Background(), aRepository, "main"); !errors.Is(err, boom) {
+	if _, err := q.Status(context.Background(), aRepository(), "main"); !errors.Is(err, boom) {
 		t.Errorf("Status(other error) = %v, want it returned as it is", err)
 	}
 }
@@ -123,7 +123,7 @@ func sampleAnswers(t *testing.T) (answer.Questions, []answer.Answer) {
 		for _, ask := range []func(context.Context, string, string) (answer.Answer, error){q.Status, func(ctx context.Context, repository, base string) (answer.Answer, error) {
 			return q.Report(ctx, repository, base, nil)
 		}} {
-			a, err := ask(context.Background(), aRepository, "main")
+			a, err := ask(context.Background(), aRepository(), "main")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -165,12 +165,12 @@ func TestExplainAnswersForOneItem(t *testing.T) {
 		map[string]string{"src/new.ts": snapshottest.Lines(1600), "src/old.ts": snapshottest.Lines(1600)},
 	)
 	q, _ := questions(t, source, nil)
-	report, err := q.Report(context.Background(), aRepository, "main", nil)
+	report, err := q.Report(context.Background(), aRepository(), "main", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, id := range []string{"shape.file-size:src/new.ts", "shape.file-size:src/gone.ts", "shape.file-size:src/old.ts"} {
-		a, err := q.Explain(context.Background(), aRepository, "main", id)
+		a, err := q.Explain(context.Background(), aRepository(), "main", id)
 		items := len(a.Marks) + len(a.ReportOnly) + len(a.Resolved) + len(a.Standing)
 		if err != nil || a.Question != answer.Explain || items != 1 || a.Footprint != nil || a.Sections != nil || a.Radius != nil ||
 			a.Evidence == nil || a.Evidence.Mark != id || a.Counts != report.Counts {
@@ -185,7 +185,7 @@ func TestExplainOfALongMarkEndsWithATruncationLine(t *testing.T) {
 		files[fmt.Sprintf("tests/t%03d.ts", i)] = "x\n"
 	}
 	q, _ := questions(t, snapshottest.Files(nil, files), nil)
-	a, err := q.Explain(context.Background(), aRepository, "main", "shape.test-ratio:repository")
+	a, err := q.Explain(context.Background(), aRepository(), "main", "shape.test-ratio:repository")
 	if err != nil || len(a.Evidence.Lines) != 180 || a.Evidence.Omitted == 0 {
 		t.Fatalf("Explain(ratio with 300 test files) = %+v, %v; want 180 lines and some omitted", a.Evidence, err)
 	}
@@ -197,7 +197,7 @@ func TestExplainOfALongMarkEndsWithATruncationLine(t *testing.T) {
 
 func TestExplainRefusesAnUnknownMark(t *testing.T) {
 	q, _ := questions(t, grown(), nil)
-	_, err := q.Explain(context.Background(), aRepository, "main", "shape.file-size:nope.ts")
+	_, err := q.Explain(context.Background(), aRepository(), "main", "shape.file-size:nope.ts")
 	want := "Unknown mark `shape.file-size:nope.ts`: nothing with this identifier exists against this base now. `report` lists the current identifiers."
 	if refusal, ok := errors.AsType[*answer.Refusal](err); !ok || refusal.Sentence != want {
 		t.Errorf("Explain(unknown mark) = %v, want %q", err, want)
@@ -218,24 +218,24 @@ func TestReportTakesNamedFiles(t *testing.T) {
 		}
 		return subjects
 	}
-	report, err := q.Report(context.Background(), aRepository, "main", []string{"src/b.ts", "./src/a.ts", "src/b.ts"})
+	report, err := q.Report(context.Background(), aRepository(), "main", []string{"src/b.ts", "./src/a.ts", "src/b.ts"})
 	if err != nil || !slices.Equal(named(report), []string{"src/a.ts", "src/b.ts"}) {
 		t.Errorf("Report(files) named rows = %q, %v; want src/a.ts and src/b.ts once each", named(report), err)
 	}
 	for _, files := range [][]string{nil, {}} {
-		if report, _ := q.Report(context.Background(), aRepository, "main", files); len(named(report)) != 0 {
+		if report, _ := q.Report(context.Background(), aRepository(), "main", files); len(named(report)) != 0 {
 			t.Errorf("Report(%q) has named rows %q, want none", files, named(report))
 		}
 	}
 	for _, files := range [][]string{{"/abs/x.ts"}, {"../x.ts"}} {
 		*called = false
-		_, err := q.Report(context.Background(), aRepository, "main", files)
+		_, err := q.Report(context.Background(), aRepository(), "main", files)
 		refusal, ok := errors.AsType[*answer.Refusal](err)
 		if !ok || refusal.Sentence != "Every entry of `files` must be a path relative to the repository's top folder." || *called {
 			t.Errorf("Report(%q) = %v, read %v; want the refusal before the repository is read", files, err, *called)
 		}
 	}
-	if report, err := q.Report(context.Background(), aRepository, "main", []string{"src/", ""}); err != nil || len(named(report)) != 2 {
+	if report, err := q.Report(context.Background(), aRepository(), "main", []string{"src/", ""}); err != nil || len(named(report)) != 2 {
 		t.Errorf("Report(src/, empty) = %q, %v; want two named rows", named(report), err)
 	}
 }
@@ -247,16 +247,16 @@ func TestExplainSaysAnItemIsAcknowledged(t *testing.T) {
 			".plimsoll.toml": "[acknowledged]\n\"shape.file-size:src/old.ts\" = \"one parser, one file\"\n\"shape.file-size:src/gone.ts\" = \"x\"\n"},
 	)
 	q, _ := questions(t, source, nil)
-	a, err := q.Explain(context.Background(), aRepository, "main", "shape.file-size:src/old.ts")
+	a, err := q.Explain(context.Background(), aRepository(), "main", "shape.file-size:src/old.ts")
 	if err != nil || len(a.Acknowledged) != 1 || len(a.Standing) != 0 || a.AcknowledgedIn != ".plimsoll.toml" ||
 		!strings.Contains(q.Text(a), "acknowledged in `.plimsoll.toml`: `report` lists it under \"Acknowledged\"") {
 		t.Errorf("Explain(acknowledged) = %+v, %v; want the item under acknowledged, named so in the text", a, err)
 	}
-	other, err := q.Explain(context.Background(), aRepository, "main", "shape.file-size:src/new.ts")
+	other, err := q.Explain(context.Background(), aRepository(), "main", "shape.file-size:src/new.ts")
 	if err != nil || len(other.Acknowledged) != 0 || other.AcknowledgedIn != "" {
 		t.Errorf("Explain(another item) = acknowledged %v in %q, %v; want none", other.Acknowledged, other.AcknowledgedIn, err)
 	}
-	if _, err := q.Explain(context.Background(), aRepository, "main", "shape.file-size:src/gone.ts"); err == nil {
+	if _, err := q.Explain(context.Background(), aRepository(), "main", "shape.file-size:src/gone.ts"); err == nil {
 		t.Error("Explain(a stale entry's identifier) = no error, want it refused as unknown")
 	}
 }
@@ -273,9 +273,9 @@ func (d radiusDetector) Detect(s snapshot.Snapshot) answer.Findings {
 func TestStatusAndReportCarryTheBlastRadiusAndHeadlineAndExplainLeavesThemOut(t *testing.T) {
 	q, _ := questions(t, grown(), nil)
 	q.Detectors = []answer.Detector{radiusDetector{}}
-	status, errStatus := q.Status(context.Background(), aRepository, "main")
-	report, errReport := q.Report(context.Background(), aRepository, "main", nil)
-	explained, errExplain := q.Explain(context.Background(), aRepository, "main", "shape.file-size:src/a.ts")
+	status, errStatus := q.Status(context.Background(), aRepository(), "main")
+	report, errReport := q.Report(context.Background(), aRepository(), "main", nil)
+	explained, errExplain := q.Explain(context.Background(), aRepository(), "main", "shape.file-size:src/a.ts")
 	if errors.Join(errStatus, errReport, errExplain) != nil || status.Radius == nil || report.Radius == nil || status.Radius.Files != 1 ||
 		explained.Radius != nil {
 		t.Errorf("radius of status, report, explain = %+v, %+v, %+v; want the radius in status and report only", status.Radius, report.Radius, explained.Radius)

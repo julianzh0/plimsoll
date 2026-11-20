@@ -42,7 +42,7 @@ func TestAQuestionWaitsForAFreeAnswerSlot(t *testing.T) {
 		},
 		Version: "0.1.0",
 	}}
-	request := &mcp.CallToolRequest{Params: &mcp.CallToolParamsRaw{Name: "status", Arguments: json.RawMessage(`{"repository":"` + aRepository + `","base":"main"}`)}}
+	request := &mcp.CallToolRequest{Params: &mcp.CallToolParamsRaw{Name: "status", Arguments: json.RawMessage(`{"repository":"` + aRepository() + `","base":"main"}`)}}
 	slots := make(chan struct{}, concurrentAnswers)
 	for range concurrentAnswers {
 		slots <- struct{}{}
