@@ -1,6 +1,7 @@
 name: CI
 
-# Every push to main and every pull request runs make qa on GitHub-hosted arm64 and amd64 runners.
+# Every push to main and every pull request runs make qa on GitHub-hosted arm64 and amd64 runners, and the unit and
+# integration tests on a Windows runner.
 on:
   push:
     branches: [main]
@@ -45,6 +46,23 @@ jobs:
             make -s cover-report
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # The unit and integration tests on Windows with Git for Windows' defaults (line endings converted on checkout), so
+  # paths with spaces or other letters, separators and CRLF files are checked where users meet them.
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - run: git config --global core.longpaths true
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: git --version
+      - run: go test -count=1 -shuffle=on -p 1 ./...
+      - run: go test -count=1 -shuffle=on -p 1 -tags integration -run '^TestIntegration' ./...
 
   # The MCP bundle the release attaches: packed from this tree, started as a client starts it on this runner's
   # processor, and its server.json validated by the MCP registry.
