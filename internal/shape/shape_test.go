@@ -491,7 +491,7 @@ func TestDeclaredTestKindsGetRowsThatAddUpToTheTestLines(t *testing.T) {
 	}
 	for _, sentence := range []string{
 		"`.plimsoll.toml` `[tests]` `e2e`: `e2e/**` matches no tracked file; it is not used",
-		"`.plimsoll.toml` `[tests]` `late` owns no test code: test files its patterns match belong to `integration`, listed earlier",
+		"`.plimsoll.toml` `[tests]` `late` owns no test lines: test files it matches belong to `integration`, which comes before it in `[tests]`",
 		"`.plimsoll.toml` `[tests]` `all`: `**` matches 2 product code files; a kind labels test code only, so they are not counted",
 		"`.plimsoll.toml` `[tests]` `all`: 2 values are no path patterns; they are not used",
 		"`.plimsoll.toml` `[tests]` `folder`: `tests/unit` matches no tracked file; a folder's files are written `tests/unit/**`",

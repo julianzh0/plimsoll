@@ -62,7 +62,7 @@ func kindGaps(s snapshot.Snapshot, kind snapshot.TestKind) []string {
 	switch {
 	case kind.Owns() || len(kind.Patterns) == 0 || kind.BaseMissing || len(kind.Unmatched) == len(kind.Patterns):
 	case kind.TakenBy != "":
-		gaps = append(gaps, fmt.Sprintf("%s owns no test code: test files its patterns match belong to `%s`, listed earlier", prefix, kind.TakenBy))
+		gaps = append(gaps, fmt.Sprintf("%s owns no test lines: test files it matches belong to `%s`, which comes before it in `[%s]`", prefix, kind.TakenBy, s.TestKinds.Table))
 	default:
 		gaps = append(gaps, prefix+" owns no test code: its patterns match no test code")
 	}
