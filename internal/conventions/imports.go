@@ -25,6 +25,9 @@ type Imports struct {
 	// Grouped is a target that may group paths in nested braces: "a::{b, c::{d, e}}" names a::b, a::c::d and
 	// a::c::e, each one import.
 	Grouped bool
+	// ModuleKeyword opens a module written in braces ("mod name { … }"), looked for by the token scanner inside the
+	// stretches the grammar keeps as tokens (macro bodies); "" for none.
+	ModuleKeyword string
 	// NotSeen is the use between files the language allows without an import statement, as a note names it; "" for
 	// none.
 	NotSeen    string

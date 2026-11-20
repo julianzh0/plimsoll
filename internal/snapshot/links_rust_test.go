@@ -234,6 +234,22 @@ func TestBuildFollowsRustCratesAndModules(t *testing.T) {
 			"src/lib.rs":  "pub extern crate alloc as heap;\nmod r#enum;\nuse heap::Vec;\nuse r#enum::E;\nuse crate::heap::Box;\n",
 			"src/enum.rs": "pub enum E {}\n",
 		}, []snapshot.Link{modLink("src/lib.rs", 2, "src/enum.rs"), link("src/lib.rs", 4, "src/enum.rs")}, 2, 0},
+		{"the functions and statics of an extern block", map[string]string{
+			"src/lib.rs": "mod ffi;\nuse ffi::foo;\nuse ffi::BAR;\n", "src/ffi.rs": "extern \"C\" {\n    pub fn foo();\n    pub static BAR: i32;\n}\n",
+		}, []snapshot.Link{modLink("src/lib.rs", 1, "src/ffi.rs"), link("src/lib.rs", 2, "src/ffi.rs"), link("src/lib.rs", 3, "src/ffi.rs")}, 0, 0},
+		{"items named by raw identifiers", map[string]string{
+			"src/lib.rs": "mod a;\nuse a::r#match;\nuse a::r#type;\n", "src/a.rs": "pub fn r#match() {}\npub use std::r#type;\n",
+		}, []snapshot.Link{modLink("src/lib.rs", 1, "src/a.rs"), link("src/lib.rs", 2, "src/a.rs"), link("src/lib.rs", 3, "src/a.rs")}, 1, 0},
+		{"a module in braces inside cfg_if, whose items nobody read", map[string]string{
+			"src/lib.rs":      "cfg_if! {\n    if #[cfg(unix)] {\n        mod imp {\n            mod util;\n            use self::util::f;\n            use self::Q;\n        }\n    }\n}\n",
+			"src/imp/util.rs": "pub fn f() {}\n",
+		}, []snapshot.Link{modLink("src/lib.rs", 4, "src/imp/util.rs"), link("src/lib.rs", 5, "src/imp/util.rs")}, 0, 0},
+		{"a file only an include names is no crate root to judge", map[string]string{
+			"src/lib.rs": "pub struct T;\ninclude!(\"gen.rs\");\n", "src/gen.rs": "use crate::T as U;\nuse crate::Missing;\n",
+		}, nil, 0, 0},
+		{"a 2015 extern crate alias is outside", map[string]string{
+			"Cargo.toml": "[package]\nname = \"app\"\n", "src/lib.rs": "extern crate foo as bar;\nmod a;\n", "src/a.rs": "use bar::X;\n",
+		}, []snapshot.Link{modLink("src/lib.rs", 2, "src/a.rs")}, 2, 0},
 		{"a module in braces inside a macro body", map[string]string{
 			"src/lib.rs": "m! {\n    mod inner {\n        mod deep;\n    }\n}\n", "src/inner/deep.rs": "",
 		}, []snapshot.Link{modLink("src/lib.rs", 3, "src/inner/deep.rs")}, 0, 0},
@@ -242,6 +258,26 @@ func TestBuildFollowsRustCratesAndModules(t *testing.T) {
 		if !reflect.DeepEqual(got.List, tc.want) || got.Languages[0].Outside != tc.outside || got.Languages[0].NotFound != tc.notFound {
 			t.Errorf("%s: List = %+v, outside %d, not found %d; want %+v, %d, %d", tc.name, got.List, got.Languages[0].Outside,
 				got.Languages[0].NotFound, tc.want, tc.outside, tc.notFound)
+		}
+	}
+}
+
+// Two platform tables that give one key different crates: the import names both, the same way every time.
+func TestBuildReadsATargetDependencyOfTwoPlatformsAsAmbiguous(t *testing.T) {
+	files := map[string]string{
+		"Cargo.toml": "[package]\nname = \"app\"\nedition = \"2021\"\n\n[target.'cfg(unix)'.dependencies]\nimp = { path = \"u\", package = \"u\" }\n\n" +
+			"[target.'cfg(windows)'.dependencies]\nimp = { path = \"w\", package = \"w\" }\n",
+		"u/Cargo.toml": "[package]\nname = \"u\"\n", "u/src/lib.rs": "pub fn f() {}\n",
+		"w/Cargo.toml": "[package]\nname = \"w\"\n", "w/src/lib.rs": "pub fn f() {}\n",
+		"src/lib.rs": "use imp::f;\n",
+	}
+	first := linksOf(t, files)
+	if first.Languages[0].Ambiguous != 1 {
+		t.Errorf("use imp::f with two platform crates: %+v, want it ambiguous", first.Languages[0])
+	}
+	for range 10 {
+		if again := linksOf(t, files); !reflect.DeepEqual(again, first) {
+			t.Fatalf("the same tree read twice: %+v, then %+v", first, again)
 		}
 	}
 }

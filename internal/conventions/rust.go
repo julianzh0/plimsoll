@@ -9,15 +9,16 @@ func rustLanguage() Language {
 		Name: "rust", Functions: rustFunctions(), Tokens: cLikeTokens(rustLiterals, RustRawStrings), Extensions: []string{".rs"}, Grammar: "rust", Query: rustQuery, Declarations: rustDeclarations,
 		Units: rustUnits,
 		Imports: Imports{
-			Statements: []ImportForm{{Pattern: rustMod}, {Pattern: rustUse}, {Pattern: rustExtern}},
-			Grouped:    true,
-			Relative:   NoRelative,
-			Prefix:     Prefix{File: "Cargo.toml", Format: CargoCrates, Members: true},
-			Target:     FileTarget,
-			NoRings:    "a crate's modules use each other, and Rust compiles them as one unit",
-			Implicit:   []string{"main.rs", "lib.rs", "build.rs"},
-			NotSeen:    "a path written in code without a `use` line, and a module or name a macro creates",
-			NoImporter: "a parent file that only declares a module (`mod x;`)",
+			Statements:    []ImportForm{{Pattern: rustMod}, {Pattern: rustUse}, {Pattern: rustExtern}},
+			Grouped:       true,
+			ModuleKeyword: "mod",
+			Relative:      NoRelative,
+			Prefix:        Prefix{File: "Cargo.toml", Format: CargoCrates, Members: true},
+			Target:        FileTarget,
+			NoRings:       "a crate's modules use each other, and Rust compiles them as one unit",
+			Implicit:      []string{"main.rs", "lib.rs", "build.rs"},
+			NotSeen:       "a path written in code without a `use` line, and a module or name a macro creates",
+			NoImporter:    "a parent file that only declares a module (`mod x;`)",
 		},
 	}
 }
@@ -29,6 +30,10 @@ const rustItems = `[(function_item name: (identifier) @bind) (function_signature
   (union_item name: (type_identifier) @bind) (const_item name: (identifier) @bind) (static_item name: (identifier) @bind)
   (mod_item name: (identifier) @bind) (macro_definition name: (identifier) @bind)
   (extern_crate_declaration alias: (identifier) @bind)] @bind.at`
+
+// rustForeignItems are the functions and statics an extern block declares in the module it stands in.
+const rustForeignItems = `(foreign_mod_item body: (declaration_list [(function_signature_item name: (identifier) @bind)
+  (static_item name: (identifier) @bind)] @bind.at))`
 
 // rustOpaque is what may bring names into a module that no item shows: a macro call among its items, and an attribute
 // other than the inert built-in ones.
@@ -50,6 +55,9 @@ const rustQuery = `
 (mod_item name: (identifier) @module.name body: (declaration_list)) @module
 (source_file ` + rustItems + `)
 (mod_item body: (declaration_list ` + rustItems + `))
+(source_file ` + rustForeignItems + `)
+(mod_item body: (declaration_list ` + rustForeignItems + `))
+(extern_crate_declaration alias: (identifier) @alias)
 (source_file ` + rustOpaque + `)
 (mod_item body: (declaration_list ` + rustOpaque + `))
 ((attribute_item (attribute (identifier) @_e)) . [(attribute_item) (line_comment) (block_comment)]* .

@@ -447,6 +447,7 @@ type Language struct {
 	//   @bind, @bind.at  a name an item binds in the module it stands in, and the item
 	//   @opaque   what may bind names in its module that no item shows (a macro call, an active attribute)
 	//   @export   a macro the crate exports at its root
+	//   @alias    the name an external crate is given
 	//   @test, @test.end  test code inside a product file, from the start of the first to the end of the second
 	//   @text     a stretch the grammar keeps as tokens (a macro body): the entry's text forms read it
 	//   @blank    a comment or a string, blanked inside a target and inside @text

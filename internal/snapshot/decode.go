@@ -43,6 +43,8 @@ func decode(language conventions.Language, result parse.Result, content []byte) 
 				opaque = append(opaque, c)
 			case "export":
 				r.exports = append(r.exports, string(content[c.Start:c.End]))
+			case "alias":
+				r.externAliases = append(r.externAliases, string(content[c.Start:c.End]))
 			case "import":
 				im.within = c
 			case "name":
@@ -75,7 +77,8 @@ func decode(language conventions.Language, result parse.Result, content []byte) 
 			}
 		}
 		if moduleName.End > 0 {
-			modules = append(modules, span{start: module.Start, end: module.End - 1, name: string(content[moduleName.Start:moduleName.End])})
+			name := string(content[moduleName.Start:moduleName.End])
+			modules = append(modules, span{start: module.Start, end: module.End - 1, name: name, place: name})
 			moduleNames = append(moduleNames, moduleName.Start)
 		}
 		if pathOf.End > 0 {
@@ -93,17 +96,17 @@ func decode(language conventions.Language, result parse.Result, content []byte) 
 		}
 	}
 	for i, at := range moduleNames { // a path attribute on a module in braces names the folder of the modules inside
-		modules[i].folder, modules[i].pathed = paths[at], hasPath(paths, at)
+		if folder, pathed := paths[at]; pathed {
+			modules[i].place = folder
+		}
 	}
+	r.inlines = map[string]map[string]string{}
 	for _, md := range modules {
 		place := strings.Join(modulesAt(modules, md.start), "/")
-		if r.inlines == nil {
-			r.inlines = map[string]map[string]string{}
-		}
 		if r.inlines[place] == nil {
 			r.inlines[place] = map[string]string{}
 		}
-		r.inlines[place][md.name] = md.within()
+		r.inlines[place][md.name] = md.place
 	}
 	for _, im := range imports {
 		st := im.statement(content, blanks)
@@ -133,7 +136,14 @@ func decode(language conventions.Language, result parse.Result, content []byte) 
 		}
 		r.opaque[strings.Join(modulesAt(modules, o.Start), "/")] = true
 	}
-	r.statements = append(r.statements, readTexts(language, content, texts, blanks, modules)...)
+	inTexts, opaqueModules := readTexts(language, content, texts, blanks, modules)
+	r.statements = append(r.statements, inTexts...)
+	for _, place := range opaqueModules {
+		if r.opaque == nil {
+			r.opaque = map[string]bool{}
+		}
+		r.opaque[place] = true
+	}
 	for _, c := range computed {
 		if !slices.ContainsFunc(targets, func(t parse.Capture) bool { return c.Start <= t.Start && t.End <= c.End }) {
 			r.computed++
@@ -214,10 +224,11 @@ func expanded(imports conventions.Imports, st statement) []statement {
 
 // readTexts reads the stretches the grammar keeps as tokens (macro bodies) by the entry's text forms, the rest of the
 // file and every comment and string blanked, so offsets and lines stay the file's. A module in braces inside a body,
-// found by the token scanner, holds the statements inside it, placed by their position.
-func readTexts(language conventions.Language, content []byte, texts, blanks []parse.Capture, modules []span) []statement {
+// found by the token scanner, holds the statements inside it, placed by their position; the places inside such
+// modules are returned too: their items are tokens nobody read.
+func readTexts(language conventions.Language, content []byte, texts, blanks []parse.Capture, modules []span) ([]statement, []string) {
 	if len(texts) == 0 {
-		return nil
+		return nil, nil
 	}
 	b := blanked(content, 0, []parse.Capture{{End: len(content)}})
 	for _, t := range texts {
@@ -225,26 +236,34 @@ func readTexts(language conventions.Language, content []byte, texts, blanks []pa
 	}
 	inBodies := slices.Clone(modules)
 	for _, t := range texts {
-		inBodies = append(inBodies, bracedModules(language.Tokens, b, t.Start, t.End)...)
+		inBodies = append(inBodies, bracedModules(language, b, t.Start, t.End)...)
+	}
+	var opaque []string
+	for _, md := range inBodies[len(modules):] {
+		opaque = append(opaque, strings.Join(modulesAt(inBodies, md.start+1), "/"))
 	}
 	found := scan(language.Imports, b).statements
 	for i, st := range found {
 		found[i].within = modulesAt(inBodies, st.at)
 	}
-	return found
+	return found, opaque
 }
 
-// bracedModules are the modules written as "mod name { … }" in a stretch of text, by its tokens: each from the word
-// mod to its closing brace, or the stretch's end when none closes it.
-func bracedModules(tokens conventions.Tokens, text []byte, start, end int) []span {
+// bracedModules are the modules written as "<keyword> name { … }" in a stretch of text, by its tokens: each from the
+// keyword to its closing brace, or the stretch's end when none closes it. None for an entry without such a keyword.
+func bracedModules(language conventions.Language, text []byte, start, end int) []span {
+	keyword := language.Imports.ModuleKeyword
+	if keyword == "" || !bytes.Contains(text[start:end], []byte(keyword)) {
+		return nil
+	}
 	var toks []token
-	for t := range eachToken(tokens, text[start:end], 1) {
+	for t := range eachToken(language.Tokens, text[start:end], 1) {
 		toks = append(toks, t)
 	}
 	word := func(i int) string { return string(text[start+toks[i].start : start+toks[i].end]) }
 	var found []span
 	for i := 0; i+2 < len(toks); i++ {
-		if !toks[i].identifier || word(i) != "mod" || !toks[i+1].identifier || word(i+2) != "{" {
+		if !toks[i].identifier || word(i) != keyword || !toks[i+1].identifier || word(i+2) != "{" {
 			continue
 		}
 		depth, closeAt := 0, end-1
@@ -258,7 +277,7 @@ func bracedModules(tokens conventions.Tokens, text []byte, start, end int) []spa
 				}
 			}
 		}
-		found = append(found, span{start: start + toks[i].start, end: closeAt, name: word(i + 1)})
+		found = append(found, span{start: start + toks[i].start, end: closeAt, name: word(i + 1), place: word(i + 1)})
 	}
 	return found
 }
@@ -333,10 +352,4 @@ func decodeDeclarations(result parse.Result, content []byte, tests []span) []top
 	return slices.DeleteFunc(found, func(d topName) bool {
 		return slices.ContainsFunc(declaredAt[d.name], func(at int) bool { return inSpans(tests, at) })
 	})
-}
-
-// hasPath says whether a module's name start carries a path attribute, an empty one included.
-func hasPath(paths map[int]string, at int) bool {
-	_, found := paths[at]
-	return found
 }

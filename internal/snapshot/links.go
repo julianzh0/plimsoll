@@ -159,6 +159,14 @@ type reading struct {
 	inlines  map[string]map[string]string // per module place, the modules written in braces there: name to place name
 	opaque   map[string]bool
 	exports  []string
+	// externAliases are the names extern crate lines give their crates.
+	externAliases []string
+}
+
+// isModLine says whether a statement declares a module in its own file (a mod line, also one read from a macro body).
+func isModLine(spec string) bool {
+	_, declares := keyworded(spec, "mod")
+	return declares
 }
 
 // scan finds the import statements of one file's content, its literals blanked.
@@ -185,20 +193,12 @@ func scan(imports conventions.Imports, text []byte) reading {
 	return r
 }
 
-// within is the name a module in braces gives the place inside it: its path attribute, else its name.
-func (m span) within() string {
-	if m.pathed {
-		return m.folder
-	}
-	return m.name
-}
-
 // modulesAt are the names of the module spans that hold an offset, the outermost first.
 func modulesAt(modules []span, at int) []string {
 	var names []string
 	for _, m := range modules {
 		if m.start < at && at <= m.end {
-			names = append(names, m.within())
+			names = append(names, m.place)
 		}
 	}
 	return names
@@ -321,7 +321,7 @@ func (s side) resolveAll(language conventions.Language, own prefix, from string,
 			repeated := slices.ContainsFunc(found, func(l Link) bool { return l.Line == st.line && l.To == t.to && l.TypeOnly == st.typeOnly })
 			if len(files) > 0 && !repeated {
 				found = append(found, Link{From: from, Line: st.line, To: t.to, Folder: t.folder, Files: files, TypeOnly: st.typeOnly,
-					Declares: declaresModule(st), Added: base.added(from, t.to, st)})
+					Declares: isModLine(st.spec), Added: base.added(from, t.to, st)})
 			}
 		}
 	}
