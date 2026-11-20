@@ -17,7 +17,7 @@ func testKinds(s snapshot.Snapshot, testNow, testBefore float64) (rows []answer.
 	ownedNow, ownedBefore := 0.0, 0.0
 	for _, kind := range s.TestKinds.Kinds {
 		gaps = append(gaps, kindGaps(s, kind)...)
-		if !kind.Owns {
+		if !kind.Owns() {
 			continue
 		}
 		rows = append(rows, kindRow("test lines of kind", kind.Name, float64(kind.Lines), float64(kind.BaseLines), !kind.BaseMissing))
@@ -60,9 +60,9 @@ func kindGaps(s snapshot.Snapshot, kind snapshot.TestKind) []string {
 			prefix, match.Pattern, answer.Plural(match.Files, "product code file")))
 	}
 	switch {
-	case kind.Owns || len(kind.Patterns) == 0 || kind.BaseMissing || len(kind.Unmatched) == len(kind.Patterns):
-	case len(kind.TakenBy) > 0:
-		gaps = append(gaps, fmt.Sprintf("%s owns no test code: the files its patterns match belong to %s, listed earlier", prefix, answer.QuotedList(kind.TakenBy)))
+	case kind.Owns() || len(kind.Patterns) == 0 || kind.BaseMissing || len(kind.Unmatched) == len(kind.Patterns):
+	case kind.TakenBy != "":
+		gaps = append(gaps, fmt.Sprintf("%s owns no test code: test files its patterns match belong to `%s`, listed earlier", prefix, kind.TakenBy))
 	default:
 		gaps = append(gaps, prefix+" owns no test code: its patterns match no test code")
 	}

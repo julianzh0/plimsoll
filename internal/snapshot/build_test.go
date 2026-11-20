@@ -498,11 +498,11 @@ func TestBuildMeasuresEachDeclaredTestKind(t *testing.T) {
 	source.Missing = []string{"tests/old/gone_test.go"}
 	s := snapshot.Build(source, conventions.Default(), snapshottest.Readings(t))
 	want := []snapshot.TestKind{
-		{Name: "integration", Patterns: []string{"tests/integration/**"}, Lines: 6, BaseLines: 2, Owns: true},
-		{Name: "unit", Patterns: []string{"tests/**"}, BaseLines: 3, Owns: true, BaseMissing: true},
+		{Name: "integration", Patterns: []string{"tests/integration/**"}, Lines: 6, BaseLines: 2},
+		{Name: "unit", Patterns: []string{"tests/**"}, BaseLines: 3, BaseMissing: true},
 		{Name: "e2e", Patterns: []string{"e2e/**"}, Unmatched: []string{"e2e/**"}},
-		{Name: "late", Patterns: []string{"tests/integration/**"}, TakenBy: []string{"integration"}},
-		{Name: "all", Patterns: []string{"**"}, BaseMissing: true, TakenBy: []string{"integration", "unit"},
+		{Name: "late", Patterns: []string{"tests/integration/**"}, TakenBy: "integration"},
+		{Name: "all", Patterns: []string{"**"}, BaseMissing: true, TakenBy: "integration",
 			ProductMatches: []snapshot.PatternFiles{{Pattern: "**", Files: 1}}},
 	}
 	if !reflect.DeepEqual(s.TestKinds.Kinds, want) {
@@ -533,7 +533,7 @@ func TestQuestionsWithOppositeKindOrdersKeepTheirOwnKinds(t *testing.T) {
 		for range 8 {
 			group.Go(func() {
 				s := snapshot.Build(tree(table), conventions.Default(), readings)
-				if owner := s.TestKinds.Kinds[0]; owner.Name != want || !owner.Owns {
+				if owner := s.TestKinds.Kinds[0]; owner.Name != want || !owner.Owns() {
 					t.Errorf("a question whose table lists %q first: its first kind %+v, want it to own the file", want, owner)
 				}
 			})

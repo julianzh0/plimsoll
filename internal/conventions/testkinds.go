@@ -22,9 +22,10 @@ func KindName(name string) bool {
 
 // KindOf is the first kind, in declared order, with a pattern that matches a path, or "".
 func KindOf(kinds []TestKind, filePath string) string {
+	parts := strings.Split(filePath, "/")
 	for _, kind := range kinds {
 		for _, pattern := range kind.Patterns {
-			if pattern.Match(filePath) {
+			if pattern.MatchSegments(parts) {
 				return kind.Name
 			}
 		}
@@ -72,10 +73,15 @@ func NewPathPattern(value string) (PathPattern, bool) {
 // Text is the pattern as written.
 func (p PathPattern) Text() string { return p.text }
 
-// Match says whether a path from the repository root matches the pattern. It walks both lists once, going back
-// only to the last "**" seen, so its work is bounded by the product of their lengths.
+// Match says whether a path from the repository root matches the pattern.
 func (p PathPattern) Match(filePath string) bool {
-	parts := strings.Split(filePath, "/")
+	return p.MatchSegments(strings.Split(filePath, "/"))
+}
+
+// MatchSegments says whether a path, split at "/", matches the pattern: for a caller that matches one path against
+// many patterns. It walks both lists once, going back only to the last "**" seen, so its work is bounded by the
+// product of their lengths.
+func (p PathPattern) MatchSegments(parts []string) bool {
 	at, part := 0, 0
 	resumeAt, resumePart := -1, 0
 	for part < len(parts) {
@@ -93,13 +99,14 @@ func (p PathPattern) Match(filePath string) bool {
 			return false
 		}
 	}
-	for at < len(p.segments) && p.segments[at] == anyFolders {
-		at++
-	}
 	return at == len(p.segments)
 }
 
+// segmentMatches compares a literal segment directly, and one with a wildcard by path.Match.
 func segmentMatches(pattern, segment string) bool {
+	if !strings.ContainsAny(pattern, "*?") {
+		return pattern == segment
+	}
 	matched, _ := path.Match(pattern, segment)
 	return matched
 }

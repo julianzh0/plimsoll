@@ -19,8 +19,8 @@ type DeclaredValues struct {
 	Table, Key, Name string
 	Now, Before      []string
 	Whole            bool // a whole table whose keys are the values; Key is then the table's name
-	// OrderChanged says the order of the table's entries decides and changed: the kinds of the tests table that
-	// both sides name stand in another order.
+	// OrderChanged says the order of the table's entries decides what they do and changed: the entries both sides
+	// name stand in another order.
 	OrderChanged bool
 	Compared     bool
 	UnreadAtBase bool
@@ -238,14 +238,20 @@ func (o *ownFile) readLimit(rules conventions.Rules, key, value string, problem 
 	o.limits[key] = number
 }
 
+// textList reads a value that is one list of strings and nothing after it; ok is false for any other value.
+func textList(value string) (items []string, ok bool) {
+	text := strings.TrimSpace(value)
+	if !strings.HasPrefix(text, "[") {
+		return nil, false
+	}
+	items, rest, closed := stringArray(text[1:])
+	return items, closed && strings.TrimSpace(uncommented(rest)) == ""
+}
+
 // readList reads a list of strings, each brought to its key's form.
 func (o *ownFile) readList(key conventions.OwnKey, value string, problem func(string, ...any)) {
-	text := strings.TrimSpace(value)
-	items, rest, closed := []string(nil), "", false
-	if strings.HasPrefix(text, "[") {
-		items, rest, closed = stringArray(text[1:])
-	}
-	if !closed || strings.TrimSpace(uncommented(rest)) != "" {
+	items, ok := textList(value)
+	if !ok {
 		o.unread[key.Key] = true
 		problem("`%s` is not a list of text", key.Key)
 		return
