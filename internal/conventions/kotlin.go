@@ -3,7 +3,7 @@ package conventions
 // kotlinLanguage is the entry for Kotlin; it resolves imports and packages as Java does, and its folders share Java's.
 func kotlinLanguage() Language {
 	return Language{
-		Name: "kotlin", Functions: kotlinFunctions(), Tokens: cLikeTokens(tripleQuoted + "|" + doubleQuoted + "|" + character), Extensions: []string{".kt", ".kts"}, Grammar: "kotlin", Query: kotlinQuery, Declarations: kotlinDeclarations,
+		Name: "kotlin", Functions: kotlinFunctions(), Tokens: cLikeTokens(character, KotlinStrings), Extensions: []string{".kt", ".kts"}, Grammar: "kotlin", Query: kotlinQuery, Declarations: kotlinDeclarations,
 		Units: kotlinUnits, LayoutCode: LayoutCode{LineBreaks: true}, Peers: PackagePeers,
 		Imports: jvmImports([]string{".java"}, nil),
 	}

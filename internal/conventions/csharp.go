@@ -5,7 +5,7 @@ import "regexp"
 // csharpLanguage is the entry for C#. A using names a namespace: the folders whose files declare it.
 func csharpLanguage() Language {
 	return Language{
-		Name: "csharp", Functions: csharpFunctions(), Tokens: cLikeTokens(`@"(?:""|[^"])*"|\$?` + tripleQuoted + `|\$?` + doubleQuoted + "|" + character), Extensions: []string{".cs"}, Imports: csharpImports(), Grammar: "csharp", Query: csharpQuery, Declarations: csharpDeclarations,
+		Name: "csharp", Functions: csharpFunctions(), Tokens: cLikeTokens(doubleQuoted+"|"+character, CSharpStrings), Extensions: []string{".cs"}, Imports: csharpImports(), Grammar: "csharp", Query: csharpQuery, Declarations: csharpDeclarations,
 		Units: csharpUnits, Peers: PackagePeers,
 		// ASP.NET loads the application class of Global.asax.
 		Loaded: []Convention{{File: "Global.asax.cs"}},

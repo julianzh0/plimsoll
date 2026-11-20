@@ -4,16 +4,22 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+
+	"github.com/julianzh0/plimsoll/internal/conventions"
 )
 
 // masked returns the content with every comment its language's literal pattern matches as spaces, line ends kept, so
 // offsets and line numbers stay those of the file; a match that starts with a quote is a string or a character
-// literal and stays. A nil pattern returns the content itself.
-func masked(literals *regexp.Regexp, content []byte) []byte {
-	if literals == nil {
+// literal and stays. A C++ raw string is blanked first, by the token scanner, so a line inside one is no directive.
+// A language without a literal pattern returns the content itself.
+func masked(language conventions.Language, content []byte) []byte {
+	if language.Literals == nil {
 		return content
 	}
-	return literals.ReplaceAllFunc(content, func(match []byte) []byte {
+	if language.Tokens.Strings == conventions.CppRawStrings {
+		content = withoutRawStrings(language.Tokens, content)
+	}
+	return language.Literals.ReplaceAllFunc(content, func(match []byte) []byte {
 		if match[0] == '"' || match[0] == '\'' {
 			return match
 		}
@@ -21,6 +27,21 @@ func masked(literals *regexp.Regexp, content []byte) []byte {
 		blankKeepingLines(blank)
 		return blank
 	})
+}
+
+// withoutRawStrings is the content with every C++ raw string blanked, line ends kept; the content itself when it holds
+// none.
+func withoutRawStrings(tokens conventions.Tokens, content []byte) []byte {
+	out, cloned := content, false
+	for t := range eachToken(tokens, content, 1) {
+		if _, _, raw := cppRawAt(content, t.start); raw && t.word && !t.identifier {
+			if !cloned {
+				out, cloned = slices.Clone(content), true
+			}
+			blankKeepingLines(out[t.start:t.end])
+		}
+	}
+	return out
 }
 
 // span is a stretch of a file's text, both ends included, and the name of the block that opens it, if it has one.

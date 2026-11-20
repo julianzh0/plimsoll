@@ -1,7 +1,6 @@
 package snapshot
 
 import (
-	"regexp"
 	"slices"
 	"strings"
 
@@ -129,7 +128,7 @@ func (l lineIndex) line(offset int) int {
 // is declared, and the closures a name binds outside every function. Closures, nested functions and markup add
 // nothing to the function around them. within, when not nil, says which byte spans are measured: a function outside
 // them is passed over.
-func functionsOf(kinds conventions.FunctionKinds, tokens *regexp.Regexp, rules conventions.FunctionRules, tree parse.Tree, content []byte,
+func functionsOf(kinds conventions.FunctionKinds, tokens conventions.Tokens, rules conventions.FunctionRules, tree parse.Tree, content []byte,
 	within func(start, end int) bool) []function {
 	w := walk{t: tableOf(kinds, tree), s: shapeOf(tree.Nodes), tree: tree, content: content, lines: linesOf(content),
 		tokens: tokens, rules: rules, within: within}
@@ -154,7 +153,7 @@ type walk struct {
 	tree    parse.Tree
 	content []byte
 	lines   lineIndex
-	tokens  *regexp.Regexp
+	tokens  conventions.Tokens
 	rules   conventions.FunctionRules
 	within  func(start, end int) bool
 	found   []function

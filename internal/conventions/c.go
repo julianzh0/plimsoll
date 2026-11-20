@@ -14,7 +14,6 @@ func cLanguage() Language {
 var (
 	// cComments are a string, a character literal, a line comment and a block comment; the strings are matched so a
 	// comment marker inside one starts no comment.
-	// NOTE: an include line inside a raw string is read. Upgrade: match raw strings too.
 	cComments = regexp.MustCompile(`"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|//[^\n]*|/\*(?:[^*]|\*+[^*/])*\*+/`)
 	// cIncludeQuoted is an include in quotes: looked for beside the including file first, then in the include folders.
 	// NOTE: an include under #if is read whatever its condition, so the includes of every platform and option count.
@@ -30,13 +29,13 @@ var (
 // cFamily is what the C and C++ entries share: units are the file names the compiler takes as a unit of their own,
 // which no file includes.
 func cFamily(name string, extensions, units []string) Language {
-	declarations, unitQuery, functions, macros, literals := cDeclarations, cUnits, cFunctions(), cMacros(), doubleQuoted+"|"+character
+	declarations, unitQuery, functions, macros, strings := cDeclarations, cUnits, cFunctions(), cMacros(), PlainStrings
 	if name == "cpp" {
 		declarations, unitQuery = declarations+cppDeclarations, unitQuery+cppUnits
-		functions, macros, literals = cppFunctions(), cppMacros(), cppRawString+"|"+literals
+		functions, macros, strings = cppFunctions(), cppMacros(), CppRawStrings
 	}
 	return Language{
-		Name: name, Extensions: extensions, Literals: cComments, Functions: functions, Macros: macros, Tokens: cLikeTokens(`(?:u8|[uUL])?(?:` + literals + `)`),
+		Name: name, Extensions: extensions, Literals: cComments, Functions: functions, Macros: macros, Tokens: cLikeTokens(`(?:u8|[uUL])?(?:`+doubleQuoted+"|"+character+`)`, strings),
 		Grammar: name, Query: cQuery, Declarations: declarations, Units: unitQuery, Peers: HeaderPeers, LineReadWhenBroken: true,
 		Imports: Imports{
 			Statements: []ImportForm{{Pattern: cIncludeQuoted}, {Pattern: cIncludeAngled}},
@@ -119,10 +118,6 @@ func cppFunctions() FunctionKinds {
 func cLoopMacro() MacroRule {
 	return MacroRule{Pattern: regexp.MustCompile(`\b(?P<macro>[A-Z][A-Z0-9_]*FOR_?EACH[A-Z0-9_]*)\s*\(`), As: "while"}
 }
-
-// NOTE: C++ raw strings are matched with an empty delimiter only (R"(...)"), since Go's regexp has no back-reference;
-// one with a delimiter is split into ordinary tokens. Upgrade: a small scanner for C++ literals.
-const cppRawString = `R"\([\s\S]*?\)"`
 
 // cMacros is the macro uses the C grammar cannot read, in the order they are rewritten, each in one pass:
 //   - a run of attribute-like names in capitals with an underscore, whole, before another word, where a declaration

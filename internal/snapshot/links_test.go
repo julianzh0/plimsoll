@@ -890,6 +890,14 @@ func TestBuildFollowsIncludesToFiles(t *testing.T) {
 	if want := []snapshot.Link{added(link("src/a.c", 1, "src/b.h")), added(link("src/a.c", 4, "src/c.h"))}; !reflect.DeepEqual(broken.Now.Links.List, want) || len(broken.SyntaxErrors) != 0 {
 		t.Errorf("a file with a syntax error: List = %+v, syntax errors %q; want %+v and none", broken.Now.Links.List, broken.SyntaxErrors, want)
 	}
+	// Read line by line, an include inside a raw string is text too; a quoted include stays an include.
+	brokenRaw := snapshot.Build(snapshottest.Files(nil, map[string]string{
+		"src/a.cpp": "auto q = R\"sql(\n#include \"c.h\"\n)sql\";\n#include \"b.h\"\nint f( {\n", "src/b.h": "#pragma once\n",
+		"src/c.h": "#pragma once\n",
+	}), conventions.Default(), snapshottest.Readings(t))
+	if want := []snapshot.Link{added(link("src/a.cpp", 4, "src/b.h"))}; !reflect.DeepEqual(brokenRaw.Now.Links.List, want) {
+		t.Errorf("a raw string in a file read line by line: List = %+v, want %+v", brokenRaw.Now.Links.List, want)
+	}
 	// A define with no value and a trailing space is misread by the grammar without an error: the next line becomes
 	// its value. Such a file is read line by line too.
 	define := linksOf(t, map[string]string{

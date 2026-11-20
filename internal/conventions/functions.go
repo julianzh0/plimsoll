@@ -79,14 +79,37 @@ const (
 	tripleQuoted = `"""[\s\S]*?"""`
 )
 
-// cLikeTokens splits code with // and /* */ comments into tokens; literals are the language's string forms.
-func cLikeTokens(literals string) *regexp.Regexp {
-	return regexp.MustCompile(`(?P<ws>\s+)|(?P<com>//[^\n]*|/\*[\s\S]*?(?:\*/|\z))|(?P<lit>` + literals +
-		`|[0-9][\pL\pN_.]*|\.[0-9][\pL\pN_]*)|(?P<id>[\pL_$][\pL\pN_$]*)|(?P<p>.)`)
+// Tokens is how a language's code is split into tokens: the pattern, with the groups ws, com, lit, id and p, and the
+// string forms a scanner reads before the pattern, whose holes are read as code.
+type Tokens struct {
+	Pattern *regexp.Regexp
+	Strings StringSyntax
 }
 
-var pythonTokens = regexp.MustCompile(`(?P<ws>\s+)|(?P<com>#[^\n]*)|(?P<lit>(?i:[rbuf]{0,2})(?:"""[\s\S]*?"""|'''[\s\S]*?'''|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*')|[0-9][\pL\pN_.]*|\.[0-9][\pL\pN_]*)|(?P<id>[\pL_][\pL\pN_]*)|(?P<p>.)`)
+// StringSyntax names the string forms the scanner reads for a language; the others the token pattern reads.
+type StringSyntax int
 
-// NOTE: Rust raw strings are matched with up to three `#`, since Go's regexp has no back-reference; a raw string with
-// four or more is split into ordinary tokens. Upgrade: a small scanner for Rust literals.
-const rustLiterals = `b?r###"[\s\S]*?"###|b?r##"[\s\S]*?"##|b?r#"[\s\S]*?"#|b?r"[\s\S]*?"|b?` + doubleQuoted + `|b?` + character
+const (
+	PlainStrings    StringSyntax = iota // none: the token pattern reads every string
+	CppRawStrings                       // R"d(…)d", with u8, u, U or L before it
+	RustRawStrings                      // r"…", r#"…"# with any number of #, with b or c before it
+	SwiftStrings                        // "…", """…""", with any number of # around; holes \(…), \#(…)
+	CSharpStrings                       // raw """…""" with any number of $, verbatim @"…", interpolated $"…"; holes {…}
+	PythonStrings                       // f-strings with any prefix holding f; holes {…} with conversion and format text
+	TemplateStrings                     // `…` with holes ${…}
+	KotlinStrings                       // "…", """…"""; holes ${…} and $name
+	DartStrings                         // "…", '…', triple-quoted, raw r"…"; holes ${…} and $name
+)
+
+// cLikeTokens splits code with // and /* */ comments into tokens; literals are the language's string forms.
+func cLikeTokens(literals string, strings StringSyntax) Tokens {
+	return Tokens{Strings: strings, Pattern: regexp.MustCompile(`(?P<ws>\s+)|(?P<com>//[^\n]*|/\*[\s\S]*?(?:\*/|\z))|(?P<lit>` + literals +
+		`|[0-9][\pL\pN_.]*|\.[0-9][\pL\pN_]*)|(?P<id>[\pL_$][\pL\pN_$]*)|(?P<p>.)`)}
+}
+
+func pythonTokens() Tokens {
+	return Tokens{Strings: PythonStrings, Pattern: regexp.MustCompile(`(?P<ws>\s+)|(?P<com>#[^\n]*)|(?P<lit>(?i:[rbuf]{0,2})(?:"""[\s\S]*?"""|'''[\s\S]*?'''|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*')|[0-9][\pL\pN_.]*|\.[0-9][\pL\pN_]*)|(?P<id>[\pL_][\pL\pN_]*)|(?P<p>.)`)}
+}
+
+// rustLiterals are Rust's strings and characters the token pattern reads; the scanner reads raw strings.
+const rustLiterals = `[bc]?` + doubleQuoted + `|b?` + character

@@ -6,7 +6,7 @@ import "regexp"
 // declare it.
 func javaLanguage() Language {
 	return Language{
-		Name: "java", Functions: javaFunctions(), Tokens: cLikeTokens(tripleQuoted + "|" + doubleQuoted + "|" + character), Extensions: []string{".java"}, Grammar: "java", Query: javaQuery, Declarations: javaDeclarations,
+		Name: "java", Functions: javaFunctions(), Tokens: cLikeTokens(tripleQuoted+"|"+doubleQuoted+"|"+character, PlainStrings), Extensions: []string{".java"}, Grammar: "java", Query: javaQuery, Declarations: javaDeclarations,
 		Units: javaUnits, Peers: PackagePeers,
 		Imports: jvmImports([]string{".kt", ".kts"}, []string{"package-info.java", "module-info.java"}),
 	}

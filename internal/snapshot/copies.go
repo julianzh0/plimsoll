@@ -31,7 +31,7 @@ type copyCheck struct {
 func copyAtBase(rules conventions.Rules, c candidate, sameEntry []File, base map[string][]byte, nowContent []byte) copyCheck {
 	fr := rules.FunctionRules
 	language, known := rules.LanguageOf(c.change.Path)
-	if !known || language.Tokens == nil || len(c.tokens) < fr.Run {
+	if !known || language.Tokens.Pattern == nil || len(c.tokens) < fr.Run {
 		return copyCheck{}
 	}
 	n := countFunc(c.counted, func(k bool) bool { return k })

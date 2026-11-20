@@ -236,7 +236,7 @@ func (rs *Readings) read(language conventions.Language, grammar string, content 
 func readByText(language conventions.Language, content []byte) reading {
 	var r reading
 	if len(language.Imports.Statements) > 0 {
-		r = scan(language.Imports, masked(language.Literals, content))
+		r = scan(language.Imports, masked(language, content))
 	}
 	return r
 }

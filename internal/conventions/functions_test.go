@@ -16,8 +16,8 @@ func TestEveryKindAFunctionTableNamesIsInItsGrammar(t *testing.T) {
 			t.Errorf("%s: Functions.Declared = none, want the kinds that declare a function", l.Name)
 			continue
 		}
-		if l.Tokens == nil || l.Tokens.SubexpIndex("ws") < 0 || l.Tokens.SubexpIndex("com") < 0 || l.Tokens.SubexpIndex("lit") < 0 ||
-			l.Tokens.SubexpIndex("id") < 0 || l.Tokens.SubexpIndex("p") < 0 {
+		if l.Tokens.Pattern == nil || l.Tokens.Pattern.SubexpIndex("ws") < 0 || l.Tokens.Pattern.SubexpIndex("com") < 0 || l.Tokens.Pattern.SubexpIndex("lit") < 0 ||
+			l.Tokens.Pattern.SubexpIndex("id") < 0 || l.Tokens.Pattern.SubexpIndex("p") < 0 {
 			t.Errorf("%s: Tokens = %v, want a pattern with the groups ws, com, lit, id and p", l.Name, l.Tokens)
 		}
 		known := map[string]bool{}

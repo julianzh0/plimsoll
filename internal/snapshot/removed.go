@@ -50,7 +50,7 @@ func readRemoved(rules conventions.Rules, lines *lineChanges, runs map[uint64]bo
 		basePath := cmp.Or(change.From, change.Path)
 		language, readable := rules.LanguageOf(basePath)
 		base := lines.before[basePath]
-		if !readable || language.Tokens == nil || base == nil {
+		if !readable || language.Tokens.Pattern == nil || base == nil {
 			continue
 		}
 		newlines := linesOf(base)

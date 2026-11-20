@@ -6,8 +6,9 @@ import (
 	"hash"
 	"hash/fnv"
 	"iter"
-	"regexp"
 	"slices"
+
+	"github.com/julianzh0/plimsoll/internal/conventions"
 )
 
 // token is one token of a text: a hash of its bytes, where it stands, and whether it is a name or a quoted literal.
@@ -20,7 +21,7 @@ type token struct {
 }
 
 // tokensOf splits text by a language's token pattern; comments and white space are no tokens.
-func tokensOf(pattern *regexp.Regexp, text []byte, firstLine int) []token {
+func tokensOf(pattern conventions.Tokens, text []byte, firstLine int) []token {
 	var found []token
 	for t := range eachToken(pattern, text, firstLine) {
 		found = append(found, t)
@@ -28,32 +29,142 @@ func tokensOf(pattern *regexp.Regexp, text []byte, firstLine int) []token {
 	return found
 }
 
+// scanFrame is an open string or hole of the scanner's stack.
+type scanFrame struct {
+	form  stringForm // the string's form; for a hole, that of the string it stands in
+	hole  bool       // a hole read as code
+	spec  bool       // a Python hole's conversion and format text: a string ending at the hole's closer
+	piece int        // a string's: where its current literal piece starts
+	depth int        // a hole's: the brackets open inside it
+}
+
 // eachToken yields the tokens of text one by one, holding no more than one match at a time: a whole file is read as a
-// stream, never kept as a list of tokens.
-func eachToken(pattern *regexp.Regexp, text []byte, firstLine int) iter.Seq[token] {
+// stream, never kept as a list of tokens. One pass, left to right, with an explicit stack: a string of the forms the
+// language's scanner reads is handed out as literal pieces, from its opening delimiter to the first hole, between
+// holes and from the last hole to its closing delimiter, and the code in a hole as code, until the hole's closer at
+// its own bracket level. A string still open at the end of the text ends there.
+func eachToken(tokens conventions.Tokens, text []byte, firstLine int) iter.Seq[token] {
+	pattern := tokens.Pattern
 	ws, com := pattern.SubexpIndex("ws"), pattern.SubexpIndex("com")
 	id, lit := pattern.SubexpIndex("id"), pattern.SubexpIndex("lit")
 	return func(yield func(token) bool) {
 		line, last := firstLine, 0
+		emit := func(start, end int, word, identifier bool) bool {
+			line += bytes.Count(text[last:start], []byte("\n"))
+			last = start
+			h := fnv.New64a()
+			_, _ = h.Write(text[start:end]) // a hash's Write never fails
+			return yield(token{hash: h.Sum64(), line: line, start: start, end: end, word: word, identifier: identifier})
+		}
+		var stack []scanFrame
 		for at := 0; at < len(text); {
+			if n := len(stack); n > 0 && !stack[n-1].hole {
+				var ok bool
+				if stack, at, ok = scanString(text, stack, at, emit); !ok {
+					return
+				}
+				continue
+			}
+			if n := len(stack); n > 0 {
+				h := &stack[n-1]
+				if h.depth == 0 && bytes.HasPrefix(text[at:], []byte(h.form.holeClose)) {
+					stack = stack[:n-1]
+					stack[n-2].piece = at // the closer starts the next literal piece
+					at += len(h.form.holeClose)
+					continue
+				}
+				if h.depth == 0 && h.form.pythonHoles {
+					if length := pythonSpecAt(text, at); length > 0 {
+						stack[n-1] = scanFrame{form: stringForm{closer: "}", holeOpen: "{", holeClose: "}", doubled: true, pythonHoles: true}, spec: true, piece: at}
+						at += length
+						continue
+					}
+				}
+			}
+			if form, length, found := stringAt(tokens.Strings, text, at); found {
+				stack = append(stack, scanFrame{form: form, piece: at})
+				at += length
+				continue
+			}
 			m := pattern.FindSubmatchIndex(text[at:])
 			if m == nil || m[1] == 0 {
 				return
 			}
 			start, end := at+m[0], at+m[1]
-			line += bytes.Count(text[last:start], []byte("\n"))
-			last, at = start, end
+			at = end
 			if m[2*ws] >= 0 || m[2*com] >= 0 {
 				continue
 			}
-			word := m[2*id] >= 0 || m[2*lit] >= 0 && bytes.ContainsAny(text[start:start+1], "\"'`")
-			h := fnv.New64a()
-			_, _ = h.Write(text[start:end]) // a hash's Write never fails
-			if !yield(token{hash: h.Sum64(), line: line, start: start, end: end, word: word, identifier: m[2*id] >= 0}) {
+			if n := len(stack); n > 0 && end-start == 1 {
+				switch text[start] {
+				case '(', '[', '{':
+					stack[n-1].depth++
+				case ')', ']', '}':
+					stack[n-1].depth = max(stack[n-1].depth-1, 0)
+				}
+			}
+			// a literal is a string unless it is a number: a prefixed string (b"…", @"…") is one too
+			isString := m[2*lit] >= 0 && (text[start] < '0' || text[start] > '9') && text[start] != '.'
+			if !emit(start, end, m[2*id] >= 0 || isString, m[2*id] >= 0) {
 				return
 			}
 		}
 	}
+}
+
+// scanString reads the string on top of the stack from at: to its closer, which pops it, to a hole's opener, which
+// pushes the hole, or to a $name, handed out as an identifier. It returns the stack and where reading goes on, and
+// false when the reader stopped.
+func scanString(text []byte, stack []scanFrame, at int, emit func(start, end int, word, identifier bool) bool) ([]scanFrame, int, bool) {
+	s := &stack[len(stack)-1]
+	f := s.form
+	for i := at; i < len(text); {
+		switch rest := text[i:]; {
+		case f.singleLine && text[i] == '\n':
+			return stack[:len(stack)-1], i, emit(s.piece, i, true, false)
+		case f.quoteTwice && bytes.HasPrefix(rest, []byte(`""`)):
+			i += 2
+		case bytes.HasPrefix(rest, []byte(f.closer)):
+			if s.spec { // a format text ends with its hole: the string it stands in goes on from its piece
+				piece := s.piece
+				stack = stack[:len(stack)-1]
+				stack[len(stack)-1].piece = piece
+				return stack, i + len(f.closer), true
+			}
+			return stack[:len(stack)-1], i + len(f.closer), emit(s.piece, i+len(f.closer), true, false)
+		case f.holeOpen != "" && bytes.HasPrefix(rest, []byte(f.holeOpen)) && (!f.doubled || !bytes.HasPrefix(rest, []byte("{{"))):
+			if f.holeOpen[0] == '{' && len(f.holeOpen) > 1 { // in a run of more braces, the last ones open the hole
+				i += run(text, i, '{') - len(f.holeOpen)
+			}
+			end := i + len(f.holeOpen)
+			return append(stack, scanFrame{form: f, hole: true}), end, emit(s.piece, end, true, false)
+		case f.doubled && (bytes.HasPrefix(rest, []byte("{{")) || bytes.HasPrefix(rest, []byte("}}"))):
+			i += 2
+		case f.escape != "" && bytes.HasPrefix(rest, []byte(f.escape)):
+			i += len(f.escape) + 1
+		case f.dollarName && text[i] == '$' && identifierEnd(text, i+1) > i+1:
+			end := identifierEnd(text, i+1)
+			if !emit(s.piece, i+1, true, false) || !emit(i+1, end, true, true) {
+				return stack, i, false
+			}
+			s.piece, i = end, end
+		default:
+			i++
+		}
+	}
+	return stack[:len(stack)-1], len(text), s.piece >= len(text) || emit(s.piece, len(text), true, false)
+}
+
+// pythonSpecAt is the length of a Python hole's conversion (!r, !s or !a, then : or }) or format text (:) that starts
+// at, at the hole's own level, or 0: !=, and every other !, is code.
+func pythonSpecAt(text []byte, at int) int {
+	switch {
+	case text[at] == ':':
+		return 1
+	case text[at] == '!' && at+2 < len(text) && bytes.IndexByte([]byte("rsa"), text[at+1]) >= 0 && (text[at+2] == ':' || text[at+2] == '}'):
+		return 2
+	}
+	return 0
 }
 
 // rollBase is the base of the rolling hash of a window of token hashes: odd, so no hash is lost to it.

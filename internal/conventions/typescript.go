@@ -8,7 +8,7 @@ import "regexp"
 // by the TypeScript grammar; .tsx and the JavaScript suffixes by the TSX grammar, which also reads JSX.
 func typescriptLanguage() Language {
 	return Language{
-		Name: "typescript", Functions: typescriptFunctions(), Tokens: cLikeTokens(doubleQuoted + "|" + singleQuoted + "|" + backQuoted), Extensions: []string{".ts", ".tsx", ".js", ".mjs", ".cjs"},
+		Name: "typescript", Functions: typescriptFunctions(), Tokens: cLikeTokens(doubleQuoted+"|"+singleQuoted, TemplateStrings), Extensions: []string{".ts", ".tsx", ".js", ".mjs", ".cjs"},
 		Imports: typescriptImports(), Grammar: "tsx", GrammarBySuffix: map[string]string{".ts": "typescript"},
 		Query: typescriptQuery, Declarations: typescriptDeclarations,
 		Units: typescriptUnits, LayoutCode: LayoutCode{LineBreaks: true},

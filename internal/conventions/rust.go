@@ -6,7 +6,7 @@ import "regexp"
 // the mod lines declare.
 func rustLanguage() Language {
 	return Language{
-		Name: "rust", Functions: rustFunctions(), Tokens: cLikeTokens(rustLiterals), Extensions: []string{".rs"}, Grammar: "rust", Query: rustQuery, Declarations: rustDeclarations,
+		Name: "rust", Functions: rustFunctions(), Tokens: cLikeTokens(rustLiterals, RustRawStrings), Extensions: []string{".rs"}, Grammar: "rust", Query: rustQuery, Declarations: rustDeclarations,
 		Units: rustUnits,
 		Imports: Imports{
 			Statements: []ImportForm{{Pattern: rustMod}, {Pattern: rustUse}, {Pattern: rustExtern}},

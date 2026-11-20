@@ -484,7 +484,7 @@ func (w *radiusWalk) readHeld(file string, st *walkState) {
 	}
 	st.heldRead = true
 	language, _ := w.in.rules.LanguageOf(file)
-	if language.Tokens == nil {
+	if language.Tokens.Pattern == nil {
 		return
 	}
 	inTests := w.roles[file].IsTest()

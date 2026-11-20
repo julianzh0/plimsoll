@@ -156,7 +156,7 @@ func (w *radiusWalk) readPrints() {
 	for _, ch := range w.in.changes {
 		basePath := cmp.Or(ch.From, ch.Path)
 		language, known := w.in.rules.LanguageOf(ch.Path)
-		if !known || language.Tokens == nil || !compared(w.in, ch.Path, basePath) {
+		if !known || language.Tokens.Pattern == nil || !compared(w.in, ch.Path, basePath) {
 			continue
 		}
 		jobs = append(jobs, job{true, ch.Path, w.in.nowContent[ch.Path], w.in.nowReadings[ch.Path], language},

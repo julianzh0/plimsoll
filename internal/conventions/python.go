@@ -5,7 +5,7 @@ package conventions
 // pythonLanguage is the entry of Python.
 func pythonLanguage() Language {
 	return Language{
-		Name: "python", Functions: pythonFunctions(), Tokens: pythonTokens, Extensions: []string{".py", ".pyi"},
+		Name: "python", Functions: pythonFunctions(), Tokens: pythonTokens(), Extensions: []string{".py", ".pyi"},
 		Imports: pythonImports(), Layout: pytestLayout(), Grammar: "python", Query: pythonQuery, Declarations: pythonDeclarations,
 		Units: pythonUnits, LayoutCode: LayoutCode{LineBreaks: true, Indentation: true},
 		// MkDocs hooks: scripts named under hooks: in mkdocs.yml hold event handlers named on_… (MkDocs 1.4.0).

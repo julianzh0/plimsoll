@@ -358,7 +358,7 @@ func goneFrom(path string, functions []function) []gone {
 // read takes the candidate's tokens from its file's content, which tokens the shares weigh, and its repeated blocks as
 // windows of tokens.
 func (c *candidate) read(rules conventions.Rules, content []byte) {
-	if language, known := rules.LanguageOf(c.change.Path); known && language.Tokens != nil {
+	if language, known := rules.LanguageOf(c.change.Path); known && language.Tokens.Pattern != nil {
 		c.tokens = tokensOf(language.Tokens, content[c.fn.start:c.fn.end], c.change.Start)
 	}
 	c.counted = make([]bool, len(c.tokens))

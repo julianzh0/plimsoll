@@ -434,8 +434,8 @@ type Language struct {
 	Grammar string
 	// Functions says what a function is and what counts in it, in the grammar's node kinds; every entry has one.
 	Functions FunctionKinds
-	// Tokens splits a function's text into tokens, with the groups ws, com, lit, id and p; set with Functions.
-	Tokens *regexp.Regexp
+	// Tokens splits a function's text into tokens; set with Functions.
+	Tokens Tokens
 	// GrammarBySuffix names another grammar for some of the entry's suffixes.
 	GrammarBySuffix map[string]string
 	// Query is the tree-sitter query that reads, in one parse, everything the entry takes from a file. Its captures:
