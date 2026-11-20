@@ -61,6 +61,15 @@ func TestBuildFollowsGoImportsAcrossModules(t *testing.T) {
 			files["app/main.go"], files["app/x/x.go"] = "package main\n\nimport \"example.com/lib/x\"\n", "package x\n"
 			return files
 		}(), []snapshot.Link{folderLink("app/main.go", 3, "app/x", "app/x/x.go")}},
+		{"two modules of one path: the importer's own, though a copy's folder comes first", map[string]string{
+			"a-copy/go.mod": "module example.com/lib\n", "a-copy/x/x.go": "package x\n",
+			"b/go.mod": "module example.com/lib\n", "b/x/x.go": "package x\n", "b/main.go": "package main\n\nimport \"example.com/lib/x\"\n",
+		}, []snapshot.Link{folderLink("b/main.go", 3, "b/x", "b/x/x.go")}},
+		{"a module path is no prefix of a longer name", func() map[string]string {
+			files := app("module example.com/app\n\nrequire example.com/lib v1.0.0\n\nreplace example.com/lib => ../lib\n")
+			files["app/main.go"], files["lib/rary/x/x.go"] = "package main\n\nimport \"example.com/library/x\"\n", "package x\n"
+			return files
+		}(), nil},
 		{"an empty require block on one line", app("module example.com/app\n\nrequire ( )\n\nrequire example.com/lib v1.0.0\n\nreplace example.com/lib => ../lib\n"), reaches},
 		{"a nested module is no part of the module above", map[string]string{
 			"go.mod": "module example.com/root\n", "main.go": "package main\n\nimport \"example.com/root/tools/y\"\n",
