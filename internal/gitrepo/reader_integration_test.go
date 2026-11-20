@@ -135,7 +135,7 @@ func TestIntegrationReadLeavesOutTheFilesOfADeletedFolder(t *testing.T) {
 	}
 }
 
-func TestIntegrationReadCountsOnlyWantedFilesOfAFolderItCannotOpen(t *testing.T) {
+func TestIntegrationReadLeavesOutTheFilesOfAFolderReplacedByAFile(t *testing.T) {
 	repo := gitrepotest.New(t, gitrepotest.Commit{Message: "base", Files: map[string]string{
 		"a.ts": "x\n", "lib/b.ts": "x\n", "lib/rows.csv": "a,b\n"}})
 	if err := os.RemoveAll(filepath.Join(repo.Dir, "lib")); err != nil {
@@ -145,8 +145,8 @@ func TestIntegrationReadCountsOnlyWantedFilesOfAFolderItCannotOpen(t *testing.T)
 		t.Fatal(err)
 	}
 	src, err := read(t, repo.Dir, "HEAD")
-	if err != nil || !reflect.DeepEqual(src.Unreadable, []string{"lib/b.ts"}) {
-		t.Errorf("Read with lib/ replaced by a file = unreadable %v, %v; want only the wanted lib/b.ts", src.Unreadable, err)
+	if err != nil || !reflect.DeepEqual(paths(src.Now), []string{"a.ts"}) || len(src.Unreadable) != 0 {
+		t.Errorf("Read with lib/ replaced by a file = now %v, unreadable %v, %v; want only a.ts and nothing unreadable", paths(src.Now), src.Unreadable, err)
 	}
 }
 

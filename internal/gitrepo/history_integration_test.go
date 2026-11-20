@@ -64,7 +64,16 @@ func TestIntegrationReadParsesTheHistory(t *testing.T) {
 	repo := gitrepotest.New(t)
 	base := repo.Commit(gitrepotest.Commit{Message: "base", Files: map[string]string{"docs/a b.md": "a\n"}})
 	repo.Commit(gitrepotest.Commit{Message: "umlaut", Files: map[string]string{"src/grüße.ts": "a\nb\n"}})
-	repo.Commit(gitrepotest.Commit{Message: "newline", Files: map[string]string{"src/line\nbreak.ts": "a\n"}})
+	// A name with a line break cannot exist in a Windows working tree, so this commit is made in the index alone and
+	// the file is kept out of the working tree.
+	repo.Write("blob", "a\n")
+	blob := repo.Git("hash-object", "-w", "blob")
+	repo.Git("update-index", "--add", "--cacheinfo", "100644,"+blob+",src/line\nbreak.ts")
+	if err := os.Remove(filepath.Join(repo.Dir, "blob")); err != nil {
+		t.Fatal(err)
+	}
+	repo.Git("commit", "-q", "-m", "newline")
+	repo.Git("update-index", "--skip-worktree", "src/line\nbreak.ts")
 	repo.Git("mv", "src/grüße.ts", "src/moved.ts")
 	repo.Commit(gitrepotest.Commit{Message: "rename"})
 	repo.Commit(gitrepotest.Commit{Message: "binary", Files: map[string]string{"logo.bin": "BIN\x00"}})
@@ -220,7 +229,7 @@ func TestIntegrationAPartialCloneIsReadAroundItsMissingContent(t *testing.T) {
 	)
 	origin.Git("config", "uploadpack.allowFilter", "true")
 	clone := filepath.Join(t.TempDir(), "clone")
-	if out, err := exec.Command("git", "clone", "-q", "--filter=blob:limit=10k", "file://"+origin.Dir, clone).CombinedOutput(); err != nil {
+	if out, err := exec.Command("git", "clone", "-q", "-c", "core.autocrlf=false", "--filter=blob:limit=10k", "file://"+origin.Dir, clone).CombinedOutput(); err != nil {
 		t.Fatalf("partial clone: %v: %s", err, out)
 	}
 	partial, err := read(t, clone, "HEAD~3")
