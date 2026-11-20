@@ -571,3 +571,38 @@ func TestWantsOfReadsRootLicenceFiles(t *testing.T) {
 		}
 	}
 }
+
+// A package only test targets reach, through local targets too, is test-only; one list that is not literal keeps every
+// package.
+func TestBuildLeavesOutSwiftPackagesOnlyTestsUse(t *testing.T) {
+	manifest := func(helpers string) string {
+		return `// swift-tools-version:5.9
+import PackageDescription
+let package = Package(
+    name: "App",
+    products: [.library(name: "App", targets: ["App"])],
+    dependencies: [
+        .package(url: "https://github.com/apple/swift-log.git", from: "1.0.0"),
+        .package(url: "https://github.com/pointfreeco/swift-snapshot-testing", from: "1.0.0"),
+    ],
+    targets: [
+        .target(name: "App", dependencies: [.product(name: "Logging", package: "swift-log")]),
+        .target(name: "Helpers", dependencies: [` + helpers + `]),
+        .testTarget(name: "AppTests", dependencies: ["App", "Helpers"]),
+    ]
+)
+`
+	}
+	for _, tc := range []struct {
+		name, helpers string
+		want          []string
+	}{
+		{"test-only through a local target", `.product(name: "SnapshotTesting", package: "swift-snapshot-testing", condition: .when(platforms: [.macOS]))`, []string{"swift-log"}},
+		{"a list that is not literal", `snapshotDependency`, []string{"swift-log", "swift-snapshot-testing"}},
+	} {
+		s := snapshot.Build(snapshottest.Files(nil, map[string]string{"Package.swift": manifest(tc.helpers)}), conventions.Default(), snapshottest.Readings(t))
+		if len(s.Now.Manifests) != 1 || !slices.Equal(s.Now.Manifests[0].Dependencies, tc.want) {
+			t.Errorf("%s: Manifests = %+v, want dependencies %q", tc.name, s.Now.Manifests, tc.want)
+		}
+	}
+}
