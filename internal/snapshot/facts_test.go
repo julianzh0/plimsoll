@@ -72,7 +72,6 @@ func TestBuildReadsRuntimeDependencies(t *testing.T) {
 			"Cargo.toml":          "[workspace]\nmembers = [\"crates/*\"]\n\n[workspace.dependencies]\nserde = { package = \"serde_fork\", version = \"1\" }\nlog = \"0.4\"\n",
 			"crates/a/Cargo.toml": "[package]\nname = \"a\"\n\n[dependencies]\nserde.workspace = true\nlog = { workspace = true }\n"}),
 			dependenciesOf("crates/a/Cargo.toml", "log", "serde_fork")},
-		{"a nested pyproject", snapshottest.Files(nil, map[string]string{"pkg/pyproject.toml": "[project]\ndependencies = [\"a\"]\n"}), dependenciesOf("pkg/pyproject.toml", "a")},
 		{"dart", snapshottest.Load(t, "testdata/dart"), pubspecNames("flutter", "http", "provider")},
 		{"pubspec with quoted names and a nested git entry", pubspec("name: 'x'\ndependencies:\n    'a': ^1.0.0\n    b:\n      git:\n        url: https://x.example/b\n    c: any # why\nflutter:\n  assets: []\n"),
 			pubspecNames("a", "b", "c")},
@@ -97,7 +96,10 @@ func TestBuildReadsRuntimeDependencies(t *testing.T) {
 			"<dependency><groupId>${db.group}</groupId><artifactId>postgresql</artifactId></dependency>"+
 			"<dependency><groupId>${elsewhere}</groupId><artifactId>x</artifactId></dependency></dependencies></project>"),
 			dependenciesOf("core/pom.xml", "${elsewhere}:x", "org.acme:acme-api", "org.postgresql:postgresql")},
-		{"a nested pom", oneFile("core/pom.xml", "<project>"+pomOwn+"</project>"), dependenciesOf("core/pom.xml", "a:b", "c:d")},
+		{"a pom names an artifact with two classifiers once", oneFile("pom.xml", "<project><dependencies>"+
+			"<dependency><groupId>io.netty</groupId><artifactId>netty-tcnative</artifactId><classifier>linux-x86_64</classifier></dependency>"+
+			"<dependency><groupId>io.netty</groupId><artifactId>netty-tcnative</artifactId><classifier>osx-x86_64</classifier></dependency>"+
+			"</dependencies></project>"), dependenciesOf("pom.xml", "io.netty:netty-tcnative")},
 		{"csharp", snapshottest.Load(t, "testdata/csharp"), dependenciesOf("Acme.Notes/Acme.Notes.csproj", "Microsoft.Extensions.Configuration", "Npgsql", "System.Text.Json")},
 		{"cpp", snapshottest.Load(t, "testdata/cpp"), dependenciesOf("vcpkg.json", "fmt", "sqlite3")},
 		{"c: no manifest", snapshottest.Load(t, "testdata/c"), nil},
@@ -125,7 +127,9 @@ func TestBuildReadsRuntimeDependencies(t *testing.T) {
 			dependenciesOf("app/build.gradle.kts", "com.google.firebase:firebase-bom", "com.squareup.okhttp3:okhttp", "com.squareup.retrofit2:retrofit")},
 		{"a Gradle block with test and compile-only lines alone", oneFile("build.gradle.kts", "dependencies {\n    testImplementation(kotlin(\"test\"))\n    compileOnly(\"g:a:1\")\n}\n"),
 			dependenciesOf("build.gradle.kts")},
-		{"a nested build file", oneFile("app/build.gradle.kts", "dependencies {\n    implementation(\"g:a:1\")\n}\n"), dependenciesOf("app/build.gradle.kts", "g:a")},
+		{"Gradle constants of buildSrc, a second catalogue and a template are kept as written", oneFile("build.gradle.kts",
+			"dependencies {\n    implementation(Libs.Kotlin.stdlib)\n    implementation(androidx.core.ktx)\n    implementation(\"$group:core:1\")\n}\n"),
+			dependenciesOf("build.gradle.kts", "$group:core", "Libs.Kotlin.stdlib", "androidx.core.ktx")},
 		{"a project file's references, with and without a version", oneFile("src/App/App.csproj", sdkProject(csprojOwn)), dependenciesOf("src/App/App.csproj", "A.B", "C")},
 		{"a project file at the root", oneFile("App.csproj", sdkProject(csprojOwn)), dependenciesOf("App.csproj", "A.B", "C")},
 		{"private assets, as an attribute and as an element, left out", oneFile("src/App/App.csproj", sdkProject(`<ItemGroup><PackageReference Include="A" PrivateAssets="All" />`+
@@ -198,7 +202,6 @@ func TestBuildReadsRuntimeDependencies(t *testing.T) {
 		{"a Cargo array over lines outside the dependencies, with a bracket in a string and a comment", oneFile("Cargo.toml",
 			"[package]\nname = \"x\"\n\n[features]\ndefault = [ # all\n  \"a[\",\n]\n[dependencies]\nx = \"1\"\n"),
 			dependenciesOf("Cargo.toml", "x")},
-		{"a nested Cargo.toml", oneFile("crates/a/Cargo.toml", "[package]\nname = \"a\"\n\n[dependencies]\nlog = \"0.4\"\n"), dependenciesOf("crates/a/Cargo.toml", "log")},
 	}
 	for _, tc := range cases {
 		if got := snapshot.Build(tc.source, conventions.Default(), snapshottest.Readings(t)).Now.Manifests; !reflect.DeepEqual(got, tc.want) {
@@ -237,7 +240,7 @@ func TestBuildNamesDependenciesNoLockfileHolds(t *testing.T) {
 		{"package-lock.json of an unknown version, its container right", map[string]string{"package.json": `{"dependencies": {"a": "1", "b": "1"}}`,
 			"package-lock.json": `{"lockfileVersion": 9, "packages": {"node_modules/a": {}}}`},
 			[]snapshot.Manifest{{Path: "package.json", Dependencies: []string{"a", "b"}, Lockfiles: []string{"package-lock.json"}, Unlocked: []string{"b"}, ByText: []string{"package-lock.json"}}}},
-		{"pnpm-lock.yaml versions 5, 6 and 9", map[string]string{"package.json": `{"dependencies": {"a": "1", "@s/b": "1", "c": "1"}}`,
+		{"pnpm-lock.yaml version 9, a scoped name and a peer suffix", map[string]string{"package.json": `{"dependencies": {"a": "1", "@s/b": "1", "c": "1"}}`,
 			"pnpm-lock.yaml": "lockfileVersion: '9.0'\n\nimporters:\n  .:\n    dependencies:\n      c:\n        specifier: ^1\n\npackages:\n\n  a@1.0.0:\n    resolution: {integrity: x}\n\n  '@s/b@2.0.0(c@1.0.0)':\n    resolution: {integrity: y}\n"},
 			[]snapshot.Manifest{{Path: "package.json", Dependencies: []string{"@s/b", "a", "c"}, Lockfiles: []string{"pnpm-lock.yaml"}, Unlocked: []string{"c"}}}},
 		{"pnpm-lock.yaml version 5", map[string]string{"package.json": `{"dependencies": {"a": "1", "@s/b": "1"}}`,
@@ -256,12 +259,23 @@ func TestBuildNamesDependenciesNoLockfileHolds(t *testing.T) {
 			".package(url: \"https://github.com/apple/swift-log.git\", from: \"1.0.0\"),\n.package(url: \"https://github.com/apple/swift-nio\", from: \"2.0.0\"),\n])\n",
 			"Package.resolved": `{"object": {"pins": [{"package": "Logging", "repositoryURL": "https://github.com/apple/Swift-Log.git"}]}, "version": 1}`},
 			[]snapshot.Manifest{{Path: "Package.swift", Dependencies: []string{"swift-log", "swift-nio"}, Lockfiles: []string{"Package.resolved"}, Unlocked: []string{"swift-nio"}}}},
-		{"Cargo compares names exactly; an unknown lock version is matched by text", map[string]string{"Cargo.toml": "[package]\nname = \"x\"\n\n[dependencies]\nmy_crate = \"1\"\n",
+		{"Cargo compares names exactly", map[string]string{"Cargo.toml": "[package]\nname = \"x\"\n\n[dependencies]\nmy_crate = \"1\"\n",
 			"Cargo.lock": "version = 4\n\n[[package]]\nname = \"my-crate\"\n"},
 			[]snapshot.Manifest{{Path: "Cargo.toml", Dependencies: []string{"my_crate"}, Lockfiles: []string{"Cargo.lock"}, Unlocked: []string{"my_crate"}}}},
 		{"a Cargo.lock of an unknown version", map[string]string{"Cargo.toml": "[package]\nname = \"x\"\n\n[dependencies]\nanyhow = \"1\"\n",
 			"Cargo.lock": "version = 999\n\n[[package]]\nname = \"anyhow\"\n"},
 			[]snapshot.Manifest{{Path: "Cargo.toml", Dependencies: []string{"anyhow"}, Lockfiles: []string{"Cargo.lock"}, Unlocked: []string{}, ByText: []string{"Cargo.lock"}}}},
+		{"yarn.lock: an alias and a git source keep their names; a workspace sibling is held", map[string]string{
+			"package.json":       `{"name": "app", "dependencies": {"string-width-cjs": "npm:string-width@^4", "foo": "git+ssh://git@github.com/x/foo.git", "@acme/utils": "1", "c": "1"}}`,
+			"utils/package.json": `{"name": "@acme/utils"}`,
+			"yarn.lock":          "# yarn lockfile v1\n\n\"string-width-cjs@npm:string-width@^4.2.0\":\n  version \"4.2.3\"\n\n\"foo@git+ssh://git@github.com/x/foo.git\":\n  version \"1.0.0\"\n"},
+			[]snapshot.Manifest{{Path: "package.json", Dependencies: []string{"@acme/utils", "c", "foo", "string-width-cjs"}, Lockfiles: []string{"yarn.lock"}, Unlocked: []string{"c"}},
+				{Path: "utils/package.json", Dependencies: []string{}, Lockfiles: []string{"yarn.lock"}, Unlocked: []string{}}}},
+		{"pnpm-lock.yaml version 6 and an unknown version", map[string]string{"package.json": `{"dependencies": {"a": "1", "b": "1"}}`,
+			"pnpm-lock.yaml":   "lockfileVersion: '6.0'\n\npackages:\n\n  /a@1.0.0:\n    resolution: {integrity: x}\n",
+			"web/package.json": `{"dependencies": {"a": "1"}}`, "web/pnpm-lock.yaml": "lockfileVersion: '11.0'\n\npackages:\n"},
+			[]snapshot.Manifest{{Path: "package.json", Dependencies: []string{"a", "b"}, Lockfiles: []string{"pnpm-lock.yaml"}, Unlocked: []string{"b"}},
+				{Path: "web/package.json", Dependencies: []string{"a"}, Lockfiles: []string{"web/pnpm-lock.yaml"}, Unlocked: []string{"a"}, ByText: []string{"web/pnpm-lock.yaml"}}}},
 		{"no lockfile tracked", map[string]string{"package.json": `{"dependencies": {"a": "1"}}`},
 			[]snapshot.Manifest{{Path: "package.json", Dependencies: []string{"a"}}}},
 	}

@@ -108,20 +108,16 @@ func tomlHolds(document map[string]any, dotted string) bool {
 	return false
 }
 
-// cargoWorkspace is the [workspace.dependencies] table of the nearest tracked Cargo.toml at or above a folder that has
-// a [workspace] table, from which an entry with workspace = true takes its package; nil when there is none.
-func cargoWorkspace(content map[string][]byte, folder string) map[string]any {
-	for {
-		if file := content[path.Join(folder, "Cargo.toml")]; file != nil {
-			if document, err := decodeTOML(file); err == nil && document["workspace"] != nil {
-				return tomlTableAt(document, "workspace", "dependencies")
-			}
+// cargoWorkspace is the [workspace.dependencies] table of the nearest tracked Cargo.toml at or above a manifest's
+// folder that has a [workspace] table, from which an entry with workspace = true takes its package; nil when there is
+// none.
+func cargoWorkspace(at around) map[string]any {
+	for f := range foldersUp(at.folder) {
+		if document := at.toml(path.Join(f, "Cargo.toml")); document["workspace"] != nil {
+			return tomlTableAt(document, "workspace", "dependencies")
 		}
-		if folder == "." {
-			return nil
-		}
-		folder = path.Dir(folder)
 	}
+	return nil
 }
 
 // cargoDependencies reads the runtime dependencies of a Cargo.toml: the entries of [dependencies] and of every target

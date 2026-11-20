@@ -159,7 +159,9 @@ func flowMapKeys(text string) (keys []string, ok bool) {
 			continue
 		case c == '}' && depth == 0, c == ',' && depth == 0:
 		case c == '}' || c == ']':
-			depth--
+			if depth--; depth < 0 {
+				return nil, false
+			}
 			continue
 		default:
 			continue

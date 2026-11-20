@@ -2,6 +2,7 @@ package snapshot
 
 import (
 	"bytes"
+	"iter"
 	"path"
 	"slices"
 	"strings"
@@ -82,12 +83,9 @@ func inFoldersMatching(filePath string, patterns []string) bool {
 // manifestOf finds the known manifest a tracked path is: a file whose name matches a manifest's, wherever it lies
 // outside skipped folders, test code and other code.
 func manifestOf(rules conventions.Rules, filePath string) (conventions.Manifest, bool) {
-	if !manifestPlace(rules, filePath) {
-		return conventions.Manifest{}, false
-	}
 	for _, m := range rules.Manifests {
-		if nameMatches(m.File, filePath) && !inFolders(filePath, m.Recipes) {
-			return m, true
+		if nameMatches(m.File, filePath) && !inFolders(filePath, m.Recipes) { // the name first: it is the cheap check
+			return m, manifestPlace(rules, filePath)
 		}
 	}
 	return conventions.Manifest{}, false
@@ -99,11 +97,23 @@ func manifestPlace(rules conventions.Rules, filePath string) bool {
 	return !leftOut(rules, filePath) && !testPath(rules, filePath) && !otherPath(rules, filePath)
 }
 
-// isLockfile says whether a tracked path is a lockfile of a known manifest, in a place where manifests count.
-func isLockfile(rules conventions.Rules, filePath string) bool {
+// manifestCompanion says whether a tracked path is a file a manifest's reader needs beside the manifest itself: a
+// lockfile, or another file it reads (a Gradle catalogue), in a place where manifests count.
+func manifestCompanion(rules conventions.Rules, filePath string) bool {
 	name := path.Base(filePath)
-	return manifestPlace(rules, filePath) &&
-		slices.ContainsFunc(rules.Manifests, func(m conventions.Manifest) bool { return slices.Contains(m.Lockfiles, name) })
+	return slices.ContainsFunc(rules.Manifests, func(m conventions.Manifest) bool {
+		return slices.Contains(m.Lockfiles, name) ||
+			slices.ContainsFunc(m.Reads, func(r string) bool { return filePath == r || strings.HasSuffix(filePath, "/"+r) })
+	}) && manifestPlace(rules, filePath)
+}
+
+// foldersUp are a folder and every folder above it, up to the root ".".
+func foldersUp(folder string) iter.Seq[string] {
+	return func(yield func(string) bool) {
+		for yield(folder) && folder != "." {
+			folder = path.Dir(folder)
+		}
+	}
 }
 
 // withSharedSuffixes is the rules of one question: each suffix that several entries list is left to one of them, the

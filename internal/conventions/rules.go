@@ -89,6 +89,8 @@ type Manifest struct {
 	Lockfiles []string // the names of the lockfiles that record what its dependencies resolved to, in its folder or above
 	// Recipes are folders whose files of this name describe other packages, not the project's own: vcpkg's ports.
 	Recipes []string
+	// Reads are files, as paths below a folder at or above the manifest, its reader takes too: a Gradle catalogue.
+	Reads []string
 	// Name is the form of a dependency name in its ecosystem. A manifest that lists a name outside it is unreadable,
 	// so no text of a file reaches an answer as a dependency name.
 	Name *regexp.Regexp
@@ -96,17 +98,21 @@ type Manifest struct {
 
 // coordinatePattern is a Maven coordinate, group and artifact and an optional third part, each plain or an unresolved
 // property reference with a plain name.
-const coordinatePattern = `(?:[A-Za-z0-9._-]+|\$\{[A-Za-z0-9._-]+\})(?::(?:[A-Za-z0-9._-]+|\$\{[A-Za-z0-9._-]+\})){1,2}`
+const coordinatePattern = `(?:[A-Za-z0-9._-]+|\$\{[A-Za-z0-9._-]+\}|\$[A-Za-z_][A-Za-z0-9_]*)(?::(?:[A-Za-z0-9._-]+|\$\{[A-Za-z0-9._-]+\}|\$[A-Za-z_][A-Za-z0-9_]*)){1,2}`
+
+// GradleCatalogue is where a Gradle build keeps its version catalogue, below its root folder.
+const GradleCatalogue = "gradle/libs.versions.toml"
 
 // Dependency name forms, by ecosystem. Maven and Gradle coordinates may hold an unresolved property reference with a
-// plain name, Gradle a catalogue accessor or a project path; each is printed as written.
+// plain name, Gradle an accessor (of a catalogue or of constants in buildSrc) or a project path; each is printed as
+// written.
 var (
 	npmName    = regexp.MustCompile(`^(@[A-Za-z0-9._~-]+/)?[A-Za-z0-9._~-]+$`)
 	goModule   = regexp.MustCompile(`^[A-Za-z0-9._~+-]+(/[A-Za-z0-9._~+-]+)*$`)
 	pythonName = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`) // after PEP 503 normalisation
 	pubName    = regexp.MustCompile(`^[a-z_][a-z0-9_]*$`)
 	coordinate = regexp.MustCompile(`^` + coordinatePattern + `$`)
-	gradleName = regexp.MustCompile(`^(?:` + coordinatePattern + `|libs(?:\.[A-Za-z0-9_-]+)+|:[A-Za-z0-9._-]+(?::[A-Za-z0-9._-]+)*)$`)
+	gradleName = regexp.MustCompile(`^(?:` + coordinatePattern + `|[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+)+|:[A-Za-z0-9._-]+(?::[A-Za-z0-9._-]+)*)$`)
 	crateName  = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 	nugetID    = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9._-]*$`)
 	swiftID    = regexp.MustCompile(`^[a-z0-9._-]+$`)
@@ -545,8 +551,8 @@ func Default() Rules {
 			{File: "pyproject.toml", Format: PyprojectDependencies, Lockfiles: []string{"uv.lock", "poetry.lock"}, Name: pythonName},
 			{File: "pubspec.yaml", Format: PubspecDependencies, Lockfiles: []string{"pubspec.lock"}, Name: pubName},
 			{File: "pom.xml", Format: PomDependencies, Name: coordinate},
-			{File: "build.gradle", Format: GradleDependencies, Name: gradleName},
-			{File: "build.gradle.kts", Format: GradleDependencies, Name: gradleName},
+			{File: "build.gradle", Format: GradleDependencies, Name: gradleName, Reads: []string{GradleCatalogue}},
+			{File: "build.gradle.kts", Format: GradleDependencies, Name: gradleName, Reads: []string{GradleCatalogue}},
 			{File: "Cargo.toml", Format: CargoDependencies, Lockfiles: []string{"Cargo.lock"}, Name: crateName},
 			{File: dotnetProject, Format: CsprojDependencies, Name: nugetID},
 			{File: "Directory.Build.props", Format: CsprojDependencies, Name: nugetID},

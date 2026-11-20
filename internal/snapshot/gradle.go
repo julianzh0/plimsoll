@@ -5,6 +5,8 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+
+	"github.com/julianzh0/plimsoll/internal/conventions"
 )
 
 var (
@@ -102,44 +104,38 @@ func gradleDependencies(content []byte, catalogue map[string][]string) (names []
 	return names, true, true
 }
 
-// gradleCatalogueFile is where a Gradle build keeps its version catalogue, below its root folder.
-const gradleCatalogueFile = "gradle/libs.versions.toml"
-
-// gradleCatalogue maps each accessor of the nearest tracked gradle/libs.versions.toml at or above a folder to the
+// gradleCatalogue maps each accessor of the nearest tracked catalogue at or above a build file's folder to the
 // coordinates (group:name) it stands for: libs.<alias> for a library, its "-", "_" and "." all read as dots, and
 // libs.bundles.<name> for each library of a bundle. nil when there is none or it cannot be read.
-func gradleCatalogue(content map[string][]byte, folder string) map[string][]string {
-	for {
-		if file := content[path.Join(folder, gradleCatalogueFile)]; file != nil {
-			document, err := decodeTOML(file)
-			if err != nil {
-				return nil
-			}
-			accessor := func(prefix, alias string) string {
-				return prefix + strings.NewReplacer("-", ".", "_", ".").Replace(alias)
-			}
-			catalogue := map[string][]string{}
-			libraries := tomlTableAt(document, "libraries")
-			for alias, entry := range libraries {
-				if coordinate := catalogueCoordinate(entry); coordinate != "" {
-					catalogue[accessor("libs.", alias)] = []string{coordinate}
-				}
-			}
-			for bundle, members := range tomlTableAt(document, "bundles") {
-				aliases, _ := tomlTexts(members)
-				for _, alias := range aliases {
-					if coordinate := catalogue[accessor("libs.", alias)]; coordinate != nil {
-						catalogue[accessor("libs.bundles.", bundle)] = append(catalogue[accessor("libs.bundles.", bundle)], coordinate...)
-					}
-				}
-			}
-			return catalogue
+func gradleCatalogue(at around) map[string][]string {
+	for f := range foldersUp(at.folder) {
+		if at.content[path.Join(f, conventions.GradleCatalogue)] == nil {
+			continue
 		}
-		if folder == "." {
+		document := at.toml(path.Join(f, conventions.GradleCatalogue))
+		if document == nil {
 			return nil
 		}
-		folder = path.Dir(folder)
+		accessor := func(prefix, alias string) string {
+			return prefix + strings.NewReplacer("-", ".", "_", ".").Replace(alias)
+		}
+		catalogue := map[string][]string{}
+		for alias, entry := range tomlTableAt(document, "libraries") {
+			if coordinate := catalogueCoordinate(entry); coordinate != "" {
+				catalogue[accessor("libs.", alias)] = []string{coordinate}
+			}
+		}
+		for bundle, members := range tomlTableAt(document, "bundles") {
+			aliases, _ := tomlTexts(members)
+			for _, alias := range aliases {
+				if coordinate := catalogue[accessor("libs.", alias)]; coordinate != nil {
+					catalogue[accessor("libs.bundles.", bundle)] = append(catalogue[accessor("libs.bundles.", bundle)], coordinate...)
+				}
+			}
+		}
+		return catalogue
 	}
+	return nil
 }
 
 // catalogueCoordinate is a catalogue library's group:name: "group:name:version", module = "group:name", or group and

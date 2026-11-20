@@ -52,8 +52,8 @@ func Build(source Source, rules conventions.Rules, readings *Readings) Snapshot 
 	unreadable := slices.Clone(source.Unreadable)
 	now.Settings, before.Settings = settings(source.Now), settings(beforeEntries)
 	var unreadableNow []string
-	now.Manifests, unreadableNow = manifests(rules, source.Now)
-	before.Manifests, before.Broken = manifests(rules, beforeEntries)
+	now.Manifests, unreadableNow = manifests(rules, source.Now, nowContent)
+	before.Manifests, before.Broken = manifests(rules, beforeEntries, beforeContent)
 	if now.Settings == nil && tracks(source.Now, SettingsFile) {
 		unreadableNow = append(unreadableNow, SettingsFile)
 	}

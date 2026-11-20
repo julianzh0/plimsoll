@@ -67,7 +67,7 @@ func pomDependencies(content []byte) (names []string, manifest, readable bool) {
 	for _, d := range project.Dependencies.Dependency {
 		switch strings.TrimSpace(d.Scope) {
 		case "", "compile", "runtime":
-			names = append(names, fill.Replace(strings.TrimSpace(d.GroupID))+":"+fill.Replace(strings.TrimSpace(d.ArtifactID)))
+			names = appendNew(names, fill.Replace(strings.TrimSpace(d.GroupID))+":"+fill.Replace(strings.TrimSpace(d.ArtifactID)))
 		}
 	}
 	return names, true, true

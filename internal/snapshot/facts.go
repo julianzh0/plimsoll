@@ -32,8 +32,7 @@ func WantsOf(rules conventions.Rules) Wants {
 			if !strings.Contains(path, "/") && rules.FunctionRules.RootLicence.MatchString(path) {
 				return true
 			}
-			if _, known := manifestOf(rules, path); known || isLockfile(rules, path) ||
-				(path == gradleCatalogueFile || strings.HasSuffix(path, "/"+gradleCatalogueFile)) && manifestPlace(rules, path) {
+			if _, known := manifestOf(rules, path); known || manifestCompanion(rules, path) {
 				return true
 			}
 			if onPaths(rules, path, rules.ComposeFiles) {
@@ -100,25 +99,26 @@ func settings(entries []Entry) *Settings {
 }
 
 // manifests reads the runtime dependencies of the known manifests wherever they are tracked, each with its nearest
-// lockfiles. A manifest that cannot be read as its format is returned as unreadable.
-func manifests(rules conventions.Rules, entries []Entry) ([]Manifest, []string) {
+// lockfiles. A manifest that cannot be read as its format is returned as unreadable. Each lockfile, workspace manifest
+// and catalogue is read once, however many manifests share it. A dependency on another package of the repository
+// itself (a workspace sibling) is held, since a lockfile lists it as a link or not at all.
+func manifests(rules conventions.Rules, entries []Entry, content map[string][]byte) ([]Manifest, []string) {
 	var found []Manifest
 	var unreadable []string
-	content := make(map[string][]byte, len(entries))
-	for _, entry := range entries {
-		content[entry.Path] = entry.Content
-	}
+	at := around{content: content, documents: map[string]map[string]any{}}
+	own := npmPackageNames(content)
 	type lockRead struct {
-		names map[string]bool
-		ok    bool
+		holds  func(string) bool
+		byText bool
 	}
-	read := map[string]lockRead{} // each lockfile is read once, however many manifests share it
+	read := map[string]lockRead{}
 	for _, entry := range entries {
 		known, isManifest := manifestOf(rules, entry.Path)
 		if !isManifest || entry.Content == nil {
 			continue
 		}
-		names, manifest, readable := dependencies(known.Format, entry.Content, around{content: content, folder: path.Dir(entry.Path)})
+		at.folder = path.Dir(entry.Path)
+		names, manifest, readable := dependencies(known.Format, entry.Content, at)
 		if known.Name != nil && slices.ContainsFunc(names, func(name string) bool { return !known.Name.MatchString(name) }) {
 			readable = false // a name outside its ecosystem's form is never printed
 		}
@@ -131,26 +131,28 @@ func manifests(rules conventions.Rules, entries []Entry) ([]Manifest, []string) 
 		}
 		slices.Sort(names)
 		m := Manifest{Path: entry.Path, Dependencies: names}
-		var locks [][]byte
-		m.Lockfiles, locks = nearestLockfiles(content, path.Dir(entry.Path), known.Lockfiles)
-		holds := make([]func(string) bool, len(m.Lockfiles))
-		for i, lockfile := range m.Lockfiles {
+		var holds []func(string) bool
+		for _, lockfile := range nearestLockfiles(content, at.folder, known.Lockfiles) {
 			r, seen := read[lockfile]
 			if !seen {
-				r.names, r.ok = lockNames(lockfile, locks[i])
+				lock := content[lockfile]
+				if listed, ok := lockNames(lockfile, lock); ok {
+					r.holds = func(name string) bool { return listed[name] }
+				} else {
+					r.holds, r.byText = func(name string) bool { return holdsName(lock, name) }, true
+				}
 				read[lockfile] = r
 			}
-			if !r.ok {
+			m.Lockfiles, holds = append(m.Lockfiles, lockfile), append(holds, r.holds)
+			if r.byText {
 				m.ByText = append(m.ByText, lockfile)
-				holds[i] = func(name string) bool { return holdsName(locks[i], name) }
-				continue
 			}
-			holds[i] = func(name string) bool { return lockHolds(r.names, lockfile, name) }
 		}
 		if len(m.Lockfiles) > 0 {
 			m.Unlocked = []string{}
 			for _, name := range names {
-				if !slices.ContainsFunc(holds, func(held func(string) bool) bool { return held(name) }) {
+				sibling := known.Format == conventions.JSONDependencies && own[name]
+				if !sibling && !slices.ContainsFunc(holds, func(held func(string) bool) bool { return held(name) }) {
 					m.Unlocked = append(m.Unlocked, name)
 				}
 			}
@@ -161,26 +163,58 @@ func manifests(rules conventions.Rules, entries []Entry) ([]Manifest, []string) 
 	return found, unreadable
 }
 
-// around is a manifest's place: the folder it lies in and the content of every tracked path of its side.
+// npmPackageNames are the names of the repository's own npm packages: the name of every tracked package.json.
+func npmPackageNames(content map[string][]byte) map[string]bool {
+	own := map[string]bool{}
+	for p, file := range content {
+		if path.Base(p) != "package.json" || file == nil {
+			continue
+		}
+		var parsed struct {
+			Name string `json:"name"`
+		}
+		if json.Unmarshal(file, &parsed) == nil && parsed.Name != "" {
+			own[parsed.Name] = true
+		}
+	}
+	return own
+}
+
+// around is a manifest's place: the folder it lies in, the content of every tracked path of its side, and the TOML
+// documents already decoded, so that a file several manifests read is decoded once.
 type around struct {
-	content map[string][]byte
-	folder  string
+	content   map[string][]byte
+	documents map[string]map[string]any
+	folder    string
+}
+
+// toml is a tracked TOML file decoded, or nil when it is not tracked, not read or no valid TOML.
+func (a around) toml(p string) map[string]any {
+	document, seen := a.documents[p]
+	if !seen {
+		if file := a.content[p]; file != nil {
+			document, _ = decodeTOML(file)
+		}
+		a.documents[p] = document
+	}
+	return document
 }
 
 // nearestLockfiles are the lockfiles of the given names in the nearest folder, at or above a manifest's, that holds
 // one: a workspace's members share the lockfile at its root. Only lockfiles that were read count.
-func nearestLockfiles(content map[string][]byte, folder string, names []string) (paths []string, locks [][]byte) {
-	for {
+func nearestLockfiles(content map[string][]byte, folder string, names []string) []string {
+	for f := range foldersUp(folder) {
+		var paths []string
 		for _, name := range names {
-			if lock := content[path.Join(folder, name)]; lock != nil {
-				paths, locks = append(paths, path.Join(folder, name)), append(locks, lock)
+			if content[path.Join(f, name)] != nil {
+				paths = append(paths, path.Join(f, name))
 			}
 		}
-		if len(paths) > 0 || folder == "." {
-			return paths, locks
+		if len(paths) > 0 {
+			return paths
 		}
-		folder = path.Dir(folder)
 	}
+	return nil
 }
 
 // dependencies reads a manifest's runtime dependencies. manifest is false when the file declares no project at all;
@@ -190,7 +224,7 @@ func dependencies(format conventions.ManifestFormat, content []byte, at around) 
 	names = []string{}
 	switch format {
 	case conventions.CargoDependencies:
-		return cargoDependencies(content, cargoWorkspace(at.content, at.folder))
+		return cargoDependencies(content, cargoWorkspace(at))
 	case conventions.PyprojectDependencies:
 		return pyprojectDependencies(content)
 	case conventions.PubspecDependencies:
@@ -198,7 +232,7 @@ func dependencies(format conventions.ManifestFormat, content []byte, at around) 
 	case conventions.PomDependencies:
 		return pomDependencies(content)
 	case conventions.GradleDependencies:
-		return gradleDependencies(content, gradleCatalogue(at.content, at.folder))
+		return gradleDependencies(content, gradleCatalogue(at))
 	case conventions.CsprojDependencies:
 		return csprojDependencies(content)
 	case conventions.SwiftDependencies:

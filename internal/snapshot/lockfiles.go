@@ -41,8 +41,12 @@ func lockNames(lockPath string, content []byte) (names map[string]bool, ok bool)
 	if !ok {
 		return nil, false
 	}
+	python := slices.Contains([]string{"uv.lock", "poetry.lock"}, path.Base(lockPath))
 	names = make(map[string]bool, len(list))
 	for _, name := range list {
+		if python { // compared as Python packaging compares names, as the manifest's are
+			name = requirementName(name)
+		}
 		names[name] = true
 	}
 	return names, true
@@ -117,22 +121,18 @@ func pnpmLockNames(content []byte) ([]string, bool) {
 	if !hasPackages {
 		return nil, false
 	}
+	v5 := strings.HasPrefix(version, "5.")
+	if !v5 && !strings.HasPrefix(version, "6.") && !strings.HasPrefix(version, "9.") {
+		return nil, false
+	}
 	var names []string
 	for _, key := range keys {
 		key, _, _ = strings.Cut(key, "(")
-		switch {
-		case strings.HasPrefix(version, "5."):
-			key = strings.TrimPrefix(key, "/")
-			if at := strings.LastIndex(key, "/"); at > 0 {
-				names = append(names, key[:at])
-			}
-		case strings.HasPrefix(version, "6."), strings.HasPrefix(version, "9."):
-			key = strings.TrimPrefix(key, "/")
-			if at := strings.LastIndex(key, "@"); at > 0 {
-				names = append(names, key[:at])
-			}
-		default:
-			return nil, false
+		key = strings.TrimPrefix(key, "/")
+		if !v5 {
+			names = append(names, packageName(key))
+		} else if at := strings.LastIndex(key, "/"); at > 0 {
+			names = append(names, key[:at])
 		}
 	}
 	return names, true
@@ -156,13 +156,19 @@ func yarnLockNames(content []byte) ([]string, bool) {
 			continue
 		}
 		for spec := range strings.SplitSeq(strings.TrimSuffix(line, ":"), ",") {
-			spec = strings.Trim(strings.TrimSpace(spec), `"`)
-			if at := strings.LastIndex(spec, "@"); at > 0 {
-				names = append(names, spec[:at])
-			}
+			names = append(names, packageName(strings.Trim(strings.TrimSpace(spec), `"`)))
 		}
 	}
 	return names, true
+}
+
+// packageName is the npm package name of a "name@range" or "name@version" specifier: up to the first "@" after a
+// scope's leading one, so that an alias ("a@npm:b@^1") or a git source ("a@git+ssh://git@host/a") keeps its name.
+func packageName(spec string) string {
+	if at := strings.Index(spec[min(1, len(spec)):], "@"); at >= 0 {
+		return spec[:at+min(1, len(spec))]
+	}
+	return spec
 }
 
 // goSumNames are the module paths of a go.sum: every line holds three fields.
@@ -271,18 +277,4 @@ func yamlNestedValue(text, parent, child string) string {
 		}
 	}
 	return ""
-}
-
-// lockHolds says whether a lockfile's names hold a dependency, compared as its ecosystem compares names: Python
-// names by PEP 503, every other name exactly (SwiftPM names are lower case on both sides).
-func lockHolds(names map[string]bool, lockPath, name string) bool {
-	if slices.Contains([]string{"uv.lock", "poetry.lock"}, path.Base(lockPath)) {
-		for listed := range names {
-			if requirementName(listed) == name {
-				return true
-			}
-		}
-		return false
-	}
-	return names[name]
 }
