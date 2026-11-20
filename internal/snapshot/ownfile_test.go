@@ -337,7 +337,7 @@ func TestBuildReadsTheTestsTableOfTheOwnFile(t *testing.T) {
 		map[string]string{"src/a.ts": "a\n", ".plimsoll.toml": "[tests]\nunit = [\"tests/**\", \"**/*_test.go\"]\ne2e = [\"e2e/**\"]\n"},
 		map[string]string{"src/a.ts": "a\n", ".plimsoll.toml": "[tests]\ne2e = [\"e2e/**\"]\nunit = [\"**/*_test.go\", \"tests/**\"]\nsmoke = [\"smoke/**\"]\n"}),
 		conventions.Default(), snapshottest.Readings(t))
-	want := []snapshot.DeclaredValues{{Table: "tests", Key: "tests", Name: "test kinds",
+	want := []snapshot.DeclaredValues{{Table: "tests", Key: "tests", Name: "test kind patterns",
 		Now:    []string{"e2e: e2e/**", "unit: **/*_test.go", "unit: tests/**", "smoke: smoke/**"},
 		Before: []string{"unit: **/*_test.go", "unit: tests/**", "e2e: e2e/**"}, Whole: true, Ordered: true, Compared: true, OrderChanged: true}}
 	if !reflect.DeepEqual(ordered.Declarations, want) {

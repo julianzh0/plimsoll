@@ -197,7 +197,7 @@ func declarationMarks(s snapshot.Snapshot) []answer.Mark {
 		before := float64(len(d.Before))
 		unit := d.Name
 		if d.OrderChanged {
-			unit += " and their order"
+			unit += " and the order of the kinds"
 		}
 		marks = append(marks, answer.Mark{
 			ID:         answer.ID(name, ruleDeclarationChange, d.Key),

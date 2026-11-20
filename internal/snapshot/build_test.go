@@ -523,6 +523,8 @@ func TestBuildMeasuresEachDeclaredTestKind(t *testing.T) {
 	partialNow := maps.Clone(partialBase)
 	partialNow["tests/unit/a_test.go"], partialNow["tests/other/b_test.go"] = "package u\n\n", "package o\n\n"
 	partialNow["src/a.go"], partialNow["src/lib.rs"] = "package a\n\n", "fn a() {}\n\n"
+	partialBase["tests/unit/notes.md"], partialNow["tests/unit/notes.md"] = "a\n", "b\n"
+	partialBase["tests/other/data.json"], partialNow["tests/other/data.json"] = "{}\n", "[]\n"
 	lacks := func(lacking ...string) snapshot.TestKinds {
 		source := snapshottest.Lacking(snapshottest.Files(partialBase, partialNow), lacking, []string{"tests/unit/c_test.go"})
 		return snapshot.Build(source, conventions.Default(), snapshottest.Readings(t)).TestKinds
@@ -540,6 +542,9 @@ func TestBuildMeasuresEachDeclaredTestKind(t *testing.T) {
 	lost := snapshot.Build(snapshottest.Lacking(snapshottest.Files(gone, goneNow), []string{"tests/legacy/old_test.go"}, nil), conventions.Default(), snapshottest.Readings(t))
 	if kind := lost.TestKinds.Kinds[0]; !kind.BaseMissing || !slices.Equal(kind.InUse, []string{"tests/legacy/**", "tests/unit/**"}) {
 		t.Errorf("a deleted file whose base content is lacking: %+v, want the base unknown and its pattern in use", kind)
+	}
+	if kinds := lacks("tests/unit/notes.md", "tests/other/data.json"); kinds.Kinds[0].BaseMissing || kinds.RemainderBaseMissing {
+		t.Errorf("only non-code files under test folders lack their base: %+v, want every base known", kinds)
 	}
 	if kinds := lacks("src/lib.rs"); kinds.Kinds[0].BaseMissing || !kinds.RemainderBaseMissing {
 		t.Errorf("the base of a Rust product file, which can hold test code, is lacking: %+v, want the remainder's base unknown", kinds)

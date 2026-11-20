@@ -121,9 +121,9 @@ file. A file you created in this conversation is not read by plimsoll until git 
 `git add .plimsoll.toml`, which you named in the proposal, and stage it again after every later entry you write on a
 yes in this conversation (proposal 2 included), so the index never holds half of what the user approved. A file that
 existed before this conversation, tracked or not, is staged by you only on its own yes. Before writing, read the file
-again. Right before staging, check rule 6 again and read the file: it must hold exactly what you wrote; once git
-tracks it, `git diff -- .plimsoll.toml` (the file against the index) must also show only what you wrote since you last
-staged it. If the file changed since your proposal, or anything else is there, show it and ask again.
+again. Right before staging, check rule 6 again and read the file: it must hold what the user approved (what was there
+before, plus exactly the entries you wrote on a yes); once git tracks it, `git diff -- .plimsoll.toml` (the file
+against the index) must also show only what you wrote since you last staged it. If the file changed since your proposal, or anything else is there, show it and ask again.
 
 ## 5. Check
 

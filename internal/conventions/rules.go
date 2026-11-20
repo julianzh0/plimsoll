@@ -415,9 +415,12 @@ type Language struct {
 	Library *Library
 }
 
+// testCapture is the query capture that marks test code inside a product file.
+var testCapture = regexp.MustCompile(`@test\b`)
+
 // HoldsTestCode says whether the language's product files can hold test code (its query captures @test), so their
 // lines can count as test lines.
-func (l Language) HoldsTestCode() bool { return strings.Contains(l.Query, "@test") }
+func (l Language) HoldsTestCode() bool { return testCapture.MatchString(l.Query) }
 
 // GrammarOf names the grammar that reads a file of the entry, or "" when the entry reads by text.
 func (l Language) GrammarOf(filePath string) string {
@@ -485,7 +488,7 @@ func Default() Rules {
 		OwnFile:           ".plimsoll.toml",
 		LimitsTable:       "limits",
 		AcknowledgedTable: "acknowledged", AcknowledgedName: "acknowledged items",
-		TestsTable: "tests", TestKindsName: "test kinds",
+		TestsTable: "tests", TestKindsName: "test kind patterns",
 		OwnKeys: []OwnKey{
 			{Table: "layout", Key: "test_folders", Name: "test folders", Holds: TestFolderPaths},
 			{Table: "layout", Key: "test_files", Name: "test files", Holds: TestFileNames},

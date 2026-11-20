@@ -366,3 +366,16 @@ func FuzzPathPattern(f *testing.F) {
 		pattern.Match(path)
 	})
 }
+
+func TestOnlyALanguageWhoseQueryCapturesTestHoldsTestCode(t *testing.T) {
+	rust, _ := Default().LanguageOf("src/lib.rs")
+	golang, _ := Default().LanguageOf("a.go")
+	for _, tc := range []struct {
+		language Language
+		want     bool
+	}{{rust, true}, {golang, false}, {Language{Query: "(call) @testcase"}, false}, {Language{Query: "(mod) @test.end"}, true}} {
+		if got := tc.language.HoldsTestCode(); got != tc.want {
+			t.Errorf("Language{Name: %q}.HoldsTestCode() = %v, want %v", tc.language.Name, got, tc.want)
+		}
+	}
+}

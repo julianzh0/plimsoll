@@ -223,7 +223,9 @@ note names the kinds in order with their patterns in use: each kind's patterns t
   any other character (`[`, `{`, `!`, `\`, a space), or over 200 characters is unusable: counted per kind, never
   matched. A runner's glob is translated, not copied: one pattern per brace alternative. The first 100 usable
   patterns of the table, in file order, are matched; any beyond are declared (a change to them is marked) but not
-  matched, and named per kind under "not analysed".
+  matched, and named per kind under "not analysed". So at that boundary the order of a kind's patterns decides which
+  are matched, and reordering them is still no change to the table. An unusable value is no declared pattern: adding
+  or removing one is counted under "not analysed", not marked.
 - A test-code file belongs to the first kind, in the table's order, with a pattern that matches its path; the order of
   one kind's patterns means nothing. A kind labels test code only: whether a file is test code is decided as before,
   by the shared rules, the project's own files and `[layout]`.

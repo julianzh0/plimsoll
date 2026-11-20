@@ -36,7 +36,7 @@ func testKinds(s snapshot.Snapshot, testNow, testBefore float64) (rows []answer.
 			"a partial clone lacks the content of a file that can hold such lines"))
 	}
 	if len(inUse) > 0 {
-		notes = []string{fmt.Sprintf("test kinds declared in `%s` (`[%s]`), in order: %s", s.OwnFile, s.TestKinds.Table, strings.Join(inUse, "; "))}
+		notes = []string{fmt.Sprintf("test kinds of `%s` (`[%s]`) with the patterns that match their files, in order: %s", s.OwnFile, s.TestKinds.Table, strings.Join(inUse, "; "))}
 	}
 	return rows, notes, gaps
 }
@@ -55,8 +55,9 @@ func kindGaps(s snapshot.Snapshot, kind snapshot.TestKind) []string {
 	prefix := fmt.Sprintf("`%s` `[%s]` `%s`", s.OwnFile, s.TestKinds.Table, kind.Name)
 	var gaps []string
 	if kind.Over > 0 {
-		beyond := fmt.Sprintf("beyond the table's first %d patterns", s.TestKinds.PatternCap)
-		gaps = append(gaps, prefix+": "+answer.Agree(kind.Over, "pattern lies "+beyond+"; it is", "patterns lie "+beyond+"; they are")+" not used")
+		beyond := fmt.Sprintf(" beyond the table's first %d usable patterns, the ones matched; ", s.TestKinds.PatternCap)
+		gaps = append(gaps, prefix+": "+answer.Agree(kind.Over, "pattern lies"+beyond+"it is", "patterns lie"+beyond+"they are")+
+			" declared but not matched")
 	}
 	if kind.Unusable > 0 {
 		gaps = append(gaps, prefix+": "+answer.Agree(kind.Unusable, "value is no path pattern; it is", "values are no path patterns; they are")+" not used")

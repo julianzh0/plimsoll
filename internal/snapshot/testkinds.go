@@ -101,13 +101,14 @@ func (t *testsTable) read(table string, lines []string, i int) int {
 		t.named = append(t.named, fmt.Sprintf("`[%s]` `%s` is not a list of text", table, name))
 		return i
 	}
-	kind, unusable := conventions.TestKind{Name: name}, 0
+	kind, unusable, written := conventions.TestKind{Name: name}, 0, map[string]bool{}
 	for _, item := range items {
 		pattern, usable := conventions.NewPathPattern(item)
 		switch {
 		case !usable:
 			unusable++
-		case !slices.ContainsFunc(kind.Patterns, func(p conventions.PathPattern) bool { return p.Text() == item }):
+		case !written[item]:
+			written[item] = true
 			kind.Patterns = append(kind.Patterns, pattern)
 		}
 	}
@@ -307,15 +308,10 @@ func testKinds(rules conventions.Rules, table testsTable, now, before Tree, lack
 		}
 	}
 	for _, p := range lacking {
-		if excluded(rules, p) {
-			continue
-		}
-		owner := ""
-		if testPath(rules, p) {
-			owner = conventions.KindOf(rules.TestKinds, p)
-		}
-		switch language, known := rules.LanguageOf(p); {
-		case owner != "":
+		language, known := rules.LanguageOf(p)
+		switch owner := conventions.KindOf(rules.TestKinds, p); {
+		case excluded(rules, p): // no code file, so no lines on either side
+		case testPath(rules, p) && owner != "":
 			declared.Kinds[index[owner]].BaseMissing = true
 			use(index[owner], p)
 		case testPath(rules, p) || known && language.HoldsTestCode():

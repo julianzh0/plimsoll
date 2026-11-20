@@ -503,7 +503,7 @@ func TestDeclaredTestKindsGetRowsThatAddUpToTheTestLines(t *testing.T) {
 	if _, found := statistic(findings, "tests", ""); found {
 		t.Errorf("the ratio is under its limit, so no split; kind rows show anyway: %+v", findings.Statistics)
 	}
-	if !slices.Contains(findings.Notes, "test kinds declared in `.plimsoll.toml` (`[tests]`), in order: `integration`: `tests/integration/**`; `unit`: `tests/**`") {
+	if !slices.Contains(findings.Notes, "test kinds of `.plimsoll.toml` (`[tests]`) with the patterns that match their files, in order: `integration`: `tests/integration/**`; `unit`: `tests/**`") {
 		t.Errorf("notes %q lack the kinds with their patterns in use", findings.Notes)
 	}
 	partial := snapshottest.Lacking(snapshottest.Files(base, now), []string{"tests/unit/a.test.ts"}, nil)
@@ -515,7 +515,7 @@ func TestDeclaredTestKindsGetRowsThatAddUpToTheTestLines(t *testing.T) {
 	}
 	one := detect(t, snapshottest.Files(nil, map[string]string{"src/a.go": "package a\n", "tests/a_test.go": "package a\n",
 		"docs/x.md": "x\n", ".plimsoll.toml": "[tests]\nunit = [\"tests/**\", \"docs/**\", \"tests/a_test.go\"]\nall = [\"src/**\", \"**\"]\n"}), conventions.Default())
-	if !slices.Contains(one.Notes, "test kinds declared in `.plimsoll.toml` (`[tests]`), in order: `unit`: `tests/**`, `tests/a_test.go`") {
+	if !slices.Contains(one.Notes, "test kinds of `.plimsoll.toml` (`[tests]`) with the patterns that match their files, in order: `unit`: `tests/**`, `tests/a_test.go`") {
 		t.Errorf("notes %q lack both patterns of unit that match its file", one.Notes)
 	}
 	var many strings.Builder
@@ -524,7 +524,7 @@ func TestDeclaredTestKindsGetRowsThatAddUpToTheTestLines(t *testing.T) {
 		fmt.Fprintf(&many, "k%d = [\"k%d/**\"]\n", k, k)
 	}
 	capped := detect(t, snapshottest.Files(nil, map[string]string{"src/a.go": "package a\n", "tests/a_test.go": "package a\n", ".plimsoll.toml": many.String()}), conventions.Default())
-	if !slices.Contains(capped.NotAnalysed, "`.plimsoll.toml` `[tests]` `k99`: 1 pattern lies beyond the table's first 100 patterns; it is not used") {
+	if !slices.Contains(capped.NotAnalysed, "`.plimsoll.toml` `[tests]` `k99`: 1 pattern lies beyond the table's first 100 usable patterns, the ones matched; it is declared but not matched") {
 		t.Errorf("not analysed %q lacks the kind whose pattern lies beyond the cap", capped.NotAnalysed)
 	}
 	unowned := detect(t, snapshottest.Files(nil, map[string]string{"src/a.go": "package a\n", "tests/a_test.go": "package a\n",
