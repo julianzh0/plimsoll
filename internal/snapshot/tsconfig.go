@@ -261,7 +261,7 @@ func globMatches(pattern, file string) bool {
 		pattern = path.Join(pattern, "**/*")
 	}
 	segments, parts := strings.Split(path.Clean(pattern), "/"), strings.Split(file, "/")
-	failed := map[[2]int]bool{} // a pattern position and a path position already tried without a match
+	var failed map[[2]int]bool // a pattern position and a path position already tried without a match; made at the first failure
 	var match func(p, f int) bool
 	match = func(p, f int) bool {
 		for ; p < len(segments); p, f = p+1, f+1 {
@@ -273,6 +273,9 @@ func globMatches(pattern, file string) bool {
 					if match(p+1, i) {
 						return true
 					}
+				}
+				if failed == nil {
+					failed = map[[2]int]bool{}
 				}
 				failed[[2]int{p, f}] = true
 				return false

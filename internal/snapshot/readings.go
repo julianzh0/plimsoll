@@ -13,8 +13,8 @@ import (
 
 // KeptReadings is how many file readings may be kept between questions before readings no later question used are
 // dropped: more than 25 times the code files of the largest field repository (json, 634). A kept reading with its key
-// takes about 1.4 KB of heap (4,078 readings of the sixteen field repositories took 5.8 MB), so the bound holds about
-// 23 MB. Only changed files are read with their declarations (2.4 KB a reading) or with their functions too (5.6 KB;
+// takes about 1.6 KB of heap (3,831 readings of the seventeen field repositories took 6.1 MB, 2026-11-20, with the
+// module bindings of Rust and the declared names of Java, Kotlin and C#), so the bound holds about 26 MB. Only changed files are read with their declarations (2.4 KB a reading) or with their functions too (5.6 KB;
 // the 217 code files with function tables the field repositories changed in their last 20 commits): were every kept
 // reading one with functions, the bound would hold about 92 MB. A question never loses the readings it made itself: one larger than the bound keeps all of them, so the next
 // question about the same repository reads only what changed (swc, 43,434 code files: about 60 MB).
