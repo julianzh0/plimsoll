@@ -60,16 +60,21 @@ type Rules struct {
 	// AcknowledgedTable is the table of the own file whose keys are mark identifiers the repository acknowledges, each
 	// with a reason; AcknowledgedName is what an answer calls its entries.
 	AcknowledgedTable, AcknowledgedName string
-	TestNames                           []string  // file-name patterns of test code; empty in the shared rules
-	IgnoredPaths                        []string  // folders, as paths from the repository root, whose files are left out; empty in the shared rules
-	IgnoredNames                        []string  // file-name patterns of files left out; empty in the shared rules
-	PlanningPaths                       []string  // planning and review records: an entry ending in "/" is a folder, at the root when it is one name, at any depth when it is a chain; any other a file-name pattern
-	PlanningFolders                     []string  // planning folders a repository declares, as paths from the root; empty in the shared rules
-	PlanningNames                       []string  // file-name patterns of planning files a repository declares; empty in the shared rules
-	NoteNames                           NoteNames // the words that make an added Markdown file's name a working note
-	MeasurementPaths                    []string  // measurement records, in the syntax of PlanningPaths
-	ComposeFiles                        []string  // file-name patterns of compose files, read for their environment keys
-	Limits                              Limits    // the shared defaults
+	// TestsTable is the table of the own file whose keys name kinds of test code, each with its path patterns;
+	// TestKindsName is what an answer calls them. TestKinds are the kinds now's own file declares, in file order:
+	// empty in the shared rules.
+	TestsTable, TestKindsName string
+	TestKinds                 []TestKind
+	TestNames                 []string  // file-name patterns of test code; empty in the shared rules
+	IgnoredPaths              []string  // folders, as paths from the repository root, whose files are left out; empty in the shared rules
+	IgnoredNames              []string  // file-name patterns of files left out; empty in the shared rules
+	PlanningPaths             []string  // planning and review records: an entry ending in "/" is a folder, at the root when it is one name, at any depth when it is a chain; any other a file-name pattern
+	PlanningFolders           []string  // planning folders a repository declares, as paths from the root; empty in the shared rules
+	PlanningNames             []string  // file-name patterns of planning files a repository declares; empty in the shared rules
+	NoteNames                 NoteNames // the words that make an added Markdown file's name a working note
+	MeasurementPaths          []string  // measurement records, in the syntax of PlanningPaths
+	ComposeFiles              []string  // file-name patterns of compose files, read for their environment keys
+	Limits                    Limits    // the shared defaults
 	// ReportOnly are the kinds of mark that report lists and status only counts, as "<detector>.<rule>": kinds
 	// outside reviewers or a blind reading judged too noisy to show on every change.
 	ReportOnly []string
@@ -167,6 +172,8 @@ const (
 	PlanningFolderPaths
 	// PlanningFileNames are file-name patterns of planning or review records.
 	PlanningFileNames
+	// TestKindPatterns are path patterns from the repository root of one kind of test code (PathPattern).
+	TestKindPatterns
 )
 
 // OwnValueLength is the longest value an own key may hold: the longest tracked folder path of sixteen repositories is
@@ -226,6 +233,12 @@ func (v OwnValue) Form(value string) (formed string, usable bool) {
 	}
 	if v == BaseName {
 		if !ownBase.MatchString(value) || strings.Contains(value, "..") || strings.HasPrefix(value, "-") {
+			return "", false
+		}
+		return value, true
+	}
+	if v == TestKindPatterns {
+		if _, usable := NewPathPattern(value); !usable {
 			return "", false
 		}
 		return value, true
@@ -295,7 +308,7 @@ func (v OwnValue) Shape() string {
 		return "import rule of the form `folder -> folder` (two different folders from the root, neither inside the other)"
 	case OnlyImportRules:
 		return "import rule of the form `folder -> folder` (two folders from the root)"
-	case TestFolderPaths, TestFileNames, BaseName, IgnoredFolderPaths, IgnoredFileNames, PlanningFolderPaths, PlanningFileNames:
+	case TestFolderPaths, TestFileNames, BaseName, IgnoredFolderPaths, IgnoredFileNames, PlanningFolderPaths, PlanningFileNames, TestKindPatterns:
 	}
 	return ""
 }
@@ -471,6 +484,7 @@ func Default() Rules {
 		OwnFile:           ".plimsoll.toml",
 		LimitsTable:       "limits",
 		AcknowledgedTable: "acknowledged", AcknowledgedName: "acknowledged items",
+		TestsTable: "tests", TestKindsName: "test kinds",
 		OwnKeys: []OwnKey{
 			{Table: "layout", Key: "test_folders", Name: "test folders", Holds: TestFolderPaths},
 			{Table: "layout", Key: "test_files", Name: "test files", Holds: TestFileNames},

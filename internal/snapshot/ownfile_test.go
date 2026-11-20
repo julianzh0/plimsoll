@@ -266,3 +266,57 @@ func TestBuildReadsTheImportRulesOfTheOwnFile(t *testing.T) {
 		t.Errorf("a rule changed: Declarations %+v, want %+v", changed.Declarations, want)
 	}
 }
+
+func TestBuildReadsTheTestsTableOfTheOwnFile(t *testing.T) {
+	long := strings.Repeat("k", 201)
+	cases := []struct {
+		name     string
+		file     string
+		kinds    []snapshot.TestKind
+		problems []string
+	}{
+		{"kinds in file order, a list over lines with a comment, a quoted name",
+			"[tests]\nintegration = [\"**/*_integration_test.go\",\n  \"tests/integration/**\", # the slow ones\n]\n\"e2e\" = ['e2e/**']\nunit = [\"**/*_test.go\", \"tests/**\"]\n",
+			[]snapshot.TestKind{{Name: "integration", Patterns: []string{"**/*_integration_test.go", "tests/integration/**"}},
+				{Name: "e2e", Patterns: []string{"e2e/**"}}, {Name: "unit", Patterns: []string{"**/*_test.go", "tests/**"}}}, nil},
+		{"names outside their form, quoted or bare",
+			"[tests]\n\"a=b\" = [\"x/**\"]\n'a\"b' = [\"x/**\"]\n\" unit \" = [\"x/**\"]\na\"b = [\"x/**\"]\napi.integration = [\"x/**\"]\n" + long + " = [\"x/**\"]\n",
+			nil, []string{"`[tests]`: 6 kind names are no plain names; they are not applied"}},
+		{"a line that opens a brace does not swallow the next entry",
+			"[tests]\nbad = {a = 1\nunit = [\"tests/**\"]\n",
+			[]snapshot.TestKind{{Name: "unit", Patterns: []string{"tests/**"}}}, []string{"`[tests]` `bad` is not a list of text"}},
+		{"a name set twice, a value that is no list, a line that is no entry, an empty list",
+			"[tests]\nunit = [\"a/**\"]\nunit = [\"b/**\"]\ne2e = \"e2e/**\"\njust text\nnone = []\n",
+			[]snapshot.TestKind{{Name: "unit", Patterns: []string{"a/**"}}},
+			[]string{"`[tests]` `e2e` is not a list of text", "`[tests]` `unit` is set twice; its first entry decides",
+				"`[tests]`: 1 line is no `name = [\"pattern\", …]` entry; it is not applied"}},
+		{"patterns outside their form are counted per kind",
+			"[tests]\nunit = [\"tests/**\", \"src/**.ts\", \"e2e/\", \"tests/**\"]\n",
+			[]snapshot.TestKind{{Name: "unit", Patterns: []string{"tests/**"}, Unusable: 2}}, nil},
+	}
+	for _, tc := range cases {
+		s := snapshot.Build(snapshottest.Files(nil, map[string]string{"src/a.ts": "a\n", ".plimsoll.toml": tc.file}), conventions.Default(), snapshottest.Readings(t))
+		var kinds []snapshot.TestKind
+		for _, k := range s.TestKinds.Kinds {
+			kinds = append(kinds, snapshot.TestKind{Name: k.Name, Patterns: k.Patterns, Unusable: k.Unusable})
+		}
+		if !reflect.DeepEqual(kinds, tc.kinds) || !slices.Equal(s.OwnFileProblems, tc.problems) {
+			t.Errorf("%s: kinds %+v, problems %q; want %+v, %q", tc.name, kinds, s.OwnFileProblems, tc.kinds, tc.problems)
+		}
+	}
+
+	ordered := snapshot.Build(snapshottest.Files(
+		map[string]string{"src/a.ts": "a\n", ".plimsoll.toml": "[tests]\nunit = [\"tests/**\", \"**/*_test.go\"]\ne2e = [\"e2e/**\"]\n"},
+		map[string]string{"src/a.ts": "a\n", ".plimsoll.toml": "[tests]\ne2e = [\"e2e/**\"]\nunit = [\"**/*_test.go\", \"tests/**\"]\nsmoke = [\"smoke/**\"]\n"}),
+		conventions.Default(), snapshottest.Readings(t))
+	want := []snapshot.DeclaredValues{{Table: "tests", Key: "tests", Name: "test kinds",
+		Now:    []string{"e2e: e2e/**", "unit: **/*_test.go", "unit: tests/**", "smoke: smoke/**"},
+		Before: []string{"unit: **/*_test.go", "unit: tests/**", "e2e: e2e/**"}, Whole: true, Compared: true, OrderChanged: true}}
+	if !reflect.DeepEqual(ordered.Declarations, want) {
+		t.Errorf("kinds reordered and one added: Declarations %+v, want %+v", ordered.Declarations, want)
+	}
+	if only := snapshot.Build(snapshottest.Files(nil, map[string]string{"src/a.ts": "a\n", ".plimsoll.toml": "[tests]\nunit = [\"tests/**\"]\n"}),
+		conventions.Default(), snapshottest.Readings(t)); len(only.OwnFileProblems) != 0 {
+		t.Errorf("a file holding only [tests]: problems %q, want none", only.OwnFileProblems)
+	}
+}

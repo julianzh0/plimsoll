@@ -29,6 +29,7 @@ func Build(source Source, rules conventions.Rules, readings *Readings) Snapshot 
 	importRules, ruleRecords := importRules(rules, ownNow)
 	layout.Rules = ruleRecords
 	rules = withLayout(rules, layout)
+	rules.TestKinds = testKindRules(ownNow.tests)
 	rules = withSharedSuffixes(rules, source.Now)
 	limits, declaredLimits := declaredLimits(rules, ownNow, ownBefore)
 	rules.Limits = limits
@@ -89,6 +90,7 @@ func Build(source Source, rules conventions.Rules, readings *Readings) Snapshot 
 		ImportRules:         importRules,
 		OwnFileProblems:     ownNow.problems,
 		Acknowledged:        Acknowledged{Table: rules.AcknowledgedTable, IDs: ownNow.ack.applied, Problems: ownNow.ack.problems()},
+		TestKinds:           testKinds(rules, ownNow.tests, now, before, source.Missing),
 		OwnFileUnreadAtBase: ownBefore.unreadable,
 		Before:              before,
 		Now:                 now,
@@ -276,6 +278,9 @@ func codeFile(rules conventions.Rules, entry Entry) (File, bool) {
 		return File{}, false
 	}
 	file := File{Path: entry.Path, Role: role(rules, entry.Path, entry.Content), Lines: countLines(entry.Content), Limit: rules.Limits.FileLines}
+	if file.Role.IsTest() {
+		file.Kind = conventions.KindOf(rules.TestKinds, entry.Path)
+	}
 	file.Record = recordPath(rules, entry.Path)
 	if language, found := rules.LanguageOf(entry.Path); found {
 		file.Language = language.Name

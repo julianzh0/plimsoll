@@ -19,8 +19,11 @@ type DeclaredValues struct {
 	Table, Key, Name string
 	Now, Before      []string
 	Whole            bool // a whole table whose keys are the values; Key is then the table's name
-	Compared         bool
-	UnreadAtBase     bool
+	// OrderChanged says the order of the table's entries decides and changed: the kinds of the tests table that
+	// both sides name stand in another order.
+	OrderChanged bool
+	Compared     bool
+	UnreadAtBase bool
 }
 
 // ownFile is what one side's own file says.
@@ -33,6 +36,7 @@ type ownFile struct {
 	single     map[string]string   // per key that holds one name and could not be used: its problem phrase
 	problems   []string            // what the file says that is not read: phrases, sorted, each once
 	ack        acknowledged        // its acknowledged table
+	tests      testsTable          // its tests table
 }
 
 // acknowledged is what one side's acknowledged table says: the identifiers in their form, each once, the first of
@@ -109,7 +113,7 @@ func readOwnFile(rules conventions.Rules, content map[string][]byte) ownFile {
 		o.unreadable, o.problems = true, []string{"it could not be read"}
 		return o
 	}
-	known := map[string]bool{rules.LimitsTable: true, rules.AcknowledgedTable: true}
+	known := map[string]bool{rules.LimitsTable: true, rules.AcknowledgedTable: true, rules.TestsTable: true}
 	for _, k := range rules.OwnKeys {
 		known[k.Table] = true
 	}
@@ -132,6 +136,10 @@ func readOwnFile(rules conventions.Rules, content map[string][]byte) ownFile {
 		}
 		if table == rules.AcknowledgedTable {
 			o.ack.read(code)
+			continue
+		}
+		if table == rules.TestsTable {
+			i = o.tests.read(table, lines, i)
 			continue
 		}
 		name, value, assigns := strings.Cut(code, "=")
@@ -172,6 +180,7 @@ func readOwnFile(rules conventions.Rules, content map[string][]byte) ownFile {
 	if !found {
 		problem("it holds no table plimsoll reads")
 	}
+	o.problems = append(o.problems, o.tests.problems(rules.TestsTable)...)
 	slices.Sort(o.problems)
 	o.problems = slices.Compact(o.problems)
 	return o
@@ -310,6 +319,12 @@ func declaredValues(rules conventions.Rules, now, before ownFile) []DeclaredValu
 		declared = append(declared, DeclaredValues{
 			Table: rules.AcknowledgedTable, Key: rules.AcknowledgedTable, Name: rules.AcknowledgedName,
 			Now: now.ack.inForm, Before: before.ack.inForm, Whole: true, Compared: !now.unreadable && !before.unreadable,
+		})
+	}
+	if nowPairs, beforePairs := now.tests.pairs(), before.tests.pairs(); len(nowPairs) > 0 || len(beforePairs) > 0 {
+		declared = append(declared, DeclaredValues{
+			Table: rules.TestsTable, Key: rules.TestsTable, Name: rules.TestKindsName, Now: nowPairs, Before: beforePairs,
+			Whole: true, Compared: !now.unreadable && !before.unreadable, OrderChanged: orderChanged(now.tests.names(), before.tests.names()),
 		})
 	}
 	return declared

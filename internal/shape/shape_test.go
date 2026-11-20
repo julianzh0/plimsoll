@@ -2,6 +2,7 @@ package shape
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"testing"
@@ -456,5 +457,56 @@ func TestShapeNamesTheDecidingRulesThatRan(t *testing.T) {
 	none := detect(t, snapshottest.Files(map[string]string{"README.md": "a\n"}, map[string]string{"README.md": "b\n"}), conventions.Default())
 	if len(none.RanRules) != 0 {
 		t.Errorf("no manifest, no code: ran %q, want none", none.RanRules)
+	}
+}
+
+func TestDeclaredTestKindsGetRowsThatAddUpToTheTestLines(t *testing.T) {
+	table := "[tests]\nintegration = [\"tests/integration/**\"]\nunit = [\"tests/**\"]\ne2e = [\"e2e/**\"]\nlate = [\"tests/integration/**\"]\n" +
+		"all = [\"**\", \"src/x[\", \"tests/\"]\nfolder = [\"tests/unit\"]\n"
+	base := map[string]string{
+		"src/a.rs": "fn a() {}\n#[cfg(test)]\nmod tests {\n    #[test]\n    fn t() {}\n}\n", "src/b.rs": snapshottest.Lines(40), ".plimsoll.toml": table,
+		"tests/unit/a.test.ts": "test(\"a\", () => {});\n" + snapshottest.Lines(2), "tests/integration/b.test.ts": "test(\"b\", () => {});\n",
+	}
+	now := maps.Clone(base)
+	delete(now, "tests/unit/a.test.ts")
+	now["tests/integration/c.test.ts"] = "test(\"c\", () => {});\n" + snapshottest.Lines(3)
+	findings := detect(t, snapshottest.Files(base, now), conventions.Default())
+	rows := map[string][2]float64{}
+	for _, s := range findings.Statistics {
+		if strings.HasPrefix(s.Name, "test lines of") {
+			before := -1.0
+			if s.Before != nil {
+				before = *s.Before
+			}
+			rows[s.Name+" "+s.Subject] = [2]float64{*s.Value, before}
+		}
+	}
+	testLines, _ := statistic(findings, "test lines", "")
+	want := map[string][2]float64{
+		"test lines of kind integration": {5, 1}, "test lines of kind unit": {0, 3},
+		"test lines of no declared kind ": {*testLines.Value - 5, *testLines.Before - 4},
+	}
+	if !maps.Equal(rows, want) || rows["test lines of no declared kind "][0] == 0 {
+		t.Errorf("kind rows %v, want %v (the remainder holds the Rust inline test lines)", rows, want)
+	}
+	for _, sentence := range []string{
+		"`.plimsoll.toml` `[tests]` `e2e`: `e2e/**` matches no tracked file; it is not used",
+		"`.plimsoll.toml` `[tests]` `late` owns no test code: the files its patterns match belong to `integration`, listed earlier",
+		"`.plimsoll.toml` `[tests]` `all`: `**` matches 2 product code files; a kind labels test code only, so they are not counted",
+		"`.plimsoll.toml` `[tests]` `all`: 2 values are no path patterns; they are not used",
+		"`.plimsoll.toml` `[tests]` `folder`: `tests/unit` matches no tracked file; a folder's files are written `tests/unit/**`",
+	} {
+		if !slices.Contains(findings.NotAnalysed, sentence) {
+			t.Errorf("not analysed %q lacks %q", findings.NotAnalysed, sentence)
+		}
+	}
+	if _, found := statistic(findings, "tests", ""); found {
+		t.Errorf("the ratio is under its limit, so no split; kind rows show anyway: %+v", findings.Statistics)
+	}
+	plain := detect(t, snapshottest.Files(nil, map[string]string{"src/a.ts": "a\n", "tests/a.test.ts": "test(\"a\", () => {});\n"}), conventions.Default())
+	for _, s := range plain.Statistics {
+		if strings.HasPrefix(s.Name, "test lines of") {
+			t.Errorf("no tests table: row %+v, want none", s)
+		}
 	}
 }

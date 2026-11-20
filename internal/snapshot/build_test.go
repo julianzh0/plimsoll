@@ -481,3 +481,38 @@ func TestBuildListsAFileTheParserCannotRead(t *testing.T) {
 		t.Errorf("Build(a file over the cap) files = %d, want big.go counted with 150,001 lines", len(s.Now.Files))
 	}
 }
+
+func TestBuildMeasuresEachDeclaredTestKind(t *testing.T) {
+	table := "[tests]\nintegration = [\"tests/integration/**\"]\nunit = [\"tests/**\"]\ne2e = [\"e2e/**\"]\n" +
+		"late = [\"tests/integration/**\"]\nall = [\"**\"]\n"
+	base := map[string]string{
+		"src/a.go": "package a\n", "tests/unit/a_test.go": "package u\n\nfunc TestA(t *testing.T) {}\n",
+		"tests/integration/b_test.go": "package i\nfunc TestB(t *testing.T) {}\n", ".plimsoll.toml": table,
+	}
+	now := map[string]string{
+		"src/a.go": "package a\n", "tests/integration/b_test.go": "package i\nfunc TestB(t *testing.T) {}\n",
+		"tests/integration/c_test.go": "package i\n\n\nfunc TestC(t *testing.T) {}\n", ".plimsoll.toml": table,
+	}
+	source := snapshottest.Files(base, now)
+	source.Missing = []string{"tests/old/gone_test.go"}
+	s := snapshot.Build(source, conventions.Default(), snapshottest.Readings(t))
+	want := []snapshot.TestKind{
+		{Name: "integration", Patterns: []string{"tests/integration/**"}, Lines: 6, BaseLines: 2, Owns: true},
+		{Name: "unit", Patterns: []string{"tests/**"}, BaseLines: 3, Owns: true, BaseMissing: true},
+		{Name: "e2e", Patterns: []string{"e2e/**"}, Unmatched: []string{"e2e/**"}},
+		{Name: "late", Patterns: []string{"tests/integration/**"}, TakenBy: []string{"integration"}},
+		{Name: "all", Patterns: []string{"**"}, BaseMissing: true, TakenBy: []string{"integration", "unit"},
+			ProductMatches: []snapshot.PatternFiles{{Pattern: "**", Files: 1}}},
+	}
+	if !reflect.DeepEqual(s.TestKinds.Kinds, want) {
+		t.Errorf("Build(...).TestKinds.Kinds =\n%+v\nwant\n%+v", s.TestKinds.Kinds, want)
+	}
+	for _, file := range s.Now.Files {
+		if file.Path == "src/a.go" && file.Kind != "" {
+			t.Errorf("product file %s has kind %q, want none: a kind labels test code only", file.Path, file.Kind)
+		}
+	}
+	if plain := snapshot.Build(snapshottest.Files(nil, map[string]string{"tests/a_test.go": "package a\n"}), conventions.Default(), snapshottest.Readings(t)); len(plain.TestKinds.Kinds) != 0 {
+		t.Errorf("no tests table: kinds %+v, want none", plain.TestKinds.Kinds)
+	}
+}
