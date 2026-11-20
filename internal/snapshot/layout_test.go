@@ -77,8 +77,6 @@ func TestBuildReadsWhatAProjectDeclares(t *testing.T) {
 	moved.InUse = append(moved.InUse, snapshot.DeclaredFolder{Path: "old", BaseOnly: true})
 	shadowed := testpaths()
 	shadowed.ShadowedBy = "pytest.ini"
-	notRead := testpaths()
-	notRead.Now, notRead.AtBase = snapshot.KeyFormNotRead, snapshot.KeyFormNotRead
 
 	cases := []struct {
 		name string
@@ -100,13 +98,14 @@ func TestBuildReadsWhatAProjectDeclares(t *testing.T) {
 		{"roots", both(declaring(pytestTable+"testpaths = [\"checks\"]\npythonpath = [\"checks\", \"src\", \".\", \"../x\"]\n", "checks/h.py", "src/app/__init__.py")),
 			snapshot.Layout{TestFolders: []snapshot.Declared{testpaths("checks")}, Roots: []snapshot.Declared{roots}}},
 		{"no string in the array", both(declaring(pytestTable + "testpaths = [\"tests\", 3]\n")), one(unreadable)},
-		{"an array that does not end", both(declaring(pytestTable + "testpaths = [\n  \"tests\",\n")), one(unreadable)},
+		{"an array that does not end: no valid TOML, so no layout", both(declaring(pytestTable + "testpaths = [\n  \"tests\",\n")), snapshot.Layout{}},
+		{"a value that is no list of text", both(declaring(pytestTable + "testpaths = [1]\n")), one(unreadable)},
 		{"a number", both(declaring(pytestTable + "testpaths = 3\n")), one(unreadable)},
 		{"unreadable at the base", layoutOf(t, declaring(pytestTable+"testpaths = [3]\n", "checks/h.py"), declaring(pytestTable+"testpaths = [\"checks\"]\n", "checks/h.py")), one(fixed)},
 		{"declared at the base only", layoutOf(t, declaring(pytestTable+"testpaths = [\"old\"]\n", "old/h.py"), declaring(pytestTable+"testpaths = [\"checks\"]\n", "checks/h.py")), one(moved)},
-		{"a dotted key outside the table", both(declaring("tool.pytest.ini_options.testpaths = [\"checks\"]\n", "checks/h.py")), one(notRead)},
-		{"a dotted key in tool.pytest", both(declaring("[tool.pytest]\nini_options.testpaths = [\"checks\"]\n", "checks/h.py")), one(notRead)},
-		{"an inline table", both(declaring("[tool.pytest]\nini_options = { testpaths = [\"checks\"] }\n", "checks/h.py")), one(notRead)},
+		{"a dotted key outside the table", both(declaring("tool.pytest.ini_options.testpaths = [\"checks\"]\n", "checks/h.py")), one(testpaths("checks"))},
+		{"a dotted key in tool.pytest", both(declaring("[tool.pytest]\nini_options.testpaths = [\"checks\"]\n", "checks/h.py")), one(testpaths("checks"))},
+		{"an inline table", both(declaring("[tool.pytest]\nini_options = { testpaths = [\"checks\"] }\n", "checks/h.py")), one(testpaths("checks"))},
 		{"a tracked pytest.ini", both(declaring(pytestTable+"testpaths = [\"checks\"]\n", "checks/h.py", "pytest.ini")),
 			snapshot.Layout{TestFolders: []snapshot.Declared{shadowed}, Shadowing: []string{"pytest.ini"}}},
 		{"an indented header", both(declaring("  [tool.pytest.ini_options]\ntestpaths = [\"checks\"]\n", "checks/h.py")), one(testpaths("checks"))},

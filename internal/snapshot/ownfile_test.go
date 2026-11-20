@@ -1,6 +1,7 @@
 package snapshot_test
 
 import (
+	"fmt"
 	"reflect"
 	"slices"
 	"strings"
@@ -26,6 +27,9 @@ func TestBuildReadsTheTextKeysOfTheOwnFile(t *testing.T) {
 		return d
 	}
 	notAList := "`test_folders` is not a list of text"
+	invalid := func(line int) []string {
+		return []string{fmt.Sprintf("it is not valid TOML at line %d, so none of it is applied and its import rules were not checked", line)}
+	}
 	cases := []struct {
 		name      string
 		base, now string // the content of .plimsoll.toml on each side; "" is no file
@@ -44,24 +48,26 @@ func TestBuildReadsTheTextKeysOfTheOwnFile(t *testing.T) {
 		{"only values without the form", "", "[layout]\ntest_folders = [\"a b\"]\n", nil, nil},
 		{"one string", "", "[layout]\ntest_folders = \"checks\"\n", nil, []string{notAList}},
 		{"no string in the list, and a list that does not end", "", "[layout]\ntest_files = [1, \"a\"]\ntest_folders = [\n\"a\",\n",
-			nil, []string{"`test_files` is not a list of text", notAList}},
+			nil, invalid(4)},
 		{"text after the list, and comments after lists", "", "[layout]\ntest_folders = [\"a\"] trailing\ntest_files = [\n  \"*.x\", # one\n] # end of list\n",
-			[]snapshot.DeclaredValues{files([]string{"*.x"}, nil)}, []string{notAList}},
+			nil, invalid(2)},
 		{"a missing comma between values, and a comma after the last", "", "[layout]\ntest_folders = [\"a\" \"b\"]\ntest_files = [\"*.x\",]\n",
-			[]snapshot.DeclaredValues{files([]string{"*.x"}, nil)}, []string{notAList}},
+			nil, invalid(2)},
 		{"a comma with no value before it", "", "[layout]\ntest_folders = [\"a\",,\"b\"]\ntest_files = [,\"*.x\"]\n",
-			nil, []string{"`test_files` is not a list of text", notAList}},
+			nil, invalid(2)},
 		{"a list that ends and opens another", "", "[layout]\ntest_folders = [\"a\"] [\ntest_files = [\"*.x\"]\n",
-			[]snapshot.DeclaredValues{files([]string{"*.x"}, nil)}, []string{notAList}},
+			nil, invalid(2)},
 		{"a key the table does not hold", "", "[layout]\ntest_folder = [\"x\"]\n", nil, []string{"`test_folder` is no key of `[layout]`"}},
-		{"a key twice", "", "[layout]\ntest_folders = [\"a\"]\ntest_folders = [\"b\"]\n",
-			[]snapshot.DeclaredValues{folders([]string{"a"}, nil)}, []string{"`test_folders` is set twice"}},
-		{"a line that is no key = value", "", "[layout]\ntest_folders\n", nil, []string{"`[layout]` holds a line that is no `key = value`"}},
+		{"a key twice", "", "[layout]\ntest_folders = [\"a\"]\ntest_folders = [\"b\"]\n", nil, invalid(3)},
+		{"a line that is no key = value", "", "[layout]\ntest_folders\n", nil, invalid(2)},
 		{"another table and a key outside any", "", "x = 1\n[rules]\nno_print = true\n[layout]\ntest_folders = [\"a\"]\n",
 			[]snapshot.DeclaredValues{folders([]string{"a"}, nil)}, []string{"`[rules]` is no table plimsoll reads", "`x` lies outside a table"}},
-		{"names that are no plain names", "", "\"a b\" = 1\n[zz y]\n[layout]\n\"c d\" = [\"x\"]\n[limits]\n\"e f\" = 1\n", nil, []string{
+		{"a table name that is no TOML", "", "[zz y]\n", nil, invalid(1)},
+		{"names that are no plain names", "", "\"a b\" = 1\n[\"zz y\"]\n[layout]\n\"c d\" = [\"x\"]\n[limits]\n\"e f\" = 1\n", nil, []string{
 			"a key with no plain name is no key of `[layout]`", "a key with no plain name is no limit plimsoll knows",
 			"a key with no plain name lies outside a table", "a table with no plain name is no table plimsoll reads"}},
+		{"forms of TOML the line reader did not read", "", "layout.test_folders = [\"a\"]\nlayout.test_files = [\"\"\"*.x\"\"\"]\nlimits = { file_lines = 1_500 }\n",
+			[]snapshot.DeclaredValues{folders([]string{"a"}, nil), files([]string{"*.x"}, nil)}, nil},
 		{"an empty file", "", "# nothing yet\n", nil, []string{"it holds no table plimsoll reads"}},
 		{"the key not read at the base", "[layout]\ntest_folders = 3\n", "[layout]\ntest_folders = [\"checks\"]\n",
 			[]snapshot.DeclaredValues{uncompared(folders([]string{"checks"}, nil), true)}, nil},
@@ -137,52 +143,49 @@ func TestTheOwnFileIgnoresFoldersAndFiles(t *testing.T) {
 func TestBuildReadsTheAcknowledgedTableOfTheOwnFile(t *testing.T) {
 	long := strings.Repeat("ü", 200)
 	pair := "co-change.pair:src/store.ts+tests/fakes/store.ts"
+	noReason := func(id string) string { return "`" + id + "` has no reason written as text; it is not applied" }
 	cases := []struct {
-		name     string
-		now      string
-		ids      []string
-		problems []string
+		name      string
+		now       string
+		ids       []string
+		problems  []string
+		invalidAt int // the line of a TOML syntax error, or 0
 	}{
-		{"identifiers as printed, a reason with an apostrophe",
+		{"identifiers as printed, sorted, a reason with an apostrophe",
 			"[acknowledged]\n\"process.planning-file:SPEC.md\" = \"a lasting spec, it's ours\" # kept\n" +
 				"  \"" + pair + "\" = 'they share a schema'\n\"shape.file-size:src/pages/[id]/a=b#c.tsx\" = \"routes\"\n",
-			[]string{"process.planning-file:SPEC.md", pair, "shape.file-size:src/pages/[id]/a=b#c.tsx"}, nil},
-		{"a malformed line between two good ones",
-			"[acknowledged]\n\"links.cycle:src/a.ts\" = \"x\"\nlinks.cycle:src/b.ts = \"y\"\n\"settings.defined-twice:POOL\" = \"z\"\n",
-			[]string{"links.cycle:src/a.ts", "settings.defined-twice:POOL"}, []string{"1 line is no `\"identifier\" = \"reason\"` entry; it is not applied"}},
+			[]string{pair, "process.planning-file:SPEC.md", "shape.file-size:src/pages/[id]/a=b#c.tsx"}, nil, 0},
+		{"a line that is no TOML between two good ones",
+			"[acknowledged]\n\"links.cycle:src/a.ts\" = \"x\"\nlinks.cycle:src/b.ts = \"y\"\n\"settings.defined-twice:POOL\" = \"z\"\n", nil, nil, 3},
 		{"identifiers not in their form",
 			"[acknowledged]\n\"shape.file-size:a b.ts\" = \"x\"\n\"Shape.file-size:a.ts\" = \"x\"\n\"shape.file-size:\" = \"x\"\n",
-			nil, []string{"3 identifiers are no plain mark identifiers; they are not applied"}},
-		{"no reason, a blank one, a number, text after the string",
-			"[acknowledged]\n\"links.cycle:a\" =\n\"links.cycle:b\" = \"  \"\n\"links.cycle:c\" = 3\n\"links.cycle:d\" = \"x\" y\n",
-			nil, []string{"`links.cycle:a` has no reason written as text on its line; it is not applied",
-				"`links.cycle:b` has no reason written as text on its line; it is not applied",
-				"`links.cycle:c` has no reason written as text on its line; it is not applied",
-				"`links.cycle:d` has no reason written as text on its line; it is not applied"}},
+			nil, []string{"3 identifiers are no plain mark identifiers; they are not applied"}, 0},
+		{"a blank reason, a number, a list, a table",
+			"[acknowledged]\n\"links.cycle:b\" = \"  \"\n\"links.cycle:c\" = 3\n\"links.cycle:d\" = [\"x\"]\n\"links.cycle:e\" = { a = \"x\" }\n",
+			nil, []string{noReason("links.cycle:b"), noReason("links.cycle:c"), noReason("links.cycle:d"), noReason("links.cycle:e")}, 0},
+		{"no reason after =", "[acknowledged]\n\"links.cycle:a\" =\n", nil, nil, 2},
 		{"a reason of 200 characters and one of 201",
 			"[acknowledged]\n\"links.cycle:a\" = \"" + long + "\"\n\"links.cycle:b\" = \"" + long + "x\"\n",
-			[]string{"links.cycle:a"}, []string{"the reason of `links.cycle:b` is longer than 200 characters; it is not applied"}},
-		{"a quoted identifier without = and one identifier out of form, a reason with an escaped quote",
-			"[acknowledged]\n\"links.cycle:a\" \"x\"\n\"Links.cycle:b\" = \"x\"\n\"links.cycle:c\" = \"say \\\"so\\\" here\"\n",
-			[]string{"links.cycle:c"}, []string{"1 line is no `\"identifier\" = \"reason\"` entry; it is not applied",
-				"1 identifier is no plain mark identifier; it is not applied"}},
+			[]string{"links.cycle:a"}, []string{"the reason of `links.cycle:b` is longer than 200 characters; it is not applied"}, 0},
+		{"one identifier out of form, a reason with an escaped quote",
+			"[acknowledged]\n\"Links.cycle:b\" = \"x\"\n\"links.cycle:c\" = \"say \\\"so\\\" here\"\n",
+			[]string{"links.cycle:c"}, []string{"1 identifier is no plain mark identifier; it is not applied"}, 0},
 		{"a reason over several lines whose lines look like a table and a key",
 			"[acknowledged]\n\"links.cycle:a\" = '''\n[layout]\nplanning_folders = [\"reason-sentinel\"]\n'''\n\"links.cycle:b\" = \"x\"\n",
-			[]string{"links.cycle:b"}, []string{"`links.cycle:a` has no reason written as text on its line; it is not applied"}},
+			[]string{"links.cycle:a", "links.cycle:b"}, nil, 0},
 		{"a reason over several lines that holds an escaped quote before lines that look like a table",
 			"[acknowledged]\n\"links.cycle:a\" = \"\"\"a reason\nthat quotes \\\"\"\" here\n[layout]\nplanning_files = [\"evil.md\"]\n\"\"\"\n\"links.cycle:b\" = \"x\"\n",
-			[]string{"links.cycle:b"}, []string{"`links.cycle:a` has no reason written as text on its line; it is not applied"}},
-		{"a reason over several lines whose quotes stand around an escaped one",
-			"[acknowledged]\n\"links.cycle:a\" = \"\"\"a reason\nwith \"\"\\\"\" in it\n[layout]\nplanning_files = [\"evil.md\"]\n\"\"\"\n\"links.cycle:b\" = \"x\"\n",
-			[]string{"links.cycle:b"}, []string{"`links.cycle:a` has no reason written as text on its line; it is not applied"}},
-		{"set twice, the first entry unusable",
-			"[acknowledged]\n\"links.cycle:a\" = \"\"\n\"links.cycle:a\" = \"x\"\n",
-			nil, []string{"`links.cycle:a` has no reason written as text on its line; it is not applied", "`links.cycle:a` is set twice; its first entry decides"}},
+			[]string{"links.cycle:a", "links.cycle:b"}, nil, 0},
+		{"set twice", "[acknowledged]\n\"links.cycle:a\" = \"\"\n\"links.cycle:a\" = \"x\"\n", nil, nil, 3},
 	}
 	for _, tc := range cases {
 		s := snapshot.Build(snapshottest.Files(nil, map[string]string{"src/a.ts": "a\n", ".plimsoll.toml": tc.now}), conventions.Default(), snapshottest.Readings(t))
-		if !slices.Equal(s.Acknowledged.IDs, tc.ids) || !slices.Equal(s.Acknowledged.Problems, tc.problems) || len(s.OwnFileProblems) != 0 {
-			t.Errorf("%s: ids %q, problems %q, file problems %q; want %q, %q, none", tc.name, s.Acknowledged.IDs, s.Acknowledged.Problems, s.OwnFileProblems, tc.ids, tc.problems)
+		var fileProblems []string
+		if tc.invalidAt > 0 {
+			fileProblems = []string{fmt.Sprintf("it is not valid TOML at line %d, so none of it is applied and its import rules were not checked", tc.invalidAt)}
+		}
+		if !slices.Equal(s.Acknowledged.IDs, tc.ids) || !slices.Equal(s.Acknowledged.Problems, tc.problems) || !slices.Equal(s.OwnFileProblems, fileProblems) {
+			t.Errorf("%s: ids %q, problems %q, file problems %q; want %q, %q, %q", tc.name, s.Acknowledged.IDs, s.Acknowledged.Problems, s.OwnFileProblems, tc.ids, tc.problems, fileProblems)
 		}
 	}
 

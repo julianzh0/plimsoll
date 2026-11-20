@@ -50,8 +50,6 @@ const (
 	KeyRead KeyState = iota + 1
 	// KeyUnreadable is a key found whose value is no array of strings and no string.
 	KeyUnreadable
-	// KeyFormNotRead is a key written as a dotted key or in an inline table, which the reader does not read.
-	KeyFormNotRead
 )
 
 // DeclaredFolder is one declared folder in use.
@@ -260,24 +258,6 @@ func matches(pattern, planning bool, value, filePath string) bool {
 	}
 	_, in := under(filePath, value)
 	return in
-}
-
-// readDeclared reads one declared key from a file's content: its values, and what the file says about it.
-// NOTE: a multi-line string, and a line inside one that starts like the key, are not read. Upgrade: a TOML reader.
-func readDeclared(content []byte, d conventions.Declaration) ([]string, KeyState) {
-	if content == nil {
-		return nil, 0
-	}
-	text := string(content)
-	if table, found := tomlTable(text, d.Table); found {
-		if at := keyLine(d.Key).FindStringIndex(table); at != nil {
-			return valueOf(table[at[1]:])
-		}
-	}
-	if formNotRead(text, d.Table, d.Key) {
-		return nil, KeyFormNotRead
-	}
-	return nil, 0
 }
 
 // withLayout is the rules of one question: a copy of the given value with the folders in use added. The given value

@@ -16,7 +16,7 @@ Run `make fix`, then `make qa`. New or changed tests must also pass `make flake 
 - A detector is one package. It imports `internal/answer` and `internal/snapshot` and nothing else of this
   module. It holds no language name and no limit: both reach it through the snapshot.
 - Rules, language entries and limits are data in `internal/conventions`, returned by functions.
-- Standard library only, except the official MCP Go SDK in `internal/mcpserver` and wazero in `internal/parse`. `git` is the one outside program. Do not add assertion or mocking libraries.
+- Standard library only, except the official MCP Go SDK in `internal/mcpserver`, wazero in `internal/parse` and go-toml (`github.com/pelletier/go-toml/v2`) in `internal/snapshot`. `git` is the one outside program. Do not add assertion or mocking libraries.
 
 ## Design
 

@@ -42,7 +42,10 @@ func (Detector) Detect(s snapshot.Snapshot) answer.Findings {
 	f := answer.Findings{
 		Statistics: []answer.Statistic{{Name: "tracked planning and review files", Value: &now, Before: &before, Unit: "files"}},
 		Notes:      planningNotes(s),
-		Marks:      slices.Concat(planningMarks(s), limitMarks(s), declarationMarks(s)),
+		Marks:      planningMarks(s),
+	}
+	if !s.OwnFileUnreadAtBase { // a change to the own file is marked only when its base side was read
+		f.Marks = slices.Concat(f.Marks, limitMarks(s), declarationMarks(s))
 	}
 	if named := namedNotes(s); len(named) > 0 {
 		f.Notes = append(f.Notes, "working-note words in the name of an added Markdown file: "+s.NoteRule,
@@ -58,6 +61,10 @@ func (Detector) Detect(s snapshot.Snapshot) answer.Findings {
 	}
 	f.Notes = append(f.Notes, answer.OwnNotes(s.Layout.OwnBase)...)
 	for _, problem := range s.OwnFileProblems {
+		if s.OwnFileUnread { // nothing of the file applies: said first, so that status shows it
+			f.NotAnalysedFirst = append(f.NotAnalysedFirst, fmt.Sprintf("`%s`: %s; plimsoll's defaults apply", s.OwnFile, problem))
+			continue
+		}
 		f.NotAnalysed = append(f.NotAnalysed, fmt.Sprintf("`%s`: %s; what it does not set keeps plimsoll's default", s.OwnFile, problem))
 	}
 	f.NotAnalysed = append(f.NotAnalysed, answer.OwnNotUsed(s.Layout.Planning)...)
@@ -220,7 +227,7 @@ func declarationHint(d snapshot.DeclaredValues, ownFile string) string {
 // notCompared are the "not analysed" entries for a declaration the base side could not give.
 func notCompared(s snapshot.Snapshot) []string {
 	var entries []string
-	if s.OwnFileUnreadAtBase && len(s.Declarations) > 0 {
+	if s.OwnFileUnreadAtBase && (len(s.Declarations) > 0 || len(s.DeclaredLimits) > 0) {
 		entries = append(entries, fmt.Sprintf("`%s` could not be read at the base, so a change to its declarations is not marked", s.OwnFile))
 	}
 	for _, d := range s.Declarations {

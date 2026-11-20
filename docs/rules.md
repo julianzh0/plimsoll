@@ -154,9 +154,12 @@ like one under a default path: it keeps its role and its lines, and is left out 
 the footprint's documentation lines; so a planning folder that holds code takes that code out of them too. Values are
 ASCII: a folder whose name has a space or another letter is counted as no plain path.
 
-A key plimsoll does not know, a table it does not read, a value that is no number above 0 (a whole number up to 2^53 for a limit
-that counts), a list that is no list of text, a line outside a table or a key set twice is named under "not
-analysed", and what it names keeps its default (a key set twice its first value). A key or table name that is no
+The file is read as TOML, in any of its spellings (tables, dotted keys, inline tables, multi-line strings). A file that
+is no valid TOML, a key set twice among them, applies nothing: the answer names the file and the line, first under "not
+analysed", says that plimsoll's defaults apply and that its import rules were not checked, and never shows the file's
+text. In a valid file, a key plimsoll does not know, a table it does not read, a value that is no number above 0 (a
+whole number up to 2^53 for a limit that counts), a list that is no list of text and a key outside a table are named
+under "not analysed", and what they name keep their default. Acknowledged entries are listed by identifier. A key or table name that is no
 plain name (letters, digits, `_`, `-`, parts joined by `.`) is counted there, not printed. A declared value that matches no
 tracked file, or that is no plain path or file-name pattern, is named there too and not used. A question without a
 base whose repository declares no usable default base is refused with one sentence that says why.

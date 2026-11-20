@@ -1,13 +1,16 @@
 package snapshot
 
 import (
+	"errors"
 	"fmt"
+	"maps"
 	"math"
 	"regexp"
 	"slices"
-	"strconv"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/pelletier/go-toml/v2"
 
 	"github.com/julianzh0/plimsoll/internal/conventions"
 )
@@ -35,40 +38,26 @@ type ownFile struct {
 	ack        acknowledged        // its acknowledged table
 }
 
-// acknowledged is what one side's acknowledged table says: the identifiers in their form, each once, the first of
-// them whose entry has a usable reason (applied), and its problem phrases.
+// acknowledged is what one side's acknowledged table says: the identifiers in their form, sorted, those whose entry
+// has a usable reason (applied), and its problem phrases.
 type acknowledged struct {
-	inForm, applied    []string
-	seen               map[string]bool // the identifiers in inForm
-	noEntry, notInForm int
-	named              []string // phrases that name an identifier in its form, in file order
+	inForm, applied []string
+	notInForm       int
+	named           []string // phrases that name an identifier in its form, by identifier
 }
 
-// readAcknowledged reads one line of the acknowledged table: a quoted identifier, `=`, a quoted reason, and nothing
-// else. The identifier is kept byte for byte; the reason is only checked.
-func (a *acknowledged) read(line string) {
-	id, rest, ok := quotedString(strings.TrimSpace(line))
-	rest, assigns := strings.CutPrefix(strings.TrimLeft(rest, " \t"), "=")
-	switch {
-	case !ok || !assigns:
-		a.noEntry++
-		return
-	case !conventions.MarkID(id):
+// read reads one entry of the acknowledged table: an identifier and a reason written as text. The identifier is kept
+// byte for byte; the reason is only checked.
+func (a *acknowledged) read(id string, value any) {
+	if !conventions.MarkID(id) {
 		a.notInForm++
 		return
-	case a.seen[id]:
-		a.named = append(a.named, fmt.Sprintf("`%s` is set twice; its first entry decides", id))
-		return
 	}
-	if a.seen == nil {
-		a.seen = map[string]bool{}
-	}
-	a.seen[id] = true
 	a.inForm = append(a.inForm, id)
-	reason, after, ok := quotedString(strings.TrimSpace(rest))
+	reason, isText := value.(string)
 	switch {
-	case !ok || strings.TrimSpace(after) != "" || strings.TrimSpace(reason) == "":
-		a.named = append(a.named, fmt.Sprintf("`%s` has no reason written as text on its line; it is not applied", id))
+	case !isText || strings.TrimSpace(reason) == "":
+		a.named = append(a.named, fmt.Sprintf("`%s` has no reason written as text; it is not applied", id))
 	case utf8.RuneCountInString(reason) > conventions.ReasonLength:
 		a.named = append(a.named, fmt.Sprintf("the reason of `%s` is longer than %d characters; it is not applied", id, conventions.ReasonLength))
 	default:
@@ -76,12 +65,9 @@ func (a *acknowledged) read(line string) {
 	}
 }
 
-// problems are the table's phrases: counted lines and identifiers first, then the named ones in file order.
+// problems are the table's phrases: the counted identifiers first, then the named ones by identifier.
 func (a acknowledged) problems() []string {
 	var phrases []string
-	if a.noEntry > 0 {
-		phrases = append(phrases, counted(a.noEntry, "line is no `\"identifier\" = \"reason\"` entry; it is", "lines are no `\"identifier\" = \"reason\"` entries; they are")+" not applied")
-	}
 	if a.notInForm > 0 {
 		phrases = append(phrases, counted(a.notInForm, "identifier is no plain mark identifier; it is", "identifiers are no plain mark identifiers; they are")+" not applied")
 	}
@@ -96,9 +82,10 @@ func counted(n int, one, many string) string {
 	return fmt.Sprintf("%d %s", n, many)
 }
 
-// readOwnFile reads one side's own file in one pass: its limits and its text keys. A table, a key or a value it does
-// not read is a problem phrase, and what it names keeps plimsoll's default. Values are brought to their form; one
-// without it is counted, never kept.
+// readOwnFile reads one side's own file: its limits and its text keys. A file that is not valid TOML applies nothing;
+// its problem names the line, never its text. In a valid file, a table, a key or a value it does not read is a problem
+// phrase, and what it names keeps plimsoll's default. Values are brought to their form; one without it is counted,
+// never kept.
 func readOwnFile(rules conventions.Rules, content map[string][]byte) ownFile {
 	o := ownFile{limits: map[string]float64{}, values: map[string][]string{}, unusable: map[string]int{}, unread: map[string]bool{}, single: map[string]string{}}
 	file, tracked := content[rules.OwnFile]
@@ -109,62 +96,45 @@ func readOwnFile(rules conventions.Rules, content map[string][]byte) ownFile {
 		o.unreadable, o.problems = true, []string{"it could not be read"}
 		return o
 	}
+	var document map[string]any
+	if err := toml.Unmarshal(file, &document); err != nil {
+		o.unreadable, o.problems = true, []string{notTOML(err) + ", so none of it is applied and its import rules were not checked"}
+		return o
+	}
 	known := map[string]bool{rules.LimitsTable: true, rules.AcknowledgedTable: true}
 	for _, k := range rules.OwnKeys {
 		known[k.Table] = true
 	}
 	problem := func(format string, args ...any) { o.problems = append(o.problems, fmt.Sprintf(format, args...)) }
-	seen := map[string]bool{}
-	table, found := "", false
-	lines := tomlLines(string(file))
-	for i := 0; i < len(lines); i++ {
-		if header, isHeader := tomlHeader(lines[i]); isHeader {
-			table = header
-			found = found || known[header]
-			if header != "" && !known[header] {
-				problem("%s is no table plimsoll reads", tableName(header))
+	found := false
+	for _, name := range slices.Sorted(maps.Keys(document)) {
+		table, isTable := document[name].(map[string]any)
+		switch {
+		case !isTable:
+			problem("%s lies outside a table", keyName(name))
+			continue
+		case !known[name]:
+			problem("%s is no table plimsoll reads", tableName(name))
+			continue
+		}
+		found = true
+		for _, key := range slices.Sorted(maps.Keys(table)) {
+			value := table[key]
+			switch name {
+			case rules.AcknowledgedTable:
+				o.ack.read(key, value)
+				continue
+			case rules.LimitsTable:
+				o.readLimit(rules, key, value, problem)
+				continue
 			}
-			continue
-		}
-		code := uncommented(lines[i])
-		if strings.TrimSpace(code) == "" {
-			continue
-		}
-		if table == rules.AcknowledgedTable {
-			o.ack.read(code)
-			continue
-		}
-		name, value, assigns := strings.Cut(code, "=")
-		key := dottedName(name)
-		switch {
-		case table == "" && assigns:
-			problem("%s lies outside a table", keyName(key))
-			continue
-		case !known[table]:
-			continue
-		case !assigns:
-			problem("`[%s]` holds a line that is no `key = value`", table)
-			continue
-		}
-		for unclosed(value) && i+1 < len(lines) {
-			i++
-			value += lines[i]
-		}
-		if table == rules.LimitsTable {
-			o.readLimit(rules, key, value, problem)
-			continue
-		}
-		at := slices.IndexFunc(rules.OwnKeys, func(k conventions.OwnKey) bool { return k.Table == table && k.Key == key })
-		switch {
-		case at < 0:
-			problem("%s is no key of `[%s]`", keyName(key), table)
-		case seen[key]:
-			problem("`%s` is set twice", key)
-		default:
-			seen[key] = true
-			if rules.OwnKeys[at].Holds.Single() {
+			at := slices.IndexFunc(rules.OwnKeys, func(k conventions.OwnKey) bool { return k.Table == name && k.Key == key })
+			switch {
+			case at < 0:
+				problem("%s is no key of `[%s]`", keyName(key), name)
+			case rules.OwnKeys[at].Holds.Single():
 				o.readString(rules.OwnKeys[at], value, problem)
-			} else {
+			default:
 				o.readList(rules.OwnKeys[at], value, problem)
 			}
 		}
@@ -177,7 +147,18 @@ func readOwnFile(rules conventions.Rules, content map[string][]byte) ownFile {
 	return o
 }
 
-// plainName is a TOML bare key, dotted or not: the only form in which a name the file gives and plimsoll does not
+// notTOML says why a file is no valid TOML: the line where decoding stopped, never the decoder's message, which
+// quotes the file.
+func notTOML(err error) string {
+	if decodeError, ok := errors.AsType[*toml.DecodeError](err); ok {
+		if row, _ := decodeError.Position(); row > 0 {
+			return fmt.Sprintf("it is not valid TOML at line %d", row)
+		}
+	}
+	return "it is not valid TOML"
+}
+
+// plainName is a TOML bare key, dotted or not, or a table name of such keys: the only form in which a name the file gives and plimsoll does not
 // know is printed. Any other name is only counted, so no text of the file reaches an answer.
 var plainName = regexp.MustCompile(`^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*$`)
 
@@ -200,50 +181,50 @@ func tableName(name string) string {
 const largestExactCount = 1 << 53
 
 // readLimit reads one key of the limits table: a number above 0, whole for a limit that counts.
-func (o *ownFile) readLimit(rules conventions.Rules, key, value string, problem func(string, ...any)) {
+func (o *ownFile) readLimit(rules conventions.Rules, key string, value any, problem func(string, ...any)) {
 	if !slices.ContainsFunc(rules.LimitKeys, func(k conventions.LimitKey) bool { return k.Key == key }) {
 		problem("%s is no limit plimsoll knows", keyName(key))
 		return
 	}
-	if _, twice := o.limits[key]; twice {
-		problem("`%s` is set twice", key)
-		return
-	}
-	text := strings.TrimSpace(value)
+	count, isInteger := value.(int64)
 	if rules.Limits.ByKey(key).Step >= 1 {
 		// A limit that counts is a TOML integer that a float holds exactly, so every conversion back to an int is
 		// exact: 2.5 and 1e19 are not.
-		count, err := strconv.ParseInt(text, 10, 64)
-		if err != nil || count <= 0 || count > largestExactCount {
+		if !isInteger || count <= 0 || count > largestExactCount {
 			problem("`%s` is not a whole number above 0", key)
 			return
 		}
 		o.limits[key] = float64(count)
 		return
 	}
-	number, err := strconv.ParseFloat(text, 64)
-	if err != nil || math.IsNaN(number) || math.IsInf(number, 0) || number <= 0 {
+	number, isFloat := value.(float64)
+	if isInteger {
+		number, isFloat = float64(count), true
+	}
+	if !isFloat || math.IsNaN(number) || math.IsInf(number, 0) || number <= 0 {
 		problem("`%s` is not a number above 0", key)
 		return
 	}
 	o.limits[key] = number
 }
 
-// readList reads a list of strings, each brought to its key's form.
-func (o *ownFile) readList(key conventions.OwnKey, value string, problem func(string, ...any)) {
-	text := strings.TrimSpace(value)
-	items, rest, closed := []string(nil), "", false
-	if strings.HasPrefix(text, "[") {
-		items, rest, closed = stringArray(text[1:])
+// readList reads a list of text, each value brought to its key's form.
+func (o *ownFile) readList(key conventions.OwnKey, value any, problem func(string, ...any)) {
+	items, isList := value.([]any)
+	texts := make([]string, 0, len(items))
+	for _, item := range items {
+		if text, isText := item.(string); isText {
+			texts = append(texts, text)
+		}
 	}
-	if !closed || strings.TrimSpace(uncommented(rest)) != "" {
+	if !isList || len(texts) != len(items) {
 		o.unread[key.Key] = true
 		problem("`%s` is not a list of text", key.Key)
 		return
 	}
 	var values []string
-	for _, item := range items {
-		formed, usable := key.Holds.Form(item)
+	for _, text := range texts {
+		formed, usable := key.Holds.Form(text)
 		switch {
 		case !usable:
 			o.unusable[key.Key]++
@@ -254,16 +235,16 @@ func (o *ownFile) readList(key conventions.OwnKey, value string, problem func(st
 	o.values[key.Key] = values
 }
 
-// readString reads one basic or literal string on one line, which must have its key's form.
-func (o *ownFile) readString(key conventions.OwnKey, value string, problem func(string, ...any)) {
-	text := strings.TrimSpace(value)
-	if len(text) < 2 || (text[0] != '"' && text[0] != '\'') || text[len(text)-1] != text[0] || strings.ContainsAny(text[1:len(text)-1], "\"'\n") {
+// readString reads one text, which must have its key's form.
+func (o *ownFile) readString(key conventions.OwnKey, value any, problem func(string, ...any)) {
+	text, isText := value.(string)
+	if !isText {
 		o.unread[key.Key] = true
 		o.single[key.Key] = fmt.Sprintf("`%s` is not text", key.Key)
 		problem("%s", o.single[key.Key])
 		return
 	}
-	formed, usable := key.Holds.Form(text[1 : len(text)-1])
+	formed, usable := key.Holds.Form(text)
 	if !usable {
 		o.unusable[key.Key]++
 		o.single[key.Key] = fmt.Sprintf("`%s` is not the name of a branch, a remote branch or a tag", key.Key)
@@ -271,24 +252,6 @@ func (o *ownFile) readString(key conventions.OwnKey, value string, problem func(
 		return
 	}
 	o.values[key.Key] = []string{formed}
-}
-
-// uncommented is a line up to a "#" that lies outside a string.
-func uncommented(line string) string {
-	var quote byte
-	for i := 0; i < len(line); i++ {
-		switch c := line[i]; {
-		case quote != 0 && c == '\\' && quote == '"':
-			i++
-		case quote != 0 && c == quote:
-			quote = 0
-		case quote == 0 && (c == '"' || c == '\''):
-			quote = c
-		case quote == 0 && c == '#':
-			return line[:i]
-		}
-	}
-	return line
 }
 
 // declaredValues are the text keys declared on either side, in the order of the rules, each with the usable values

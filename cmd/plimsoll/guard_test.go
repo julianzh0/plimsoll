@@ -19,6 +19,9 @@ const mcpSDK = "github.com/modelcontextprotocol/go-sdk"
 // wazero runs the tree-sitter grammars, imported only by internal/parse.
 const wazero = "github.com/tetratelabs/wazero"
 
+// goTOML decodes TOML files, imported only by internal/snapshot.
+const goTOML = "github.com/pelletier/go-toml/v2"
+
 // sourceFile is one Go file of the module and the paths it imports.
 type sourceFile struct {
 	Path    string
@@ -63,12 +66,15 @@ func guardCases() []guardCase {
 		{"wazero outside the parser", sourceFile{"internal/snapshot/a.go", []string{wazero}}, cleanMod, "outside internal/parse"},
 		{"wazero in the parser's test support", sourceFile{"internal/parse/parsetest/parser.go", []string{wazero}}, cleanMod, "outside internal/parse"},
 		{"wazero required beside the MCP SDK", sourceFile{"cmd/plimsoll/main.go", nil}, cleanMod + "\nrequire (\n\t" + mcpSDK + " v1.8.0\n\t" + wazero + " v1.12.0\n)\n", ""},
+		{"go-toml in the snapshot", sourceFile{"internal/snapshot/toml.go", []string{goTOML}}, cleanMod, ""},
+		{"go-toml outside the snapshot", sourceFile{"internal/answer/a.go", []string{goTOML}}, cleanMod, "outside internal/snapshot"},
+		{"go-toml required beside the others", sourceFile{"cmd/plimsoll/main.go", nil}, cleanMod + "\nrequire (\n\t" + goTOML + " v2.4.3\n\t" + mcpSDK + " v1.8.0\n\t" + wazero + " v1.12.0\n)\n", ""},
 		{"the snapshot using the parser", sourceFile{"internal/snapshot/a.go", []string{module + "/internal/parse"}}, cleanMod, ""},
 		{"a detector using the parser", sourceFile{"internal/links/a.go", []string{module + "/internal/parse"}}, cleanMod, "against the import direction"},
 	}
 }
 
-// Guards the module's promises: no dependency but the MCP SDK and wazero, no network, one place that runs programs, imports point inward.
+// Guards the module's promises: no dependency but the MCP SDK, wazero and go-toml, no network, one place that runs programs, imports point inward.
 func TestGuardRulesNameEachViolation(t *testing.T) {
 	for _, tc := range guardCases() {
 		t.Run(tc.name, func(t *testing.T) {
@@ -138,8 +144,9 @@ func violations(module, goMod string, files []sourceFile) []string {
 		case !inBlock:
 			continue
 		}
-		// Only the MCP SDK and wazero are required directly; what they need in turn is marked indirect.
-		if entry != "" && !strings.HasPrefix(entry, mcpSDK+" ") && !strings.HasPrefix(entry, wazero+" ") && !strings.HasSuffix(entry, "// indirect") {
+		// Only the MCP SDK, wazero and go-toml are required directly; what they need in turn is marked indirect.
+		if entry != "" && !strings.HasPrefix(entry, mcpSDK+" ") && !strings.HasPrefix(entry, wazero+" ") && !strings.HasPrefix(entry, goTOML+" ") &&
+			!strings.HasSuffix(entry, "// indirect") {
 			found = append(found, "go.mod requires a dependency: "+entry)
 		}
 	}
@@ -164,6 +171,10 @@ func violations(module, goMod string, files []sourceFile) []string {
 			case imported == wazero || strings.HasPrefix(imported, wazero+"/"):
 				if !isTest && folder != "internal/parse" {
 					found = append(found, file.Path+" imports "+imported+", wazero outside internal/parse")
+				}
+			case imported == goTOML || strings.HasPrefix(imported, goTOML+"/"):
+				if !isTest && folder != "internal/snapshot" {
+					found = append(found, file.Path+" imports "+imported+", go-toml outside internal/snapshot")
 				}
 			case strings.Contains(strings.SplitN(imported, "/", 2)[0], "."):
 				found = append(found, file.Path+" imports "+imported+", outside the standard library")

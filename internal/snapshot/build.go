@@ -91,6 +91,7 @@ func Build(source Source, rules conventions.Rules, readings *Readings) Snapshot 
 		OwnFileProblems:     ownNow.problems,
 		Acknowledged:        Acknowledged{Table: rules.AcknowledgedTable, IDs: ownNow.ack.applied, Problems: ownNow.ack.problems()},
 		OwnFileUnreadAtBase: ownBefore.unreadable,
+		OwnFileUnread:       ownNow.unreadable,
 		Before:              before,
 		Now:                 now,
 		Changes:             source.Changes,

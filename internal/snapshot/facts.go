@@ -190,44 +190,6 @@ func dependencies(format conventions.ManifestFormat, content []byte) (names []st
 	return names, true, true
 }
 
-// pyprojectKey is a key of the [project] table that the dependency reader needs, at the start of a line.
-var pyprojectKey = regexp.MustCompile(`(?m)^[ \t]*(dependencies|dynamic)[ \t]*=[ \t]*`)
-
-// pyprojectDependencies reads the names of [project] dependencies by text. manifest is false when the file has
-// no [project] table; readable is false when the dependencies cannot be read as an array of strings.
-// NOTE: a quoted key and a dotted key outside the table are not read, and a line inside a multi-line string that
-// starts like one of the two keys is taken for it. Upgrade: a TOML reader.
-func pyprojectDependencies(content []byte) (names []string, manifest, readable bool) {
-	table, found := tomlTable(string(content), "project")
-	if !found {
-		return nil, false, true
-	}
-	names = []string{}
-	for _, m := range pyprojectKey.FindAllStringSubmatchIndex(table, -1) {
-		key, value := table[m[2]:m[3]], table[m[1]:]
-		if !strings.HasPrefix(value, "[") {
-			if key == "dependencies" {
-				return nil, true, false
-			}
-			continue
-		}
-		items, _, closed := stringArray(value[1:])
-		switch {
-		case !closed:
-			return nil, true, false
-		case key == "dynamic" && slices.Contains(items, "dependencies"):
-			return nil, true, false
-		case key == "dependencies":
-			for _, item := range items {
-				if name := requirementName(item); name != "" {
-					names = append(names, name)
-				}
-			}
-		}
-	}
-	return names, true, true
-}
-
 // requirementName is the leading name of a requirement string, normalised as Python packaging compares names: lower
 // case, every run of ".", "_" and "-" one "-".
 func requirementName(requirement string) string {

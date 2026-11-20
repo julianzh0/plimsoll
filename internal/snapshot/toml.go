@@ -1,273 +1,169 @@
 package snapshot
 
 import (
-	"regexp"
+	"maps"
+	"slices"
 	"strings"
+
+	"github.com/pelletier/go-toml/v2"
 
 	"github.com/julianzh0/plimsoll/internal/conventions"
 )
 
-// The TOML that plimsoll reads by text: tables, their keys and arrays of strings, for the manifest and for the layout
-// a project declares.
-// NOTE: a reader by text, not a TOML parser; each caller names what it does not read. Upgrade: a TOML reader.
-
-// tomlTable is the text of one TOML table: the lines after its header, a trailing comment allowed, up to the next line
-// that opens a table.
-func tomlTable(content, name string) (string, bool) {
-	var table strings.Builder
-	inside, found := false, false
-	for _, line := range tomlLines(content) {
-		if header, isHeader := tomlHeader(line); isHeader {
-			inside = header != "" && header == name
-			found = found || inside
-			continue
-		}
-		if inside {
-			table.WriteString(line)
-		}
+// decodeTOML decodes a TOML file into plain maps. ok is false when it is not valid TOML: a reader then names the file
+// as unreadable, never the decoder's message, which quotes the file.
+func decodeTOML(content []byte) (document map[string]any, ok bool) {
+	if err := toml.Unmarshal(content, &document); err != nil {
+		return nil, false
 	}
-	return table.String(), found
+	return document, true
 }
 
-// stringArray reads the strings of an array whose opening bracket is consumed, up to its closing bracket outside a
-// string; closed is false when the array does not end, holds something that is not a string, or lacks the comma
-// between two strings or has one with no string before it. rest is the text after the closing bracket.
-func stringArray(text string) (items []string, rest string, closed bool) {
-	separated := true // a string may come next; false after a string until its comma
-	for i := 0; i < len(text); i++ {
-		switch c := text[i]; c {
-		case ' ', '\t', '\r', '\n':
-		case ',':
-			if separated {
-				return nil, "", false
-			}
-			separated = true
-		case '#':
-			end := strings.IndexByte(text[i:], '\n')
-			if end < 0 {
-				return nil, "", false
-			}
-			i += end
-		case ']':
-			return items, text[i+1:], true
-		case '"', '\'':
-			item, after, ok := quotedString(text[i:])
-			if !ok || !separated {
-				return nil, "", false
-			}
-			items, i, separated = append(items, item), len(text)-len(after)-1, false
-		default:
-			return nil, "", false
+// tomlAt is the value at a path of keys, each a table but the last; found is false when a step is missing or no
+// table.
+func tomlAt(document map[string]any, keys ...string) (value any, found bool) {
+	value = document
+	for _, key := range keys {
+		table, isTable := value.(map[string]any)
+		if !isTable {
+			return nil, false
+		}
+		if value, found = table[key]; !found {
+			return nil, false
 		}
 	}
-	return nil, "", false
+	return value, true
 }
 
-// tomlLines are the lines of TOML text, each with its newline, without the lines that go on a multi-line string
-// (`”'` or `"""`): the line that opens one stays, so its value reads as unfinished, and no line inside it is taken
-// for a table or a key.
-func tomlLines(content string) []string {
-	var lines []string
-	closing := ""
-	for line := range strings.Lines(content) {
-		if closing != "" {
-			if closes(line, closing) {
-				closing = ""
+// tomlTableAt is the table at a path of keys, or nil.
+func tomlTableAt(document map[string]any, keys ...string) map[string]any {
+	value, _ := tomlAt(document, keys...)
+	table, _ := value.(map[string]any)
+	return table
+}
+
+// tomlText is the text at a path of keys, or "".
+func tomlText(document map[string]any, keys ...string) string {
+	value, _ := tomlAt(document, keys...)
+	text, _ := value.(string)
+	return text
+}
+
+// tomlTexts is a list of text: ok is false when the value is no list or holds anything but text.
+func tomlTexts(value any) (texts []string, ok bool) {
+	items, isList := value.([]any)
+	if !isList {
+		return nil, false
+	}
+	texts = make([]string, 0, len(items))
+	for _, item := range items {
+		text, isText := item.(string)
+		if !isText {
+			return nil, false
+		}
+		texts = append(texts, text)
+	}
+	return texts, true
+}
+
+// cargoDependencies reads the runtime dependencies of a Cargo.toml: the entries of [dependencies] and of every target
+// table's dependencies ([target.<...>.dependencies]), in any TOML spelling. An entry renamed with package = "..." is
+// named by its package. The dev, build and workspace tables add nothing. manifest is false when the file has neither
+// a [package] table nor a dependency table: a workspace root that only lists members. readable is false when the file
+// is no valid TOML, or a dependency table or a key in one cannot be read.
+// NOTE: the dependencies of workspace members are not counted. Upgrade: read every tracked Cargo.toml.
+func cargoDependencies(content []byte) (names []string, manifest, readable bool) {
+	document, ok := decodeTOML(content)
+	if !ok {
+		return nil, true, false
+	}
+	tables := []any{}
+	if table, found := document["dependencies"]; found {
+		tables = append(tables, table)
+	}
+	for _, target := range tomlTableAt(document, "target") {
+		if platform, isTable := target.(map[string]any); isTable && platform["dependencies"] != nil {
+			tables = append(tables, platform["dependencies"])
+		}
+	}
+	_, hasPackage := document["package"]
+	if !hasPackage && len(tables) == 0 {
+		return nil, false, true
+	}
+	names = []string{}
+	for _, value := range tables {
+		table, isTable := value.(map[string]any)
+		if !isTable {
+			return nil, true, false
+		}
+		for _, key := range slices.Sorted(maps.Keys(table)) {
+			name := key
+			if renamed := tomlText(table, key, "package"); renamed != "" {
+				name = renamed
 			}
-			continue
-		}
-		lines = append(lines, line)
-		closing = opensMultiline(uncommented(line))
-	}
-	return lines
-}
-
-// closes says whether a line inside a multi-line string holds its closing delimiter. In a basic string (`"""`) it is
-// three quotes in a row with no escape among them: an escaped character never closes the string.
-func closes(line, closing string) bool {
-	if closing != `"""` {
-		return strings.Contains(line, closing)
-	}
-	quotes := 0
-	for i := 0; i < len(line); i++ {
-		switch line[i] {
-		case '\\':
-			quotes = 0
-			i++
-		case '"':
-			if quotes++; quotes == 3 {
-				return true
+			if name == "" || strings.ContainsAny(name, " \t") {
+				return nil, true, false
 			}
-		default:
-			quotes = 0
+			names = appendNew(names, name)
 		}
 	}
-	return false
+	slices.Sort(names)
+	return names, true, true
 }
 
-// opensMultiline is the delimiter of a multi-line string that a line opens and does not close, or "".
-func opensMultiline(line string) string {
-	for _, delimiter := range []string{`"""`, "'''"} {
-		if strings.Count(line, delimiter)%2 == 1 {
-			return delimiter
+// pyprojectDependencies reads the names of [project] dependencies. manifest is false when the file has no [project]
+// table; readable is false when the file is no valid TOML, or its dependencies are no list of text or are dynamic.
+func pyprojectDependencies(content []byte) (names []string, manifest, readable bool) {
+	document, ok := decodeTOML(content)
+	if !ok {
+		return nil, true, false
+	}
+	project, isTable := document["project"].(map[string]any)
+	if !isTable {
+		return nil, false, true
+	}
+	if dynamic, found := project["dynamic"]; found {
+		listed, isList := tomlTexts(dynamic)
+		if !isList || slices.Contains(listed, "dependencies") {
+			return nil, true, false
 		}
 	}
-	return ""
-}
-
-// unclosed says whether a value has opened brackets or braces that it has not closed yet. Once the brackets of the
-// value close, what follows on the line is no reason to read on: `["a"] [` ends there.
-func unclosed(value string) bool {
-	depth := 0
-	for i := 0; i < len(value); i++ {
-		switch c := value[i]; c {
-		case '#':
-			end := strings.IndexByte(value[i:], '\n')
-			if end < 0 {
-				return depth > 0
-			}
-			i += end
-		case '[', '{':
-			depth++
-		case ']', '}':
-			if depth--; depth <= 0 {
-				return false
-			}
-		case '"', '\'':
-			for i++; i < len(value) && value[i] != c && value[i] != '\n'; i++ {
-				if c == '"' && value[i] == '\\' {
-					i++
-				}
-			}
+	names = []string{}
+	value, found := project["dependencies"]
+	if !found {
+		return names, true, true
+	}
+	requirements, isList := tomlTexts(value)
+	if !isList {
+		return nil, true, false
+	}
+	for _, requirement := range requirements {
+		if name := requirementName(requirement); name != "" {
+			names = append(names, name)
 		}
 	}
-	return depth > 0
+	return names, true, true
 }
 
-// openedBrackets counts the brackets and braces a line opens minus those it closes, outside strings and before a
-// comment, so a value that goes on over lines is followed to its end.
-func openedBrackets(line string) int {
-	depth := 0
-	for i := 0; i < len(line); i++ {
-		switch c := line[i]; c {
-		case '#':
-			return depth
-		case '[', '{':
-			depth++
-		case ']', '}':
-			depth--
-		case '"', '\'':
-			for i++; i < len(line) && line[i] != c; i++ {
-				if c == '"' && line[i] == '\\' {
-					i++
-				}
-			}
-		}
+// readDeclared reads one declared key from a file's content: its values, and what the file says about it. The value
+// is a list of text, or one text that holds values separated by white space.
+func readDeclared(content []byte, d conventions.Declaration) ([]string, KeyState) {
+	if content == nil {
+		return nil, 0
 	}
-	return depth
-}
-
-// tomlHeader reads a line that opens a TOML table: the table's dotted name, and whether the line is a header at all. A
-// header may be indented and carry a comment; an array-of-tables header is a header that names no table ("").
-func tomlHeader(line string) (name string, isHeader bool) {
-	text, _, _ := strings.Cut(line, "#")
-	text = strings.TrimSpace(text)
-	if !strings.HasPrefix(text, "[") || !strings.HasSuffix(text, "]") {
-		return "", false
+	document, ok := decodeTOML(content)
+	if !ok {
+		return nil, 0 // the manifest reader names a file that is no valid TOML
 	}
-	if strings.HasPrefix(text, "[[") {
-		return "", true
+	value, found := tomlAt(document, append(strings.Split(d.Table, "."), d.Key)...)
+	if !found {
+		return nil, 0
 	}
-	return dottedName(strings.TrimSuffix(text[1:], "]")), true
-}
-
-// keyLine matches the start of a line that assigns a key, quoted or not, up to its value.
-func keyLine(key string) *regexp.Regexp {
-	return regexp.MustCompile(`(?m)^[ \t]*["']?` + regexp.QuoteMeta(key) + `["']?[ \t]*=[ \t]*`)
-}
-
-// valueOf reads a value that is an array of strings, or one string that holds values separated by white space.
-func valueOf(value string) ([]string, KeyState) {
-	switch {
-	case strings.HasPrefix(value, "["):
-		items, _, closed := stringArray(value[1:])
-		if !closed {
-			return nil, KeyUnreadable
-		}
-		return items, KeyRead
-	case strings.HasPrefix(value, `"`) || strings.HasPrefix(value, "'"):
-		end := strings.IndexByte(value[1:], value[0])
-		if end < 0 || strings.Contains(value[1:1+end], "\n") {
-			return nil, KeyUnreadable
-		}
-		return strings.Fields(value[1 : 1+end]), KeyRead
+	if text, isText := value.(string); isText {
+		return strings.Fields(text), KeyRead
+	}
+	if texts, isList := tomlTexts(value); isList {
+		return texts, KeyRead
 	}
 	return nil, KeyUnreadable
-}
-
-// formNotRead says whether the file writes the key in a form the reader does not read: as a dotted key whose full
-// name is the table's and the key's, or in an inline table assigned to the table.
-func formNotRead(text, table, key string) bool {
-	header := ""
-	for line := range strings.Lines(text) {
-		if name, isHeader := tomlHeader(line); isHeader {
-			header = name
-			continue
-		}
-		line = strings.TrimSpace(line)
-		name, value, assigns := strings.Cut(line, "=")
-		if !assigns {
-			continue
-		}
-		full := dottedName(name)
-		if header != "" {
-			full = header + "." + full
-		}
-		if full == table+"."+key {
-			return true
-		}
-		if inline := strings.TrimSpace(value); full == table && strings.HasPrefix(inline, "{") {
-			if keyLine(key).MatchString(strings.ReplaceAll(strings.Trim(inline, "{}"), ",", "\n")) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// dottedName is a TOML key as one dotted name: quotes and the spaces around dots removed.
-func dottedName(key string) string {
-	parts := strings.Split(strings.NewReplacer(`"`, "", "'", "").Replace(key), ".")
-	for i, part := range parts {
-		parts[i] = strings.TrimSpace(part)
-	}
-	return strings.Join(parts, ".")
-}
-
-// tomlString is the one string a key of a table holds; "" when the table, the key or a single value is not there.
-func tomlString(content []byte, table, key string) string {
-	values, state := readDeclared(content, conventions.Declaration{Table: table, Key: key})
-	if state != KeyRead || len(values) != 1 {
-		return ""
-	}
-	return values[0]
-}
-
-// quotedString reads the basic or literal string that text starts with, on one line, and gives its content as
-// written (no escape is decoded) and the text after its closing quote. In a basic string a backslash takes the next
-// character with it, so an escaped quote does not end it.
-func quotedString(text string) (content, rest string, ok bool) {
-	if text == "" || text[0] != '"' && text[0] != '\'' {
-		return "", text, false
-	}
-	quote := text[0]
-	for end := 1; end < len(text) && text[end] != '\n'; end++ {
-		switch {
-		case quote == '"' && text[end] == '\\':
-			end++
-		case text[end] == quote:
-			return text[1:end], text[end+1:], true
-		}
-	}
-	return "", text, false
 }

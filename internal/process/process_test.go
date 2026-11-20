@@ -340,6 +340,15 @@ func TestAChangeToTheRepositorysOwnFileIsMarked(t *testing.T) {
 		t.Errorf("the file not read at the base: marks %+v, not analysed %q; want no declaration mark and %q", f.Marks, f.NotAnalysed, entry)
 	}
 
+	_, f = detect(t, snapshottest.Files(files("[limits]\nfile_lines = \"\n"), files("[limits]\nfile_lines = 2000\n")))
+	if entry := "`.plimsoll.toml` could not be read at the base, so a change to its declarations is not marked"; !slices.Contains(f.NotAnalysed, entry) ||
+		slices.ContainsFunc(f.Marks, func(m answer.Mark) bool { return answer.RuleOf(m.ID) == ruleLimitChange }) {
+		t.Errorf("no valid TOML at the base, a limit now: marks %+v, not analysed %q; want no limit mark and %q", f.Marks, f.NotAnalysed, entry)
+	}
+	_, f = detect(t, snapshottest.Files(nil, files("[layout]\ntest_folders = [\"checks\"\n")))
+	if want := []string{"`.plimsoll.toml`: it is not valid TOML at line 2, so none of it is applied and its import rules were not checked; plimsoll's defaults apply"}; !slices.Equal(f.NotAnalysedFirst, want) {
+		t.Errorf("no valid TOML now: first not analysed %q, want %q", f.NotAnalysedFirst, want)
+	}
 	_, f = detect(t, snapshottest.Files(nil, files("[defaults]\nbase = \"main\"\n")))
 	if note := "default base declared in `.plimsoll.toml` (`[defaults]` `base`): `main`"; !slices.Contains(f.Notes, note) {
 		t.Errorf("a declared base: notes %q, want %q", f.Notes, note)

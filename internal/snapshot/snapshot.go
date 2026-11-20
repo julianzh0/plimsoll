@@ -34,6 +34,7 @@ type Snapshot struct {
 	Acknowledged        Acknowledged
 	OwnFileProblems     []string
 	OwnFileUnreadAtBase bool
+	OwnFileUnread       bool // the own file is tracked now and could not be read or is no valid TOML
 	Before              Tree
 	Now                 Tree
 	Changes             []Change
