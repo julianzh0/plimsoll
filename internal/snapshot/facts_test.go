@@ -160,6 +160,10 @@ func TestBuildReadsRuntimeDependencies(t *testing.T) {
 				`"net": {"dependencies": ["curl", {"name": "app", "features": ["tls"]}]}, "tls": {"dependencies": ["openssl", {"name": "app", "features": ["net"]}]},`+
 				`"db": {"dependencies": [{"name": "sqlite3", "host": false}]}, "tests": {"dependencies": ["gtest"]}}}`),
 			dependenciesOf("vcpkg.json", "curl", "openssl", "sqlite3")},
+		{"a manifest for one Swift toolchain version is a manifest of its own", snapshottest.Files(nil, map[string]string{
+			"Package.swift":           "let package = Package(name: \"x\", dependencies: [.package(url: \"https://github.com/apple/swift-log.git\", from: \"1.0.0\")])\n",
+			"Package@swift-5.9.swift": "let package = Package(name: \"x\", dependencies: [.package(url: \"https://github.com/apple/swift-nio.git\", from: \"2.0.0\")])\n"}),
+			append(dependenciesOf("Package.swift", "swift-log"), dependenciesOf("Package@swift-5.9.swift", "swift-nio")...)},
 		{"a vcpkg manifest without dependencies, with a byte order mark", oneFile("vcpkg.json", "\uFEFF{\"name\": \"x\"}\n"), dependenciesOf("vcpkg.json")},
 		{"a nested vcpkg manifest and a conanfile are no manifest", snapshottest.Files(nil, map[string]string{
 			"ports/x/vcpkg.json": `{"dependencies": ["zlib"]}`, "conanfile.txt": "[requires]\nzlib/1.3\n"}), nil},

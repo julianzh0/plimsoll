@@ -552,6 +552,8 @@ func Default() Rules {
 			{File: "Directory.Build.props", Format: CsprojDependencies, Name: nugetID},
 			{File: "Directory.Build.targets", Format: CsprojDependencies, Name: nugetID},
 			{File: "Package.swift", Format: SwiftDependencies, Lockfiles: []string{"Package.resolved"}, Name: swiftID},
+			// a manifest for one Swift toolchain version; which one a build picks is the toolchain's choice
+			{File: "Package@swift-*.swift", Format: SwiftDependencies, Lockfiles: []string{"Package.resolved"}, Name: swiftID},
 			{File: "vcpkg.json", Format: VcpkgDependencies, Recipes: []string{"ports"}, Name: vcpkgPort},
 		},
 		OwnFile:           ".plimsoll.toml",

@@ -725,7 +725,7 @@ func TestBuildFollowsSwiftImportsToModules(t *testing.T) {
 		return []snapshot.LanguageImports{{
 			Language: "swift", Resolved: resolved, Outside: outside, NotFound: notFound, PrefixFile: "Package.swift", Prefix: state,
 			PrefixRequired: true, Folders: true, NoRings: "an import names a module, and the compiler rejects modules that import each other",
-			Implicit: []string{"main.swift", "Package.swift"}, NotSeen: "use between the files of one module, which needs no `import`",
+			Implicit: []string{"main.swift", "Package.swift", "Package@swift-*.swift"}, NotSeen: "use between the files of one module, which needs no `import`",
 		}}
 	}
 	core := []string{"Sources/NotesCore/Config.swift", "Sources/NotesCore/Model/Note.swift", "Sources/NotesCore/Store.swift"}

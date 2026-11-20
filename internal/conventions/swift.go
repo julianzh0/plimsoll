@@ -15,7 +15,7 @@ func swiftLanguage() Language {
 			Target:     FolderTarget,
 			FolderTree: true,
 			NoRings:    "an import names a module, and the compiler rejects modules that import each other",
-			Implicit:   []string{"main.swift", "Package.swift"},
+			Implicit:   []string{"main.swift", "Package.swift", "Package@swift-*.swift"},
 			NotSeen:    "use between the files of one module, which needs no `import`",
 		},
 	}
