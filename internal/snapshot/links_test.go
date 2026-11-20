@@ -690,11 +690,11 @@ func TestBuildFollowsCSharpUsingsToNamespaces(t *testing.T) {
 	if got := linksOf(t, noProject); !reflect.DeepEqual(got.Languages, []snapshot.LanguageImports{csharp(6, 6, 1, 0)}) || !reflect.DeepEqual(got.List, want.List) {
 		t.Errorf("without a project file: %+v, want the import of Acme.Grpc outside and the same links", got)
 	}
-	// A block inside another's declares the joined name, also inside a file-scoped namespace; a using reaches the
-	// declaring files; an alias names the namespace when one is declared, else the one before its last name.
+	// A block inside another's declares the joined name; a using reaches the declaring files; an alias names the
+	// namespace when one is declared, else the one before its last name.
 	nested := linksOf(t, map[string]string{
 		"src/Outer.cs": "namespace Acme\n{\n    namespace Store\n    {\n    }\n}\n", "src/Other.cs": "namespace Acme.Web;\n",
-		"src/Scoped.cs": "namespace Acme;\n\nnamespace Jobs\n{\n}\n",
+		"src/Scoped.cs": "namespace Acme.Jobs;\n",
 		"app/App.cs":    "using Acme.Store;\nusing Acme.Jobs;\nusing S = Acme.Store;\nusing T = Acme.Web.Thing;\nusing L = Acme.Web.List<int>;\n",
 	})
 	if want := []snapshot.Link{folderLink("app/App.cs", 1, "src", "src/Outer.cs"), folderLink("app/App.cs", 2, "src", "src/Scoped.cs"),
@@ -977,6 +977,24 @@ func TestBuildNarrowsJavaImportsByModuleAndName(t *testing.T) {
 			"lib/pom.xml": "<project><groupId>com.acme</groupId><artifactId>lib</artifactId></project>\n",
 			"lib/src/test/java/com/acme/f/Fixture.java": fixture, "a/src/test/java/com/acme/c/C.java": consumer,
 		}, []snapshot.Link{folderLink("a/src/test/java/com/acme/c/C.java", 3, "lib/src/test/java/com/acme/f", "lib/src/test/java/com/acme/f/Fixture.java")}},
+		{"Groovy's project path", map[string]string{
+			"a/build.gradle": "dependencies { testImplementation testFixtures(project(path: ':core')) }\n", "core/build.gradle": "",
+			"core/src/testFixtures/java/com/acme/f/Fixture.java": fixture, "a/src/test/java/com/acme/c/C.java": consumer,
+		}, []snapshot.Link{folderLink("a/src/test/java/com/acme/c/C.java", 3, "core/src/testFixtures/java/com/acme/f",
+			"core/src/testFixtures/java/com/acme/f/Fixture.java")}},
+		{"modules under a top-level src folder", map[string]string{
+			"src/other/src/test/java/com/acme/f/Fixture.java": fixture, "src/app/src/test/java/com/acme/c/C.java": consumer,
+		}, nil},
+		{"a static import narrows by the class", map[string]string{
+			"lib/src/main/java/com/acme/f/Fixture.java": "package com.acme.f;\n\npublic class Fixture { public static int X; }\n",
+			"lib/src/main/java/com/acme/f/Other.java":   "package com.acme.f;\n\npublic class Other {}\n",
+			"a/src/main/java/com/acme/c/C.java":         "package com.acme.c;\n\nimport static com.acme.f.Fixture.X;\n",
+		}, []snapshot.Link{folderLink("a/src/main/java/com/acme/c/C.java", 3, "lib/src/main/java/com/acme/f", "lib/src/main/java/com/acme/f/Fixture.java")}},
+		{"a folder of Java and Kotlin files narrows", map[string]string{
+			"lib/src/main/java/com/acme/f/Fixture.kt": "package com.acme.f\n\nclass Fixture\n",
+			"lib/src/main/java/com/acme/f/Other.java": "package com.acme.f;\n\npublic class Other {}\n",
+			"a/src/main/java/com/acme/c/C.java":       consumer,
+		}, []snapshot.Link{folderLink("a/src/main/java/com/acme/c/C.java", 3, "lib/src/main/java/com/acme/f", "lib/src/main/java/com/acme/f/Fixture.kt")}},
 		{"no such dependency", map[string]string{
 			"lib/src/test/java/com/acme/f/Fixture.java": fixture, "a/src/test/java/com/acme/c/C.java": consumer,
 		}, nil},

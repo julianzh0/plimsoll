@@ -27,9 +27,10 @@ const javaQuery = `
 var jvmPackage = regexp.MustCompile("(?m)^[ \\t]*package[ \\t]+(?P<package>(?:[A-Za-z_$][\\w$]*|`[^`\\n]+`)(?:\\.(?:[A-Za-z_$][\\w$]*|`[^`\\n]+`))*)")
 
 // JVMTestDependencies are how a Gradle build file asks for another module's test fixtures: by project path
-// (testFixtures(project(":a:b"))) and by type-safe accessor (testFixtures(projects.a.b)).
+// (testFixtures(project(":a:b")), Groovy's project(path: ':a:b'), the root project ":"), the path captured with its
+// leading colon, and by type-safe accessor (testFixtures(projects.a.b)).
 func JVMTestDependencies() (byPath, byAccessor *regexp.Regexp) {
-	return regexp.MustCompile(`testFixtures\(\s*project\(\s*["']:([^"']+)["']\s*\)\s*\)`),
+	return regexp.MustCompile(`testFixtures\(\s*project\(\s*(?:path\s*[:=]\s*)?["'](:[^"']*)["']\s*\)\s*\)`),
 		regexp.MustCompile(`testFixtures\(\s*projects\.([\w.]+)\s*\)`)
 }
 

@@ -264,9 +264,11 @@ func links(rules conventions.Rules, content map[string][]byte, tree Tree, readin
 		if len(files) == 0 {
 			continue
 		}
-		languageReadings := map[string]reading{}
-		for _, file := range files {
-			languageReadings[file.Path] = readings[file.Path]
+		languageReadings := map[string]reading{} // the entry's, and those of the entries sharing its folders
+		for _, file := range tree.Files {
+			if file.Language == language.Name || slices.Contains(imports.FolderAlso, conventions.Suffix(file.Path)) {
+				languageReadings[file.Path] = readings[file.Path]
+			}
 		}
 		own := readPrefix(rules, language, content, s.tracked, languageReadings)
 		counts := LanguageImports{
@@ -340,23 +342,22 @@ func (s side) resolve(language conventions.Language, own prefix, from string, st
 	}
 	if imports.Target == conventions.FolderTarget {
 		var reached []target
-		chosen := map[string][]string{} // a folder to the code files of the entry the prefix chose in it
+		chosen := map[string]int{} // a folder the prefix chose files in, to its target: it reaches those files only
 		for _, base := range bases {
-			if s.tracked[base] && slices.Contains(language.Extensions, conventions.Suffix(base)) {
-				if _, seen := chosen[path.Dir(base)]; !seen {
-					reached = append(reached, target{to: path.Dir(base), folder: true})
-					chosen[path.Dir(base)] = []string{}
+			suffix := conventions.Suffix(base)
+			if !s.tracked[base] || !slices.Contains(language.Extensions, suffix) && !slices.Contains(imports.FolderAlso, suffix) {
+				if t, outcome := s.folder(language, base); outcome == resolved {
+					reached = append(reached, t)
 				}
-				if _, isCode := s.code[base]; isCode { // a generated file resolves the import and gives no link
-					chosen[path.Dir(base)] = append(chosen[path.Dir(base)], base)
-				}
-			} else if t, outcome := s.folder(language, base); outcome == resolved {
-				reached = append(reached, t)
+				continue
 			}
-		}
-		for i, t := range reached { // a folder the prefix chose files in reaches those files only
-			if files, isChosen := chosen[t.to]; isChosen && t.files == nil {
-				reached[i].files = files
+			i, seen := chosen[path.Dir(base)]
+			if !seen {
+				i, chosen[path.Dir(base)] = len(reached), len(reached)
+				reached = append(reached, target{to: path.Dir(base), folder: true})
+			}
+			if _, isCode := s.code[base]; isCode { // a generated file resolves the import and gives no link
+				reached[i].files = append(reached[i].files, base)
 			}
 		}
 		if len(reached) == 0 {

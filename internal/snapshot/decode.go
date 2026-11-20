@@ -369,8 +369,8 @@ func decodeDeclarations(result parse.Result, content []byte, tests []span) []top
 	})
 }
 
-// declaredNamespacesOf are the full names of the namespaces a file declares: a block's name joined to those of the
-// blocks around it and to the file's own namespace; the file's own alone when it has no block.
+// declaredNamespacesOf are the full names of the namespaces a file declares: its file-scoped one, and each block's
+// name joined to those of the blocks around it (C# allows no file with both).
 func declaredNamespacesOf(blocks []span, fileNamespace string) []string {
 	var found []string
 	if fileNamespace != "" {
@@ -378,9 +378,6 @@ func declaredNamespacesOf(blocks []span, fileNamespace string) []string {
 	}
 	for _, b := range blocks {
 		var names []string
-		if fileNamespace != "" {
-			names = append(names, fileNamespace)
-		}
 		for _, outer := range blocks {
 			if outer.start < b.start && b.end <= outer.end {
 				names = append(names, outer.name)

@@ -18,22 +18,24 @@ import (
 func sourcePackages(rules conventions.Rules, language conventions.Language, content map[string][]byte, tracked map[string]bool, readings map[string]reading) prefix {
 	imports := language.Imports
 	extensions := slices.Concat(language.Extensions, imports.FolderAlso)
-	folders := map[string][]string{}  // a package, as a path, to its folders
-	inFolder := map[string][]string{} // a folder to its files of the entry or its other extensions
+	folders := map[string][]string{}        // a package, as a path, to its folders
+	members := map[packageFolder][]string{} // the files of a package in one folder
 	for file := range tracked {
 		if !slices.Contains(extensions, conventions.Suffix(file)) || !underSourceRoot(imports.Prefix.Roots, file) {
 			continue
 		}
-		inFolder[path.Dir(file)] = append(inFolder[path.Dir(file)], file)
 		m := imports.PackageLine.FindSubmatch(content[file])
 		if m == nil {
 			continue
 		}
 		name := strings.ReplaceAll(strings.ReplaceAll(string(m[imports.PackageLine.SubexpIndex("package")]), "`", ""), ".", "/")
-		if folder := path.Dir(file); !slices.Contains(folders[name], folder) {
+		folder := path.Dir(file)
+		if !slices.Contains(folders[name], folder) {
 			folders[name] = append(folders[name], folder)
 		}
+		members[packageFolder{name, folder}] = append(members[packageFolder{name, folder}], file)
 	}
+	declared := declaredIn(members, readings)
 	if len(folders) == 0 {
 		return prefix{state: PrefixAbsent}
 	}
@@ -60,7 +62,7 @@ func sourcePackages(rules conventions.Rules, language conventions.Language, cont
 				return underTestSourceSet(rules, folder) && (!fromTests || !sees(path.Dir(from), folder))
 			}) // none usable: outside
 			if rest := names[n:]; len(rest) > 0 && rest[0] != "*" {
-				return declaring(visible, inFolder, readings, rest[0]), false
+				return declaring(strings.Join(names[:n], "/"), visible, declared, rest[0]), false
 			}
 			return visible, false
 		}
@@ -88,20 +90,40 @@ func startsLower(name string) bool {
 	return unicode.IsLower(r)
 }
 
-// declaring narrows a package's folders to the files that declare a name at the top level, when every file of them
-// was read whole and at least one declares it; else it keeps the folders.
-func declaring(folders []string, inFolder map[string][]string, readings map[string]reading, name string) []string {
-	var found []string
-	for _, folder := range folders {
-		for _, file := range inFolder[folder] {
+// packageFolder is one folder of a package.
+type packageFolder struct{ name, folder string }
+
+// declaredIn are, per folder of a package whose files were all read whole, the files that declare each top-level
+// name; a folder with a file not read whole is absent.
+func declaredIn(members map[packageFolder][]string, readings map[string]reading) map[packageFolder]map[string][]string {
+	found := map[packageFolder]map[string][]string{}
+next:
+	for at, files := range members {
+		names := map[string][]string{}
+		for _, file := range files {
 			r, read := readings[file]
 			if !read || !r.parsed || r.syntaxError {
-				return folders
+				continue next
 			}
-			if slices.Contains(r.bindings[""], name) {
-				found = append(found, file)
+			for _, name := range r.bindings[""] {
+				names[name] = append(names[name], file)
 			}
 		}
+		found[at] = names
+	}
+	return found
+}
+
+// declaring narrows a package's folders to the files that declare a name at the top level, when every file of them
+// was read whole and at least one declares it; else it keeps the folders.
+func declaring(pkg string, folders []string, declared map[packageFolder]map[string][]string, name string) []string {
+	var found []string
+	for _, folder := range folders {
+		names, whole := declared[packageFolder{pkg, folder}]
+		if !whole {
+			return folders
+		}
+		found = append(found, names[name]...)
 	}
 	if len(found) == 0 {
 		return folders
@@ -130,7 +152,7 @@ func testSees(content map[string][]byte, tracked map[string]bool) func(from, fol
 		switch path.Base(file) {
 		case "build.gradle", "build.gradle.kts":
 			for _, m := range byPath.FindAllSubmatch(content[file], -1) {
-				fixtures[module] = append(fixtures[module], strings.ReplaceAll(string(m[1]), ":", "/"))
+				fixtures[module] = append(fixtures[module], strings.ReplaceAll(strings.TrimPrefix(string(m[1]), ":"), ":", "/"))
 			}
 			for _, m := range byAccessor.FindAllSubmatch(content[file], -1) {
 				if folder, unique := accessorFolder(string(m[1]), modules); unique {
@@ -150,26 +172,23 @@ func testSees(content map[string][]byte, tracked map[string]bool) func(from, fol
 		}
 	}
 	return func(from, folder string) bool {
-		mine, theirs := moduleOf(from), moduleOf(folder)
+		mine, _ := sourceSet(from)
+		theirs, set := sourceSet(folder)
 		return mine == theirs || slices.Contains(testJars[mine], theirs) ||
-			slices.Contains(fixtures[mine], theirs) && sourceSetOf(folder) == "testFixtures"
+			slices.Contains(fixtures[mine], theirs) && set == "testFixtures"
 	}
 }
 
-// moduleOf is the module of a folder under a source set: the folder that holds its src, "" at the root.
-func moduleOf(folder string) string {
-	if strings.HasPrefix(folder, "src/") {
-		return ""
+// sourceSet are the module and the source set of a folder under a source root: the last src/<set>/<java or kotlin>
+// in its path, the module being the folder that holds that src ("" at the root).
+func sourceSet(folder string) (module, set string) {
+	parts := strings.Split(folder, "/")
+	for i := len(parts) - 2; i >= 1; i-- {
+		if parts[i-1] == "src" && (parts[i+1] == "java" || parts[i+1] == "kotlin") {
+			return strings.Join(parts[:i-1], "/"), parts[i]
+		}
 	}
-	before, _, _ := strings.Cut(folder, "/src/")
-	return before
-}
-
-// sourceSetOf is the source set a folder lies in: the folder after src.
-func sourceSetOf(folder string) string {
-	_, after, _ := strings.Cut("/"+folder, "/src/")
-	set, _, _ := strings.Cut(after, "/")
-	return set
+	return "", ""
 }
 
 // moduleFolder is a build file's folder as a module, "" at the root.
