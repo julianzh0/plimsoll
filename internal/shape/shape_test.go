@@ -503,6 +503,13 @@ func TestDeclaredTestKindsGetRowsThatAddUpToTheTestLines(t *testing.T) {
 	if _, found := statistic(findings, "tests", ""); found {
 		t.Errorf("the ratio is under its limit, so no split; kind rows show anyway: %+v", findings.Statistics)
 	}
+	partial := snapshottest.Files(base, now)
+	partial.Missing = []string{"tests/unit/lost.test.ts"}
+	for _, s := range detect(t, partial, conventions.Default()).Statistics {
+		if strings.HasPrefix(s.Name, "test lines of") && s.Subject != "integration" && (s.Value != nil || s.Before != nil) {
+			t.Errorf("a partial clone lacks content a kind matches: row %+v, want its lines now in its note and no change", s)
+		}
+	}
 	plain := detect(t, snapshottest.Files(nil, map[string]string{"src/a.ts": "a\n", "tests/a.test.ts": "test(\"a\", () => {});\n"}), conventions.Default())
 	for _, s := range plain.Statistics {
 		if strings.HasPrefix(s.Name, "test lines of") {
