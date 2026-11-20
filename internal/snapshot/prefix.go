@@ -2,7 +2,6 @@ package snapshot
 
 import (
 	"bytes"
-	"encoding/json"
 	"path"
 	"slices"
 	"strings"
@@ -44,8 +43,6 @@ type prefix struct {
 // readPrefix reads a language's prefix on one side: its file at the root, its own packages, or, from the readings of the
 // language's files, the modules they declare. Each format has one
 // reader; resolving an import needs only the function it returns.
-// NOTE: only the root config is read; an extended or nested config, replace, go.work and workspaces are not followed,
-// so imports through them count as outside. Upgrade: follow extends through tracked files.
 func readPrefix(rules conventions.Rules, language conventions.Language, content map[string][]byte, tracked map[string]bool, readings map[string]reading) prefix {
 	imports := language.Imports
 	fromFile := func(parse func([]byte) prefix) prefix {
@@ -60,15 +57,15 @@ func readPrefix(rules conventions.Rules, language conventions.Language, content 
 	}
 	switch imports.Prefix.Format {
 	case conventions.GoModule:
-		return fromFile(goModule)
+		return goModules(content, tracked)
 	case conventions.TSConfigPaths:
-		return fromFile(func(file []byte) prefix { return tsconfigPaths(rules, file) })
+		return typescriptImports(rules, language, content, tracked)
 	case conventions.OwnPackages:
 		return ownPackages(imports, tracked)
 	case conventions.SourceRoots:
 		return sourcePackages(rules, language, content, tracked, readings)
 	case conventions.PubspecName:
-		return fromFile(func(file []byte) prefix { return pubspecPackages(file, content) })
+		return pubspecPackages(content, tracked)
 	case conventions.IncludeFolders:
 		return includeFolders(imports, content, tracked)
 	case conventions.SwiftTargets:
@@ -79,67 +76,6 @@ func readPrefix(rules conventions.Rules, language conventions.Language, content 
 		return cargoCrates(imports.Prefix.File, content, tracked, readings)
 	}
 	return prefix{state: PrefixRead} // the language declares no prefix
-}
-
-// goModule reads the module path from the first line that starts with "module". An import is own when it is the
-// module path or lies under it; its path is the rest.
-func goModule(content []byte) prefix {
-	for line := range strings.Lines(string(content)) {
-		rest, isModule := strings.CutPrefix(strings.TrimSpace(line), "module")
-		if !isModule {
-			continue
-		}
-		rest, _, _ = strings.Cut(rest, "//")
-		module := strings.Trim(strings.TrimSpace(rest), `"`)
-		if module == "" {
-			break
-		}
-		return prefix{state: PrefixRead, own: func(_, spec string, _ []string) ([]string, bool) {
-			rest, under := strings.CutPrefix(spec, module)
-			if !under || rest != "" && !strings.HasPrefix(rest, "/") {
-				return nil, false
-			}
-			return []string{path.Join(".", strings.TrimPrefix(rest, "/"))}, false
-		}}
-	}
-	return prefix{state: PrefixUnreadable}
-}
-
-// tsconfigPaths reads the paths aliases and baseUrl of a tsconfig.json, after its comments and trailing commas.
-func tsconfigPaths(rules conventions.Rules, content []byte) prefix {
-	var config struct {
-		Extends         json.RawMessage `json:"extends"`
-		CompilerOptions struct {
-			BaseURL string              `json:"baseUrl"`
-			Paths   map[string][]string `json:"paths"`
-		} `json:"compilerOptions"`
-	}
-	if err := json.Unmarshal(plainJSON(content), &config); err != nil {
-		return prefix{state: PrefixUnreadable}
-	}
-	baseURL := "."
-	if config.CompilerOptions.BaseURL != "" {
-		baseURL = path.Clean(config.CompilerOptions.BaseURL)
-	}
-	state := PrefixRead
-	if len(config.Extends) > 0 && string(config.Extends) != "null" {
-		state = PrefixExtends
-	}
-	aliases := config.CompilerOptions.Paths
-	return prefix{state: state, own: func(_, spec string, _ []string) ([]string, bool) {
-		pattern, star, matched := bestAlias(aliases, spec)
-		if !matched {
-			return nil, false
-		}
-		var bases []string
-		for _, target := range aliases[pattern] {
-			base := path.Join(baseURL, strings.Replace(target, "*", star, 1))
-			if !leaves(base) && !inFolders(base, rules.SkippedFolders) {
-				bases = append(bases, base)
-			}
-		}
-		return bases, strings.HasPrefix(pattern, "*")
-	}}
 }
 
 // bestAlias picks the paths pattern for an import: an exact pattern first, else the one with the longest text before

@@ -68,6 +68,7 @@ const (
 	outside
 	ambiguous
 	notFound
+	notReadable // own, and its target has no tracked source
 )
 
 // side is what resolving one side's imports needs: its tracked paths, by folder, and its code files.
@@ -315,6 +316,8 @@ func (s side) resolveAll(language conventions.Language, own prefix, from string,
 			counts.Ambiguous++
 		case notFound:
 			counts.NotFound++
+		case notReadable:
+			counts.Unreadable++
 		}
 		if outcome != resolved {
 			continue
@@ -422,8 +425,11 @@ func (s side) basesOf(imports conventions.Imports, own prefix, from string, st s
 		return []string{relative}, false, 0
 	}
 	bases, catchAll = own.own(from, spec, st.within)
-	if len(bases) == 0 {
+	switch {
+	case len(bases) == 0:
 		return nil, false, outside
+	case len(bases) == 1 && bases[0] == unreadableTarget:
+		return nil, false, notReadable
 	}
 	return bases, catchAll, 0
 }

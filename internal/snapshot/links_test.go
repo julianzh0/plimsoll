@@ -411,12 +411,19 @@ func TestBuildFollowsImportsIntoDartWorkspaceMembers(t *testing.T) {
 		"packages/other/pubspec.yaml":   "name: other\n",
 		"packages/other/lib/other.dart": "import 'package:core/core.dart';\n",
 	})
-	want := []snapshot.Link{
-		link("app/lib/main.dart", 1, "packages/core/lib/core.dart"), link("app/lib/main.dart", 2, "app/lib/src/x.dart"),
-		link("packages/other/lib/other.dart", 1, "packages/core/lib/core.dart"),
+	// other is no member and depends on core by no path: its import is outside, as for http.
+	want := []snapshot.Link{link("app/lib/main.dart", 1, "packages/core/lib/core.dart"), link("app/lib/main.dart", 2, "app/lib/src/x.dart")}
+	if !reflect.DeepEqual(got.List, want) || got.Languages[0].Outside != 2 || got.Languages[0].NotFound != 0 {
+		t.Errorf("links = %+v, languages %+v; want the members' packages as own and http and other's import outside", got.List, got.Languages)
 	}
-	if !reflect.DeepEqual(got.List, want) || got.Languages[0].Outside != 1 || got.Languages[0].NotFound != 0 {
-		t.Errorf("links = %+v, languages %+v; want the members' packages as own and http outside", got.List, got.Languages)
+	// A glob names members; a path dependency is own outside a workspace.
+	globbed := linksOf(t, map[string]string{
+		"pubspec.yaml": "name: _ws\nworkspace:\n  - packages/*\n", "packages/a/pubspec.yaml": "name: a\n",
+		"packages/b/pubspec.yaml": "name: b\n", "packages/a/lib/a.dart": "import 'package:b/b.dart';\n", "packages/b/lib/b.dart": "",
+		"tool/pubspec.yaml": "name: tool\ndependencies:\n  b:\n    path: ../packages/b\n", "tool/lib/t.dart": "import 'package:b/b.dart';\n",
+	})
+	if want := []snapshot.Link{link("packages/a/lib/a.dart", 1, "packages/b/lib/b.dart"), link("tool/lib/t.dart", 1, "packages/b/lib/b.dart")}; !reflect.DeepEqual(globbed.List, want) {
+		t.Errorf("a glob member and a path dependency: links = %+v, want %+v", globbed.List, want)
 	}
 }
 
@@ -1006,6 +1013,112 @@ func TestBuildNarrowsJavaImportsByModuleAndName(t *testing.T) {
 	} {
 		if got := linksOf(t, tc.files).List; !reflect.DeepEqual(got, tc.want) {
 			t.Errorf("%s: List = %+v, want %+v", tc.name, got, tc.want)
+		}
+	}
+}
+
+// Go modules: a file's own module is the nearest go.mod; another tracked module is own through a workspace that uses
+// both, or a replacement of a module the importer requires; a nested go.mod makes its folder a module of its own.
+func TestBuildFollowsGoImportsAcrossModules(t *testing.T) {
+	lib := map[string]string{"lib/go.mod": "module example.com/lib\n", "lib/x/x.go": "package x\n"}
+	app := func(mod string) map[string]string {
+		files := maps.Clone(lib)
+		files["app/go.mod"] = mod
+		files["app/main.go"] = "package main\n\nimport \"example.com/lib/x\"\n"
+		return files
+	}
+	reaches := []snapshot.Link{folderLink("app/main.go", 3, "lib/x", "lib/x/x.go")}
+	for _, tc := range []struct {
+		name  string
+		files map[string]string
+		want  []snapshot.Link
+	}{
+		{"no workspace, no replacement", app("module example.com/app\n\nrequire example.com/lib v1.0.0\n"), nil},
+		{"a replacement of a required module", app("module example.com/app\n\nrequire example.com/lib v1.0.0\n\nreplace example.com/lib => ../lib\n"), reaches},
+		{"a replacement of the required version", app("module example.com/app\n\nrequire (\n\texample.com/lib v1.0.0\n)\n\nreplace example.com/lib v1.0.0 => ../lib\n"), reaches},
+		{"a replacement of another version", app("module example.com/app\n\nrequire example.com/lib v1.0.0\n\nreplace example.com/lib v2.0.0 => ../lib\n"), nil},
+		{"a replacement of a module not required", app("module example.com/app\n\nreplace example.com/lib => ../lib\n"), nil},
+		{"a workspace that uses both", func() map[string]string {
+			files := app("module example.com/app\n")
+			files["go.work"] = "go 1.22\n\nuse (\n\t./app\n\t./lib\n)\n"
+			return files
+		}(), reaches},
+		{"a workspace that does not use the importer", func() map[string]string {
+			files := app("module example.com/app\n\nrequire example.com/lib v1.0.0\n")
+			files["go.work"] = "go 1.22\n\nuse ./lib\n\nreplace example.com/lib => ./lib\n"
+			return files
+		}(), nil},
+		{"a workspace's replacement before the importer's", func() map[string]string {
+			files := app("module example.com/app\n\nrequire example.com/lib v1.0.0\n\nreplace example.com/lib => ../elsewhere\n")
+			files["go.work"] = "go 1.22\n\nuse ./app\n\nreplace example.com/lib => ./lib\n"
+			return files
+		}(), reaches},
+		{"a nested module is no part of the module above", map[string]string{
+			"go.mod": "module example.com/root\n", "main.go": "package main\n\nimport \"example.com/root/tools/y\"\n",
+			"tools/go.mod": "module example.com/tools\n", "tools/y/y.go": "package y\n",
+		}, nil},
+	} {
+		if got := linksOf(t, tc.files).List; !reflect.DeepEqual(got, tc.want) {
+			t.Errorf("%s: List = %+v, want %+v", tc.name, got, tc.want)
+		}
+	}
+}
+
+// TypeScript: a file's own config, extends chains, solution configs with references, and workspace packages with and
+// without exports.
+func TestBuildFollowsTypeScriptConfigsAndWorkspacePackages(t *testing.T) {
+	imp := func(specs ...string) string {
+		var lines []string
+		for _, s := range specs {
+			lines = append(lines, "import { x } from \""+s+"\";")
+		}
+		return strings.Join(lines, "\n") + "\n"
+	}
+	for _, tc := range []struct {
+		name                          string
+		files                         map[string]string
+		want                          []snapshot.Link
+		notFound, unreadable, outside int
+	}{
+		{"a nested config's paths", map[string]string{
+			"web/tsconfig.json": `{"compilerOptions": {"paths": {"@/*": ["./src/*"]}}}`, "web/src/a.ts": imp("@/b"), "web/src/b.ts": "",
+		}, []snapshot.Link{link("web/src/a.ts", 1, "web/src/b.ts")}, 0, 0, 0},
+		{"paths inherited along extends, from the base's folder", map[string]string{
+			"config/base.json": `{"compilerOptions": {"paths": {"~/*": ["../shared/*"]}}}`, "shared/s.ts": "",
+			"app/tsconfig.json": `{"extends": "../config/base.json"}`, "app/a.ts": imp("~/s"),
+		}, []snapshot.Link{link("app/a.ts", 1, "shared/s.ts")}, 0, 0, 0},
+		{"a later base replaces an earlier one", map[string]string{
+			"one.json": `{"compilerOptions": {"paths": {"x/*": ["./one/*"]}}}`, "two.json": `{"compilerOptions": {"paths": {"x/*": ["./two/*"]}}}`,
+			"tsconfig.json": `{"extends": ["./one.json", "./two"]}`, "one/m.ts": "", "two/m.ts": "", "a.ts": imp("x/m"),
+		}, []snapshot.Link{link("a.ts", 1, "two/m.ts")}, 0, 0, 0},
+		{"a solution's referenced config that takes the file", map[string]string{
+			"tsconfig.json":      `{"files": [], "references": [{"path": "./tsconfig.app.json"}, {"path": "./tsconfig.test.json"}]}`,
+			"tsconfig.app.json":  `{"include": ["src"], "compilerOptions": {"paths": {"#/*": ["./src/*"]}}}`,
+			"tsconfig.test.json": `{"include": ["test"], "compilerOptions": {"paths": {"#/*": ["./test/*"]}}}`,
+			"src/a.ts":           imp("#/b"), "src/b.ts": "", "test/b.ts": "",
+		}, []snapshot.Link{link("src/a.ts", 1, "src/b.ts")}, 0, 0, 0},
+		{"a workspace package with exports", map[string]string{
+			"packages/ui/package.json": `{"name": "@acme/ui", "exports": {".": {"types": "./src/index.ts", "default": "./dist/index.js"},
+				"./button": "./src/button.ts", "./icons/*": "./src/icons/*.ts", "./internal/*": null}}`,
+			"packages/ui/src/index.ts": "", "packages/ui/src/button.ts": "", "packages/ui/src/icons/star.ts": "",
+			"app/a.ts": imp("@acme/ui", "@acme/ui/button", "@acme/ui/icons/star", "@acme/ui/internal/x", "@acme/ui/missing"),
+		}, []snapshot.Link{link("app/a.ts", 1, "packages/ui/src/index.ts"), link("app/a.ts", 2, "packages/ui/src/button.ts"),
+			link("app/a.ts", 3, "packages/ui/src/icons/star.ts")}, 2, 0, 0},
+		{"a workspace package without exports, its build output mapped to its sources", map[string]string{
+			"packages/core/package.json":  `{"name": "core", "main": "./dist/index.js", "types": "./dist/index.d.ts"}`,
+			"packages/core/tsconfig.json": `{"compilerOptions": {"outDir": "dist", "rootDir": "lib"}}`,
+			"packages/core/lib/index.ts":  "", "packages/core/util.ts": "",
+			"app/a.ts": imp("core", "core/util", "left-pad"),
+		}, []snapshot.Link{link("app/a.ts", 1, "packages/core/lib/index.ts"), link("app/a.ts", 2, "packages/core/util.ts")}, 0, 0, 1},
+		{"a target with no tracked source is not readable", map[string]string{
+			"packages/gen/package.json": `{"name": "gen", "main": "./dist/index.js"}`, "app/a.ts": imp("gen"),
+		}, nil, 0, 1, 0},
+	} {
+		got := linksOf(t, tc.files)
+		l := got.Languages[0]
+		if !reflect.DeepEqual(got.List, tc.want) || l.NotFound != tc.notFound || l.Unreadable != tc.unreadable || l.Outside != tc.outside {
+			t.Errorf("%s: List = %+v, %+v; want %+v, not found %d, not readable %d, outside %d", tc.name, got.List, l, tc.want,
+				tc.notFound, tc.unreadable, tc.outside)
 		}
 	}
 }

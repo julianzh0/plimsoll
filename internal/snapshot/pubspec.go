@@ -3,36 +3,96 @@ package snapshot
 import (
 	"path"
 	"regexp"
+	"slices"
 	"strings"
 )
 
 // pubspecNameLine is the top-level name of a pubspec.yaml, unquoted or quoted.
 var pubspecNameLine = regexp.MustCompile(`(?m)^name:[ \t]*["']?([A-Za-z_][A-Za-z0-9_]*)["']?[ \t]*(?:#.*)?$`)
 
-// pubspecPackages reads the package name of the root pubspec.yaml and of the workspace members it lists: an import
-// "package:<name>/x" is the file x under the lib/ folder of the package with that name.
-// NOTE: members are read as listed; a glob in the workspace list is not expanded. Upgrade: match the globs against
-// the tracked paths, if a field check finds them in use.
-func pubspecPackages(root []byte, content map[string][]byte) prefix {
-	name := pubspecNameOf(root)
-	if name == "" {
-		return prefix{state: PrefixUnreadable}
-	}
-	packages := map[string]string{name: "lib"}
-	for _, member := range pubspecBlock(root, "workspace") {
-		member = strings.Trim(strings.TrimPrefix(member, "- "), `"' `)
-		if memberName := pubspecNameOf(content[path.Join(member, "pubspec.yaml")]); memberName != "" && !strings.Contains(member, "*") {
-			packages[memberName] = path.Join(member, "lib")
+// pubspecPackages reads every tracked pubspec.yaml with a name as a package, and every one with a workspace list as a
+// workspace whose entries, globs with * per segment included, name member folders. An import "package:<name>/x" is the
+// file x under lib/ of the package of that name when it is the importing package itself, a member of a workspace the
+// importing package belongs to, or a path dependency of the importing package; otherwise it is outside.
+func pubspecPackages(content map[string][]byte, tracked map[string]bool) prefix {
+	packages := map[string]string{} // a name to its package's folder
+	names := map[string]string{}    // a package's folder to its name
+	var manifests []string
+	for file := range tracked {
+		if path.Base(file) == "pubspec.yaml" {
+			manifests = append(manifests, file)
 		}
 	}
-	return prefix{state: PrefixRead, own: func(_, spec string, _ []string) ([]string, bool) {
+	slices.Sort(manifests)
+	for _, file := range manifests {
+		if name := pubspecNameOf(content[file]); name != "" {
+			if _, taken := packages[name]; !taken {
+				packages[name] = path.Dir(file)
+			}
+			names[path.Dir(file)] = name
+		}
+	}
+	if len(packages) == 0 {
+		if len(manifests) > 0 {
+			return prefix{state: PrefixUnreadable}
+		}
+		return prefix{state: PrefixAbsent}
+	}
+	workspaceOf := map[string][]string{} // a package's folder to the workspace roots that list it, and the root itself
+	for _, file := range manifests {
+		root := path.Dir(file)
+		for _, member := range pubspecBlock(content[file], "workspace") {
+			pattern := path.Join(root, strings.Trim(strings.TrimPrefix(member, "- "), `"' `))
+			for folder := range names {
+				if matched, _ := path.Match(pattern, folder); matched {
+					workspaceOf[folder] = append(workspaceOf[folder], root)
+				}
+			}
+			workspaceOf[root] = appendNew(workspaceOf[root], root)
+		}
+	}
+	return prefix{state: PrefixRead, own: func(from, spec string, _ []string) ([]string, bool) {
 		packageName, rest, found := strings.Cut(strings.TrimPrefix(spec, "package:"), "/")
-		base, own := packages[packageName]
-		if !strings.HasPrefix(spec, "package:") || !found || !own || rest == "" || leaves(rest) {
+		target, known := packages[packageName]
+		if !strings.HasPrefix(spec, "package:") || !found || !known || rest == "" || leaves(rest) {
 			return nil, false
 		}
-		return []string{path.Join(base, rest)}, false
+		var importer string
+		for folder := range foldersUp(path.Dir(from)) {
+			if _, isPackage := names[folder]; isPackage {
+				importer = folder
+				break
+			}
+		}
+		sameWorkspace := slices.ContainsFunc(workspaceOf[importer], func(root string) bool { return slices.Contains(workspaceOf[target], root) })
+		pathDependency := slices.Contains(pubspecPathDependencies(content[path.Join(importer, "pubspec.yaml")], importer), target)
+		if importer == "" || target != importer && !sameWorkspace && !pathDependency {
+			return nil, false
+		}
+		return []string{path.Join(target, "lib", rest)}, false
 	}}
+}
+
+// pubspecPathDependencies are the folders a pubspec's dependencies name by a local path: an entry of dependencies,
+// dev_dependencies or dependency_overrides with a path key below it, resolved against the pubspec's folder.
+func pubspecPathDependencies(content []byte, folder string) []string {
+	var found []string
+	inBlock := false
+	for line := range strings.Lines(string(content)) {
+		trimmed, _, _ := strings.Cut(strings.TrimSpace(line), " #")
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		if !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "\t") {
+			key, _, _ := strings.Cut(trimmed, ":")
+			inBlock = key == "dependencies" || key == "dev_dependencies" || key == "dependency_overrides"
+			continue
+		}
+		if value, isPath := strings.CutPrefix(trimmed, "path:"); inBlock && isPath {
+			found = append(found, path.Join(folder, strings.Trim(strings.TrimSpace(value), `"'`)))
+		}
+	}
+	return found
 }
 
 // pubspecNameOf is a pubspec.yaml's top-level name, or "" when it has none.

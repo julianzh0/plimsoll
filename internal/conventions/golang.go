@@ -20,7 +20,7 @@ var goFolderExcept = regexp.MustCompile(`_test\.go$`)
 func goImports() Imports {
 	return Imports{
 		Relative:     NoRelative,
-		Prefix:       Prefix{File: "go.mod", Format: GoModule, Required: true},
+		Prefix:       Prefix{File: "go.mod", Format: GoModule, Required: true, Members: true},
 		Target:       FolderTarget,
 		FolderExcept: goFolderExcept,
 		NoRings:      "the Go compiler rejects import cycles",
