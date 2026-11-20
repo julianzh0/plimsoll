@@ -128,8 +128,10 @@ func listable(rules conventions.Additions, name string) bool {
 
 // withUses marks each addition used when a file that is not test code holds its name, and its declaring file when the
 // name occurs there more often than the file declares it; test code holding it marks it held by tests.
-// NOTE: every entry with content is scanned once per question that has an addition. Upgrade: stop once each addition
-// has a use, scanning the declaring and changed files first.
+// Every entry with content is scanned once per question that has an addition: 8 ms over 263 files on bff, 7.6 ms over
+// 714 on nowinandroid, 1.35 s over 83,139 on swc (0.67 s of it in documentation and configuration files), measured
+// 2026-11-20 on a cold status with base HEAD~30. Kept: stopping early would change which uses an addition's evidence
+// names.
 func withUses(rules conventions.Rules, found []Addition, entries []Entry, roles map[string]Role, readings map[string]reading) {
 	byName := map[string][]int{}
 	for i, a := range found {

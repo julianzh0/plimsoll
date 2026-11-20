@@ -48,9 +48,10 @@ func WantsOf(rules conventions.Rules) Wants {
 			}
 			return !excluded(rules, path)
 		},
-		// NOTE: documentation and configuration files are read with every question, also when no added name needs
-		// them (6 to 9 ms on the largest field repository), and a large tracked data file of such a suffix is read
-		// whole. Upgrade: read them in a second step, only when an added name has no use in the code files.
+		// Documentation and configuration files are read with every question, also when no added name needs them: 25
+		// files in 4 ms on bff, 149 in 15 ms on nowinandroid, 500 in 64 ms on json, 14,525 in 1.7 s of reading time
+		// (summed over the reading workers) on swc, measured 2026-11-20 on a cold status with base HEAD~30. Kept: a
+		// second read step would cost a second pass over the tree on every question that needs them.
 		Words:      func(path string) bool { return wordsFile(rules, path) },
 		Binary:     conventions.IsBinary,
 		SniffBytes: conventions.BinarySniffBytes,
