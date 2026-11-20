@@ -45,7 +45,10 @@ type Convention struct {
 	File   string   // a file-name pattern; "" for every file of the entry
 	Beside []string // file names: one is tracked in a folder above the file; nil for no such condition
 	Folder string   // the name of a folder between that folder and the file; "" for any place below it
-	Names  string   // a pattern of the names the framework calls; "" for every name
+	// Dirs reads, from the file beside, the folders it names instead of Folder: a literal list of texts, relative to
+	// that file's folder (an empty list names none); a list of anything else keeps Folder. nil for none.
+	Dirs  *regexp.Regexp
+	Names string // a pattern of the names the framework calls; "" for every name
 }
 
 // Library says when a file belongs to a package published for outside users, whose exported names code outside the
