@@ -28,14 +28,16 @@ Reference, fetched the same way when you need it:
 
 ## 1. Where you stand
 
+Go down the table and take the first row that fits. Your own tools decide whether plimsoll is connected: a client's
+server list can leave out a server it has loaded.
+
 | What you see | What you do |
 |---|---|
+| a plimsoll tool (`status`, `report`, `explain`) is among your tools, no `.plimsoll.toml` | step 3 |
+| a plimsoll tool is among your tools, `.plimsoll.toml` exists | step 7, a later run |
 | `plimsoll --version` fails | step 2, install |
-| it prints `plimsoll <version>`, the client's own server list has no `plimsoll`, its configuration holds no plimsoll entry, and the user has not pasted this line again after a restart | step 2, connect; then ask the user to restart or reconnect the client and paste the same line again |
-| the client's server list has no `plimsoll`, but its configuration holds a plimsoll entry, or the user pasted this line again after a restart | the client does not load what was registered: tell the user what its server list and configuration show, and stop. Never register twice |
-| the client lists `plimsoll`, but no plimsoll tool (`status`, `report`, `explain`) is among your tools | read the client's server list or its error output: is the command found, does it start? If it does, ask the user to restart or reconnect and paste the line again. If it still does not show after that, tell the user what you found and stop. Never register twice |
-| the tools are there, no `.plimsoll.toml` | step 3 |
-| the tools are there, `.plimsoll.toml` exists | step 7, a later run |
+| the client's configuration holds a plimsoll entry, or the user pasted this line again after a restart | the client does not load what was registered: read its server list or its error output (is the command found, does it start?), tell the user what you found, and stop. Never register twice |
+| otherwise | step 2, connect; then ask the user to restart or reconnect the client and paste the same line again |
 
 ## 2. Install and connect
 
