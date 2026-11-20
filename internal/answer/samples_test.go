@@ -284,18 +284,18 @@ func TestNoAnswerPrintsADeclaredValueOutsideItsForm(t *testing.T) {
 	q, _ := questions(t, snapshottest.Files(tree("[layout]\ntest_folders = [\"zzmarker old\"]\n"), tree(now)), nil)
 	q.Detectors = everyDetector()
 	ctx := context.Background()
-	status, err := q.Status(ctx, "/repository", "main")
+	status, err := q.Status(ctx, aRepository, "main")
 	if err != nil {
 		t.Fatal(err)
 	}
-	report, err := q.Report(ctx, "/repository", "main", nil)
+	report, err := q.Report(ctx, aRepository, "main", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	answers := []answer.Answer{status, report}
 	for _, list := range [][]answer.Mark{report.Marks, report.Standing, report.Resolved, report.Acknowledged} {
 		for _, m := range list {
-			explained, err := q.Explain(ctx, "/repository", "main", m.ID)
+			explained, err := q.Explain(ctx, aRepository, "main", m.ID)
 			if err != nil {
 				t.Fatal(err)
 			}
