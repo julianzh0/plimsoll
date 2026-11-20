@@ -76,6 +76,10 @@ func TestBuildReadsRuntimeDependencies(t *testing.T) {
 		{"dart", snapshottest.Load(t, "testdata/dart"), pubspecNames("flutter", "http", "provider")},
 		{"pubspec with quoted names and a nested git entry", pubspec("name: 'x'\ndependencies:\n    'a': ^1.0.0\n    b:\n      git:\n        url: https://x.example/b\n    c: any # why\nflutter:\n  assets: []\n"),
 			pubspecNames("a", "b", "c")},
+		{"pubspec dependencies as a flow map, nested values and a quoted key", pubspec("name: x\ndependencies: {a: ^1.0.0, 'b': {path: ../b}, c: [x, y]}\n"),
+			pubspecNames("a", "b", "c")},
+		{"pubspec dependencies as a flow map over lines", pubspec("name: x\ndependencies: {\n  a: ^1.0.0,\n  b: \"{not a brace}\"\n}\nflutter:\n  uses: true\n"),
+			pubspecNames("a", "b")},
 		{"pubspec without dependencies", pubspec("name: x\ndev_dependencies:\n  test: ^1.0.0\n"), pubspecNames()},
 		{"pubspec without a name", pubspec("dependencies:\n  a: ^1.0.0\n"), nil},
 		{"pubspec of a workspace without dependencies", pubspec("name: _ws\nworkspace:\n  - app\n"), nil},
@@ -151,6 +155,11 @@ func TestBuildReadsRuntimeDependencies(t *testing.T) {
 		{"a vcpkg manifest: names, objects, a host tool, a repeated name; the dependencies of features left out", oneFile("vcpkg.json",
 			`{"dependencies": ["zlib", {"name": "boost-asio", "features": ["ssl"]}, {"name": "protobuf", "host": true}, "zlib"],`+
 				` "features": {"tests": {"description": "x", "dependencies": ["gtest"]}}}`), dependenciesOf("vcpkg.json", "boost-asio", "zlib")},
+		{"vcpkg default features, through a feature of the port itself, a cycle, and one that is not default", oneFile("vcpkg.json",
+			`{"name": "app", "default-features": ["net", {"name": "db"}], "features": {`+
+				`"net": {"dependencies": ["curl", {"name": "app", "features": ["tls"]}]}, "tls": {"dependencies": ["openssl", {"name": "app", "features": ["net"]}]},`+
+				`"db": {"dependencies": [{"name": "sqlite3", "host": false}]}, "tests": {"dependencies": ["gtest"]}}}`),
+			dependenciesOf("vcpkg.json", "curl", "openssl", "sqlite3")},
 		{"a vcpkg manifest without dependencies, with a byte order mark", oneFile("vcpkg.json", "\uFEFF{\"name\": \"x\"}\n"), dependenciesOf("vcpkg.json")},
 		{"a nested vcpkg manifest and a conanfile are no manifest", snapshottest.Files(nil, map[string]string{
 			"ports/x/vcpkg.json": `{"dependencies": ["zlib"]}`, "conanfile.txt": "[requires]\nzlib/1.3\n"}), nil},
@@ -265,7 +274,9 @@ func TestBuildLeavesAnUnreadableManifestOut(t *testing.T) {
 		{"pyproject.toml", "[project]\nname = \"x\"\ndynamic = [\"dependencies\"]\n"},
 		{"pyproject.toml", "[project]\ndependencies = [\n  \"a\",\n"},
 		{"pyproject.toml", "[project]\ndependencies = \"a\"\n"},
-		{"pubspec.yaml", "name: x\ndependencies: {a: ^1.0.0}\n"},
+		{"pubspec.yaml", "name: x\ndependencies: {a: ^1.0.0\n"},
+		{"pubspec.yaml", "name: x\ndependencies: [a]\n"},
+		{"pubspec.yaml", "name: x\ndependencies: {a}\n"},
 		{"pom.xml", "<project><dependencies>"},
 		{"build.gradle.kts", "dependencies {\n    implementation(kotlin(\"stdlib\"))\n}\n"},
 		{"build.gradle", "dependencies {\n    implementation group: 'g', name: 'a', version: '1'\n}\n"},

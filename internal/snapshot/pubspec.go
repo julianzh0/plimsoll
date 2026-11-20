@@ -50,20 +50,19 @@ func pubspecBlock(content []byte, key string) []string {
 	return lines
 }
 
-// pubspecDependencies reads the keys of the top-level dependencies block by text: the lines indented one level below
-// "dependencies:", up to the next top-level key. manifest is false when the file names no package, or is a workspace
-// root without dependencies of its own; readable is false when the block is written in flow style.
-// NOTE: only the block form is read; a flow-style map ("dependencies: {a: ^1}") is named unreadable, and the
-// dependencies of workspace members are not counted. Upgrade: a YAML reader, and the members' manifests, if a field
-// check finds either in use.
+// pubspecDependencies reads the keys of the top-level dependencies by text: the lines indented one level below
+// "dependencies:", up to the next top-level key, or the keys of a flow map ("dependencies: {a: ^1, b: {path: ../b}}")
+// on one line or several. manifest is false when the file names no package, or is a workspace root without
+// dependencies of its own; readable is false when a flow value is no map whose keys it can read.
 func pubspecDependencies(text []byte) (names []string, manifest, readable bool) {
 	if pubspecNameOf(text) == "" {
 		return nil, false, true
 	}
 	lines, flow := pubspecBlockLines(text, "dependencies")
 	switch {
-	case flow:
-		return nil, true, false
+	case flow != "":
+		names, readable = flowMapKeys(flow)
+		return names, true, readable
 	case lines == nil && pubspecBlock(text, "workspace") != nil:
 		return nil, false, true
 	}
@@ -77,10 +76,15 @@ func pubspecDependencies(text []byte) (names []string, manifest, readable bool) 
 }
 
 // pubspecBlockLines finds a top-level key's block: its entries one level below it, trimmed, without comments and
-// without the deeper lines of an entry. flow is true when the key's value stands on its own line.
-func pubspecBlockLines(content []byte, key string) (lines []string, flow bool) {
+// without the deeper lines of an entry. flow is the key's value when it stands on the key's own line, with the
+// following lines up to the end of an open flow collection.
+func pubspecBlockLines(content []byte, key string) (lines []string, flow string) {
 	inBlock, indent := false, ""
 	for line := range strings.Lines(string(content)) {
+		if flow != "" && flowDepth(flow) > 0 {
+			flow += " " + strings.TrimSpace(line)
+			continue
+		}
 		trimmed, _, _ := strings.Cut(strings.TrimSpace(line), " #")
 		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
 			continue
@@ -88,8 +92,9 @@ func pubspecBlockLines(content []byte, key string) (lines []string, flow bool) {
 		if !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "\t") {
 			found, value, _ := strings.Cut(trimmed, ":")
 			if inBlock = found == key; inBlock {
-				if strings.TrimSpace(value) != "" {
-					return nil, true
+				if value = strings.TrimSpace(value); value != "" {
+					flow, inBlock = value, false
+					continue
 				}
 				lines = []string{}
 			}
@@ -106,5 +111,67 @@ func pubspecBlockLines(content []byte, key string) (lines []string, flow bool) {
 			lines = append(lines, trimmed)
 		}
 	}
-	return lines, false
+	return lines, flow
+}
+
+// flowDepth is how many flow collections ({ or [) a text leaves open, quotes respected.
+func flowDepth(text string) int {
+	depth, quote := 0, byte(0)
+	for i := 0; i < len(text); i++ {
+		switch c := text[i]; {
+		case quote != 0:
+			if c == quote {
+				quote = 0
+			}
+		case c == '"' || c == '\'':
+			quote = c
+		case c == '{' || c == '[':
+			depth++
+		case c == '}' || c == ']':
+			depth--
+		}
+	}
+	return depth
+}
+
+// flowMapKeys are the keys of a flow map's top level, quotes dropped: "{a: ^1, 'b': {path: ../b}}" gives a and b. ok is
+// false for a value that is no flow map or does not close.
+func flowMapKeys(text string) (keys []string, ok bool) {
+	text = strings.TrimSpace(text)
+	if !strings.HasPrefix(text, "{") || !strings.HasSuffix(text, "}") || flowDepth(text) != 0 {
+		return nil, false
+	}
+	keys = []string{}
+	depth, quote, start := 0, byte(0), 1
+	for i := 1; i < len(text); i++ {
+		c := text[i]
+		switch {
+		case quote != 0:
+			if c == quote {
+				quote = 0
+			}
+			continue
+		case c == '"' || c == '\'':
+			quote = c
+			continue
+		case c == '{' || c == '[':
+			depth++
+			continue
+		case c == '}' && depth == 0, c == ',' && depth == 0:
+		case c == '}' || c == ']':
+			depth--
+			continue
+		default:
+			continue
+		}
+		if entry := strings.TrimSpace(text[start:i]); entry != "" {
+			key, _, found := strings.Cut(entry, ":")
+			if !found {
+				return nil, false
+			}
+			keys = append(keys, strings.Trim(strings.TrimSpace(key), `"'`))
+		}
+		start = i + 1
+	}
+	return keys, true
 }
