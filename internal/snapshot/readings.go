@@ -188,7 +188,14 @@ const syntaxErrorPattern = "\n(ERROR) @error\n(MISSING) @error\n"
 //
 // lasting is false for a failure of the moment (parse.ErrUnavailable): such a reading answers this question and is not
 // kept, so a later question reads the file again.
-func (rs *Readings) read(language conventions.Language, grammar string, content []byte, w wanted) (r reading, lasting bool) {
+func (rs *Readings) read(language conventions.Language, grammar string, content []byte, w wanted) (reading, bool) {
+	r, lasting := rs.readFile(language, grammar, content, w)
+	r.statements = reachableStatements(language, content, r.statements) // a branch no build reads holds no import
+	return r, lasting
+}
+
+// readFile is read before its literal conditions are applied.
+func (rs *Readings) readFile(language conventions.Language, grammar string, content []byte, w wanted) (r reading, lasting bool) {
 	if grammar == "" {
 		return readByText(language, content), true
 	}

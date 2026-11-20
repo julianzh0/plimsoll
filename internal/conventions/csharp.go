@@ -49,6 +49,7 @@ var (
 func csharpImports() Imports {
 	return Imports{
 		Relative:    NoRelative,
+		Conditions:  &Conditions{True: []string{"true"}, False: []string{"false"}, ElseIf: []string{"elif"}},
 		Prefix:      Prefix{Format: DeclaredNamespaces, Projects: dotnetProject, Required: true},
 		Target:      FolderTarget,
 		PackageLine: csNamespace,

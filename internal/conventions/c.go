@@ -16,8 +16,7 @@ var (
 	// comment marker inside one starts no comment.
 	cComments = regexp.MustCompile(`"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|//[^\n]*|/\*(?:[^*]|\*+[^*/])*\*+/`)
 	// cIncludeQuoted is an include in quotes: looked for beside the including file first, then in the include folders.
-	// NOTE: an include under #if is read whatever its condition, so the includes of every platform and option count.
-	// Upgrade: evaluate the conditions for the flags a build file names.
+	// An include under #if with any but a literal condition is read, so the includes of every platform and option count.
 	cIncludeQuoted = regexp.MustCompile(`(?m)^[ \t]*#[ \t]*include[ \t]*"(?P<spec>[^"\n]+)"`)
 	// cIncludeAngled is an include in angle brackets: looked for in the include folders only. The target keeps its
 	// brackets, so the two forms are told apart.
@@ -30,9 +29,11 @@ var (
 // which no file includes.
 func cFamily(name string, extensions, units []string) Language {
 	declarations, unitQuery, functions, macros, strings := cDeclarations, cUnits, cFunctions(), cMacros(), PlainStrings
+	conditions := &Conditions{True: []string{"1"}, False: []string{"0"}, ElseIf: []string{"elif", "elifdef", "elifndef"}}
 	if name == "cpp" {
 		declarations, unitQuery = declarations+cppDeclarations, unitQuery+cppUnits
 		functions, macros, strings = cppFunctions(), cppMacros(), CppRawStrings
+		conditions.True, conditions.False = []string{"1", "true"}, []string{"0", "false"}
 	}
 	return Language{
 		Name: name, Extensions: extensions, Literals: cComments, Functions: functions, Macros: macros, Tokens: cLikeTokens(`(?:u8|[uUL])?(?:`+doubleQuoted+"|"+character+`)`, strings),
@@ -41,6 +42,7 @@ func cFamily(name string, extensions, units []string) Language {
 			Statements: []ImportForm{{Pattern: cIncludeQuoted}, {Pattern: cIncludeAngled}},
 			Computed:   ImportForm{Pattern: cIncludeComputed},
 			Relative:   NoRelative,
+			Conditions: conditions,
 			Prefix:     Prefix{File: "CMakeLists.txt", Members: true, Format: IncludeFolders, Folders: []string{"include"}},
 			Target:     FileTarget,
 			Implicit:   units,

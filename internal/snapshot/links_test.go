@@ -1165,3 +1165,39 @@ func TestBuildFollowsTypeScriptConfigsAndWorkspacePackages(t *testing.T) {
 		}
 	}
 }
+
+// A branch of an #if chain that a literal condition rules out holds no import; any other condition is read.
+func TestBuildSkipsImportsInBranchesNoBuildReads(t *testing.T) {
+	headers := map[string]string{"src/p.h": "", "src/q.h": "", "src/r.h": "", "src/s.h": ""}
+	for _, tc := range []struct {
+		name, file, text string
+		want             []string
+	}{
+		{"#if 0", "src/a.c", "#if 0\n#include \"p.h\"\n#endif\n#include \"q.h\"\n", []string{"src/q.h"}},
+		{"a chain with #elif 0", "src/a.c", "#if FLAG\n#include \"p.h\"\n#elif 0\n#include \"q.h\"\n#else\n#include \"r.h\"\n#endif\n",
+			[]string{"src/p.h", "src/r.h"}},
+		{"a true branch ends the chain", "src/a.cc", "#if true // always\n#include \"p.h\"\n#elif X\n#include \"q.h\"\n#else\n#include \"r.h\"\n#endif\n",
+			[]string{"src/p.h"}},
+		{"a chain inside an unreachable branch", "src/a.c", "#if 0\n#ifdef X\n#include \"p.h\"\n#else\n#include \"q.h\"\n#endif\n#else\n#include \"r.h\"\n#endif\n",
+			[]string{"src/r.h"}},
+		{"a continued condition", "src/a.c", "#if \\\n  0\n#include \"p.h\"\n#endif\n#include \"s.h\"\n", []string{"src/s.h"}},
+		{"true and false are no literals in C", "src/a.c", "#if false\n#include \"p.h\"\n#endif\n", []string{"src/p.h"}},
+	} {
+		files := maps.Clone(headers)
+		files[tc.file] = tc.text
+		var got []string
+		for _, l := range linksOf(t, files).List {
+			got = append(got, l.To)
+		}
+		if !slices.Equal(got, tc.want) {
+			t.Errorf("%s: links to %q, want %q", tc.name, got, tc.want)
+		}
+	}
+	csharp := linksOf(t, map[string]string{
+		"src/A.cs": "namespace Acme.A;\n", "src/B.cs": "namespace Acme.B;\n",
+		"app/P.cs": "#if false\nusing Acme.A;\n#else\nusing Acme.B;\n#endif\n",
+	})
+	if want := []snapshot.Link{folderLink("app/P.cs", 4, "src", "src/B.cs")}; !reflect.DeepEqual(csharp.List, want) {
+		t.Errorf("C# under #if false: List = %+v, want %+v", csharp.List, want)
+	}
+}

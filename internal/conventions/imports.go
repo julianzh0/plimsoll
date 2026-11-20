@@ -25,6 +25,8 @@ type Imports struct {
 	// Grouped is a target that may group paths in nested braces: "a::{b, c::{d, e}}" names a::b, a::c::d and
 	// a::c::e, each one import.
 	Grouped bool
+	// Conditions are the literal conditions of the entry's #if chains; nil when it has none.
+	Conditions *Conditions
 	// ModuleKeyword opens a module written in braces ("mod name { … }"), looked for by the token scanner inside the
 	// stretches the grammar keeps as tokens (macro bodies); "" for none.
 	ModuleKeyword string
@@ -118,4 +120,11 @@ type Candidates struct {
 type Swap struct {
 	From string
 	To   []string
+}
+
+// Conditions are the conditions an entry's #if chains take as literal: a branch whose condition is one of False is
+// never read; one of True is read and makes the later branches of its chain unreachable; any other is read and leaves
+// them reachable. ElseIf are the directives that open a later branch with a condition of its own.
+type Conditions struct {
+	True, False, ElseIf []string
 }
