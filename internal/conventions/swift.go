@@ -11,7 +11,6 @@ func swiftLanguage() Language {
 		Library: &Library{Manifest: "Package.swift", Is: regexp.MustCompile(`\.library\(`)},
 		Imports: Imports{
 			Relative:   NoRelative,
-			Conditions: &Conditions{True: []string{"true"}, False: []string{"false"}, ElseIf: []string{"elseif"}},
 			Prefix:     Prefix{File: "Package.swift", Format: SwiftTargets, Required: true},
 			Target:     FolderTarget,
 			FolderTree: true,
@@ -24,8 +23,8 @@ func swiftLanguage() Language {
 
 // swiftQuery reads an import of a module (its attributes, access level and the kind of one imported symbol are no
 // part of the target, which is the module, the first name).
-// An import under #if with any but a literal condition is read, so a platform's or a trait's imports count on every
-// side.
+// An import under #if is read whatever its condition, so a platform's or a trait's imports count on every side: the
+// platform and the package's traits decide which branch is taken.
 const swiftQuery = `
 (import_declaration (identifier . (simple_identifier) @spec)) @import
 `

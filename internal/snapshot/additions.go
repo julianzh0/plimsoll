@@ -3,7 +3,6 @@ package snapshot
 import (
 	"cmp"
 	"path"
-	"regexp"
 	"slices"
 	"strings"
 	"unicode"
@@ -125,7 +124,7 @@ func additions(rules conventions.Rules, changes []Change, now Tree, atBasePath m
 		library := inLibrary(language.Library, byFolder, content, change.Path)
 		for _, d := range r.declarations {
 			if d.kind == 0 || d.implicit || atBase[change.Path][d.name] || movedHere(language.Name, d.name) || !listable(rules.Additions, d.name) ||
-				loadedByConvention(language, tracked, content, change.Path, d.name) || d.exported && library {
+				loadedByConvention(language, tracked, change.Path, d.name) || d.exported && library {
 				continue
 			}
 			found = append(found, Addition{Path: change.Path, Name: d.name, Kind: d.kind})
@@ -259,7 +258,7 @@ func wordsFile(rules conventions.Rules, filePath string) bool {
 
 // loadedByConvention says whether a framework of the language loads a declaration by where its file lies or what it is
 // called.
-func loadedByConvention(language conventions.Language, tracked map[string]bool, content map[string][]byte, filePath, name string) bool {
+func loadedByConvention(language conventions.Language, tracked map[string]bool, filePath, name string) bool {
 	return slices.ContainsFunc(language.Loaded, func(c conventions.Convention) bool {
 		if c.File != "" && !nameMatches(c.File, filePath) {
 			return false
@@ -273,11 +272,7 @@ func loadedByConvention(language conventions.Language, tracked map[string]bool, 
 			return true
 		}
 		for folder := path.Dir(filePath); ; folder = path.Dir(folder) {
-			if i := slices.IndexFunc(c.Beside, func(file string) bool { return tracked[path.Join(folder, file)] }); i >= 0 {
-				config := withoutComments(cCommentsOnly(), string(content[path.Join(folder, c.Beside[i])]))
-				if dirs, literal := literalDirs(c.Dirs, []byte(config)); literal {
-					return slices.ContainsFunc(dirs, func(dir string) bool { _, in := under(filePath, path.Join(folder, dir)); return in })
-				}
+			if slices.ContainsFunc(c.Beside, func(file string) bool { return tracked[path.Join(folder, file)] }) {
 				below := strings.TrimPrefix(path.Dir(filePath), folder)
 				return c.Folder == "" || slices.Contains(strings.Split(below, "/"), c.Folder)
 			}
@@ -310,28 +305,4 @@ func inLibrary(library *conventions.Library, byFolder map[string][]string, conte
 			return false
 		}
 	}
-}
-
-// literalDirs are the folders a configuration's literal list names; literal is false when the pattern finds no list or
-// the list holds anything but texts.
-func literalDirs(pattern *regexp.Regexp, config []byte) (dirs []string, literal bool) {
-	if pattern == nil {
-		return nil, false
-	}
-	m := pattern.FindSubmatch(config)
-	if m == nil {
-		return nil, false
-	}
-	for item := range strings.SplitSeq(string(m[1]), ",") {
-		item = strings.TrimSpace(item)
-		if item == "" {
-			continue
-		}
-		unquoted := strings.Trim(item, "\"'`")
-		if len(unquoted) != len(item)-2 || strings.ContainsAny(unquoted, "\"'`$") {
-			return nil, false
-		}
-		dirs = append(dirs, unquoted)
-	}
-	return dirs, true
 }

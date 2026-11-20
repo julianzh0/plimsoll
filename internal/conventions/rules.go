@@ -482,8 +482,6 @@ type Language struct {
 	// declarations) by the entry's text patterns instead: for a language whose files the grammar often misreads
 	// (macros), the patterns read every line on its own. Its functions still come from the tree.
 	LineReadWhenBroken bool
-	// MacroNames learns, per side, the attribute macros the repository defines; nil for none.
-	MacroNames *MacroNames
 	// Macros rewrite, in a copy of a file whose tree holds an error, what the grammar cannot read as a macro is used
 	// (FMT_CONSTEXPR void f(), _In_ const char* p, LIST_FOREACH(x, l, link)); the function walk reads that copy for the
 	// functions it could not read as written. None for a language without a preprocessor.

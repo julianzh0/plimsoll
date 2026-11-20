@@ -12,12 +12,12 @@ func typescriptLanguage() Language {
 		Imports: typescriptImports(), Grammar: "tsx", GrammarBySuffix: map[string]string{".ts": "typescript"},
 		Query: typescriptQuery, Declarations: typescriptDeclarations,
 		Units: typescriptUnits, LayoutCode: LayoutCode{LineBreaks: true},
-		// trigger.dev finds tasks in the folders its config's dirs names, and in folders named trigger when it sets
-		// none (https://trigger.dev/docs/config/config-file, read 2026-11-17).
+		// trigger.dev finds tasks in folders named trigger when its config sets no dirs
+		// (https://trigger.dev/docs/config/config-file, read 2026-11-17).
+		// A dirs entry of trigger.config is not read: the tasks are taken from the trigger folders.
 		Loaded: []Convention{{
 			Beside: []string{"trigger.config.ts", "trigger.config.js", "trigger.config.mjs", "trigger.config.cjs", "trigger.config.mts"},
 			Folder: "trigger",
-			Dirs:   regexp.MustCompile(`\bdirs\s*:\s*\[([^\]]*)\]`),
 		}},
 		Library: &Library{Manifest: "package.json", Is: regexp.MustCompile(`"exports"\s*:`), Not: regexp.MustCompile(`"private"\s*:\s*true`)},
 	}

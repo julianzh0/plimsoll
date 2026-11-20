@@ -16,7 +16,8 @@ var (
 	// comment marker inside one starts no comment.
 	cComments = regexp.MustCompile(`"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|//[^\n]*|/\*(?:[^*]|\*+[^*/])*\*+/`)
 	// cIncludeQuoted is an include in quotes: looked for beside the including file first, then in the include folders.
-	// An include under #if with any but a literal condition is read, so the includes of every platform and option count.
+	// An include under #if is read whatever its condition, so the includes of every platform and option count: the
+	// build's flags decide which branch is taken.
 	cIncludeQuoted = regexp.MustCompile(`(?m)^[ \t]*#[ \t]*include[ \t]*"(?P<spec>[^"\n]+)"`)
 	// cIncludeAngled is an include in angle brackets: looked for in the include folders only. The target keeps its
 	// brackets, so the two forms are told apart.
@@ -29,30 +30,17 @@ var (
 // which no file includes.
 func cFamily(name string, extensions, units []string) Language {
 	declarations, unitQuery, functions, macros, strings := cDeclarations, cUnits, cFunctions(), cMacros(), PlainStrings
-	conditions := &Conditions{True: []string{"1"}, False: []string{"0"}, ElseIf: []string{"elif", "elifdef", "elifndef"}}
 	if name == "cpp" {
 		declarations, unitQuery = declarations+cppDeclarations, unitQuery+cppUnits
 		functions, macros, strings = cppFunctions(), cppMacros(), CppRawStrings
-		conditions.True, conditions.False = []string{"1", "true"}, []string{"0", "false"}
 	}
 	return Language{
 		Name: name, Extensions: extensions, Literals: cComments, Functions: functions, Macros: macros, Tokens: cLikeTokens(`(?:u8|[uUL])?(?:`+doubleQuoted+"|"+character+`)`, strings),
 		Grammar: name, Query: cQuery, Declarations: declarations, Units: unitQuery, Peers: HeaderPeers, LineReadWhenBroken: true,
-		MacroNames: &MacroNames{
-			Attributes:       []string{"__attribute__((", "__declspec(", "[[", "inline", "static", "extern", "constexpr", "noexcept", "export"},
-			DeclarationStart: `(?m)(?:^[ \t]*|\b(?:static|inline|constexpr|virtual|explicit|const|extern|friend)[ \t]+|>[ \t]*)`,
-			Define:           regexp.MustCompile(`^[ \t]*#[ \t]*define[ \t]+([A-Za-z_][A-Za-z0-9_]*)(\([^)]*\))?[ \t]*(.*)$`),
-			// a type a declaration names: struct, class, enum or union and its name before a body, a semicolon or a
-			// base list (class EXPORT Widget names Widget, not EXPORT), using N =, and typedef … N;
-			Type: regexp.MustCompile(`\b(?:struct|class|enum(?:[ \t]+class)?|union)[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*[{;:]|` +
-				`\busing[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*=|\btypedef\b[^;{]*?\b([A-Za-z_][A-Za-z0-9_]*)[ \t]*;`),
-			Shape: regexp.MustCompile(`^[A-Z][A-Z0-9]*_[A-Z0-9_]+$`),
-		},
 		Imports: Imports{
 			Statements: []ImportForm{{Pattern: cIncludeQuoted}, {Pattern: cIncludeAngled}},
 			Computed:   ImportForm{Pattern: cIncludeComputed},
 			Relative:   NoRelative,
-			Conditions: conditions,
 			Prefix:     Prefix{File: "CMakeLists.txt", Members: true, Format: IncludeFolders, Folders: []string{"include"}},
 			Target:     FileTarget,
 			Implicit:   units,
@@ -139,10 +127,9 @@ func cLoopMacro() MacroRule {
 //   - a loop macro, *_FOREACH or *_FOR_EACH, read as while: its arguments are one condition (LIST_FOREACH(x, l, link));
 //   - GLib's cleanup attributes and types, type-definition and attribute macros, and assertions that take an operator.
 //
-// These are conventions, not rules of the language. The repository's own #define lines refine them per side
-// (MacroNames): a name defined as an attribute is blanked whatever its spelling, and a capitalised name the code
-// declares as a type, or defines as something else, is left as written. What a macro defined under a condition, or
-// outside the repository, stands for is not known.
+// These are conventions, not rules of the language: a capitalised type or constant written where an attribute stands
+// is blanked as well, which only the functions that could not be read as written ever see. Other frameworks' macros
+// are not rewritten; what a macro stands for is known only after preprocessing.
 func cMacros() []MacroRule {
 	return slices.Concat(cDeclarationMacros(), []MacroRule{cLoopMacro()}, glibMacros())
 }
@@ -176,16 +163,4 @@ func glibMacros() []MacroRule {
 		{Pattern: regexp.MustCompile(`\b(?P<macro>G_GNUC_\w+(?:\s*\([^()]*\))?|G_BEGIN_DECLS|G_END_DECLS)`)},
 		{Pattern: regexp.MustCompile(`\b(?P<macro>g_assert_cmp\w+\s*\((?:[^()]|\([^()]*\))*\)\s*;)`)},
 	}
-}
-
-// MacroNames is how an entry learns, per side, what the repository's own macros stand for: a name defined, outside
-// any condition but an include guard, by exactly one file as nothing or as a text that starts with one of Attributes
-// is an attribute, blanked where DeclarationStart matches before it; a name the code declares as a type, or one file
-// defines as something else, is no attribute and stays as written.
-type MacroNames struct {
-	Attributes       []string
-	DeclarationStart string
-	Define           *regexp.Regexp // a #define line: its name, its parameters and its body
-	Type             *regexp.Regexp // a type declaration; its name is the first group that matched
-	Shape            *regexp.Regexp // the names the shared rules blank as attributes by convention
 }

@@ -14,7 +14,7 @@ import (
 // alias (using N = A.B) names A.B when it is declared, else A. One that no tracked file declares is outside when it
 // only holds declared namespaces; it is the project's own, and not found, when it begins with the name of a tracked
 // project file; else it is outside. RootNamespace in a project file names embedded resources, not code: not read.
-// A using line under #if with any but a literal condition is read: every such branch is.
+// A using line under an inactive #if is read, as every branch is: the build's defines decide which is taken.
 func declaredNamespaces(language conventions.Language, content map[string][]byte, tracked map[string]bool, readings map[string]reading) prefix {
 	imports := language.Imports
 	declared := imports.PackageLine.SubexpIndex("package")
