@@ -294,3 +294,34 @@ func TestNoticesNameEveryRedistributedComponent(t *testing.T) {
 		}
 	}
 }
+
+// The setup page holds the README's install and connect commands, unchanged and in the same order, so an agent that
+// follows the page runs what the README documents. The paste line ("text") is the README's own.
+func TestTheSetupPageCarriesTheReadmeCommands(t *testing.T) {
+	blocks := func(content []byte, err error, from, to string) []string {
+		if err != nil {
+			t.Fatal(err)
+		}
+		text := string(content)
+		if from != "" {
+			start, end := strings.Index(text, from), strings.Index(text, to)
+			if start < 0 || end < start {
+				t.Fatalf("the document lacks the part from %q to %q", from, to)
+			}
+			text = text[start:end]
+		}
+		var found []string
+		for i, part := range strings.Split(text, "```")[1:] {
+			if i%2 == 0 && !strings.HasPrefix(part, "text\n") {
+				found = append(found, part)
+			}
+		}
+		return found
+	}
+	readme, err := os.ReadFile("../../README.md")
+	page, pageErr := os.ReadFile("../../docs/agent-setup.md")
+	readmeBlocks, pageBlocks := blocks(readme, err, "## Install", "## Tools"), blocks(page, pageErr, "## 2. Install and connect", "## 3.")
+	if !slices.Equal(pageBlocks, readmeBlocks) {
+		t.Errorf("docs/agent-setup.md step 2 blocks:\n%q\nwant the README's install and connect blocks:\n%q", pageBlocks, readmeBlocks)
+	}
+}

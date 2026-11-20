@@ -20,8 +20,11 @@ type DeclaredValues struct {
 	Now, Before      []string
 	Whole            bool     // a whole table whose keys are the values; Key is then the table's name
 	Hidden           []string // values compared but never printed: identifiers that are no plain names
-	Compared         bool
-	UnreadAtBase     bool
+	// Ordered says the order of the table's entries decides what they do; OrderChanged that it changed: the entries
+	// both sides name stand in another order.
+	Ordered, OrderChanged bool
+	Compared              bool
+	UnreadAtBase          bool
 }
 
 // ownFile is what one side's own file says.
@@ -35,6 +38,7 @@ type ownFile struct {
 	problems   []string            // what the file says that is not read: phrases, sorted, each once
 	ack        acknowledged        // its acknowledged table
 	tracked    []string            // the tracked paths of either side, against which a widened value is checked
+	tests      testsTable          // its tests table
 }
 
 // acknowledged is what one side's acknowledged table says: the identifiers in their form, sorted, those whose entry
@@ -121,7 +125,7 @@ func readOwnFile(rules conventions.Rules, content map[string][]byte, tracked []s
 		o.unreadable, o.problems = true, []string{notTOML(err) + ", so none of it is applied and its import rules were not checked"}
 		return o
 	}
-	known := map[string]bool{rules.LimitsTable: true, rules.AcknowledgedTable: true}
+	known := map[string]bool{rules.LimitsTable: true, rules.AcknowledgedTable: true, rules.TestsTable: true}
 	for _, k := range rules.OwnKeys {
 		known[k.Table] = true
 	}
@@ -138,6 +142,12 @@ func readOwnFile(rules conventions.Rules, content map[string][]byte, tracked []s
 			continue
 		}
 		found = true
+		if name == rules.TestsTable {
+			for _, kind := range tomlKeyOrder(file, name, table) {
+				o.tests.read(name, kind, table[kind])
+			}
+			continue
+		}
 		for _, key := range slices.Sorted(maps.Keys(table)) {
 			value := table[key]
 			switch name {
@@ -162,6 +172,7 @@ func readOwnFile(rules conventions.Rules, content map[string][]byte, tracked []s
 	if !found {
 		problem("it holds no table plimsoll reads")
 	}
+	o.problems = append(o.problems, o.tests.problems(rules.TestsTable)...)
 	slices.Sort(o.problems)
 	o.problems = slices.Compact(o.problems)
 	return o
@@ -299,6 +310,12 @@ func declaredValues(rules conventions.Rules, now, before ownFile) []DeclaredValu
 			Table: rules.AcknowledgedTable, Key: rules.AcknowledgedTable, Name: rules.AcknowledgedName,
 			Now: nowIDs, Before: beforeIDs, Hidden: slices.Concat(now.ack.wideAll, before.ack.wideAll),
 			Whole: true, Compared: !now.unreadable && !before.unreadable,
+		})
+	}
+	if nowPairs, beforePairs := now.tests.pairs(), before.tests.pairs(); len(nowPairs) > 0 || len(beforePairs) > 0 {
+		declared = append(declared, DeclaredValues{
+			Table: rules.TestsTable, Key: rules.TestsTable, Name: rules.TestKindsName, Now: nowPairs, Before: beforePairs,
+			Whole: true, Ordered: true, Compared: !now.unreadable && !before.unreadable, OrderChanged: orderChanged(now.tests.names(), before.tests.names()),
 		})
 	}
 	return declared

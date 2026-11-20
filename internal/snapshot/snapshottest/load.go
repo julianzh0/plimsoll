@@ -45,6 +45,18 @@ func Files(base, now map[string]string) snapshot.Source {
 	return source
 }
 
+// Lacking is a source as a partial clone gives it: the base content of each changed path in lacking is not there, and
+// every path in lacking or inHistory is missing, as one an older commit lacks is.
+func Lacking(source snapshot.Source, lacking, inHistory []string) snapshot.Source {
+	for i, entry := range source.Before {
+		if slices.Contains(lacking, entry.Path) {
+			source.Before[i].Content = nil
+		}
+	}
+	source.Missing = slices.Sorted(slices.Values(slices.Concat(lacking, inHistory)))
+	return source
+}
+
 // Commit is a commit that adds one line to each path.
 func Commit(id string, paths ...string) snapshot.Commit {
 	commit := snapshot.Commit{ID: id}

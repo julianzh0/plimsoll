@@ -1,6 +1,8 @@
 package snapshot_test
 
 import (
+	"fmt"
+	"math/rand/v2"
 	"reflect"
 	"slices"
 	"strings"
@@ -257,4 +259,163 @@ func TestBuildReadsTheImportRulesOfTheOwnFile(t *testing.T) {
 	if !reflect.DeepEqual(changed.Declarations, want) {
 		t.Errorf("a rule changed: Declarations %+v, want %+v", changed.Declarations, want)
 	}
+}
+
+func TestBuildReadsTheTestsTableOfTheOwnFile(t *testing.T) {
+	long := strings.Repeat("k", 201)
+	cases := []struct {
+		name     string
+		file     string
+		kinds    []snapshot.TestKind
+		problems []string
+	}{
+		{"kinds in file order, a list over lines with a comment, a quoted name",
+			"[tests]\nintegration = [\"**/*_integration_test.go\",\n  \"tests/integration/**\", # the slow ones\n]\n\"e2e\" = ['e2e/**']\nunit = [\"**/*_test.go\", \"tests/**\"]\n",
+			[]snapshot.TestKind{{Name: "integration", Patterns: []string{"**/*_integration_test.go", "tests/integration/**"}},
+				{Name: "e2e", Patterns: []string{"e2e/**"}}, {Name: "unit", Patterns: []string{"**/*_test.go", "tests/**"}}}, nil},
+		{"kinds in file order also as dotted keys",
+			"tests.unit = [\"tests/**\"]\ntests.e2e = [\"e2e/**\"]\n",
+			[]snapshot.TestKind{{Name: "unit", Patterns: []string{"tests/**"}}, {Name: "e2e", Patterns: []string{"e2e/**"}}}, nil},
+		{"kinds in file order in an inline table",
+			"tests = { unit = [\"tests/**\"], e2e = [\"e2e/**\"] }\n",
+			[]snapshot.TestKind{{Name: "unit", Patterns: []string{"tests/**"}}, {Name: "e2e", Patterns: []string{"e2e/**"}}}, nil},
+		{"names outside their form",
+			"[tests]\n\"a=b\" = [\"x/**\"]\n'a\"b' = [\"x/**\"]\n\" unit \" = [\"x/**\"]\n" + long + " = [\"x/**\"]\n",
+			nil, []string{"`[tests]`: 4 kind names are no plain names; they are not applied"}},
+		{"a value that is no list of text, a table, an empty list",
+			"[tests]\nbad = {a = 1}\nunit = [\"a/**\"]\ne2e = \"e2e/**\"\nmixed = [\"x/**\", 1]\nnone = []\napi.integration = [\"x/**\"]\n",
+			[]snapshot.TestKind{{Name: "unit", Patterns: []string{"a/**"}}},
+			[]string{"`[tests]` `api` is not a list of text", "`[tests]` `bad` is not a list of text", "`[tests]` `e2e` is not a list of text",
+				"`[tests]` `mixed` is not a list of text"}},
+		{"a name set twice is no valid TOML, so nothing of the file applies",
+			"[tests]\nunit = [\"a/**\"]\nunit = [\"b/**\"]\n",
+			nil, []string{"it is not valid TOML at line 3, so none of it is applied and its import rules were not checked"}},
+		{"patterns outside their form are counted per kind",
+			"[tests]\nunit = [\"tests/**\", \"src/**.ts\", \"e2e/\", \"tests/**\"]\n",
+			[]snapshot.TestKind{{Name: "unit", Patterns: []string{"tests/**"}, Unusable: 2}}, nil},
+	}
+	for _, tc := range cases {
+		s := snapshot.Build(snapshottest.Files(nil, map[string]string{"src/a.ts": "a\n", ".plimsoll.toml": tc.file}), conventions.Default(), snapshottest.Readings(t))
+		var kinds []snapshot.TestKind
+		for _, k := range s.TestKinds.Kinds {
+			kinds = append(kinds, snapshot.TestKind{Name: k.Name, Patterns: k.Patterns, Unusable: k.Unusable})
+		}
+		if !reflect.DeepEqual(kinds, tc.kinds) || !slices.Equal(s.OwnFileProblems, tc.problems) {
+			t.Errorf("%s: kinds %+v, problems %q; want %+v, %q", tc.name, kinds, s.OwnFileProblems, tc.kinds, tc.problems)
+		}
+	}
+
+	var many strings.Builder
+	many.WriteString("[tests]\n")
+	for k := range 51 {
+		fmt.Fprintf(&many, "k%d = [\"a%d/**\", \"b%d/**\"]\n", k, k, k)
+	}
+	capped := snapshot.Build(snapshottest.Files(nil, map[string]string{"src/a.ts": "a\n", ".plimsoll.toml": many.String()}), conventions.Default(), snapshottest.Readings(t))
+	kinds := capped.TestKinds.Kinds
+	if last := kinds[len(kinds)-1]; len(kinds) != 51 || len(last.Patterns) != 0 || last.Over != 2 || kinds[49].Over != 0 || len(capped.OwnFileProblems) != 0 {
+		t.Errorf("102 patterns: %d kinds, the last %+v, problems %q; want 51 kinds, the last with its 2 patterns over the cap", len(kinds), last, capped.OwnFileProblems)
+	}
+	if pairs := capped.Declarations[0].Now; len(pairs) != 102 {
+		t.Errorf("102 patterns: %d declared pairs, want every pattern declared, the cap only limits matching", len(pairs))
+	}
+
+	ordered := snapshot.Build(snapshottest.Files(
+		map[string]string{"src/a.ts": "a\n", ".plimsoll.toml": "[tests]\nunit = [\"tests/**\", \"**/*_test.go\"]\ne2e = [\"e2e/**\"]\n"},
+		map[string]string{"src/a.ts": "a\n", ".plimsoll.toml": "[tests]\ne2e = [\"e2e/**\"]\nunit = [\"**/*_test.go\", \"tests/**\"]\nsmoke = [\"smoke/**\"]\n"}),
+		conventions.Default(), snapshottest.Readings(t))
+	want := []snapshot.DeclaredValues{{Table: "tests", Key: "tests", Name: "test kind patterns",
+		Now:    []string{"e2e: e2e/**", "unit: **/*_test.go", "unit: tests/**", "smoke: smoke/**"},
+		Before: []string{"unit: **/*_test.go", "unit: tests/**", "e2e: e2e/**"}, Whole: true, Ordered: true, Compared: true, OrderChanged: true}}
+	if !reflect.DeepEqual(ordered.Declarations, want) {
+		t.Errorf("kinds reordered and one added: Declarations %+v, want %+v", ordered.Declarations, want)
+	}
+	if only := snapshot.Build(snapshottest.Files(nil, map[string]string{"src/a.ts": "a\n", ".plimsoll.toml": "[tests]\nunit = [\"tests/**\"]\n"}),
+		conventions.Default(), snapshottest.Readings(t)); len(only.OwnFileProblems) != 0 {
+		t.Errorf("a file holding only [tests]: problems %q, want none", only.OwnFileProblems)
+	}
+}
+
+// Property: a tests table written in any of TOML's ways (quoted or bare names, either quote, lists over lines, comments)
+// reads back as the kinds it was written from, in order.
+func TestTheTestsTableReadsBackWhatWasWritten(t *testing.T) {
+	random := rand.New(rand.NewPCG(70, 7))
+	word := func(alphabet string) string {
+		b := make([]byte, 1+random.IntN(8))
+		for i := range b {
+			b[i] = alphabet[random.IntN(len(alphabet))]
+		}
+		return string(b)
+	}
+	for range 300 {
+		var file strings.Builder
+		file.WriteString("[tests]\n")
+		var want []snapshot.TestKind
+		seen := map[string]bool{}
+		for range 1 + random.IntN(5) {
+			name := word("abzAZ09_-")
+			if seen[name] {
+				continue
+			}
+			seen[name] = true
+			kind := snapshot.TestKind{Name: name}
+			for range 1 + random.IntN(4) {
+				segments := make([]string, 1+random.IntN(4))
+				for i := range segments {
+					segments[i] = []string{"**", "*", "a" + word("abc._+-"), "*" + word("abc") + "?"}[random.IntN(4)]
+				}
+				kind.Patterns = appendOnce(kind.Patterns, strings.Join(segments, "/"))
+			}
+			quote := []string{"", "\"", "'"}[random.IntN(3)]
+			file.WriteString(quote + name + quote + " = [")
+			for i, p := range kind.Patterns {
+				if i > 0 {
+					file.WriteString([]string{", ", ",\n  ", ", # note\n"}[random.IntN(3)])
+				}
+				q := []string{"\"", "'"}[random.IntN(2)]
+				file.WriteString(q + p + q)
+			}
+			file.WriteString([]string{"]\n", ",\n]\n", "] # done\n"}[random.IntN(3)])
+			want = append(want, kind)
+		}
+		s := snapshot.Build(snapshottest.Files(nil, map[string]string{"src/a.ts": "a\n", ".plimsoll.toml": file.String()}), conventions.Default(), snapshottest.Readings(t))
+		var got []snapshot.TestKind
+		for _, k := range s.TestKinds.Kinds {
+			got = append(got, snapshot.TestKind{Name: k.Name, Patterns: k.Patterns})
+		}
+		if !reflect.DeepEqual(got, want) || len(s.OwnFileProblems) != 0 {
+			t.Fatalf("reading\n%s\ngave %+v, problems %q; want %+v", file.String(), got, s.OwnFileProblems, want)
+		}
+	}
+}
+
+func appendOnce(values []string, value string) []string {
+	if slices.Contains(values, value) {
+		return values
+	}
+	return append(values, value)
+}
+
+func FuzzTheOwnFile(f *testing.F) {
+	for _, seed := range []string{
+		"[tests]\nintegration = [\"**/*_integration_test.go\",\n  \"tests/integration/**\", # x\n]\n\"e2e\" = ['e2e/**']\n",
+		"[tests]\nbad = {a = 1\nunit = [\"tests/**\"]\n", "[tests]\n\"a=b\" = [\"x/**\"]\n'a\"b' = [\"x/**\"]\n",
+		"[layout]\ntest_folders = [\"checks\"]\n[acknowledged]\n\"links.cycle:a\" = \"x\"\n[imports]\nnever = [\"a -> b\"]\n",
+		"[limits]\nfile_lines = 1500\n[defaults]\nbase = \"main\"\n",
+	} {
+		f.Add(seed)
+	}
+	readings := snapshottest.Readings(f)
+	f.Fuzz(func(t *testing.T, own string) {
+		s := snapshot.Build(snapshottest.Files(nil, map[string]string{"tests/a_test.go": "package a\n", ".plimsoll.toml": own}), conventions.Default(), readings)
+		for _, k := range s.TestKinds.Kinds {
+			if !conventions.KindName(k.Name) {
+				t.Fatalf("kind name %q is outside its form", k.Name)
+			}
+			for _, p := range k.Patterns {
+				if _, usable := conventions.NewPathPattern(p); !usable {
+					t.Fatalf("pattern %q of %q is outside its form", p, k.Name)
+				}
+			}
+		}
+	})
 }

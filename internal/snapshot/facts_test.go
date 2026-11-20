@@ -19,7 +19,9 @@ func TestBuildReadsSettingNamesNeverValues(t *testing.T) {
 	if s.Now.Settings == nil || !reflect.DeepEqual(s.Now.Settings.Names, []string{"PORT", "DEBUG", "PORT"}) {
 		t.Fatalf("Build(.env.example).Now.Settings = %+v, want PORT, DEBUG, PORT", s.Now.Settings)
 	}
-	if printed := fmt.Sprintf("%+v", s); strings.Contains(printed, "8080") || strings.Contains(printed, "9090") {
+	byValue := s // the settings by value: a pointer's printed address can hold the digits searched for
+	byValue.Now.Settings = nil
+	if printed := fmt.Sprintf("%+v %+v", byValue, *s.Now.Settings); strings.Contains(printed, "8080") || strings.Contains(printed, "9090") {
 		t.Errorf("Build(.env.example) holds a setting's value: %s", printed)
 	}
 	if got := snapshot.Build(snapshottest.Files(nil, map[string]string{"src/a.ts": "x\n"}), conventions.Default(), snapshottest.Readings(t)).Now.Settings; got != nil {

@@ -2,9 +2,11 @@ package conventions
 
 import (
 	"bytes"
+	"math/rand/v2"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestTestDefinitionMatchesOnlyStatementStarts(t *testing.T) {
@@ -281,6 +283,127 @@ func TestNoteWordFindsWorkingNoteNames(t *testing.T) {
 	for _, c := range cases {
 		if word, found := rules.NoteWord(c.path); word != c.word || found != (c.word != "") {
 			t.Errorf("NoteWord(%q) = %q, %v; want %q, %v", c.path, word, found, c.word, c.word != "")
+		}
+	}
+}
+
+func TestPathPatternsMatchWholePathsFromTheRoot(t *testing.T) {
+	cases := []struct {
+		pattern, path string
+		matches       bool
+	}{
+		{"e2e/**", "e2e/login.spec.js", true}, {"e2e/**", "e2e/a/b/c.js", true}, {"e2e/**", "e2e", false},
+		{"e2e/**", "web/e2e/a.js", false}, {"**/*IT.java", "FooIT.java", true}, {"**/*IT.java", "a/b/FooIT.java", true},
+		{"**/*IT.java", "a/b/FooTest.java", false}, {"*.test.js", "a.test.js", true}, {"*.test.js", "src/a.test.js", false},
+		{"**/src/androidTest/**", "core/data/src/androidTest/kotlin/A.kt", true},
+		{"**/src/androidTest/**", "src/androidTest/A.kt", true}, {"**/src/androidTest/**", "core/src/test/A.kt", false},
+		{"packages/foo/**/*.integration.test.ts", "packages/foo/a.integration.test.ts", true},
+		{"packages/foo/**/*.integration.test.ts", "packages/foo/x/y/a.integration.test.ts", true},
+		{"packages/foo/**/*.integration.test.ts", "packages/bar/a.integration.test.ts", false},
+		{"**/*_integration_test.go", "internal/x/a_integration_test.go", true}, {"**/*_test.go", "a_integration_test.go", true},
+		{"spec/*Spec.js", "spec/lib/common.js", false}, {"t?st/**", "test/a.go", true}, {"t?st/**", "toast/a.go", false},
+		{"**", "any/path.go", true}, {"a/**/b/**/c.go", "a/x/b/y/z/c.go", true}, {"a/**/b/**/c.go", "a/x/y/c.go", false},
+		{"Tests/**", "tests/a.swift", false},
+	}
+	long := strings.Repeat("a", 200)
+	for _, value := range []string{long + "a", "", "e2e/", "/tests/**", "a//b", "./e2e/**", "a/../b", "src/**.ts", "tests/[ab]/**",
+		"**/*.{ts,tsx}", `e2e\**`, "!tests/**", "my tests/**", "café/**"} {
+		if _, usable := NewPathPattern(value); usable {
+			t.Errorf("NewPathPattern(%q) is usable, want not: it is outside the form", value)
+		}
+	}
+	if pattern, usable := NewPathPattern(long); !usable || pattern.Text() != long {
+		t.Errorf("NewPathPattern of 200 characters = %q, %v; want it as written", pattern.Text(), usable)
+	}
+	for _, c := range cases {
+		pattern, usable := NewPathPattern(c.pattern)
+		if !usable {
+			t.Fatalf("NewPathPattern(%q) is not usable", c.pattern)
+		}
+		if got := pattern.Match(c.path); got != c.matches {
+			t.Errorf("NewPathPattern(%q).Match(%q) = %v, want %v", c.pattern, c.path, got, c.matches)
+		}
+	}
+}
+
+// Property: a path always matches itself, and under any folder of it a pattern of "**/" and its rest; replacing a
+// segment by "*" keeps the match, and a different last segment loses it.
+func TestPathPatternsMatchTheirOwnPaths(t *testing.T) {
+	random := rand.New(rand.NewPCG(7, 70))
+	alphabet := "abcXY09._+-"
+	segment := func() string {
+		b := make([]byte, 1+random.IntN(6))
+		for i := range b {
+			b[i] = alphabet[random.IntN(len(alphabet))]
+		}
+		if s := string(b); s != "." && s != ".." {
+			return s
+		}
+		return "x"
+	}
+	for range 2000 {
+		parts := make([]string, 1+random.IntN(6))
+		for i := range parts {
+			parts[i] = segment()
+		}
+		path := strings.Join(parts, "/")
+		cut := random.IntN(len(parts))
+		starred := slices.Clone(parts)
+		starred[random.IntN(len(parts))] = "*"
+		other := slices.Clone(parts)
+		other[len(other)-1] += "~"
+		for _, c := range []struct {
+			pattern, path string
+			matches       bool
+		}{
+			{path, path, true}, {"**/" + strings.Join(parts[cut:], "/"), path, true},
+			{strings.Join(starred, "/"), path, true}, {path, strings.Join(other, "/"), false},
+		} {
+			pattern, usable := NewPathPattern(c.pattern)
+			if !usable || pattern.Match(c.path) != c.matches {
+				t.Fatalf("NewPathPattern(%q) usable %v, Match(%q) = %v; want usable, %v", c.pattern, usable, c.path, pattern.Match(c.path), c.matches)
+			}
+		}
+	}
+}
+
+func TestPathPatternMatchingStaysBoundedOnDeepMisses(t *testing.T) {
+	pattern, _ := NewPathPattern(strings.Repeat("**/a*/", 10) + "never.go")
+	deep := strings.Repeat("aaaa/", 60) + "other.go"
+	start := time.Now()
+	if pattern.Match(deep) {
+		t.Fatalf("Match(%q) = true, want false", deep)
+	}
+	if elapsed := time.Since(start); elapsed > 50*time.Millisecond {
+		t.Errorf("a deep miss against ten ** took %v, want well under 50ms", elapsed)
+	}
+}
+
+func FuzzPathPattern(f *testing.F) {
+	for _, seed := range []string{"e2e/**", "**/*IT.java", "**/src/androidTest/**", "a/**/b/**/c.go", "src/**.ts", "tests/[ab]/**", "", "**"} {
+		f.Add(seed, "a/b/c.go")
+	}
+	f.Fuzz(func(t *testing.T, text, path string) {
+		pattern, usable := NewPathPattern(text)
+		if !usable {
+			return
+		}
+		if pattern.Text() != text {
+			t.Fatalf("NewPathPattern(%q).Text() = %q, want the value as written", text, pattern.Text())
+		}
+		pattern.Match(path)
+	})
+}
+
+func TestOnlyALanguageWhoseQueryCapturesTestHoldsTestCode(t *testing.T) {
+	rust, _ := Default().LanguageOf("src/lib.rs")
+	golang, _ := Default().LanguageOf("a.go")
+	for _, tc := range []struct {
+		language Language
+		want     bool
+	}{{rust, true}, {golang, false}, {Language{Query: "(call) @testcase"}, false}, {Language{Query: "(mod) @test.end"}, true}} {
+		if got := tc.language.HoldsTestCode(); got != tc.want {
+			t.Errorf("Language{Name: %q}.HoldsTestCode() = %v, want %v", tc.language.Name, got, tc.want)
 		}
 	}
 }

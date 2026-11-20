@@ -79,6 +79,11 @@ only = ["src/domain -> src/shared"]         # code under the first folder import
 
 [acknowledged]                              # standing items reviewed and kept on purpose, each with a reason
 "process.planning-file:SPEC.md" = "a lasting specification, not a plan"
+
+[tests]                                     # your kinds of tests, by your own names; the first that matches wins
+integration = ["**/*_integration_test.go", "tests/integration/**"]
+e2e = ["e2e/**"]
+unit = ["**/*_test.go", "tests/**"]
 ```
 
 | Key | What it declares |
@@ -93,6 +98,7 @@ only = ["src/domain -> src/shared"]         # code under the first folder import
 | `files` under `[ignore]` | File names, with the same patterns as `test_files`, of files plimsoll leaves out wherever they lie |
 | an entry of `[acknowledged]` | A mark identifier exactly as an answer printed it, and a reason: a standing item with that identifier is listed under "Acknowledged" in `report` instead of "Standing", and `status` counts such items in one line. The item is still measured and counted; when it grows, or a new item gets its identifier, it shows as usual. Function marks never stand, so they are not acknowledged. The reason is required and never printed |
 | `never`, `only` under `[imports]` | Import rules, each `"<folder> -> <folder>"` (below) |
+| an entry of `[tests]` | A kind of test code by the repository's own name (letters, digits, `_`, `-`) and its path patterns from the root: `*` and `?` within one folder level, `**` for any depth (`e2e/**`, `**/*IT.java`). A test-code file belongs to the first kind listed that matches it; `report` counts each kind's test lines and the rest. A kind never makes a file test code: declare that in `[layout]` |
 | `base` | The branch, remote branch or tag a question without a base compares with. A remote branch is named with its remote (`origin/main`): `main` alone finds no remote branch. A branch of the name comes before a remote branch, and a remote branch before a tag |
 
 A declaration adds to the defaults and takes none away. The file switches no rule off: an acknowledged item is still
@@ -204,7 +210,7 @@ command = "plimsoll"
 **OpenCode**
 
 ```sh
-opencode mcp add plimsoll -- plimsoll
+opencode mcp add --global plimsoll -- plimsoll
 ```
 
 **Any other MCP client** (Claude Desktop, Cursor, Antigravity and others), in its server configuration:

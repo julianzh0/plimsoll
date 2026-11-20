@@ -187,24 +187,29 @@ func limitMarks(s snapshot.Snapshot) []answer.Mark {
 	return marks
 }
 
-// declarationMarks are the text keys of the repository's own file whose values differ, as sets, now and at the base.
+// declarationMarks are the text keys of the repository's own file whose values differ, as sets, now and at the base,
+// and the tests table when its kinds stand in another order.
 // A key not read on either side is not compared.
 func declarationMarks(s snapshot.Snapshot) []answer.Mark {
 	var marks []answer.Mark
 	for _, d := range s.Declarations {
 		added, removed := answer.Added(d.Before, d.Now), answer.Added(d.Now, d.Before)
-		if !d.Compared || len(added)+len(removed) == 0 {
+		if !d.Compared || len(added)+len(removed) == 0 && !d.OrderChanged {
 			continue
 		}
 		named := slices.DeleteFunc(slices.Clone(added), func(v string) bool { return slices.Contains(d.Hidden, v) })
 		slices.Sort(named)
 		before := float64(len(d.Before))
+		unit := d.Name
+		if d.OrderChanged {
+			unit += " and the order of the kinds"
+		}
 		marks = append(marks, answer.Mark{
 			ID:         answer.ID(name, ruleDeclarationChange, d.Key),
 			Change:     answer.New,
 			Subject:    answer.Subject{Kind: "file", Paths: []string{s.OwnFile}, Names: named, Unnamed: len(added) - len(named)},
 			Confidence: answer.Exact,
-			Measured:   answer.Measured{Value: float64(len(d.Now)), Before: &before, LimitSource: "any change", Unit: d.Name},
+			Measured:   answer.Measured{Value: float64(len(d.Now)), Before: &before, LimitSource: "any change", Unit: unit},
 			Hint:       declarationHint(d, s.OwnFile),
 		})
 	}

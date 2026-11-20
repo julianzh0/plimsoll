@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/pelletier/go-toml/v2"
+	"github.com/pelletier/go-toml/v2/unstable"
 
 	"github.com/julianzh0/plimsoll/internal/conventions"
 )
@@ -18,6 +19,55 @@ import (
 func decodeTOML(content []byte) (document map[string]any, err error) {
 	err = toml.Unmarshal(content, &document)
 	return document, err
+}
+
+// tomlKeyOrder is the keys of a table of a valid TOML file in the order the file writes them, read with the
+// decoder's own parser: under the table's header or a header below it, as `table.key` at the root, or in an inline
+// table. A key seen in none of these forms follows in sorted order, so every key of the decoded table comes once.
+func tomlKeyOrder(content []byte, name string, table map[string]any) []string {
+	var order []string
+	add := func(key string) {
+		if _, has := table[key]; has && !slices.Contains(order, key) {
+			order = append(order, key)
+		}
+	}
+	var parser unstable.Parser
+	parser.Reset(content)
+	var header []string
+	for parser.NextExpression() {
+		expression := parser.Expression()
+		if expression.Kind == unstable.Table || expression.Kind == unstable.ArrayTable {
+			header = keyParts(expression.Key())
+			if len(header) > 1 && header[0] == name {
+				add(header[1])
+			}
+		}
+		if expression.Kind != unstable.KeyValue {
+			continue
+		}
+		key := slices.Concat(header, keyParts(expression.Key()))
+		switch value := expression.Value(); {
+		case len(key) > 1 && key[0] == name:
+			add(key[1])
+		case len(key) == 1 && key[0] == name && value.Kind == unstable.InlineTable:
+			for entries := value.Children(); entries.Next(); {
+				add(keyParts(entries.Node().Key())[0])
+			}
+		}
+	}
+	for _, key := range slices.Sorted(maps.Keys(table)) {
+		add(key)
+	}
+	return order
+}
+
+// keyParts are the parts of a parsed key, unquoted.
+func keyParts(key unstable.Iterator) []string {
+	var parts []string
+	for key.Next() {
+		parts = append(parts, string(key.Node().Data))
+	}
+	return parts
 }
 
 // notTOML says why a file is no valid TOML: the line where decoding stopped, never the decoder's message.

@@ -2,6 +2,7 @@ package shape
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"testing"
@@ -474,5 +475,100 @@ func TestALockfileMatchedByTextIsNamed(t *testing.T) {
 	want := "`package-lock.json` is in a layout plimsoll does not read; its names were matched by text"
 	if n := slices.Index(f.NotAnalysed, want); n < 0 || slices.Contains(f.NotAnalysed[n+1:], want) {
 		t.Errorf("not analysed %q, want %q once", f.NotAnalysed, want)
+	}
+}
+
+func TestDeclaredTestKindsGetRowsThatAddUpToTheTestLines(t *testing.T) {
+	table := "[tests]\nintegration = [\"tests/integration/**\"]\nunit = [\"tests/**\"]\ne2e = [\"e2e/**\"]\nlate = [\"tests/integration/**\"]\n" +
+		"all = [\"**\", \"src/x[\", \"tests/\"]\nfolder = [\"tests/unit\"]\n"
+	base := map[string]string{
+		"src/a.rs": "fn a() {}\n#[cfg(test)]\nmod tests {\n    #[test]\n    fn t() {}\n}\n", "src/b.rs": snapshottest.Lines(40), ".plimsoll.toml": table,
+		"tests/unit/a.test.ts": "test(\"a\", () => {});\n" + snapshottest.Lines(2), "tests/integration/b.test.ts": "test(\"b\", () => {});\n",
+	}
+	now := maps.Clone(base)
+	delete(now, "tests/unit/a.test.ts")
+	now["tests/integration/c.test.ts"] = "test(\"c\", () => {});\n" + snapshottest.Lines(3)
+	findings := detect(t, snapshottest.Files(base, now), conventions.Default())
+	rows := map[string][2]float64{}
+	for _, s := range findings.Statistics {
+		if strings.HasPrefix(s.Name, "test lines of") {
+			before := -1.0
+			if s.Before != nil {
+				before = *s.Before
+			}
+			rows[s.Name+" "+s.Subject] = [2]float64{*s.Value, before}
+		}
+	}
+	testLines, _ := statistic(findings, "test lines", "")
+	want := map[string][2]float64{
+		"test lines of kind integration": {5, 1}, "test lines of kind unit": {0, 3},
+		"test lines of no declared kind ": {*testLines.Value - 5, *testLines.Before - 4},
+	}
+	if !maps.Equal(rows, want) || rows["test lines of no declared kind "][0] == 0 {
+		t.Errorf("kind rows %v, want %v (the remainder holds the Rust inline test lines)", rows, want)
+	}
+	for _, sentence := range []string{
+		"`.plimsoll.toml` `[tests]` `e2e`: `e2e/**` matches no tracked file; it is not used",
+		"`.plimsoll.toml` `[tests]` `late` owns no test code: test files it matches belong to `integration`, which comes before it in `[tests]`",
+		"`.plimsoll.toml` `[tests]` `all`: `**` matches 2 product code files; a kind labels test code only, so they are not counted",
+		"`.plimsoll.toml` `[tests]` `all`: 2 values are no path patterns; they are not used",
+		"`.plimsoll.toml` `[tests]` `folder`: `tests/unit` matches no tracked file; a folder's files are written `tests/unit/**`",
+	} {
+		if !slices.Contains(findings.NotAnalysed, sentence) {
+			t.Errorf("not analysed %q lacks %q", findings.NotAnalysed, sentence)
+		}
+	}
+	if _, found := statistic(findings, "tests", ""); found {
+		t.Errorf("the ratio is under its limit, so no split; kind rows show anyway: %+v", findings.Statistics)
+	}
+	if !slices.Contains(findings.Notes, "test kinds of `.plimsoll.toml` (`[tests]`) with the patterns that match their files, in order: `integration`: `tests/integration/**`; `unit`: `tests/**`") {
+		t.Errorf("notes %q lack the kinds with their patterns in use", findings.Notes)
+	}
+	partial := snapshottest.Lacking(snapshottest.Files(base, now), []string{"tests/unit/a.test.ts"}, nil)
+	for _, s := range detect(t, partial, conventions.Default()).Statistics {
+		known := s.Value != nil && s.Before != nil
+		if strings.HasPrefix(s.Name, "test lines of") && known == (s.Subject == "unit") {
+			t.Errorf("a partial clone lacks the base of a file of unit: row %+v, want only unit's lines now in its note and no change", s)
+		}
+	}
+	one := detect(t, snapshottest.Files(nil, map[string]string{"src/a.go": "package a\n", "tests/a_test.go": "package a\n",
+		"docs/x.md": "x\n", ".plimsoll.toml": "[tests]\nunit = [\"tests/**\", \"docs/**\", \"tests/a_test.go\", \"gone/**\"]\nall = [\"src/**\", \"**\"]\n"}), conventions.Default())
+	if !slices.Contains(one.Notes, "test kinds of `.plimsoll.toml` (`[tests]`) with the patterns that match their files, in order: `unit`: `tests/**`, `tests/a_test.go`") {
+		t.Errorf("notes %q lack both patterns of unit that match its file", one.Notes)
+	}
+	var many strings.Builder
+	many.WriteString("[tests]\nunit = [\"tests/**\"]\n")
+	for k := range 100 {
+		fmt.Fprintf(&many, "k%d = [\"k%d/**\"]\n", k, k)
+	}
+	capped := detect(t, snapshottest.Files(nil, map[string]string{"src/a.go": "package a\n", "tests/a_test.go": "package a\n", ".plimsoll.toml": many.String()}), conventions.Default())
+	if !slices.Contains(capped.NotAnalysed, "`.plimsoll.toml` `[tests]` `k99`: 1 pattern lies beyond the table's first 100 usable patterns, the ones matched; it is declared but not matched") {
+		t.Errorf("not analysed %q lacks the kind whose pattern lies beyond the cap", capped.NotAnalysed)
+	}
+	unowned := detect(t, snapshottest.Files(nil, map[string]string{"src/a.go": "package a\n", "tests/a_test.go": "package a\n",
+		".plimsoll.toml": "[tests]\nunit = [\"unit/**\"]\n"}), conventions.Default())
+	if remainder, found := statistic(unowned, "test lines of no declared kind", ""); !found || *remainder.Value == 0 {
+		t.Errorf("a table none of whose kinds owns test code: remainder %+v, want every test line in it", remainder)
+	}
+	var kindSentences []string
+	for _, sentence := range one.NotAnalysed {
+		if strings.HasPrefix(sentence, "`.plimsoll.toml` `[tests]`") {
+			kindSentences = append(kindSentences, sentence)
+		}
+	}
+	if want := []string{
+		"`.plimsoll.toml` `[tests]` `unit`: `gone/**` matches no tracked file; it is not used",
+		"`.plimsoll.toml` `[tests]` `unit`: `docs/**` matches no test code this kind owns; it is not used",
+		"`.plimsoll.toml` `[tests]` `all`: `src/**` matches 1 product code file; a kind labels test code only, so it is not counted",
+		"`.plimsoll.toml` `[tests]` `all`: `**` matches 1 product code file; a kind labels test code only, so it is not counted",
+		"`.plimsoll.toml` `[tests]` `all` owns no test code: test files it matches belong to `unit`, which comes before it in `[tests]`",
+	}; !slices.Equal(kindSentences, want) {
+		t.Errorf("sentences on the tests table %q, want exactly %q", kindSentences, want)
+	}
+	plain := detect(t, snapshottest.Files(nil, map[string]string{"src/a.ts": "a\n", "tests/a.test.ts": "test(\"a\", () => {});\n"}), conventions.Default())
+	for _, s := range plain.Statistics {
+		if strings.HasPrefix(s.Name, "test lines of") {
+			t.Errorf("no tests table: row %+v, want none", s)
+		}
 	}
 }

@@ -65,16 +65,21 @@ type Rules struct {
 	// AcknowledgedTable is the table of the own file whose keys are mark identifiers the repository acknowledges, each
 	// with a reason; AcknowledgedName is what an answer calls its entries.
 	AcknowledgedTable, AcknowledgedName string
-	TestNames                           []string  // file-name patterns of test code; empty in the shared rules
-	IgnoredPaths                        []string  // folders, as paths from the repository root, whose files are left out; empty in the shared rules
-	IgnoredNames                        []string  // file-name patterns of files left out; empty in the shared rules
-	PlanningPaths                       []string  // planning and review records: an entry ending in "/" is a folder, at the root when it is one name, at any depth when it is a chain; any other a file-name pattern
-	PlanningFolders                     []string  // planning folders a repository declares, as paths from the root; empty in the shared rules
-	PlanningNames                       []string  // file-name patterns of planning files a repository declares; empty in the shared rules
-	NoteNames                           NoteNames // the words that make an added Markdown file's name a working note
-	MeasurementPaths                    []string  // measurement records, in the syntax of PlanningPaths
-	ComposeFiles                        []string  // file-name patterns of compose files, read for their environment keys
-	Limits                              Limits    // the shared defaults
+	// TestsTable is the table of the own file whose keys name kinds of test code, each with its path patterns;
+	// TestKindsName is what an answer calls them. TestKinds are the kinds now's own file declares, in file order:
+	// empty in the shared rules.
+	TestsTable, TestKindsName string
+	TestKinds                 []TestKind
+	TestNames                 []string  // file-name patterns of test code; empty in the shared rules
+	IgnoredPaths              []string  // folders, as paths from the repository root, whose files are left out; empty in the shared rules
+	IgnoredNames              []string  // file-name patterns of files left out; empty in the shared rules
+	PlanningPaths             []string  // planning and review records: an entry ending in "/" is a folder, at the root when it is one name, at any depth when it is a chain; any other a file-name pattern
+	PlanningFolders           []string  // planning folders a repository declares, as paths from the root; empty in the shared rules
+	PlanningNames             []string  // file-name patterns of planning files a repository declares; empty in the shared rules
+	NoteNames                 NoteNames // the words that make an added Markdown file's name a working note
+	MeasurementPaths          []string  // measurement records, in the syntax of PlanningPaths
+	ComposeFiles              []string  // file-name patterns of compose files, read for their environment keys
+	Limits                    Limits    // the shared defaults
 	// ReportOnly are the kinds of mark that report lists and status only counts, as "<detector>.<rule>": kinds
 	// outside reviewers or a blind reading judged too noisy to show on every change.
 	ReportOnly []string
@@ -205,6 +210,11 @@ const (
 // OwnValueLength is the longest value an own key may hold: the longest tracked folder path of sixteen repositories is
 // 109 characters, the longest file name 72 (2026-11-16).
 const OwnValueLength = 200
+
+// TestPatterns is the most path patterns the tests table puts to use, in file order. Each pattern that matches no path
+// costs one try per tracked path: on 83,000 deep paths (swc's size) about 9 ms a pattern, so 100 stay under a second
+// against the 8 s of a warm report there. The setups of the field repositories used up to 10.
+const TestPatterns = 100
 
 // importArrow joins the two folders of an import rule, as it is written and as an answer prints it.
 const importArrow = "->"
@@ -498,6 +508,13 @@ type Language struct {
 	Library *Library
 }
 
+// testCapture is the query capture that marks test code inside a product file.
+var testCapture = regexp.MustCompile(`@test\b`)
+
+// HoldsTestCode says whether the language's product files can hold test code (its query captures @test), so their
+// lines can count as test lines.
+func (l Language) HoldsTestCode() bool { return testCapture.MatchString(l.Query) }
+
 // GrammarOf names the grammar that reads a file of the entry, or "" when the entry reads by text.
 func (l Language) GrammarOf(filePath string) string {
 	if grammar, found := l.GrammarBySuffix[Suffix(filePath)]; found {
@@ -584,6 +601,7 @@ func Default() Rules {
 		OwnFile:           ".plimsoll.toml",
 		LimitsTable:       "limits",
 		AcknowledgedTable: "acknowledged", AcknowledgedName: "acknowledged items",
+		TestsTable: "tests", TestKindsName: "test kind patterns",
 		OwnKeys: []OwnKey{
 			{Table: "layout", Key: "test_folders", Name: "test folders", Holds: TestFolderPaths},
 			{Table: "layout", Key: "test_files", Name: "test files", Holds: TestFileNames},

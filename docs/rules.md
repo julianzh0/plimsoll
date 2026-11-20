@@ -31,6 +31,9 @@ Every number is measured at the base and now, from the tracked files only:
 - the settings audit: names defined twice in `.env.example`, and compose variables that are not settings
 - hotspots: the three code files (or as many as `hotspot_files` sets) with the most changes in usable commits times their lines now, as report rows, with no rule of its own; hotspots and pairs count a file's changes under the name it has now, also those from before a rename git detects (renames on another branch excepted)
 - changed together: pairs of code files that share usable commits, at least one product code, neither a file that defines tests, and not two files that the language treats as one unit
+- with a `[tests]` table in `.plimsoll.toml`, the test lines of each declared kind of test code that owns test code on
+  either side, in the table's order, and the test lines of no declared kind, so the rows add up to the test lines
+  (below, "Test kinds")
 - test folders and package roots that a project declares in its own configuration or in `.plimsoll.toml`, added to the defaults and named with their source
 - the blast radius: the files the change did not touch that use, as a code identifier, a name a changed file altered or removed, through files that pass imports on or use the name, in the same package or Swift target and through a header beside a C or C++ source; and the importers of a changed file counted as a whole: its changed code has no name plimsoll reads, its code outside declarations or a container's head changed, or a changed declaration holds a syntax error. A changed comment, an added declaration and a re-indented line outside Python alter nothing; a docstring and a Python import are code. Only files of languages whose imports are read count, reached from a changed file of such a language. A changed file in a skipped or ignored folder, generated, or with content missing is not counted and named under "not analysed"; then the number is a lower bound (with none found, "an incomplete count", never a bare 0), and where none is counted it is not analysed. Product files are listed first. A name used through an alias is not seen.
 - import links, read from the code: the files that import the changed files and that the change did not touch, directly and at any distance (left out when every changed code file altered nothing), with their folders and the share of product code they hold, the three files that import the most others, import rings, cycles between sibling folders, and each new product file that no file imports. With `files`, also the files that import each named file.
@@ -51,7 +54,7 @@ What it could not see is always named under "not analysed".
 | `process.planning-file:<path>` | a file under a planning or review path (below, and those `.plimsoll.toml` declares) is tracked now and was not at the base; or a Markdown file the change added has a working-note name (below; candidate) | repositories hold no planning records; for a name, notes about one change do not belong in the merged repository |
 | `process.doc-churn:repository` | over the commits since the base, documentation churn is above product plus test churn | documentation above code |
 | `process.limit-change:<key>` | `.plimsoll.toml` sets a limit to another value now than at the base, so a change that raised a limit to clear a mark says so | any change |
-| `process.declaration-change:<key>` | `.plimsoll.toml` declares other values under a key of `[layout]`, `[ignore]`, `[imports]` or `[defaults]`, or other entries in `[acknowledged]` (the key is then `acknowledged`), now than at the base; editing only a reason is no change | any change |
+| `process.declaration-change:<key>` | `.plimsoll.toml` declares other values under a key of `[layout]`, `[ignore]`, `[imports]` or `[defaults]`, other entries in `[acknowledged]` (the key is then `acknowledged`), or other kinds, patterns or an other order of kinds in `[tests]` (the key is then `tests`), now than at the base; editing only a reason, or the order of one kind's patterns, is no change | any change |
 | `settings.defined-twice:<NAME>` | a name on two or more lines of `.env.example` that are not commented out (candidate) | plimsoll's rule: one name, one setting |
 | `settings.compose-only:<NAME>` | a compose `environment` key that takes its value from the host (no value, or `$`) and that `.env.example` does not name (candidate) | the three lists agree |
 | `co-change.pair:<a>+<b>` | two code files changed together in at least 5 usable commits and did not at the base (new), or their share of the commits that touched either rose by at least 0.1 (grown). The mark shows that share and comes after every other mark | 5 shared commits, plimsoll's rule |
@@ -207,3 +210,40 @@ language, besides:
 | Dart | nothing beyond the common list |
 | Rust | a path written in code without `use`; a module or name a macro creates |
 | C, C++ | an include folder only the build knows; an include a macro names; C++ modules |
+
+#### Test kinds
+
+`[tests]` names the kinds of test code a repository runs or names apart, by its own words, each with its path
+patterns: `integration = ["**/*_integration_test.go", "tests/integration/**"]`. `report` then counts, at the base and
+now, the test lines of each kind that owns a test-code file (an empty one included) and the test lines of no declared
+kind; the rows add up to the test lines (the row of no declared kind shows whenever a kind has a usable pattern). A
+note names the kinds in order with their patterns in use: each kind's patterns that match a file it owns. `status` shows no row, and no kind is a mark.
+
+- A name is 1 to 200 ASCII letters, digits, `_` and `-`, written bare or quoted. Any other name is counted under
+  "not analysed", never printed, and its patterns are not used. A name set twice is no valid TOML, so the file applies
+  nothing. Kinds count in the order the file writes them, under `[tests]`, as `tests.<name>` keys or in an inline table.
+- A pattern is a path from the root, segments joined by `/`, matched against a tracked file's whole path. A
+  segment holds ASCII letters, digits, `.`, `_`, `+`, `-` and the wildcards `*` (any run of characters within the
+  segment) and `?` (one character); a segment that is exactly `**` stands for any number of folders, none included,
+  and as the last segment for every file below. So `e2e/**` is a folder, `**/*IT.java` a file name at any depth,
+  `**/src/androidTest/**` a folder chain at any depth. A pattern without `/` matches at the root only, unlike
+  `test_files`. A pattern with a leading or trailing `/`, an empty, `.` or `..` segment, `**` inside a longer segment,
+  any other character (`[`, `{`, `!`, `\`, a space), or over 200 characters is unusable: counted per kind, never
+  matched. A runner's glob is translated, not copied: one pattern per brace alternative. The first 100 usable
+  patterns of the table, in file order, are matched; any beyond are declared (a change to them is marked) but not
+  matched, and named per kind under "not analysed". So at that boundary the order of a kind's patterns decides which
+  are matched, and reordering them is still no change to the table. An unusable value is no declared pattern: adding
+  or removing one is counted under "not analysed", not marked.
+- A test-code file belongs to the first kind, in the table's order, with a pattern that matches its path; the order of
+  one kind's patterns means nothing. A kind labels test code only: whether a file is test code is decided as before,
+  by the shared rules, the project's own files and `[layout]`.
+- Now's table applies to both sides. When a partial clone lacks the base content of a changed test file, the row of
+  the kind that owns it (or the row of no declared kind, also for a product file of a language whose product files hold
+  test code, such as Rust) gives the lines now and leaves the base uncounted; the other rows stay exact.
+- Under "not analysed": an unusable pattern; a pattern that matches no tracked file (with `<folder>/**` named when it
+  is a folder that holds files); a pattern that matches product code, with how many files; a pattern of a kind that
+  owns test code but matches none of it; and a kind with usable patterns that owns no test code, with why: its files
+  belong to earlier kinds (each named), or its patterns match no test code.
+- What no path expresses cannot be declared: pytest markers, JUnit tags, xUnit traits, Go build tags that file names
+  do not follow, CTest labels, test code inside product files (Rust's `#[cfg(test)]` lines count as no declared
+  kind). Benchmarks are not a kind of test code.

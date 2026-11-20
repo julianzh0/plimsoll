@@ -31,7 +31,9 @@ type Snapshot struct {
 	// ImportRules are the import rules now's own file declares; they apply to both sides.
 	ImportRules []ImportRule
 	// Acknowledged is what now's own file acknowledges: the mark identifiers whose entries apply, and its problems.
-	Acknowledged        Acknowledged
+	Acknowledged Acknowledged
+	// TestKinds are the kinds of test code now's own file declares, with what each holds on both sides.
+	TestKinds           TestKinds
 	OwnFileProblems     []string
 	OwnFileUnreadAtBase bool
 	OwnFileUnread       bool // the own file is tracked now and could not be read or is no valid TOML
@@ -91,6 +93,7 @@ type File struct {
 	Role      Role
 	Lines     int
 	TestLines int               // lines of test code inside a product file, by the blocks its language names; part of Lines
+	Kind      string            // the declared kind of test code that owns a test-code file, or ""
 	Limit     conventions.Limit // the line limit that applies: plimsoll's, or the one the repository's limits file sets
 	Record    bool              // lies under a planning, review or measurement path; the history detectors leave it out
 }

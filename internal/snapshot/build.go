@@ -30,6 +30,7 @@ func Build(source Source, rules conventions.Rules, readings *Readings) Snapshot 
 	importRules, ruleRecords := importRules(rules, ownNow)
 	layout.Rules = ruleRecords
 	rules = withLayout(rules, layout)
+	rules.TestKinds = ownNow.tests.used()
 	rules = withSharedSuffixes(rules, source.Now)
 	limits, declaredLimits := declaredLimits(rules, ownNow, ownBefore)
 	rules.Limits = limits
@@ -90,6 +91,7 @@ func Build(source Source, rules conventions.Rules, readings *Readings) Snapshot 
 		ImportRules:         importRules,
 		OwnFileProblems:     ownNow.problems,
 		Acknowledged:        Acknowledged{Table: rules.AcknowledgedTable, IDs: ownNow.ack.applied, Widened: ownNow.ack.widened, Problems: ownNow.ack.problems()},
+		TestKinds:           testKinds(rules, ownNow.tests, now, before, lackingAtBase(beforeEntries, source.Missing)),
 		OwnFileUnreadAtBase: ownBefore.unreadable,
 		OwnFileUnread:       ownNow.unreadable,
 		Before:              before,
@@ -278,11 +280,26 @@ func codeFile(rules conventions.Rules, entry Entry) (File, bool) {
 		return File{}, false
 	}
 	file := File{Path: entry.Path, Role: role(rules, entry.Path, entry.Content), Lines: countLines(entry.Content), Limit: rules.Limits.FileLines}
+	if file.Role.IsTest() {
+		file.Kind = conventions.KindOf(rules.TestKinds, entry.Path)
+	}
 	file.Record = recordPath(rules, entry.Path)
 	if language, found := rules.LanguageOf(entry.Path); found {
 		file.Language = language.Name
 	}
 	return file, true
+}
+
+// lackingAtBase are the base paths whose content a partial clone lacks: changed paths it could not read. An unchanged
+// path is read now, so its base is known even when an older commit's content of it is missing.
+func lackingAtBase(entries []Entry, missing []string) []string {
+	var lacking []string
+	for _, entry := range entries {
+		if _, found := slices.BinarySearch(missing, entry.Path); found && entry.Content == nil && !entry.Binary {
+			lacking = append(lacking, entry.Path)
+		}
+	}
+	return lacking
 }
 
 // withTestLines gives each product file the test lines its reading counts.

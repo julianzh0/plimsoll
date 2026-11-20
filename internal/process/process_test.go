@@ -280,6 +280,21 @@ func TestAChangeToTheRepositorysOwnFileIsMarked(t *testing.T) {
 			"[acknowledged]\n\"links.cycle:a\" = \"x\"\n",
 			[]string{"This change altered the acknowledged items declared in `.plimsoll.toml`: removed 1; 1 declared now, 2 at the base."}},
 		{"a reason edited", ruleDeclarationChange, "[acknowledged]\n\"links.cycle:a\" = \"x\"\n", "[acknowledged]\n\"links.cycle:a\" = \"\"\n", nil},
+		{"a pattern added to a kind", ruleDeclarationChange, "[tests]\nunit = [\"**/*_test.go\"]\n", "[tests]\nunit = [\"**/*_test.go\", \"tests/**\"]\n",
+			[]string{"This change altered the test kind patterns declared in `.plimsoll.toml`: added `unit: tests/**`; 2 declared now, 1 at the base."}},
+		{"a pattern moved between kinds", ruleDeclarationChange, "[tests]\nunit = [\"a/**\", \"b/**\"]\ne2e = [\"c/**\"]\n", "[tests]\nunit = [\"a/**\"]\ne2e = [\"c/**\", \"b/**\"]\n",
+			[]string{"This change altered the test kind patterns declared in `.plimsoll.toml`: added `e2e: b/**`, removed 1; 3 declared now, 3 at the base."}},
+		{"kinds swapped", ruleDeclarationChange, "[tests]\nunit = [\"a/**\"]\ne2e = [\"c/**\"]\n", "[tests]\ne2e = [\"c/**\"]\nunit = [\"a/**\"]\n",
+			[]string{"This change altered the test kind patterns and the order of the kinds declared in `.plimsoll.toml`; 2 declared now, 2 at the base."}},
+		{"a kind appended", ruleDeclarationChange, "[tests]\nunit = [\"a/**\"]\n", "[tests]\nunit = [\"a/**\"]\ne2e = [\"c/**\"]\n",
+			[]string{"This change altered the test kind patterns declared in `.plimsoll.toml`: added `e2e: c/**`; 2 declared now, 1 at the base."}},
+		{"a kind added before a swap", ruleDeclarationChange, "[tests]\nunit = [\"a/**\"]\ne2e = [\"c/**\"]\n", "[tests]\nsmoke = [\"s/**\"]\ne2e = [\"c/**\"]\nunit = [\"a/**\"]\n",
+			[]string{"This change altered the test kind patterns and the order of the kinds declared in `.plimsoll.toml`: added `smoke: s/**`; 3 declared now, 2 at the base."}},
+		{"a kind deleted", ruleDeclarationChange, "[tests]\nunit = [\"a/**\"]\ne2e = [\"c/**\"]\n", "[tests]\nunit = [\"a/**\"]\n",
+			[]string{"This change altered the test kind patterns declared in `.plimsoll.toml`: removed 1; 1 declared now, 2 at the base."}},
+		{"a kind's patterns reordered", ruleDeclarationChange, "[tests]\nunit = [\"a/**\", \"b/**\"]\n", "[tests]\nunit = [\"b/**\", \"a/**\"]\n", nil},
+		{"the table removed now", ruleDeclarationChange, "[tests]\nunit = [\"a/**\"]\n", "[limits]\nfile_lines = 1500\n",
+			[]string{"This change altered the test kind patterns declared in `.plimsoll.toml`: removed 1; 0 declared now, 1 at the base."}},
 	}
 	for _, tc := range cases {
 		s, f := detect(t, snapshottest.Files(files(tc.base), files(tc.now)))
@@ -294,6 +309,26 @@ func TestAChangeToTheRepositorysOwnFileIsMarked(t *testing.T) {
 		}
 		if !slices.Equal(got, tc.sentences) {
 			t.Errorf("%s: %s sentences %q, want %q", tc.name, tc.rule, got, tc.sentences)
+		}
+	}
+
+	swapped, swappedFindings := detect(t, snapshottest.Files(files("[tests]\nunit = [\"a/**\"]\ne2e = [\"c/**\"]\n"), files("[tests]\ne2e = [\"c/**\"]\nunit = [\"a/**\"]\n")))
+	for _, mark := range swappedFindings.Marks {
+		if answer.RuleOf(mark.ID) == ruleDeclarationChange {
+			evidence := strings.Join(Detector{}.Explain(swapped, mark), "\n")
+			if !strings.Contains(evidence, "at the base, 1 of 2: `unit: a/**`\nat the base, 2 of 2: `e2e: c/**`") || !strings.Contains(evidence, "now, 1 of 2: `e2e: c/**`\nnow, 2 of 2: `unit: a/**`") {
+				t.Errorf("kinds swapped: evidence %q, want both sides in their order", evidence)
+			}
+		}
+	}
+
+	added, addedFindings := detect(t, snapshottest.Files(files("[tests]\nunit = [\"a/**\"]\n"), files("[tests]\nunit = [\"a/**\", \"b/**\"]\n")))
+	for _, mark := range addedFindings.Marks {
+		if answer.RuleOf(mark.ID) == ruleDeclarationChange {
+			evidence := strings.Join(Detector{}.Explain(added, mark), "\n")
+			if !strings.Contains(evidence, "at the base, 1 of 1: `unit: a/**`\nnow, 1 of 2: `unit: a/**`\nnow, 2 of 2: `unit: b/**`") {
+				t.Errorf("a pattern added: evidence %q, want both sides in their order", evidence)
+			}
 		}
 	}
 
