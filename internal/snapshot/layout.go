@@ -264,6 +264,14 @@ func matches(pattern, planning bool, value, filePath string) bool {
 	return in
 }
 
+// extensionsOf are the file suffixes of the language entry of that name.
+func extensionsOf(rules conventions.Rules, name string) []string {
+	if i := slices.IndexFunc(rules.Languages, func(l conventions.Language) bool { return l.Name == name }); i >= 0 {
+		return rules.Languages[i].Extensions
+	}
+	return nil
+}
+
 // withLayout is the rules of one question: a copy of the given value with the folders in use added. The given value
 // is not altered.
 func withLayout(rules conventions.Rules, layout Layout) conventions.Rules {
@@ -274,7 +282,7 @@ func withLayout(rules conventions.Rules, layout Layout) conventions.Rules {
 	for _, d := range layout.TestFolders {
 		for _, value := range d.InUse {
 			if d.Files != nil {
-				rules.TestFileFolders = append(rules.TestFileFolders, conventions.TestFileFolder{Folder: value.Path, Names: d.Files})
+				rules.TestFileFolders = append(rules.TestFileFolders, conventions.TestFileFolder{Folder: value.Path, Names: d.Files, Extensions: extensionsOf(rules, d.Language)})
 			} else {
 				rules.TestPaths = appendNew(rules.TestPaths, value.Path)
 			}

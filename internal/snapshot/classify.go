@@ -57,7 +57,7 @@ func testPath(rules conventions.Rules, filePath string) bool {
 		return true
 	}
 	for _, f := range rules.TestFileFolders {
-		if _, in := under(filePath, f.Folder); in && slices.ContainsFunc(f.Names, func(pattern string) bool {
+		if _, in := under(filePath, f.Folder); in && slices.Contains(f.Extensions, conventions.Suffix(filePath)) && slices.ContainsFunc(f.Names, func(pattern string) bool {
 			matched, _ := path.Match(pattern, name)
 			return matched
 		}) {

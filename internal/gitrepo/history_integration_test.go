@@ -253,6 +253,36 @@ func TestIntegrationADeepenedCloneReadsAsAFreshReadDoes(t *testing.T) {
 	}
 }
 
+// The same in a linked worktree whose shared git folder lies under a path with a space: git names the shallow file by
+// its absolute path there.
+func TestIntegrationADeepenedWorktreeUnderASpaceReadsAsAFreshReadDoes(t *testing.T) {
+	origin := gitrepotest.New(t,
+		gitrepotest.Commit{Message: "one", Files: map[string]string{"a.ts": "a\n"}},
+		gitrepotest.Commit{Message: "two", Files: map[string]string{"a.ts": "a\nb\n"}},
+		gitrepotest.Commit{Message: "three", Files: map[string]string{"a.ts": "a\nb\nc\n"}},
+	)
+	clone := filepath.Join(t.TempDir(), "my repo", "clone")
+	worktree := filepath.Join(filepath.Dir(clone), "linked tree")
+	for _, args := range [][]string{
+		{"clone", "-q", "-c", "core.autocrlf=false", "--depth", "1", "file://" + origin.Dir, clone},
+		{"-C", clone, "worktree", "add", "-q", "--detach", worktree},
+	} {
+		if out, err := exec.Command("git", args...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, out)
+		}
+	}
+	reader := NewReader(os.Environ())
+	if _, err := reader.Read(context.Background(), worktree, "HEAD", snapshot.WantsOf(conventions.Default())); err != nil {
+		t.Fatalf("Read = %v", err)
+	}
+	if out, err := exec.Command("git", "-C", worktree, "fetch", "-q", "--deepen", "2").CombinedOutput(); err != nil {
+		t.Fatalf("deepen: %v: %s", err, out)
+	}
+	if kept := readsAsFresh(t, reader, worktree, "HEAD", "after deepening"); len(kept.Commits) != 3 {
+		t.Errorf("after deepening: %d commits, want three", len(kept.Commits))
+	}
+}
+
 // Questions may be answered at the same time; they share one reader and its kept histories.
 func TestIntegrationReadsAtTheSameTimeShareOneReader(t *testing.T) {
 	repo := gitrepotest.New(t, gitrepotest.Commit{Message: "base", Files: map[string]string{"a.ts": "a\n"}})

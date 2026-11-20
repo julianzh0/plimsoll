@@ -256,7 +256,7 @@ func dependencies(format conventions.ManifestFormat, content []byte, at around) 
 			case inBlock && fields[0] == ")":
 				inBlock = false
 			case !inBlock && len(fields) >= 2 && fields[0] == "require" && fields[1] == "(":
-				inBlock = true
+				inBlock = fields[len(fields)-1] != ")" // "require ( )" opens no block
 			case !inBlock && fields[0] == "require" && len(fields) >= 3 && !strings.Contains(line, "// indirect"):
 				names = append(names, fields[1])
 			case inBlock && len(fields) >= 2 && !strings.Contains(line, "// indirect"):

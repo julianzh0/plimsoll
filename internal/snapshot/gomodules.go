@@ -1,6 +1,7 @@
 package snapshot
 
 import (
+	"maps"
 	"path"
 	"slices"
 	"strings"
@@ -16,7 +17,12 @@ type goModuleFile struct {
 	replaces       []goReplace
 }
 
-type goReplace struct{ path, version, target string }
+// goReplace is one replacement: a local one names a folder (target), any other another module, which no folder of
+// the repository stands for.
+type goReplace struct {
+	path, version, target string
+	local                 bool
+}
 
 // goModules reads every tracked go.mod and go.work. A file belongs to the module of the nearest go.mod at or above it;
 // an import under that module's path is the folder under the module's folder, unless a go.mod nearer to that folder
@@ -54,29 +60,34 @@ func goModules(content map[string][]byte, tracked map[string]bool) prefix {
 		}
 		return goModuleFile{}, false
 	}
-	byPath := func(spec string) (goModuleFile, string, bool) { // the tracked module with the longest path the import lies under
-		var best goModuleFile
-		var rest string
-		for _, m := range modules {
-			if r, under := strings.CutPrefix(spec, m.module); under && (r == "" || r[0] == '/') && len(m.module) > len(best.module) {
-				best, rest = m, strings.TrimPrefix(r, "/")
-			}
-		}
-		return best, rest, best.module != ""
-	}
+	folders := slices.Sorted(maps.Keys(modules))
 	return prefix{state: PrefixRead, own: func(from, spec string, _ []string) ([]string, bool) {
 		importer, inModule := nearest(modules, path.Dir(from))
-		target, rest, tracked := byPath(spec)
-		if !inModule || !tracked {
+		if !inModule {
 			return nil, false
 		}
-		if target.folder != importer.folder {
-			work, inWork := nearest(works, path.Dir(from))
-			inWork = inWork && slices.Contains(work.uses, importer.folder)
-			usesBoth := inWork && slices.Contains(work.uses, target.folder)
-			if !usesBoth && !replacedBy(importer, work, inWork, target) {
-				return nil, false
+		work, inWork := nearest(works, path.Dir(from))
+		inWork = inWork && slices.Contains(work.uses, importer.folder)
+		reaches := func(m goModuleFile) bool {
+			return m.folder == importer.folder || inWork && slices.Contains(work.uses, m.folder) || replacedBy(importer, work, inWork, m)
+		}
+		// The tracked module with the longest path the import lies under; of several with that path (copies, fixtures),
+		// the importer's own, else the first in folder order the importer reaches.
+		var target goModuleFile
+		rest := ""
+		for _, folder := range folders {
+			m := modules[folder]
+			r, under := strings.CutPrefix(spec, m.module)
+			if !under || r != "" && r[0] != '/' || len(m.module) < len(target.module) {
+				continue
 			}
+			if len(m.module) == len(target.module) && (target.folder == importer.folder || reaches(target) || !reaches(m)) {
+				continue
+			}
+			target, rest = m, strings.TrimPrefix(r, "/")
+		}
+		if target.module == "" || !reaches(target) {
+			return nil, false
 		}
 		folder := path.Join(target.folder, rest)
 		if owner, _ := nearest(modules, folder); owner.folder != target.folder {
@@ -108,7 +119,7 @@ func replacedBy(importer, work goModuleFile, inWork bool, target goModuleFile) b
 	if !found {
 		r, found = applies(importer)
 	}
-	return found && path.Clean(r.target) == target.folder
+	return found && r.local && r.target == target.folder
 }
 
 // readGoModFile reads the module, require, use and replace directives of a go.mod or go.work, single and block form;
@@ -126,7 +137,9 @@ func readGoModFile(folder string, content []byte) goModuleFile {
 			block = ""
 			continue
 		case block == "" && len(words) >= 2 && words[1] == "(":
-			block = words[0]
+			if words[len(words)-1] != ")" { // "require ( )" opens no block
+				block = words[0]
+			}
 			continue
 		case block == "":
 			m.directive(words[0], words[1:])
@@ -156,10 +169,10 @@ func (m *goModuleFile) directive(name string, words []string) {
 			return
 		}
 		target := strings.ReplaceAll(unquote(words[at+1]), `\`, "/") // .\x and ..\x are local folders too
-		if !strings.HasPrefix(target, "./") && !strings.HasPrefix(target, "../") && target != "." && target != ".." {
-			return // a replacement by another module, not by a local folder
+		r := goReplace{path: unquote(words[0])}
+		if r.local = strings.HasPrefix(target, "./") || strings.HasPrefix(target, "../") || target == "." || target == ".."; r.local {
+			r.target = path.Join(m.folder, target)
 		}
-		r := goReplace{path: unquote(words[0]), target: path.Join(m.folder, target)}
 		if at == 2 {
 			r.version = words[1]
 		}

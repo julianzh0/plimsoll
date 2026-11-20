@@ -18,7 +18,8 @@ type graph struct {
 	known map[string]bool            // the code files of the analysed languages
 	byDir map[string]bool            // the code files of languages whose imports name folders
 	runs  map[string]bool            // the code files their language runs without an import of them
-	// reached are the folders an import names: a file of such a package may be used by its peers without one.
+	// reached are the folders an import names whose package's files use each other without an import: a file of
+	// such a package may be used by its peers without one.
 	reached map[string]bool
 }
 
@@ -50,9 +51,11 @@ func graphOf(tree snapshot.Tree, languages []snapshot.LanguageImports) graph {
 			g.nodes = append(g.nodes, file.Path)
 		}
 	}
+	for _, folder := range tree.Links.Peers {
+		g.reached[folder] = true
+	}
 	for _, link := range tree.Links.List {
 		if g.known[link.From] {
-			g.reached[link.To] = g.reached[link.To] || link.Folder
 			g.from[link.From] = append(g.from[link.From], link)
 			for _, file := range link.Files {
 				g.to[file] = append(g.to[file], link)

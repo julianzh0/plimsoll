@@ -733,10 +733,12 @@ type Area struct {
 	Kinds []string
 }
 
-// TestFileFolder is a folder in which only the files whose names match one of Names are test code.
+// TestFileFolder is a folder in which only the files of the declaring tool's language (Extensions) whose names match
+// one of Names are test code.
 type TestFileFolder struct {
-	Folder string
-	Names  []string
+	Folder     string
+	Names      []string
+	Extensions []string
 }
 
 // PytestFiles are the file names pytest collects as tests when its configuration sets no python_files, and the

@@ -18,7 +18,7 @@ func masked(language conventions.Language, content []byte) []byte {
 		return content
 	}
 	if language.Tokens.Strings == conventions.CppRawStrings {
-		content = withoutRawStrings(content)
+		content = withoutRawStrings(language.Literals, content)
 	}
 	return language.Literals.ReplaceAllFunc(content, func(match []byte) []byte {
 		if match[0] == '"' || match[0] == '\'' {
@@ -31,13 +31,20 @@ func masked(language conventions.Language, content []byte) []byte {
 }
 
 // withoutRawStrings is the content with every C++ raw string blanked, line ends kept; the content itself when it holds
-// none. A raw string starts at an R" (with its prefix) that no name runs into, and ends at its closing delimiter.
-func withoutRawStrings(content []byte) []byte {
+// none. A raw string starts at an R" (with its prefix) that no name runs into and that no comment or ordinary literal
+// before it holds (the literals pattern read from the start, or from the end of the last raw string), and ends at its
+// closing delimiter.
+func withoutRawStrings(literals *regexp.Regexp, content []byte) []byte {
 	out, cloned := content, false
+	read := 0 // read up to here by the literals pattern
 	for at := 0; ; {
 		i := bytes.Index(content[at:], []byte(`R"`))
 		if i < 0 {
 			return out
+		}
+		if held := literalHolding(literals, content, &read, at+i); held > 0 {
+			at = held
+			continue
 		}
 		start := at + i
 		for _, prefix := range []string{"u8", "u", "U", "L"} {
@@ -59,8 +66,29 @@ func withoutRawStrings(content []byte) []byte {
 			out, cloned = slices.Clone(content), true
 		}
 		blankKeepingLines(out[start:end])
-		at = end
+		at, read = end, end
 	}
+}
+
+// literalHolding is the end of the comment or ordinary literal that holds the offset, reading the literals pattern on
+// from *read (which it moves on), or 0 when none does.
+func literalHolding(literals *regexp.Regexp, content []byte, read *int, offset int) int {
+	for *read <= offset {
+		m := literals.FindIndex(content[*read:])
+		if m == nil || *read+m[0] > offset {
+			return 0
+		}
+		if m[1] == m[0] {
+			*read++
+			continue
+		}
+		start, end := *read+m[0], *read+m[1]
+		*read = end
+		if start < offset && end > offset {
+			return end
+		}
+	}
+	return 0
 }
 
 // identifierByte says whether a byte can stand in a C name.

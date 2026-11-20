@@ -433,6 +433,13 @@ func TestBuildFollowsImportsIntoDartWorkspaceMembers(t *testing.T) {
 	if want := []snapshot.Link{link("packages/a/lib/a.dart", 1, "packages/b/lib/b.dart"), link("tool/lib/t.dart", 1, "packages/b/lib/b.dart")}; !reflect.DeepEqual(globbed.List, want) {
 		t.Errorf("a glob member and a path dependency: links = %+v, want %+v", globbed.List, want)
 	}
+	flow := linksOf(t, map[string]string{
+		"packages/b/pubspec.yaml": "name: b\n", "packages/b/lib/b.dart": "",
+		"util/pubspec.yaml": "name: util\r\ndependencies: {b: {path: ../packages/b}}\r\n", "util/lib/u.dart": "import 'package:b/b.dart';\n",
+	})
+	if want := []snapshot.Link{link("util/lib/u.dart", 1, "packages/b/lib/b.dart")}; !reflect.DeepEqual(flow.List, want) {
+		t.Errorf("a path dependency in a flow map, on CRLF lines: links = %+v, want %+v", flow.List, want)
+	}
 }
 
 // jvmTree holds a package in three folders (two source sets of one module and a test source set of another), a
@@ -914,12 +921,13 @@ func TestBuildFollowsIncludesToFiles(t *testing.T) {
 	if want := []snapshot.Link{added(link("src/a.c", 1, "src/b.h")), added(link("src/a.c", 4, "src/c.h"))}; !reflect.DeepEqual(broken.Now.Links.List, want) || len(broken.SyntaxErrors) != 0 {
 		t.Errorf("a file with a syntax error: List = %+v, syntax errors %q; want %+v and none", broken.Now.Links.List, broken.SyntaxErrors, want)
 	}
-	// Read line by line, an include inside a raw string is text too; a quoted include stays an include.
+	// Read line by line, an include inside a raw string is text too; a quoted include stays an include, and so does
+	// one after a comment that only names a raw string's opener.
 	brokenRaw := snapshot.Build(snapshottest.Files(nil, map[string]string{
-		"src/a.cpp": "auto q = R\"sql(\n#include \"c.h\"\n)sql\";\n#include \"b.h\"\nint f( {\n", "src/b.h": "#pragma once\n",
-		"src/c.h": "#pragma once\n",
+		"src/a.cpp": "auto q = R\"sql(\n#include \"c.h\"\n)sql\";\n#include \"b.h\"\n// an opener: R\"tag(\n#include \"d.h\"\nint f( {\n",
+		"src/b.h":   "#pragma once\n", "src/c.h": "#pragma once\n", "src/d.h": "#pragma once\n",
 	}), conventions.Default(), snapshottest.Readings(t))
-	if want := []snapshot.Link{added(link("src/a.cpp", 4, "src/b.h"))}; !reflect.DeepEqual(brokenRaw.Now.Links.List, want) {
+	if want := []snapshot.Link{added(link("src/a.cpp", 4, "src/b.h")), added(link("src/a.cpp", 6, "src/d.h"))}; !reflect.DeepEqual(brokenRaw.Now.Links.List, want) {
 		t.Errorf("a raw string in a file read line by line: List = %+v, want %+v", brokenRaw.Now.Links.List, want)
 	}
 	// A define with no value and a trailing space is misread by the grammar without an error: the next line becomes
@@ -1025,60 +1033,6 @@ func TestBuildNarrowsJavaImportsByModuleAndName(t *testing.T) {
 	}
 }
 
-// Go modules: a file's own module is the nearest go.mod; another tracked module is own through a workspace that uses
-// both, or a replacement of a module the importer requires; a nested go.mod makes its folder a module of its own.
-func TestBuildFollowsGoImportsAcrossModules(t *testing.T) {
-	lib := map[string]string{"lib/go.mod": "module example.com/lib\n", "lib/x/x.go": "package x\n"}
-	app := func(mod string) map[string]string {
-		files := maps.Clone(lib)
-		files["app/go.mod"] = mod
-		files["app/main.go"] = "package main\n\nimport \"example.com/lib/x\"\n"
-		return files
-	}
-	reaches := []snapshot.Link{folderLink("app/main.go", 3, "lib/x", "lib/x/x.go")}
-	for _, tc := range []struct {
-		name  string
-		files map[string]string
-		want  []snapshot.Link
-	}{
-		{"no workspace, no replacement", app("module example.com/app\n\nrequire example.com/lib v1.0.0\n"), nil},
-		{"a replacement of a required module", app("module example.com/app\n\nrequire example.com/lib v1.0.0\n\nreplace example.com/lib => ../lib\n"), reaches},
-		{"a replacement of the required version", app("module example.com/app\n\nrequire (\n\texample.com/lib v1.0.0\n)\n\nreplace example.com/lib v1.0.0 => ../lib\n"), reaches},
-		{"a replacement of another version", app("module example.com/app\n\nrequire example.com/lib v1.0.0\n\nreplace example.com/lib v2.0.0 => ../lib\n"), nil},
-		{"a replacement of a module not required", app("module example.com/app\n\nreplace example.com/lib => ../lib\n"), nil},
-		{"a workspace that uses both", func() map[string]string {
-			files := app("module example.com/app\n")
-			files["go.work"] = "go 1.22\n\nuse (\n\t./app\n\t./lib\n)\n"
-			return files
-		}(), reaches},
-		{"a workspace that does not use the importer", func() map[string]string {
-			files := app("module example.com/app\n\nrequire example.com/lib v1.0.0\n")
-			files["go.work"] = "go 1.22\n\nuse ./lib\n\nreplace example.com/lib => ./lib\n"
-			return files
-		}(), nil},
-		{"a workspace's replacement before the importer's", func() map[string]string {
-			files := app("module example.com/app\n\nrequire example.com/lib v1.0.0\n\nreplace example.com/lib => ../elsewhere\n")
-			files["go.work"] = "go 1.22\n\nuse ./app\n\nreplace example.com/lib => ./lib\n"
-			return files
-		}(), reaches},
-		{"a workspace that uses its own folder", func() map[string]string {
-			files := maps.Clone(lib)
-			files["go.mod"], files["main.go"] = "module example.com/app\n", "package main\n\nimport \"example.com/lib/x\"\n"
-			files["go.work"] = "go 1.22\n\nuse .\nuse ./lib\n"
-			return files
-		}(), []snapshot.Link{folderLink("main.go", 3, "lib/x", "lib/x/x.go")}},
-		{"a replacement written with backslashes", app("module example.com/app\n\nrequire example.com/lib v1.0.0\n\nreplace example.com/lib => ..\\lib\n"), reaches},
-		{"a nested module is no part of the module above", map[string]string{
-			"go.mod": "module example.com/root\n", "main.go": "package main\n\nimport \"example.com/root/tools/y\"\n",
-			"tools/go.mod": "module example.com/tools\n", "tools/y/y.go": "package y\n",
-		}, nil},
-	} {
-		if got := linksOf(t, tc.files).List; !reflect.DeepEqual(got, tc.want) {
-			t.Errorf("%s: List = %+v, want %+v", tc.name, got, tc.want)
-		}
-	}
-}
-
 // TypeScript: a file's own config, extends chains, solution configs with references, and workspace packages with and
 // without exports.
 func TestBuildFollowsTypeScriptConfigsAndWorkspacePackages(t *testing.T) {
@@ -1102,12 +1056,16 @@ func TestBuildFollowsTypeScriptConfigsAndWorkspacePackages(t *testing.T) {
 			"config/base.json": `{"compilerOptions": {"paths": {"~/*": ["../shared/*"]}}}`, "shared/s.ts": "",
 			"app/tsconfig.json": `{"extends": "../config/base.json"}`, "app/a.ts": imp("~/s"),
 		}, []snapshot.Link{link("app/a.ts", 1, "shared/s.ts")}, 0, 0, 0},
+		{"an extends loop ends, the file's own options kept", map[string]string{
+			"tsconfig.json": `{"extends": "./base.json", "compilerOptions": {"paths": {"@/*": ["./src/*"]}}}`, "base.json": `{"extends": "./tsconfig.json"}`,
+			"src/a.ts": imp("@/b"), "src/b.ts": "",
+		}, []snapshot.Link{link("src/a.ts", 1, "src/b.ts")}, 0, 0, 0},
 		{"a later base replaces an earlier one", map[string]string{
 			"one.json": `{"compilerOptions": {"paths": {"x/*": ["./one/*"]}}}`, "two.json": `{"compilerOptions": {"paths": {"x/*": ["./two/*"]}}}`,
 			"tsconfig.json": `{"extends": ["./one.json", "./two"]}`, "one/m.ts": "", "two/m.ts": "", "a.ts": imp("x/m"),
 		}, []snapshot.Link{link("a.ts", 1, "two/m.ts")}, 0, 0, 0},
-		{"a solution's referenced config that takes the file", map[string]string{
-			"tsconfig.json":      `{"files": [], "references": [{"path": "./tsconfig.app.json"}, {"path": "./tsconfig.test.json"}]}`,
+		{"a solution's referenced config that takes the file, its path written with or without ./", map[string]string{
+			"tsconfig.json":      `{"files": [], "references": [{"path": "tsconfig.app.json"}, {"path": "./tsconfig.test.json"}]}`,
 			"tsconfig.app.json":  `{"include": ["src"], "compilerOptions": {"paths": {"#/*": ["./src/*"]}}}`,
 			"tsconfig.test.json": `{"include": ["test"], "compilerOptions": {"paths": {"#/*": ["./test/*"]}}}`,
 			"src/a.ts":           imp("#/b"), "src/b.ts": "", "test/b.ts": "",
@@ -1134,6 +1092,10 @@ func TestBuildFollowsTypeScriptConfigsAndWorkspacePackages(t *testing.T) {
 			"packages/core/tsconfig.json": `{"include": ["src"], "compilerOptions": {"outDir": "dist", "rootDir": "src"}}`,
 			"packages/core/src/index.ts":  "", "app/a.ts": imp("core"),
 		}, []snapshot.Link{link("app/a.ts", 1, "packages/core/src/index.ts")}, 0, 0, 0},
+		{"build output in the root package's own folder", map[string]string{
+			"package.json": `{"name": "core", "main": "./index.js"}`, "tsconfig.json": `{"compilerOptions": {"outDir": ".", "rootDir": "src"}}`,
+			"src/index.ts": "", "app/a.ts": imp("core"),
+		}, []snapshot.Link{link("app/a.ts", 1, "src/index.ts")}, 0, 0, 0},
 		{"without exports, the first field with a source", map[string]string{
 			"packages/ui/package.json": `{"name": "ui", "types": "./index.d.ts", "main": "./index.js"}`,
 			"packages/ui/index.d.ts":   "", "packages/ui/index.js": "", "app/a.ts": imp("ui"),

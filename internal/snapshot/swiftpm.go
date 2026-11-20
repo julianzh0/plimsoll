@@ -25,7 +25,7 @@ var (
 	swiftPackageDeclaration = regexp.MustCompile(`\bPackage\(`)
 )
 
-// swiftDependencies reads the packages a root Package.swift depends on, by text, each by its identity as SwiftPM
+// swiftDependencies reads the packages a Package.swift depends on, by text, each by its identity as SwiftPM
 // names it and as Package.resolved records it: the last part of a url or a path without ".git", or a registry id,
 // in lower case. manifest is false when the file declares no Package; readable is false when a dependency's place
 // is not a string literal.

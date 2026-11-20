@@ -70,6 +70,10 @@ func TestBuildReadsRuntimeDependencies(t *testing.T) {
 		{"pyproject for tools only", pyproject("[tool.ruff]\nline-length = 120\n"), nil},
 		{"pyproject with inline tables and a long string first", pyproject("[project]\nauthors = [{name = \"a\", email = \"b\"}]\ndescription = \"\"\"\nline\n\"\"\"\ndependencies = [\"httpx\"]\n"), pyprojectNames("httpx")},
 		{"pyproject with a byte order mark", pyproject("\uFEFF[project]\ndependencies = [\"a\"]\n"), pyprojectNames("a")},
+		{"Poetry's runtime dependencies but python; its groups add none", pyproject("[tool.poetry]\nname = \"x\"\n\n[tool.poetry.dependencies]\npython = \"^3.12\"\nFastAPI = \"^0.115\"\n\n[tool.poetry.group.dev.dependencies]\npytest = \"^8\"\n"),
+			pyprojectNames("fastapi")},
+		{"development groups only", pyproject("[dependency-groups]\ndev = [\"pytest\"]\n"), pyprojectNames()},
+		{"one name in [project] and Poetry, once", pyproject("[project]\ndependencies = [\"httpx\"]\n\n[tool.poetry.dependencies]\nHTTPX = \"*\"\n"), pyprojectNames("httpx")},
 		{"a member inherits a renamed dependency from its workspace", snapshottest.Files(nil, map[string]string{
 			"Cargo.toml":          "[workspace]\nmembers = [\"crates/*\"]\n\n[workspace.dependencies]\nserde = { package = \"serde_fork\", version = \"1\" }\nlog = \"0.4\"\n",
 			"crates/a/Cargo.toml": "[package]\nname = \"a\"\n\n[dependencies]\nserde.workspace = true\nlog = { workspace = true }\n"}),
@@ -261,6 +265,14 @@ func TestBuildNamesDependenciesNoLockfileHolds(t *testing.T) {
 			".package(url: \"https://github.com/apple/swift-log.git\", from: \"1.0.0\"),\n.package(url: \"https://github.com/apple/swift-nio\", from: \"2.0.0\"),\n])\n",
 			"Package.resolved": `{"object": {"pins": [{"package": "Logging", "repositoryURL": "https://github.com/apple/Swift-Log.git"}]}, "version": 1}`},
 			[]snapshot.Manifest{{Path: "Package.swift", Dependencies: []string{"swift-log", "swift-nio"}, Lockfiles: []string{"Package.resolved"}, Unlocked: []string{"swift-nio"}}}},
+		{"a Package.resolved without its pins is matched by text", map[string]string{"Package.swift": "let package = Package(name: \"x\", dependencies: [\n" +
+			".package(url: \"https://github.com/apple/swift-log.git\", from: \"1.0.0\"),\n.package(url: \"https://github.com/apple/swift-nio\", from: \"2.0.0\"),\n])\n",
+			"Package.resolved": `{"version": 2, "note": "swift-log"}`},
+			[]snapshot.Manifest{{Path: "Package.swift", Dependencies: []string{"swift-log", "swift-nio"}, Lockfiles: []string{"Package.resolved"}, Unlocked: []string{"swift-nio"}, ByText: []string{"Package.resolved"}}}},
+		{"poetry.lock by its packages, names compared as Python compares them", map[string]string{
+			"pyproject.toml": "[tool.poetry.dependencies]\npython = \"^3.12\"\nPydantic_Settings = \"^2\"\nhttpx = \"*\"\n",
+			"poetry.lock":    "[[package]]\nname = \"pydantic-settings\"\n\n[metadata]\nlock-version = \"2.1\"\n"},
+			[]snapshot.Manifest{{Path: "pyproject.toml", Dependencies: []string{"httpx", "pydantic-settings"}, Lockfiles: []string{"poetry.lock"}, Unlocked: []string{"httpx"}}}},
 		{"Cargo compares names exactly", map[string]string{"Cargo.toml": "[package]\nname = \"x\"\n\n[dependencies]\nmy_crate = \"1\"\n",
 			"Cargo.lock": "version = 4\n\n[[package]]\nname = \"my-crate\"\n"},
 			[]snapshot.Manifest{{Path: "Cargo.toml", Dependencies: []string{"my_crate"}, Lockfiles: []string{"Cargo.lock"}, Unlocked: []string{"my_crate"}}}},
@@ -319,6 +331,9 @@ func TestBuildLeavesAnUnreadableManifestOut(t *testing.T) {
 		{"web/package.json", `{"dependencies": {"please read this": "1"}}`},
 		{"Cargo.toml", "[package]\nname = \"x\"\n\n[dependencies]\n\"foo+bar\" = \"1\"\n"},
 		{"pom.xml", "<project><dependencies><dependency><groupId>a b</groupId><artifactId>c</artifactId></dependency></dependencies></project>"},
+		{"pyproject.toml", "[project]\ndependencies = [\"please read this\"]\n"},
+		{"pyproject.toml", "[project]\ndependencies = [\">=1.0\"]\n"},
+		{"pyproject.toml", "[tool.poetry.dependencies]\n\"please read this\" = \"1\"\n"},
 	} {
 		s := snapshot.Build(snapshottest.Files(nil, map[string]string{tc.file: tc.content}), conventions.Default(), snapshottest.Readings(t))
 		if len(s.Now.Manifests) != 0 || !reflect.DeepEqual(s.Unreadable, []string{tc.file}) {
@@ -408,6 +423,8 @@ func TestBuildSumsTheFootprintByArea(t *testing.T) {
 			snapshot.Change{Added: 2, Removed: 2}, snapshot.Lines{}, snapshot.Lines{Added: 2, Removed: 2}},
 		{"a new file", "", product(3) + tests(4), snapshot.Change{Added: 7}, snapshot.Lines{Added: 3}, snapshot.Lines{Added: 4}},
 		{"a deleted file", product(3) + tests(4), "", snapshot.Change{Removed: 7}, snapshot.Lines{Removed: 3}, snapshot.Lines{Removed: 4}},
+		{"a product line edited in a checkout with other line endings", product(3) + tests(4),
+			strings.ReplaceAll("fn q() {}\n"+product(2)+tests(4), "\n", "\r\n"), snapshot.Change{Added: 1, Removed: 1}, snapshot.Lines{Added: 1, Removed: 1}, snapshot.Lines{}},
 	} {
 		side := func(content string) map[string]string {
 			if content == "" {

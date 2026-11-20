@@ -41,13 +41,11 @@ type keptHistory struct {
 	names   map[string]map[string]string
 }
 
-// readInFlight is one read of a head: ready when read is closed. cancelled is a read that failed because the question
-// that ran it was cancelled.
+// readInFlight is one read of a head: ready when read is closed.
 type readInFlight struct {
-	read      chan struct{}
-	history   keptHistory
-	err       error
-	cancelled bool
+	read    chan struct{}
+	history keptHistory
+	err     error
 }
 
 // keptHeads is how many heads' records a reader keeps per repository: two, so that questions alternating between two
@@ -82,7 +80,7 @@ func (r *Reader) history(ctx context.Context, run runner, top, head string, excl
 			case <-ctx.Done():
 				return keptHistory{}, gitFailed(ctx.Err())
 			}
-			if inFlight.cancelled && ctx.Err() == nil {
+			if inFlight.err != nil && ctx.Err() == nil {
 				continue
 			}
 			return inFlight.history, inFlight.err
@@ -102,7 +100,7 @@ func (r *Reader) history(ctx context.Context, run runner, top, head string, excl
 			unchanged = viewErr == nil && after == view // else the boundary or the attributes changed during the read: keep nothing
 		}
 		r.mu.Lock()
-		inFlight.history, inFlight.err, inFlight.cancelled = kept, err, err != nil && ctx.Err() != nil
+		inFlight.history, inFlight.err = kept, err
 		delete(repo.reading, head)
 		if unchanged && r.histories[top] == repo {
 			repo.publish(head, kept)
@@ -139,35 +137,32 @@ func records(heads []keptHistory) map[string]snapshot.Commit {
 
 // historyView is what a commit's record depends on besides the commit and its parents: the excluded paths, the
 // shallow boundary (a deepened clone gives its old boundary commits parents) and info/attributes, the one attributes
-// file the fixed attribute source does not replace.
+// file the fixed attribute source does not replace. Both are read through a root on the repository's common git
+// folder (a linked worktree shares it), so a path with a space stays one path and no link leads out of that folder.
 func historyView(run runner, top string, exclude []string) (string, error) {
-	paths, err := run(nil, "rev-parse", "--git-path", "shallow", "--git-path", "info/attributes")
+	out, err := run(nil, "rev-parse", "--git-common-dir")
 	if err != nil {
 		return "", gitFailed(err)
 	}
+	common := strings.TrimRight(string(out), "\r\n")
+	if !filepath.IsAbs(common) {
+		common = filepath.Join(top, common)
+	}
 	var view strings.Builder
 	view.WriteString(strings.Join(exclude, "\x00"))
-	for p := range strings.FieldsSeq(string(paths)) {
-		if !filepath.IsAbs(p) {
-			p = filepath.Join(top, p)
+	root, err := os.OpenRoot(common)
+	for _, name := range []string{"shallow", "info/attributes"} {
+		var content []byte
+		if err == nil {
+			content, _ = root.ReadFile(name) // missing: nothing
 		}
-		content := readGitFile(p)
 		view.WriteString("\x01")
 		view.Write(content)
 	}
-	return view.String(), nil
-}
-
-// readGitFile reads a file git keeps for the repository, or nothing when it is missing: through a root opened on its
-// folder, as every file of a repository is read.
-func readGitFile(p string) []byte {
-	root, err := os.OpenRoot(filepath.Dir(p))
-	if err != nil {
-		return nil
+	if err == nil {
+		_ = root.Close()
 	}
-	defer func() { _ = root.Close() }()
-	content, _ := root.ReadFile(filepath.Base(p))
-	return content
+	return view.String(), nil
 }
 
 // readHistory reads a head's history: the non-merge commits it reaches in git's order, and the names of renamed paths

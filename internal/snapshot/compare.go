@@ -25,7 +25,8 @@ type lineChange struct {
 	exact   bool        // false when the comparison gave up at its step bound and marked every middle line changed
 }
 
-// compareLines aligns the lines of two contents by their bytes (a line keeps its "\r").
+// compareLines aligns the lines of two contents by their bytes; a "\r\n" ending compares as "\n", so a file checked
+// out with other line endings changes only the lines it edits.
 func compareLines(base, now []byte) lineChange {
 	a, b := interned(splitLines(base), splitLines(now))
 	keptA, keptB, exact := common(a, b)
@@ -61,13 +62,17 @@ func splitLines(content []byte) [][]byte {
 	return lines
 }
 
-// interned gives each distinct line of both lists one number.
+// interned gives each distinct line of both lists one number; "\r\n" and "\n" endings are the same.
 func interned(a, b [][]byte) ([]int32, []int32) {
 	ids := map[string]int32{}
 	var next int32
 	number := func(lines [][]byte) []int32 {
 		out := make([]int32, len(lines))
 		for i, l := range lines {
+			if bytes.HasSuffix(l, []byte("\r\n")) {
+				l = l[: len(l)-2 : len(l)-2] // a key only: the line itself is not changed
+				l = append(l, '\n')
+			}
 			id, found := ids[string(l)]
 			if !found {
 				id = next

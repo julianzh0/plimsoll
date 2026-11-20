@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"maps"
 	"path"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -220,15 +221,28 @@ func cargoDependencies(content []byte, workspace map[string]any) (names []string
 	return slices.Compact(names), true, true
 }
 
-// pyprojectDependencies reads the names of [project] dependencies. manifest is false when the file has no [project]
-// table; readable is false when the file is no valid TOML, or its dependencies are no list of text or are dynamic.
+// pyprojectRequirement is a PEP 508 requirement's name and what may follow it: nothing, extras, a version, a marker
+// or a URL. pyprojectName is a name alone, as a Poetry dependency table's key.
+var (
+	pyprojectRequirement = regexp.MustCompile(`^\s*([A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?)\s*(?:$|[\[(;@<>=!~])`)
+	pyprojectName        = regexp.MustCompile(`^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$`)
+)
+
+// pyprojectDependencies reads the runtime dependencies of a pyproject.toml: [project] dependencies, and the keys of
+// [tool.poetry.dependencies] but python, each name once, normalised. Poetry's groups and dev-dependencies and
+// [dependency-groups] are development groups: they make the file a manifest and add no runtime dependency. manifest
+// is false when the file has none of these tables; readable is false when the file is no valid TOML, its dependencies
+// are dynamic, or a dependency is no list of requirements or no name of PEP 508's form.
 func pyprojectDependencies(content []byte) (names []string, manifest, readable bool) {
 	document, err := decodeTOML(content)
 	if err != nil {
 		return nil, true, false
 	}
-	project, isTable := document["project"].(map[string]any)
-	if !isTable {
+	project, isProject := document["project"].(map[string]any)
+	poetry := tomlTableAt(document, "tool", "poetry", "dependencies")
+	_, hasGroups := document["dependency-groups"]
+	development := tomlTableAt(document, "tool", "poetry", "dev-dependencies") != nil || tomlTableAt(document, "tool", "poetry", "group") != nil
+	if !isProject && poetry == nil && !hasGroups && !development {
 		return nil, false, true
 	}
 	if dynamic, found := project["dynamic"]; found {
@@ -238,20 +252,30 @@ func pyprojectDependencies(content []byte) (names []string, manifest, readable b
 		}
 	}
 	names = []string{}
-	value, found := project["dependencies"]
-	if !found {
-		return names, true, true
-	}
-	requirements, isList := tomlTexts(value)
-	if !isList {
-		return nil, true, false
-	}
-	for _, requirement := range requirements {
-		if name := requirementName(requirement); name != "" {
-			names = append(names, name)
+	if value, found := project["dependencies"]; found {
+		requirements, isList := tomlTexts(value)
+		if !isList {
+			return nil, true, false
+		}
+		for _, requirement := range requirements {
+			m := pyprojectRequirement.FindStringSubmatch(requirement)
+			if m == nil {
+				return nil, true, false
+			}
+			names = append(names, requirementName(m[1]))
 		}
 	}
-	return names, true, true
+	for key := range poetry {
+		switch {
+		case key == "python":
+		case !pyprojectName.MatchString(key):
+			return nil, true, false
+		default:
+			names = append(names, requirementName(key))
+		}
+	}
+	slices.Sort(names)
+	return slices.Compact(names), true, true
 }
 
 // readDeclared reads one declared key from a file's content: its values, and what the file says about it. In TOML the

@@ -141,16 +141,18 @@ func gradleCatalogue(at around) map[string][]string {
 // catalogueCoordinate is a catalogue library's group:name: "group:name:version", module = "group:name", or group and
 // name keys.
 func catalogueCoordinate(entry any) string {
-	if text, isText := entry.(string); isText {
-		parts := strings.Split(text, ":")
-		if len(parts) >= 2 {
+	coordinate := func(text string) string {
+		if parts := strings.Split(text, ":"); len(parts) >= 2 {
 			return parts[0] + ":" + parts[1]
 		}
 		return ""
 	}
+	if text, isText := entry.(string); isText {
+		return coordinate(text)
+	}
 	table, _ := entry.(map[string]any)
 	if module, isText := table["module"].(string); isText {
-		return module
+		return coordinate(module)
 	}
 	group, _ := table["group"].(string)
 	name, _ := table["name"].(string)

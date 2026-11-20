@@ -153,6 +153,7 @@ not know:
   use.
 - **vcpkg.** Dependencies of features that are not default.
 - **Macros.** What a C or C++ macro stands for, and a module or name a Rust macro creates.
+- **Rust.** A module file named only under `cfg_attr`, which the build configuration chooses.
 - **Preprocessor.** Which branch of an `#if` a build takes.
 - **tsconfig.** A base configuration that comes from an installed package.
 - **trigger.dev.** Task folders that `dirs` in `trigger.config` names; plimsoll takes the `trigger` folders.

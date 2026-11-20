@@ -119,7 +119,7 @@ func decode(language conventions.Language, result parse.Result, content []byte) 
 		if r.inlines[place] == nil {
 			r.inlines[place] = map[string]string{}
 		}
-		r.inlines[place][md.name] = md.place
+		r.inlines[place][md.name] = inlineStep(md)
 	}
 	for _, im := range imports {
 		st := im.statement(content, blanks)

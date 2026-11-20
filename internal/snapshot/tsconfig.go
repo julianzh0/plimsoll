@@ -118,7 +118,7 @@ func (c *tsConfigs) load(file string, chain []string) *tsConfig {
 	}
 	merged.override(&own)
 	for _, r := range raw.References {
-		if at, found := c.extended(folder, r.Path); found {
+		if at, found := c.referenced(folder, r.Path); found {
 			merged.references = append(merged.references, at)
 		}
 	}
@@ -164,7 +164,19 @@ func (cfg *tsConfig) expand(value string) string {
 	return value
 }
 
-// extended is the tracked config an extends or reference names: relative, the file, the file with .json, or the
+// referenced is the tracked config a reference names: always a path relative to the referring config, never a
+// package, the file itself or the tsconfig.json of the folder it names.
+func (c *tsConfigs) referenced(folder, name string) (string, bool) {
+	at := path.Join(folder, name)
+	for _, candidate := range []string{at, path.Join(at, "tsconfig.json")} {
+		if c.tracked[candidate] {
+			return candidate, true
+		}
+	}
+	return "", false
+}
+
+// extended is the tracked config an extends names: relative, the file, the file with .json, or the
 // tsconfig.json of the folder; by a package name, the same under the tracked workspace package of that name.
 func (c *tsConfigs) extended(folder, name string) (string, bool) {
 	at := path.Join(folder, name)
@@ -248,28 +260,33 @@ func globMatches(pattern, file string) bool {
 	if !strings.ContainsAny(pattern, "*?") && path.Ext(pattern) == "" {
 		pattern = path.Join(pattern, "**/*")
 	}
-	var match func(p, f []string) bool
-	match = func(p, f []string) bool {
-		for len(p) > 0 {
-			if p[0] == "**" {
-				for i := 0; i <= len(f); i++ {
-					if match(p[1:], f[i:]) {
+	segments, parts := strings.Split(path.Clean(pattern), "/"), strings.Split(file, "/")
+	failed := map[[2]int]bool{} // a pattern position and a path position already tried without a match
+	var match func(p, f int) bool
+	match = func(p, f int) bool {
+		for ; p < len(segments); p, f = p+1, f+1 {
+			if segments[p] == "**" {
+				if failed[[2]int{p, f}] {
+					return false
+				}
+				for i := f; i <= len(parts); i++ {
+					if match(p+1, i) {
 						return true
 					}
 				}
+				failed[[2]int{p, f}] = true
 				return false
 			}
-			if len(f) == 0 {
+			if f == len(parts) {
 				return false
 			}
-			if ok, _ := path.Match(p[0], f[0]); !ok {
+			if ok, _ := path.Match(segments[p], parts[f]); !ok {
 				return false
 			}
-			p, f = p[1:], f[1:]
 		}
-		return len(f) == 0
+		return f == len(parts)
 	}
-	return match(strings.Split(path.Clean(pattern), "/"), strings.Split(file, "/"))
+	return match(0, 0)
 }
 
 // workspacePackage is a tracked package.json with a name, where manifests count: its folder and what it says of its
@@ -459,7 +476,7 @@ func conditionTargets(value any, star string) []string {
 func sourcesOf(cfg *tsConfig, folder, target string) []string {
 	var bases []string
 	if cfg != nil && cfg.outDir != "" {
-		if rel, under := strings.CutPrefix(target, cfg.expand(cfg.outDir)+"/"); under {
+		if rel, in := under(target, cfg.expand(cfg.outDir)); in {
 			if cfg.rootDir != "" {
 				bases = append(bases, path.Join(cfg.expand(cfg.rootDir), rel))
 			} else {

@@ -53,7 +53,7 @@ func cargoCrates(manifest string, content map[string][]byte, tracked map[string]
 			m.exported[name] = true
 		}
 		m.bound[file] = boundNames(r)
-		m.externs[file] = r.externAliases
+		m.externs[file] = slices.Clip(r.externAliases) // the reading is shared between questions: an append copies
 		for _, st := range r.statements {
 			if name, isMod := keyworded(st.spec, "mod"); isMod {
 				at := declaredAt(file, st.within, name)
@@ -165,7 +165,12 @@ func newRustPackage(folder string, document map[string]any, documents map[string
 			}
 		}
 	}
-	add(cmp.Or(tomlText(document, "package", "build"), "build.rs"))
+	switch build, stated := tomlAt(document, "package", "build"); {
+	case !stated || build == true:
+		add("build.rs")
+	case build != false:
+		add(tomlText(document, "package", "build")) // a path; build = false is no build script
+	}
 	for folder, key := range map[string]string{"src/bin": "autobins", "examples": "autoexamples", "tests": "autotests", "benches": "autobenches"} {
 		value, stated := tomlAt(document, "package", key)
 		p.auto[folder] = !stated || value != false
@@ -455,7 +460,10 @@ func (m rustModules) folders(file string, within []string) []string {
 		}
 	}
 	for i, f := range own {
-		own[i] = path.Join(append([]string{f}, within...)...)
+		for _, step := range within {
+			f = path.Join(f, stepFolder(step))
+		}
+		own[i] = f
 	}
 	return own
 }

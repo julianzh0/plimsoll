@@ -1,6 +1,7 @@
 package snapshot
 
 import (
+	"maps"
 	"path"
 	"slices"
 	"strings"
@@ -147,7 +148,7 @@ func testSees(content map[string][]byte, tracked map[string]bool) func(from, fol
 	testJars := map[string][]string{} // a module to the modules whose tests it uses
 	coordinates := map[string]string{}
 	jars := map[string][]string{}
-	for file := range tracked {
+	for _, file := range slices.Sorted(maps.Keys(tracked)) {
 		module := moduleFolder(path.Dir(file))
 		switch path.Base(file) {
 		case "build.gradle", "build.gradle.kts":
@@ -161,7 +162,10 @@ func testSees(content map[string][]byte, tracked map[string]bool) func(from, fol
 			}
 		case "pom.xml":
 			coordinate, uses := pomTestJars(content[file])
-			coordinates[coordinate], jars[module] = module, uses
+			if _, taken := coordinates[coordinate]; !taken { // of poms of one coordinate (copies), the first by path
+				coordinates[coordinate] = module
+			}
+			jars[module] = uses
 		}
 	}
 	for module, uses := range jars {

@@ -45,6 +45,7 @@ func jvmImports(also, implicit []string) Imports {
 		PackageLine: jvmPackage,
 		NoRings:     "an import names a package, not a file",
 		Implicit:    implicit,
+		Peers:       true,
 	}
 }
 

@@ -34,7 +34,8 @@ func TestCompareLinesFindsWhatWasAddedAndRemoved(t *testing.T) {
 		{"a\nb\nc\n", "a\nx\nc\n", []LineRange{{2, 2}}, []LineRange{{2, 2}}},
 		{"", "a\nb\n", []LineRange{{1, 2}}, nil},
 		{"a\nb\n", "", nil, []LineRange{{1, 2}}},
-		{"a\nb\n", "a\r\nb\r\n", []LineRange{{1, 2}}, []LineRange{{1, 2}}},
+		{"a\nb\n", "a\r\nb\r\n", nil, nil}, // a checkout with other line endings changes no line
+		{"a\nb\n", "a\r\nx\r\n", []LineRange{{2, 2}}, []LineRange{{2, 2}}},
 	}
 	rng := rand.New(rand.NewPCG(7, 11))
 	random := func() string {

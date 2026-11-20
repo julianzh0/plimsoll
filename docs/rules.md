@@ -24,7 +24,7 @@ Every number is measured at the base and now, from the tracked files only:
   defines none, with the largest infrastructure files
 - the three largest code files
 - for the product files a change touched, each function's cognitive complexity and deepest nesting, at the base and now; code the change moved, split out or copied, files from another project, benchmarks and generated or minified files are left out, and nothing is said about functions the change did not touch
-- the settings in `.env.example` and the runtime dependencies of `package.json`, `go.mod`, `pyproject.toml` (`[project] dependencies`), `pubspec.yaml`, `pom.xml`, `build.gradle` or `build.gradle.kts`, `Cargo.toml`, `Package.swift`, `vcpkg.json`, and every `*.csproj` outside test code
+- the settings in `.env.example` and the runtime dependencies of every `package.json`, `go.mod`, `pyproject.toml` (`[project] dependencies`, `[tool.poetry.dependencies]`), `pubspec.yaml`, `pom.xml`, `build.gradle` or `build.gradle.kts`, `Cargo.toml`, `Package.swift` and `Package@swift-<version>.swift`, `vcpkg.json`, `*.csproj` and `Directory.Build.props` or `.targets` outside test code
 - the footprint of the change since the base
 - churn by area (product, tests, docs, other) over the last 150 non-merge commits
 - tracked planning and review files, and documentation churn against product and test churn since the base
@@ -201,11 +201,11 @@ language, besides:
 
 | Language | A rule does not see |
 |---|---|
-| Go | modules behind `replace` or `go.work` (they count as outside) |
+| Go | a module no tracked `go.mod` declares, or one that neither a `go.work` using both nor a local `replace` brings to the importer (it counts as outside) |
 | Java, Kotlin | a class written with its full name and no import |
 | C# | use of the same or a parent namespace, which needs no `using`; what a `global using` serves |
 | Swift | use between two folders of one target; a rule whose folder lies inside a target that also holds code outside it |
-| TypeScript, JavaScript | aliases inherited from an extended file; any tsconfig other than the root one; `import()` and `require()` with a computed name |
+| TypeScript, JavaScript | a base configuration from an installed package; a package entry that only untracked build output holds; `import()` and `require()` with a computed name |
 | Python | `import_module()` with a computed name |
 | Dart | nothing beyond the common list |
 | Rust | a path written in code without `use`; a module or name a macro creates |

@@ -22,6 +22,9 @@ type Imports struct {
 	// FolderTree, for a folder target, makes an import of a folder reach every file below it, not only those directly
 	// in it.
 	FolderTree bool
+	// Peers, for a folder target whose import reaches only the files that declare what it names, says the other files
+	// of the folder's package use each other without an import (Java, Kotlin): a new file there may be used by them.
+	Peers bool
 	// Grouped is a target that may group paths in nested braces: "a::{b, c::{d, e}}" names a::b, a::c::d and
 	// a::c::e, each one import.
 	Grouped bool

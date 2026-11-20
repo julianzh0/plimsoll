@@ -188,17 +188,18 @@ func goSumNames(content []byte) ([]string, bool) {
 }
 
 // swiftResolvedNames are the identities of a Package.resolved: in version 1 the last part of each pin's repository
-// URL, lower case, without ".git"; in versions 2 and 3 each pin's identity.
+// URL, lower case, without ".git"; in versions 2 and 3 each pin's identity. A file without its version's pins list
+// (an empty one holds nothing) is no layout read.
 func swiftResolvedNames(content []byte) ([]string, bool) {
 	type pin struct {
 		Identity      string `json:"identity"`
 		RepositoryURL string `json:"repositoryURL"`
 	}
 	var resolved struct {
-		Version int   `json:"version"`
-		Pins    []pin `json:"pins"`
+		Version int    `json:"version"`
+		Pins    *[]pin `json:"pins"`
 		Object  struct {
-			Pins []pin `json:"pins"`
+			Pins *[]pin `json:"pins"`
 		} `json:"object"`
 	}
 	if json.Unmarshal(content, &resolved) != nil {
@@ -207,11 +208,17 @@ func swiftResolvedNames(content []byte) ([]string, bool) {
 	var names []string
 	switch resolved.Version {
 	case 1:
-		for _, p := range resolved.Object.Pins {
+		if resolved.Object.Pins == nil {
+			return nil, false
+		}
+		for _, p := range *resolved.Object.Pins {
 			names = append(names, strings.ToLower(strings.TrimSuffix(path.Base(p.RepositoryURL), ".git")))
 		}
 	case 2, 3:
-		for _, p := range resolved.Pins {
+		if resolved.Pins == nil {
+			return nil, false
+		}
+		for _, p := range *resolved.Pins {
 			names = append(names, strings.ToLower(p.Identity))
 		}
 	default:

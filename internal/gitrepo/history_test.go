@@ -132,6 +132,35 @@ func TestAQuestionThatReadsTheHistoryForOthersMayBeCancelled(t *testing.T) {
 	})
 }
 
+func TestAWaitingQuestionReadsAgainAfterAFailedRead(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		r := NewReader(nil)
+		failing := &fakeGit{heads: map[string]string{"c1": "c1\n"}, gate: make(chan struct{}), fail: errors.New("exit status 128")}
+		works := &fakeGit{heads: map[string]string{"c1": "c1\n"}}
+		var done sync.WaitGroup
+		done.Go(func() {
+			if _, err := r.history(context.Background(), failing.run, "/repo", "c1", nil); err == nil {
+				t.Errorf("the failing read succeeded, want its error")
+			}
+		})
+		synctest.Wait() // the first question is inside git
+		var waited []string
+		done.Go(func() {
+			kept, err := r.history(context.Background(), works.run, "/repo", "c1", nil)
+			if err != nil {
+				t.Errorf("waiting question: %v, want the history read again", err)
+			}
+			waited = ids(kept)
+		})
+		synctest.Wait() // the second waits for the first's read
+		close(failing.gate)
+		done.Wait()
+		if !slices.Equal(waited, []string{"c1"}) {
+			t.Errorf("after another question's read failed: commits %q, want [c1] from a read of its own", waited)
+		}
+	})
+}
+
 func TestAWaitingQuestionMayBeCancelled(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		r := NewReader(nil)
@@ -225,6 +254,19 @@ func TestTwoHeadsReadAtTheSameTimeBothStay(t *testing.T) {
 		}
 		if got := git.asked(); len(got) != before {
 			t.Errorf("asking again for both heads read %q, want no read", got[before:])
+		}
+	})
+}
+
+// Any log output parses or fails with an error: the reader never crashes on what git prints.
+func FuzzParseLog(f *testing.F) {
+	for _, seed := range []string{"\x01c1\x00\n3\t1\ta.ts\x00", "\x01c1\x00\n1\t0\t\x00old.ts\x00new.ts\x00", "\x01c1\x00\n-\t-\tbin\x00", "x\x00"} {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, output string) {
+		commits, err := parseLog([]byte(output))
+		if err != nil && commits != nil {
+			t.Fatalf("parseLog(%q) = %d commits and %v, want no commits with an error", output, len(commits), err)
 		}
 	})
 }

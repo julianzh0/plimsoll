@@ -910,4 +910,16 @@ func TestANewFileOfAnImportedPackageIsNotListedWithoutAnImporter(t *testing.T) {
 	if !slices.Equal(listed, []string{"src/main/java/com/acme/q/Q.java"}) {
 		t.Errorf("new files without an importer = %q, want only the file of a package no import names", listed)
 	}
+	// A C# using reaches every file of its namespace: a new file of another namespace in the same folder has no peer.
+	csharp := map[string]string{
+		"app/P.cs": "using Alpha;\n\nnamespace App { class P { A a; } }\n",
+		"src/A.cs": "namespace Alpha { public class A {} }\n", "src/B.cs": "namespace Beta { public class B {} }\n",
+	}
+	listed = nil
+	for _, s := range statisticsNamed(detect(t, snapshottest.Files(map[string]string{"app/P.cs": "namespace App { class P {} }\n"}, csharp)), "new product file without an importer") {
+		listed = append(listed, s.Subject)
+	}
+	if !slices.Equal(listed, []string{"src/B.cs"}) {
+		t.Errorf("C#: new files without an importer = %q, want src/B.cs, whose namespace no using names", listed)
+	}
 }

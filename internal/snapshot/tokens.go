@@ -124,9 +124,12 @@ func scanString(text []byte, stack []scanFrame, at int, emit func(start, end int
 		switch rest := text[i:]; {
 		case f.singleLine && text[i] == '\n':
 			ok := s.piece >= i || emit(s.piece, i, true, false)
-			stack = stack[:len(stack)-1]
-			if s.spec { // the f-string a format text stands in ends with it
+			for len(stack) > 0 { // the line end ends the string, with the format texts and holes opened inside it
+				top := stack[len(stack)-1]
 				stack = stack[:len(stack)-1]
+				if !top.spec && !top.hole {
+					break
+				}
 			}
 			return stack, i, ok
 		case f.quoteTwice && bytes.HasPrefix(rest, []byte(`""`)):
@@ -144,7 +147,9 @@ func scanString(text []byte, stack []scanFrame, at int, emit func(start, end int
 				i += run(text, i, '{') - len(f.holeOpen)
 			}
 			end := i + len(f.holeOpen)
-			return append(stack, scanFrame{form: f, hole: true}), end, emit(s.piece, end, true, false)
+			piece := s.piece
+			s.piece = end // handed out up to here: a piece of this string starts no earlier
+			return append(stack, scanFrame{form: f, hole: true}), end, emit(piece, end, true, false)
 		case f.doubled && (bytes.HasPrefix(rest, []byte("{{")) || bytes.HasPrefix(rest, []byte("}}"))):
 			i += 2
 		case f.escape != "" && bytes.HasPrefix(rest, []byte(f.escape)):

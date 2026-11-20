@@ -1,6 +1,9 @@
 package snapshot_test
 
 import (
+	"path"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/julianzh0/plimsoll/internal/conventions"
@@ -29,6 +32,40 @@ func FuzzBuildReadsAnyLockfile(f *testing.F) {
 		for _, m := range s.Now.Manifests {
 			if len(m.Unlocked) > len(m.Dependencies) {
 				t.Fatalf("Build(lock %q): %s has more unlocked names than dependencies: %+v", lock, m.Path, m)
+			}
+		}
+	})
+}
+
+// Any content under every manifest name ends, and every dependency name a manifest gives has its ecosystem's form: no
+// text of a file reaches an answer as a name.
+func FuzzBuildReadsAnyManifest(f *testing.F) {
+	for _, seed := range []string{
+		`{"dependencies": {"a": "1"}}`, "module m\n\nrequire a/b v1\n", "[project]\ndependencies = [\"a>=1\"]\n",
+		"[tool.poetry.dependencies]\npython = \"^3\"\na = \"1\"\n", "name: x\ndependencies: {a: ^1, b: {path: ../b}}\n",
+		"<project><dependencies><dependency><groupId>a</groupId><artifactId>b</artifactId></dependency></dependencies></project>",
+		"dependencies {\n  implementation(\"a:b:1\")\n}\n", "[package]\nname = \"x\"\n\n[dependencies]\na = { package = \"b\" }\n",
+		`<Project Sdk="Microsoft.NET.Sdk"><ItemGroup><PackageReference Include="A" /></ItemGroup></Project>`,
+		"let package = Package(name: \"x\", dependencies: [.package(url: \"https://x.example/a\", from: \"1.0.0\")])\n",
+		`{"dependencies": ["a", {"name": "b"}]}`,
+	} {
+		f.Add(seed)
+	}
+	rules := conventions.Default()
+	readings := snapshottest.Readings(f)
+	f.Fuzz(func(t *testing.T, content string) {
+		files := map[string]string{}
+		for _, m := range rules.Manifests {
+			name := strings.ReplaceAll(strings.ReplaceAll(m.File, "*", "x"), "Package@swift-x", "Package@swift-5.9")
+			files["m/"+name] = content
+		}
+		s := snapshot.Build(snapshottest.Files(nil, files), rules, readings)
+		for _, m := range s.Now.Manifests {
+			i := slices.IndexFunc(rules.Manifests, func(r conventions.Manifest) bool { matched, _ := path.Match(r.File, path.Base(m.Path)); return matched })
+			for _, name := range m.Dependencies {
+				if i < 0 || !rules.Manifests[i].Name.MatchString(name) {
+					t.Fatalf("Build(%s %q): dependency %q outside its ecosystem's form", m.Path, content, name)
+				}
 			}
 		}
 	})

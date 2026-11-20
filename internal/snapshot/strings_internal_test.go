@@ -66,6 +66,7 @@ func TestStringsAreLiteralPiecesAndTheirHolesCode(t *testing.T) {
 		{"a.py", "f'a\nb'", []string{`=f'a`, "@b", "'"}},
 		{"a.kt", "\"a $name\nx", []string{`="a $`, "@name", "@x"}},
 		{"a.py", "f'{x:\ny = 1", []string{`=f'{`, "@x", "=:", "@y", "=", "1"}},
+		{"a.py", "f'{x:{y:\nz", []string{`=f'{`, "@x", "=:{", "@y", "=:", "@z"}}, // the line end closes both format texts
 	} {
 		if got := kinds(t, tc.language, tc.text); !slices.Equal(got, tc.want) {
 			t.Errorf("%s tokens(%q) = %q, want %q", tc.language, tc.text, got, tc.want)
@@ -84,7 +85,7 @@ func TestDeeplyNestedHolesAreRead(t *testing.T) {
 }
 
 func FuzzEachToken(f *testing.F) {
-	for _, seed := range []string{"`${`${a}`}`", `f"{x!r:{y}}"`, `#"\#(a)"#`, `$$"""{{b}}"""`, `R"d(x)d"`, `r#"x"#`} {
+	for _, seed := range []string{"`${`${a}`}`", `f"{x!r:{y}}"`, "f'{x:{y:\nz", `#"\#(a)"#`, `$$"""{{b}}"""`, `R"d(x)d"`, `r#"x"#`} {
 		f.Add(seed)
 	}
 	var entries []conventions.Language

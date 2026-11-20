@@ -16,6 +16,9 @@ type Links struct {
 	Languages []LanguageImports // one per language entry with code files on this side, in the entries' order
 	List      []Link            // every import that reaches code, sorted by From, Line and To
 	PassOn    []string          // code files that only pass imports on, sorted
+	// Peers are the folders an import reaches whose package's files use each other without an import (Java, Kotlin),
+	// sorted: a new file there may be used by its peers.
+	Peers []string
 }
 
 // LanguageImports counts the import statements of one language's code files by kind.
@@ -125,7 +128,7 @@ type statement struct {
 	names    []string // the names it imports out of its target; nil when it has no names group or names only "*"
 	line     int
 	typeOnly bool
-	within   []string // the inline modules it stands in, the outermost first: a module's path attribute for its name
+	within   []string // the inline modules it stands in, the outermost first, each as inlineStep gives it
 	at       int      // where its target starts in the file
 	modPath  string   // the file a path attribute names for a module declared in its own file
 	// everywhere is a statement written once for every file of its project.
@@ -201,10 +204,20 @@ func modulesAt(modules []span, at int) []string {
 	var names []string
 	for _, m := range modules {
 		if m.start < at && at <= m.end {
-			names = append(names, m.place)
+			names = append(names, inlineStep(m))
 		}
 	}
 	return names
+}
+
+// inlineStep is one inline module of a place: its name, which keys the place (a module whose path attribute is "" is
+// still a place of its own), and the folder it gives the modules inside, apart by a NUL, which no name holds.
+func inlineStep(m span) string { return m.name + "\x00" + m.place }
+
+// stepFolder is the folder part of an inline step.
+func stepFolder(step string) string {
+	_, folder, _ := strings.Cut(step, "\x00")
+	return folder
 }
 
 // grouped expands a target that groups paths in braces into its leaves: the text before a "{" is the prefix of every
@@ -283,6 +296,11 @@ func links(rules conventions.Rules, content map[string][]byte, tree Tree, readin
 			counts.Unreadable += r.computed
 			fileLinks := s.resolveAll(language, own, file.Path, r.statements, &counts, base)
 			found.List = append(found.List, fileLinks...)
+			for _, l := range fileLinks {
+				if l.Folder && imports.Peers {
+					found.Peers = append(found.Peers, l.To)
+				}
+			}
 			if len(fileLinks) > 0 && r.passesOn {
 				found.PassOn = append(found.PassOn, file.Path)
 			}
@@ -293,6 +311,8 @@ func links(rules conventions.Rules, content map[string][]byte, tree Tree, readin
 		return cmp.Or(strings.Compare(a.From, b.From), cmp.Compare(a.Line, b.Line), strings.Compare(a.To, b.To))
 	})
 	slices.Sort(found.PassOn)
+	slices.Sort(found.Peers)
+	found.Peers = slices.Compact(found.Peers)
 	return found
 }
 

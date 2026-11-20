@@ -1,6 +1,7 @@
 package snapshot
 
 import (
+	"maps"
 	"path"
 	"regexp"
 	"slices"
@@ -8,7 +9,10 @@ import (
 )
 
 // pubspecNameLine is the top-level name of a pubspec.yaml, unquoted or quoted.
-var pubspecNameLine = regexp.MustCompile(`(?m)^name:[ \t]*["']?([A-Za-z_][A-Za-z0-9_]*)["']?[ \t]*(?:#.*)?$`)
+var pubspecNameLine = regexp.MustCompile(`(?m)^name:[ \t]*["']?([A-Za-z_][A-Za-z0-9_]*)["']?[ \t]*(?:#[^\r\n]*)?\r?$`)
+
+// pubspecPath is a path key in a dependency's block or flow map, with its value: never a key that ends in "path".
+var pubspecPath = regexp.MustCompile(`(?:^|[\s{,])path:[ \t]*["']?([^"',}\s]+)`)
 
 // pubspecPackages reads every tracked pubspec.yaml with a name as a package, and every one with a workspace list as a
 // workspace whose entries, globs with * per segment included, name member folders. An import "package:<name>/x" is the
@@ -72,7 +76,7 @@ func pubspecPackages(content map[string][]byte, tracked map[string]bool) prefix 
 		}
 		// the importing package itself, then a package it depends on by path, then a member of its workspace
 		candidates := append([]string{importer}, pathDependencies[importer]...)
-		for folder := range names {
+		for _, folder := range slices.Sorted(maps.Keys(names)) { // of members of one name, the first by folder
 			if slices.ContainsFunc(workspaceOf[importer], func(root string) bool { return slices.Contains(workspaceOf[folder], root) }) {
 				candidates = append(candidates, folder)
 			}
@@ -87,23 +91,25 @@ func pubspecPackages(content map[string][]byte, tracked map[string]bool) prefix 
 }
 
 // pubspecPathDependencies are the folders a pubspec's dependencies name by a local path: an entry of dependencies,
-// dev_dependencies or dependency_overrides with a path key below it, resolved against the pubspec's folder.
+// dev_dependencies or dependency_overrides with a path key, in a block or a flow map (also on the key's own line),
+// resolved against the pubspec's folder.
 func pubspecPathDependencies(content []byte, folder string) []string {
 	var found []string
 	inBlock := false
 	for line := range strings.Lines(string(content)) {
-		trimmed, _, _ := strings.Cut(strings.TrimSpace(line), " #")
-		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+		code, _, _ := strings.Cut(line, " #")
+		if trimmed := strings.TrimSpace(code); trimmed == "" || strings.HasPrefix(trimmed, "#") {
 			continue
 		}
 		if !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "\t") {
-			key, _, _ := strings.Cut(trimmed, ":")
+			key, value, _ := strings.Cut(code, ":")
 			inBlock = key == "dependencies" || key == "dev_dependencies" || key == "dependency_overrides"
-			continue
+			code = value
 		}
-		if _, value, isPath := strings.Cut(trimmed, "path:"); inBlock && isPath { // a block entry, or a flow map {path: ../b}
-			value, _, _ = strings.Cut(value, ",")
-			found = append(found, path.Join(folder, strings.Trim(strings.TrimSpace(value), `"'} `)))
+		for _, m := range pubspecPath.FindAllStringSubmatch(code, -1) {
+			if inBlock {
+				found = append(found, path.Join(folder, m[1]))
+			}
 		}
 	}
 	return found

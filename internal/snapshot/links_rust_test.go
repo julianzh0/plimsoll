@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/julianzh0/plimsoll/internal/conventions"
@@ -184,6 +185,10 @@ func TestBuildFollowsRustCratesAndModules(t *testing.T) {
 			"Cargo.toml": manifest + "\n[lib]\npath = \"lib/app.rs\"\n", "lib/app.rs": "pub mod util;\n", "lib/util.rs": "pub fn f() {}\n",
 			"src/main.rs": "use app::util::f;\n",
 		}, []snapshot.Link{modLink("lib/app.rs", 1, "lib/util.rs"), link("src/main.rs", 1, "lib/util.rs")}, 0, 0},
+		{"an inline module with an empty path is a place of its own", map[string]string{
+			"Cargo.toml": manifest, "src/lib.rs": "mod other;\n#[path = \"\"]\nmod inner {\n    pub struct InnerItem;\n}\n",
+			"src/other.rs": "use crate::InnerItem;\nuse crate::inner::InnerItem as I;\n",
+		}, []snapshot.Link{modLink("src/lib.rs", 1, "src/other.rs"), link("src/other.rs", 2, "src/lib.rs")}, 0, 1},
 		{"a renamed path dependency, by its key", with(store,
 			"Cargo.toml", manifest+"\n[dependencies]\nstore = { path = \"store\", package = \"notes-store\" }\n",
 			"src/lib.rs", "use store::f;\nuse notes_store::f;\n"),
@@ -280,4 +285,19 @@ func TestBuildReadsATargetDependencyOfTwoPlatformsAsAmbiguous(t *testing.T) {
 			t.Fatalf("the same tree read twice: %+v, then %+v", first, again)
 		}
 	}
+}
+
+// Questions answered at the same time share one reading of a file: resolving its extern crate lines writes nothing
+// into it (run with -race).
+func TestQuestionsAtTheSameTimeShareRustReadings(t *testing.T) {
+	source := snapshottest.Files(nil, map[string]string{
+		"Cargo.toml": "[package]\nname = \"app\"\nedition = \"2015\"\n[dependencies]\na = \"1\"\nb = \"1\"\nc = \"1\"\n",
+		"src/lib.rs": "extern crate a as x;\nextern crate b as y;\nextern crate c as z;\nextern crate core;\nuse x::A;\n",
+	})
+	readings := snapshottest.Readings(t)
+	var wg sync.WaitGroup
+	for range 2 {
+		wg.Go(func() { snapshot.Build(source, conventions.Default(), readings) })
+	}
+	wg.Wait()
 }

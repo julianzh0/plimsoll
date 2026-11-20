@@ -256,6 +256,8 @@ func TestBuildCountsADeclaredTestFolderAsTestCode(t *testing.T) {
 			return tree
 		}(), map[string]snapshot.Role{"src/app/x.py": snapshot.Product, "pkg/core.py": snapshot.Product, "pkg/tests/test_core.py": snapshot.Test}},
 		{"pytest declares Python test files only", declaring(declare(`"checks"`), "checks/helper.ts"), map[string]snapshot.Role{"checks/helper.ts": snapshot.Product}},
+		{"pytest's names without a suffix match Python files only", declaring("[tool.pytest.ini_options]\ntestpaths = [\"checks\"]\npython_files = [\"check_*\"]\n", "checks/check_a.py", "checks/check_ui.ts"),
+			map[string]snapshot.Role{"checks/check_a.py": snapshot.TestInfrastructure, "checks/check_ui.ts": snapshot.Product}},
 		{"pytest's default names", declaring("[tool.pytest.ini_options]\ntestpaths = [\"checks\"]\n", "checks/test_a.py", "checks/b_test.py", "checks/conftest.py", "checks/helpers.py"),
 			map[string]snapshot.Role{"checks/test_a.py": snapshot.TestInfrastructure, "checks/b_test.py": snapshot.TestInfrastructure, "checks/conftest.py": snapshot.TestInfrastructure, "checks/helpers.py": snapshot.Product}},
 		{"a python_files pattern with a / is not used", declaring("[tool.pytest.ini_options]\ntestpaths = [\"checks\"]\npython_files = [\"sub/*.py\", \"check_*.py\"]\n", "checks/check_a.py", "checks/sub/x.py"),
