@@ -198,9 +198,8 @@ func sharedTestFolder(rules conventions.Rules, folder string) bool {
 // when it names the root or every file, unmatched when no tracked path of either side lies under it or bears a
 // matching name, held when a test or ignored folder is or holds a package root, and in use otherwise. A planning
 // folder is not held for holding code: its files become planning items, each of them shown.
-// NOTE: unlike a tool's declaration (decide), the own file is plimsoll's: a value that matches nothing is named, a
-// folder holding test folders of its own is not held, and only now's values apply. Upgrade: one resolver for both
-// if a tool's declaration should be named the same way.
+// Unlike a tool's declaration (decide), the own file is plimsoll's: a value that matches nothing is named, a folder
+// holding test folders of its own is not held, and only now's values apply. So the two resolve apart.
 func ownLayout(layout Layout, rules conventions.Rules, now ownFile, tracked []string) Layout {
 	for _, k := range rules.OwnKeys {
 		values, read := now.values[k.Key]

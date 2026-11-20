@@ -9,8 +9,8 @@ import (
 // heap instead stayed resident and doubled the collector's target for every kept instance (measured: four kept Kotlin
 // instances, 518 MB of live heap against 6 MB here).
 //
-// NOTE: experimental.MemoryAllocator is an API wazero may change in a minor release; wazero is pinned and bumped by
-// hand. Way back: drop this allocator and let wazero grow memory by copying.
+// experimental.MemoryAllocator is an API wazero may change in a minor release; wazero is pinned and bumped by hand. Way
+// back: drop this allocator and let wazero grow memory by copying.
 type mapped struct{ bytes []byte }
 
 // mapMemory maps one instance's memory; a refused mapping is recorded for start, which runs under the parser's lock.

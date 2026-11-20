@@ -52,8 +52,8 @@ type Result struct {
 // Parser runs the embedded grammars. It belongs to whoever created it; Close frees every module's memory and leaves any
 // other parser working. Read may be called from any number of goroutines.
 //
-// NOTE: one parse runs at a time for the whole parser, so cold reading uses one core (6 to 10 MB of source a second).
-// Upgrade: more lanes, each costing one MemoryCapMiB of memory.
+// One parse runs at a time for the whole parser: that keeps memory bounded (docs/guarantees.md), at the cost of one
+// core for cold reading (6 to 10 MB of source a second). Each further lane would cost one MemoryCapMiB of memory.
 type Parser struct {
 	mu        sync.Mutex
 	ctx       context.Context

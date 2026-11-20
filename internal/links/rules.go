@@ -171,9 +171,9 @@ func lies(file, folder string) bool { return strings.HasPrefix(file, folder+"/")
 // A pair is type-only when every statement of it is, and added when one of them counts as added; it carries the
 // line of its first statement that counts as added, or else of its first statement. A file the parser could not read
 // on either side counts on neither, as checkOf says.
-// NOTE: every rule walks the files of both sides, so the work grows with rules times files: 1,000 rules added at most
-// 0.07 s to a status of nowinandroid (715 files) and vapor (898 files), measured 2026-11-18. Upgrade: index the files
-// by folder once per side when a repository with far more files declares that many rules.
+// Every rule walks the files of both sides, so the work grows with rules times files: 1,000 rules added at most 0.07 s
+// to a status of nowinandroid (715 files) and vapor (898 files), measured 2026-11-18, so the files are not indexed by
+// folder.
 func breaking(r snapshot.ImportRule, tree snapshot.Tree, g graph, unparsed []string) []snapshot.Link {
 	allowed := r.Allowed()
 	var found []snapshot.Link
