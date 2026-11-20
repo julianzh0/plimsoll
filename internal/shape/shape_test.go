@@ -491,7 +491,7 @@ func TestDeclaredTestKindsGetRowsThatAddUpToTheTestLines(t *testing.T) {
 	}
 	for _, sentence := range []string{
 		"`.plimsoll.toml` `[tests]` `e2e`: `e2e/**` matches no tracked file; it is not used",
-		"`.plimsoll.toml` `[tests]` `late` owns no test lines: test files it matches belong to `integration`, which comes before it in `[tests]`",
+		"`.plimsoll.toml` `[tests]` `late` owns no test code: test files it matches belong to `integration`, which comes before it in `[tests]`",
 		"`.plimsoll.toml` `[tests]` `all`: `**` matches 2 product code files; a kind labels test code only, so they are not counted",
 		"`.plimsoll.toml` `[tests]` `all`: 2 values are no path patterns; they are not used",
 		"`.plimsoll.toml` `[tests]` `folder`: `tests/unit` matches no tracked file; a folder's files are written `tests/unit/**`",
@@ -503,11 +503,24 @@ func TestDeclaredTestKindsGetRowsThatAddUpToTheTestLines(t *testing.T) {
 	if _, found := statistic(findings, "tests", ""); found {
 		t.Errorf("the ratio is under its limit, so no split; kind rows show anyway: %+v", findings.Statistics)
 	}
-	partial := snapshottest.Files(base, now)
-	partial.Missing = []string{"tests/unit/lost.test.ts"}
+	if !slices.Contains(findings.Notes, "test kinds declared in `.plimsoll.toml` (`[tests]`), in order: `integration`: `tests/integration/**`; `unit`: `tests/**`") {
+		t.Errorf("notes %q lack the kinds with their patterns in use", findings.Notes)
+	}
+	partial := snapshottest.Lacking(snapshottest.Files(base, now), []string{"tests/unit/a.test.ts"}, nil)
 	for _, s := range detect(t, partial, conventions.Default()).Statistics {
-		if strings.HasPrefix(s.Name, "test lines of") && s.Subject != "integration" && (s.Value != nil || s.Before != nil) {
-			t.Errorf("a partial clone lacks content a kind matches: row %+v, want its lines now in its note and no change", s)
+		known := s.Value != nil && s.Before != nil
+		if strings.HasPrefix(s.Name, "test lines of") && known == (s.Subject == "unit") {
+			t.Errorf("a partial clone lacks the base of a file of unit: row %+v, want only unit's lines now in its note and no change", s)
+		}
+	}
+	one := detect(t, snapshottest.Files(nil, map[string]string{"src/a.go": "package a\n", "tests/a_test.go": "package a\n",
+		"docs/x.md": "x\n", ".plimsoll.toml": "[tests]\nunit = [\"tests/**\", \"docs/**\"]\nall = [\"src/**\", \"**\"]\n"}), conventions.Default())
+	for _, sentence := range []string{
+		"`.plimsoll.toml` `[tests]` `unit`: `docs/**` matches no test code this kind owns; it is not used",
+		"`.plimsoll.toml` `[tests]` `all`: `src/**` matches 1 product code file; a kind labels test code only, so it is not counted",
+	} {
+		if !slices.Contains(one.NotAnalysed, sentence) {
+			t.Errorf("not analysed %q lacks %q", one.NotAnalysed, sentence)
 		}
 	}
 	plain := detect(t, snapshottest.Files(nil, map[string]string{"src/a.ts": "a\n", "tests/a.test.ts": "test(\"a\", () => {});\n"}), conventions.Default())

@@ -90,7 +90,7 @@ func Build(source Source, rules conventions.Rules, readings *Readings) Snapshot 
 		ImportRules:         importRules,
 		OwnFileProblems:     ownNow.problems,
 		Acknowledged:        Acknowledged{Table: rules.AcknowledgedTable, IDs: ownNow.ack.applied, Problems: ownNow.ack.problems()},
-		TestKinds:           testKinds(rules, ownNow.tests, now, before, source.Missing),
+		TestKinds:           testKinds(rules, ownNow.tests, now, before, lackingAtBase(beforeEntries, source.Missing)),
 		OwnFileUnreadAtBase: ownBefore.unreadable,
 		Before:              before,
 		Now:                 now,
@@ -286,6 +286,18 @@ func codeFile(rules conventions.Rules, entry Entry) (File, bool) {
 		file.Language = language.Name
 	}
 	return file, true
+}
+
+// lackingAtBase are the base paths whose content a partial clone lacks: changed paths it could not read. An unchanged
+// path is read now, so its base is known even when an older commit's content of it is missing.
+func lackingAtBase(entries []Entry, missing []string) []string {
+	var lacking []string
+	for _, entry := range entries {
+		if _, found := slices.BinarySearch(missing, entry.Path); found && entry.Content == nil && !entry.Binary {
+			lacking = append(lacking, entry.Path)
+		}
+	}
+	return lacking
 }
 
 // withTestLines gives each product file the test lines its reading counts.

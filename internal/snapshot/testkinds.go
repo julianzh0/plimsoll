@@ -12,6 +12,9 @@ import (
 type TestKinds struct {
 	Table string     // the table's name in the own file
 	Kinds []TestKind // in file order
+	// RemainderBaseMissing says a test path no kind owns lacks its content at the base (a partial clone), so the
+	// base of the test lines of no declared kind is unknown.
+	RemainderBaseMissing bool
 }
 
 // TestKind is one kind of test code the repository declares, with what it finds. A test-code file belongs to the
@@ -20,20 +23,23 @@ type TestKind struct {
 	Name     string
 	Patterns []string // its usable patterns, in file order, each once
 	Unusable int      // its patterns that have not the form of a path pattern
-	// Lines and BaseLines are the lines of the test code it owns now and at the base.
-	Lines, BaseLines int
-	// BaseMissing says a path its patterns match lacks its content (a partial clone), so its base lines are unknown.
+	// Files and BaseFiles are the test-code files it owns now and at the base; Lines and BaseLines their lines.
+	Files, BaseFiles, Lines, BaseLines int
+	// InUse are its patterns, in file order, that are the first of its patterns to match a test-code file it owns.
+	InUse []string
+	// BaseMissing says a test path it owns lacks its content at the base (a partial clone), so its base is unknown.
 	BaseMissing bool
 	// Unmatched are its patterns that match no tracked path on either side.
 	Unmatched []string
 	// ProductMatches are its patterns that match code files that are product code now, each with how many.
 	ProductMatches []PatternFiles
-	// TakenBy is, when it owns no test code, an earlier kind that owns a test-code file its patterns match.
-	TakenBy string
+	// TakenBy are, when it owns no test code, the earlier kinds, in file order, that own test-code files its patterns
+	// match.
+	TakenBy []string
 }
 
-// Owns says whether the kind owns test code on either side.
-func (k TestKind) Owns() bool { return k.Lines > 0 || k.BaseLines > 0 }
+// Owns says whether the kind owns a test-code file on either side, an empty one included.
+func (k TestKind) Owns() bool { return k.Files > 0 || k.BaseFiles > 0 }
 
 // PatternFiles is a pattern and a number of files it matches.
 type PatternFiles struct {
@@ -48,6 +54,7 @@ type testsTable struct {
 	unusable         []int // per kind
 	seen             map[string]bool
 	noEntry, unnamed int
+	patterns, over   int // usable patterns put to use, and those beyond conventions.TestPatterns
 	named            []string
 }
 
@@ -71,9 +78,9 @@ func (t *testsTable) read(table string, lines []string, i int) int {
 		return i
 	}
 	value = strings.TrimSpace(value)
-	for strings.HasPrefix(value, "[") && unclosed(value) && i+1 < len(lines) {
-		i++
-		value += lines[i]
+	for depth := listDepth(0, value); depth > 0 && i+1 < len(lines) && listContinues(lines[i+1]); i++ {
+		value += "\n" + lines[i+1]
+		depth = listDepth(depth, lines[i+1])
 	}
 	switch {
 	case !conventions.KindName(name):
@@ -98,14 +105,50 @@ func (t *testsTable) read(table string, lines []string, i int) int {
 		switch {
 		case !usable:
 			unusable++
-		case !slices.ContainsFunc(kind.Patterns, func(p conventions.PathPattern) bool { return p.Text() == item }):
+		case slices.ContainsFunc(kind.Patterns, func(p conventions.PathPattern) bool { return p.Text() == item }):
+		case t.patterns == conventions.TestPatterns:
+			t.over++
+		default:
 			kind.Patterns = append(kind.Patterns, pattern)
+			t.patterns++
 		}
 	}
 	if len(kind.Patterns) > 0 || unusable > 0 {
 		t.kinds, t.unusable = append(t.kinds, kind), append(t.unusable, unusable)
 	}
 	return i
+}
+
+// listDepth is the depth of open square brackets after a line of a list, given the depth before it; once they close,
+// the rest of the line does not matter. Strings do not span lines, and a "#" outside a string ends the line.
+func listDepth(depth int, line string) int {
+	for i := 0; i < len(line); i++ {
+		switch c := line[i]; c {
+		case '#':
+			return depth
+		case '[':
+			depth++
+		case ']':
+			if depth--; depth <= 0 {
+				return 0
+			}
+		case '"', '\'':
+			for i++; i < len(line) && line[i] != c; i++ {
+				if c == '"' && line[i] == '\\' {
+					i++
+				}
+			}
+		}
+	}
+	return depth
+}
+
+// listContinues says whether a line can go on a list of text: it starts with a string, a comma, the closing bracket
+// or a comment, or is empty. Any other line, a table header or the next entry, ends the list, so a list left open
+// never takes the entries after it.
+func listContinues(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	return trimmed == "" || strings.ContainsRune(`"',]#`, rune(trimmed[0]))
 }
 
 // problems are the table's phrases: counted lines and names, then the named ones.
@@ -118,6 +161,10 @@ func (t testsTable) problems(table string) []string {
 	if t.unnamed > 0 {
 		phrases = append(phrases, fmt.Sprintf("`[%s]`: %s not applied", table,
 			counted(t.unnamed, "kind name is no plain name; it is", "kind names are no plain names; they are")))
+	}
+	if t.over > 0 {
+		phrases = append(phrases, fmt.Sprintf("`[%s]`: %s beyond the first %d not used", table,
+			counted(t.over, "pattern is", "patterns are"), conventions.TestPatterns))
 	}
 	return append(phrases, t.named...)
 }
@@ -161,11 +208,12 @@ func texts(patterns []conventions.PathPattern) []string {
 	return written
 }
 
-// testKinds measures each declared kind on both sides: the lines it owns, its patterns that match nothing or match
-// product code now, the earlier kinds that took its files, and whether a path it matches lacks its content. Each
-// path is split once and tried against the patterns that have not matched yet: on swc's 83,000 paths with twenty
-// patterns, trying every pattern on every path took 1.7 s.
-func testKinds(rules conventions.Rules, table testsTable, now, before Tree, missing []string) TestKinds {
+// testKinds measures each declared kind on both sides: the files and lines it owns and the patterns that own them,
+// its patterns that match nothing or match product code now, the earlier kinds that took its files, and whether a
+// test path it owns lacks its base content (lacking: the base paths a partial clone lacks). Each path is split once
+// and tried against the patterns that have not matched yet: on swc's 83,000 paths with twenty patterns, trying every
+// pattern on every path took 1.7 s.
+func testKinds(rules conventions.Rules, table testsTable, now, before Tree, lacking []string) TestKinds {
 	declared := TestKinds{Table: rules.TestsTable}
 	if len(table.kinds) == 0 {
 		return declared
@@ -177,6 +225,9 @@ func testKinds(rules conventions.Rules, table testsTable, now, before Tree, miss
 		for p := range kind.Patterns {
 			patterns = append(patterns, patternAt{k, p})
 		}
+	}
+	if len(patterns) == 0 {
+		return declared
 	}
 	match := func(at patternAt, parts []string) bool {
 		return table.kinds[at.kind].Patterns[at.pattern].MatchSegments(parts)
@@ -206,9 +257,19 @@ func testKinds(rules conventions.Rules, table testsTable, now, before Tree, miss
 			}
 		}
 	}
+	for i, at := range patterns {
+		if products[i] > 0 {
+			kind := &declared.Kinds[at.kind]
+			kind.ProductMatches = append(kind.ProductMatches, PatternFiles{Pattern: kind.Patterns[at.pattern], Files: products[i]})
+		}
+	}
 	index := map[string]int{}
 	for k, kind := range declared.Kinds {
 		index[kind.Name] = k
+	}
+	inUse := make([][]bool, len(table.kinds))
+	for k, kind := range table.kinds {
+		inUse[k] = make([]bool, len(kind.Patterns))
 	}
 	sides := [][]File{now.Files, before.Files}
 	for side, files := range sides {
@@ -216,41 +277,63 @@ func testKinds(rules conventions.Rules, table testsTable, now, before Tree, miss
 			if file.Kind == "" {
 				continue
 			}
-			if owner := &declared.Kinds[index[file.Kind]]; side == 0 {
+			k := index[file.Kind]
+			if p := slices.IndexFunc(table.kinds[k].Patterns, func(p conventions.PathPattern) bool { return p.Match(file.Path) }); p >= 0 {
+				inUse[k][p] = true
+			}
+			if owner := &declared.Kinds[k]; side == 0 {
+				owner.Files++
 				owner.Lines += file.Lines
 			} else {
+				owner.BaseFiles++
 				owner.BaseLines += file.Lines
 			}
 		}
 	}
-	for i, at := range patterns {
-		if products[i] > 0 {
-			kind := &declared.Kinds[at.kind]
-			kind.ProductMatches = append(kind.ProductMatches, PatternFiles{Pattern: kind.Patterns[at.pattern], Files: products[i]})
+	for _, p := range lacking {
+		if !testPath(rules, p) || excluded(rules, p) {
+			continue
+		}
+		if owner := conventions.KindOf(rules.TestKinds, p); owner != "" {
+			declared.Kinds[index[owner]].BaseMissing = true
+		} else {
+			declared.RemainderBaseMissing = true
 		}
 	}
 	for k := range declared.Kinds {
 		kind := &declared.Kinds[k]
-		if !kind.Owns() && len(kind.Unmatched) < len(kind.Patterns) {
-			kind.TakenBy = takenBy(table.kinds[k], sides)
+		for p, used := range inUse[k] {
+			if used {
+				kind.InUse = append(kind.InUse, kind.Patterns[p])
+			}
 		}
-		kind.BaseMissing = slices.ContainsFunc(missing, func(p string) bool {
-			return slices.ContainsFunc(table.kinds[k].Patterns, func(pattern conventions.PathPattern) bool { return pattern.Match(p) })
-		})
+		if !kind.Owns() && !kind.BaseMissing && len(kind.Unmatched) < len(kind.Patterns) {
+			kind.TakenBy = takenBy(table.kinds[k], sides, declared.Kinds[:k])
+		}
 	}
 	return declared
 }
 
-// takenBy is the kind that owns the first test-code file a kind's patterns match, or "": for a kind that owns none,
-// an earlier kind that took its files. It stops at the first such file; naming every earlier kind meant matching
-// every pattern against every test file (0.8 s on swc's 80,000 test paths).
-func takenBy(kind conventions.TestKind, sides [][]File) string {
+// takenBy are the earlier kinds, in file order, that own test-code files a kind's patterns match: for a kind that
+// owns none, the kinds that took its files. It runs only for such a kind and passes over a file whose kind it has
+// already named, so it stays one pass over the test files.
+func takenBy(kind conventions.TestKind, sides [][]File, earlier []TestKind) []string {
+	found := map[string]bool{}
 	for _, files := range sides {
 		for _, file := range files {
-			if file.Kind != "" && slices.ContainsFunc(kind.Patterns, func(p conventions.PathPattern) bool { return p.Match(file.Path) }) {
-				return file.Kind
+			if file.Kind == "" || file.Kind == kind.Name || found[file.Kind] {
+				continue
+			}
+			if slices.ContainsFunc(kind.Patterns, func(p conventions.PathPattern) bool { return p.Match(file.Path) }) {
+				found[file.Kind] = true
 			}
 		}
 	}
-	return ""
+	var owners []string
+	for _, k := range earlier {
+		if found[k.Name] {
+			owners = append(owners, k.Name)
+		}
+	}
+	return owners
 }

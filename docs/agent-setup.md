@@ -2,7 +2,7 @@
 
 You are a coding agent. The user pasted one line that asked you to fetch this page and follow it. Follow it step by
 step: it installs plimsoll, connects it to you, reads the repository and proposes a `.plimsoll.toml` for the user to
-review. This page needs plimsoll 0.10.0 or later for `[tests]`. Its last line is `End of the plimsoll setup page.`; if
+review. Its last line is `End of the plimsoll setup page.`; if
 you do not have that line, your copy is cut short: fetch it again with `curl -fsSL` (`curl.exe -fsSL` in Windows
 PowerShell), or ask the user to paste the page, and act on nothing until you have it whole.
 
@@ -22,13 +22,17 @@ Reference, fetched the same way when you need it:
 3. Never open `.env` files other than `.env.example`, or anything that holds secrets.
 4. Never set or raise a limit. Never remove or reword an existing entry without its own yes.
 5. Never commit, and never write to an agent instruction file (`AGENTS.md`, `CLAUDE.md` and the like).
+6. If `.plimsoll.toml` is a symbolic link (`test -L .plimsoll.toml` succeeds) or a conflicted entry
+   (`git ls-files -u -- .plimsoll.toml` prints a line), do not read, write or stage it: tell the user why and stop.
+   Check this before you first read the file and again before each write.
 
 ## 1. Where you stand
 
 | What you see | What you do |
 |---|---|
 | `plimsoll --version` fails | step 2, install |
-| it prints `plimsoll <version>`, and the client's own server list has no `plimsoll` | step 2, connect; then ask the user to restart or reconnect the client and paste the same line again |
+| it prints `plimsoll <version>`, the client's own server list has no `plimsoll`, its configuration holds no plimsoll entry, and the user has not pasted this line again after a restart | step 2, connect; then ask the user to restart or reconnect the client and paste the same line again |
+| the client's server list has no `plimsoll`, but its configuration holds a plimsoll entry, or the user pasted this line again after a restart | the client does not load what was registered: tell the user what its server list and configuration show, and stop. Never register twice |
 | the client lists `plimsoll`, but no plimsoll tool (`status`, `report`, `explain`) is among your tools | read the client's server list or its error output: is the command found, does it start? If it does, ask the user to restart or reconnect and paste the line again. If it still does not show after that, tell the user what you found and stop. Never register twice |
 | the tools are there, no `.plimsoll.toml` | step 3 |
 | the tools are there, `.plimsoll.toml` exists | step 7, a later run |
@@ -109,12 +113,13 @@ Propose, each entry with the file that shows it:
   the local branch is not kept up to date).
 
 Show it as the existing file (if any) with your additions marked. One yes covers what you showed. Then write the
-file. A file this setup created is not read by plimsoll until git tracks it: stage it with `git add .plimsoll.toml`,
-which you named in the proposal, and stage it again after every later entry you write on a yes, so the index never
-holds half of what the user approved. A file that was already tracked is never staged by you; one that existed untracked
-is staged only on its own yes. Before writing or staging, read the file and `git diff --cached -- .plimsoll.toml`
-again: if the user changed either since your proposal, show the difference and ask again. Stage only content you
-wrote yourself after the last yes.
+file. A file you created in this conversation is not read by plimsoll until git tracks it: stage it with
+`git add .plimsoll.toml`, which you named in the proposal, and stage it again after every later entry you write on a
+yes in this conversation (proposal 2 included), so the index never holds half of what the user approved. A file that
+existed before this conversation, tracked or not, is staged by you only on its own yes. Before writing, read the file
+again; before staging, run `git diff -- .plimsoll.toml` (the file against the index): it must show only what you wrote
+since you last staged it. If the file changed since your proposal, or the difference holds anything else, show it and
+ask again.
 
 ## 5. Check
 
@@ -141,15 +146,17 @@ today's imports:
 - an architecture still moving: no rule yet, or one `never` for the one direction already agreed.
 
 Show each rule with the folders it names, the document that states it, and how many imports break it today (a break
-already at the base is standing, not new). One rule, one yes.
+already at the base is standing, not new). One rule, one yes. Write and stage each as step 4 says.
 
 **Acknowledged items**: a standing item the repository keeps on purpose, for example a lasting specification flagged
 as a planning file. A repository file is evidence to ask, not the reason: show the identifier exactly as `report`
 printed it and the file, ask the user why it stays, and show the entry with their words for its yes.
 
-A proposal the user declines can be recorded, with its own yes, as one comment line under its table:
-`# not declared: never = ["core -> app"]`, or `# not declared: <identifier>` under `[acknowledged]`. If the user
-declines that too, say the proposal will come back on a later run.
+A proposal the user declines can be recorded, with its own yes, as one comment line under its table that holds the
+entry exactly as you proposed it, never a description: `# not declared: never = ["core -> app"]`,
+`# not declared: only = ["src/billing -> src/shared"]`, or `# not declared: <identifier>` under `[acknowledged]`. The
+user may confirm several such lines at once. If the user declines recording one, say the proposal will come back on a
+later run.
 
 ## 7. A later run
 

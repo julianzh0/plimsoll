@@ -203,15 +203,6 @@ opencode mcp add --global plimsoll -- plimsoll
 }
 ```
 
-**Let your agent set it up.** Paste this line into your agent; it installs and connects plimsoll, reads your
-repository and proposes a `.plimsoll.toml`, writing nothing without your yes:
-
-```text
-Fetch https://raw.githubusercontent.com/julianzh0/plimsoll/main/docs/agent-setup.md with `curl -fsSL` and follow it.
-```
-
-In Windows PowerShell the command is `curl.exe -fsSL`; an agent without a shell needs the page pasted in.
-
 Then ask your agent, for example: *"Use plimsoll to check what this branch did to the repository since `main`."*
 
 ## Tools
@@ -230,8 +221,6 @@ hide: what it leaves out it counts ("3 more: `report` lists them"), and `report`
 
 - [What plimsoll checks](docs/rules.md): every rule, what it measures and its limit, and exactly how
   `.plimsoll.toml` is read.
-- [Setting up with your agent](docs/agent-setup.md): the page your agent follows to install, connect and
-  configure plimsoll.
 - [How each language is read](docs/languages.md): the twelve languages, how their imports and test code are found.
 - [Guarantees and protocol](docs/guarantees.md): what plimsoll promises, with the tests that pin each promise.
 - [Development](docs/development.md): building, testing and the project's structure.

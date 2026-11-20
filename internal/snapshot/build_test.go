@@ -494,15 +494,14 @@ func TestBuildMeasuresEachDeclaredTestKind(t *testing.T) {
 		"src/a.go": "package a\n", "tests/integration/b_test.go": "package i\nfunc TestB(t *testing.T) {}\n",
 		"tests/integration/c_test.go": "package i\n\n\nfunc TestC(t *testing.T) {}\n", ".plimsoll.toml": table,
 	}
-	source := snapshottest.Files(base, now)
-	source.Missing = []string{"tests/old/gone_test.go"}
-	s := snapshot.Build(source, conventions.Default(), snapshottest.Readings(t))
+	s := snapshot.Build(snapshottest.Files(base, now), conventions.Default(), snapshottest.Readings(t))
 	want := []snapshot.TestKind{
-		{Name: "integration", Patterns: []string{"tests/integration/**"}, Lines: 6, BaseLines: 2},
-		{Name: "unit", Patterns: []string{"tests/**"}, BaseLines: 3, BaseMissing: true},
+		{Name: "integration", Patterns: []string{"tests/integration/**"}, Files: 2, BaseFiles: 1, Lines: 6, BaseLines: 2,
+			InUse: []string{"tests/integration/**"}},
+		{Name: "unit", Patterns: []string{"tests/**"}, BaseFiles: 1, BaseLines: 3, InUse: []string{"tests/**"}},
 		{Name: "e2e", Patterns: []string{"e2e/**"}, Unmatched: []string{"e2e/**"}},
-		{Name: "late", Patterns: []string{"tests/integration/**"}, TakenBy: "integration"},
-		{Name: "all", Patterns: []string{"**"}, BaseMissing: true, TakenBy: "integration",
+		{Name: "late", Patterns: []string{"tests/integration/**"}, TakenBy: []string{"integration"}},
+		{Name: "all", Patterns: []string{"**"}, TakenBy: []string{"integration", "unit"},
 			ProductMatches: []snapshot.PatternFiles{{Pattern: "**", Files: 1}}},
 	}
 	if !reflect.DeepEqual(s.TestKinds.Kinds, want) {
@@ -512,6 +511,29 @@ func TestBuildMeasuresEachDeclaredTestKind(t *testing.T) {
 		if file.Path == "src/a.go" && file.Kind != "" {
 			t.Errorf("product file %s has kind %q, want none: a kind labels test code only", file.Path, file.Kind)
 		}
+	}
+	empty := snapshot.Build(snapshottest.Files(nil, map[string]string{"src/a.go": "package a\n", "tests/a_test.go": "",
+		".plimsoll.toml": "[tests]\nunit = [\"tests/**\"]\n"}), conventions.Default(), snapshottest.Readings(t))
+	if kind := empty.TestKinds.Kinds[0]; !kind.Owns() || kind.Files != 1 || kind.TakenBy != nil {
+		t.Errorf("a kind owning only an empty test file: %+v, want it to own the file and be taken by none", kind)
+	}
+	partialTable := "[tests]\nunit = [\"tests/unit/**\"]\n"
+	partialBase := map[string]string{"src/a.go": "package a\n", ".plimsoll.toml": partialTable,
+		"tests/unit/a_test.go": "package u\n", "tests/unit/c_test.go": "package u\n", "tests/other/b_test.go": "package o\n"}
+	partialNow := maps.Clone(partialBase)
+	partialNow["tests/unit/a_test.go"], partialNow["tests/other/b_test.go"] = "package u\n\n", "package o\n\n"
+	lacks := func(lacking ...string) snapshot.TestKinds {
+		source := snapshottest.Lacking(snapshottest.Files(partialBase, partialNow), lacking, []string{"tests/unit/c_test.go"})
+		return snapshot.Build(source, conventions.Default(), snapshottest.Readings(t)).TestKinds
+	}
+	if kinds := lacks(); kinds.Kinds[0].BaseMissing || kinds.RemainderBaseMissing {
+		t.Errorf("a partial clone lacking only an older commit's content of an unchanged path: %+v, want every base known", kinds)
+	}
+	if kinds := lacks("tests/unit/a_test.go"); !kinds.Kinds[0].BaseMissing || kinds.RemainderBaseMissing {
+		t.Errorf("the base of a changed path the kind owns is lacking: %+v, want only the kind's base unknown", kinds)
+	}
+	if kinds := lacks("tests/other/b_test.go"); kinds.Kinds[0].BaseMissing || !kinds.RemainderBaseMissing {
+		t.Errorf("the base of a changed test path no kind owns is lacking: %+v, want only the remainder's base unknown", kinds)
 	}
 	if plain := snapshot.Build(snapshottest.Files(nil, map[string]string{"tests/a_test.go": "package a\n"}), conventions.Default(), snapshottest.Readings(t)); len(plain.TestKinds.Kinds) != 0 {
 		t.Errorf("no tests table: kinds %+v, want none", plain.TestKinds.Kinds)

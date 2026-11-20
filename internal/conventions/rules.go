@@ -178,6 +178,11 @@ const (
 // 109 characters, the longest file name 72 (2026-11-16).
 const OwnValueLength = 200
 
+// TestPatterns is the most path patterns the tests table puts to use, in file order. Each pattern that matches no path
+// costs one try per tracked path: on 83,000 deep paths (swc's size) about 9 ms a pattern, so 100 stay under a second
+// against the 8 s of a warm report there. The setups of the field repositories used up to 10.
+const TestPatterns = 100
+
 // importArrow joins the two folders of an import rule, as it is written and as an answer prints it.
 const importArrow = "->"
 

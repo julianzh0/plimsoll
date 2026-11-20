@@ -22,6 +22,9 @@ func KindName(name string) bool {
 
 // KindOf is the first kind, in declared order, with a pattern that matches a path, or "".
 func KindOf(kinds []TestKind, filePath string) string {
+	if len(kinds) == 0 {
+		return ""
+	}
 	parts := strings.Split(filePath, "/")
 	for _, kind := range kinds {
 		for _, pattern := range kind.Patterns {

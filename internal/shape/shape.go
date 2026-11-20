@@ -68,8 +68,9 @@ func (Detector) Detect(s snapshot.Snapshot) answer.Findings {
 			f.Statistics = append(f.Statistics, split(s, now, before)...)
 		}
 	}
-	kindRows, kindGaps := testKinds(s, now.test(), before.test())
+	kindRows, kindNotes, kindGaps := testKinds(s, now.test(), before.test())
 	f.Statistics = append(f.Statistics, kindRows...)
+	f.Notes = append(f.Notes, kindNotes...)
 	f.NotAnalysed = append(f.NotAnalysed, kindGaps...)
 	f.Statistics = append(f.Statistics, largest(s, s.Now.Files, "largest code file")...)
 	f.Marks = append(f.Marks, sizeMarks(s)...)

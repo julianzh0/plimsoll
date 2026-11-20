@@ -19,11 +19,11 @@ type DeclaredValues struct {
 	Table, Key, Name string
 	Now, Before      []string
 	Whole            bool // a whole table whose keys are the values; Key is then the table's name
-	// OrderChanged says the order of the table's entries decides what they do and changed: the entries both sides
-	// name stand in another order.
-	OrderChanged bool
-	Compared     bool
-	UnreadAtBase bool
+	// Ordered says the order of the table's entries decides what they do; OrderChanged that it changed: the entries
+	// both sides name stand in another order.
+	Ordered, OrderChanged bool
+	Compared              bool
+	UnreadAtBase          bool
 }
 
 // ownFile is what one side's own file says.
@@ -330,7 +330,7 @@ func declaredValues(rules conventions.Rules, now, before ownFile) []DeclaredValu
 	if nowPairs, beforePairs := now.tests.pairs(), before.tests.pairs(); len(nowPairs) > 0 || len(beforePairs) > 0 {
 		declared = append(declared, DeclaredValues{
 			Table: rules.TestsTable, Key: rules.TestsTable, Name: rules.TestKindsName, Now: nowPairs, Before: beforePairs,
-			Whole: true, Compared: !now.unreadable && !before.unreadable, OrderChanged: orderChanged(now.tests.names(), before.tests.names()),
+			Whole: true, Ordered: true, Compared: !now.unreadable && !before.unreadable, OrderChanged: orderChanged(now.tests.names(), before.tests.names()),
 		})
 	}
 	return declared

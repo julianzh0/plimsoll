@@ -310,8 +310,18 @@ func TestAChangeToTheRepositorysOwnFileIsMarked(t *testing.T) {
 	for _, mark := range swappedFindings.Marks {
 		if answer.RuleOf(mark.ID) == ruleDeclarationChange {
 			evidence := strings.Join(Detector{}.Explain(swapped, mark), "\n")
-			if !strings.Contains(evidence, "in order at the base: `unit: a/**`, `e2e: c/**`") || !strings.Contains(evidence, "in order now: `e2e: c/**`, `unit: a/**`") {
+			if !strings.Contains(evidence, "at the base, 1 of 2: `unit: a/**`\nat the base, 2 of 2: `e2e: c/**`") || !strings.Contains(evidence, "now, 1 of 2: `e2e: c/**`\nnow, 2 of 2: `unit: a/**`") {
 				t.Errorf("kinds swapped: evidence %q, want both sides in their order", evidence)
+			}
+		}
+	}
+
+	added, addedFindings := detect(t, snapshottest.Files(files("[tests]\nunit = [\"a/**\"]\n"), files("[tests]\nunit = [\"a/**\", \"b/**\"]\n")))
+	for _, mark := range addedFindings.Marks {
+		if answer.RuleOf(mark.ID) == ruleDeclarationChange {
+			evidence := strings.Join(Detector{}.Explain(added, mark), "\n")
+			if !strings.Contains(evidence, "at the base, 1 of 1: `unit: a/**`\nnow, 1 of 2: `unit: a/**`\nnow, 2 of 2: `unit: b/**`") {
+				t.Errorf("a pattern added: evidence %q, want both sides in their order", evidence)
 			}
 		}
 	}

@@ -295,7 +295,7 @@ func TestTheSetupPageCarriesTheReadmeCommands(t *testing.T) {
 		if from != "" {
 			start, end := strings.Index(text, from), strings.Index(text, to)
 			if start < 0 || end < start {
-				t.Fatalf("the README lacks the part from %q to %q", from, to)
+				t.Fatalf("the document lacks the part from %q to %q", from, to)
 			}
 			text = text[start:end]
 		}
@@ -309,15 +309,8 @@ func TestTheSetupPageCarriesTheReadmeCommands(t *testing.T) {
 	}
 	readme, err := os.ReadFile("../../README.md")
 	page, pageErr := os.ReadFile("../../docs/agent-setup.md")
-	readmeBlocks, pageBlocks := blocks(readme, err, "## Install", "## Tools"), blocks(page, pageErr, "", "")
-	at := 0
-	for _, block := range readmeBlocks {
-		for at < len(pageBlocks) && pageBlocks[at] != block {
-			at++
-		}
-		if at == len(pageBlocks) {
-			t.Errorf("docs/agent-setup.md lacks, in the README's order, the block:\n```%s```", block)
-			return
-		}
+	readmeBlocks, pageBlocks := blocks(readme, err, "## Install", "## Tools"), blocks(page, pageErr, "## 2. Install and connect", "## 3.")
+	if !slices.Equal(pageBlocks, readmeBlocks) {
+		t.Errorf("docs/agent-setup.md step 2 blocks:\n%q\nwant the README's install and connect blocks:\n%q", pageBlocks, readmeBlocks)
 	}
 }

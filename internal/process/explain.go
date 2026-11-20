@@ -95,8 +95,9 @@ func declarationEvidence(s snapshot.Snapshot, m answer.Mark) []string {
 	return lines
 }
 
-// tableEvidence gives a whole table's entries on both sides by count, then each identifier added or removed on a
-// line of its own, so the evidence cap applies to a long table.
+// tableEvidence gives a whole table's entries on both sides by count; for a table whose order decides, each side's
+// entries in order; then each identifier added or removed. Each entry is on a line of its own, so the evidence cap
+// applies to a long table.
 func tableEvidence(ownFile string, d snapshot.DeclaredValues) []string {
 	entries := func(values []string) string {
 		if len(values) == 0 {
@@ -108,8 +109,15 @@ func tableEvidence(ownFile string, d snapshot.DeclaredValues) []string {
 		fmt.Sprintf("`%s` `[%s]` at the base: %s", ownFile, d.Table, entries(d.Before)),
 		fmt.Sprintf("`%s` `[%s]` now: %s", ownFile, d.Table, entries(d.Now)),
 	}
-	if d.OrderChanged {
-		lines = append(lines, "in order at the base: "+answer.QuotedList(d.Before), "in order now: "+answer.QuotedList(d.Now))
+	if d.Ordered {
+		for _, side := range []struct {
+			name    string
+			entries []string
+		}{{"at the base", d.Before}, {"now", d.Now}} {
+			for i, entry := range side.entries {
+				lines = append(lines, fmt.Sprintf("%s, %d of %d: `%s`", side.name, i+1, len(side.entries), entry))
+			}
+		}
 	}
 	for _, id := range answer.Added(d.Before, d.Now) {
 		lines = append(lines, fmt.Sprintf("added: `%s`", id))

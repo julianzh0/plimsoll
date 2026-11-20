@@ -1,6 +1,7 @@
 package snapshot_test
 
 import (
+	"fmt"
 	"math/rand/v2"
 	"reflect"
 	"slices"
@@ -286,10 +287,17 @@ func TestBuildReadsTheTestsTableOfTheOwnFile(t *testing.T) {
 		{"a line that opens a brace does not swallow the next entry",
 			"[tests]\nbad = {a = 1\nunit = [\"tests/**\"]\n",
 			[]snapshot.TestKind{{Name: "unit", Patterns: []string{"tests/**"}}}, []string{"`[tests]` `bad` is not a list of text"}},
+		{"a list left open does not take the next entry or table",
+			"[tests]\nbad = [{\nunit = [\"tests/**\"]\nopen = [\"e2e/**\",\n[layout]\n",
+			[]snapshot.TestKind{{Name: "unit", Patterns: []string{"tests/**"}}},
+			[]string{"`[tests]` `bad` is not a list of text", "`[tests]` `open` is not a list of text"}},
+		{"a string split over lines is no pattern",
+			"[tests]\nunit = [\"tests/\n**\"]\n",
+			nil, []string{"`[tests]` `unit` is not a list of text", "`[tests]`: 1 line is no `name = [\"pattern\", …]` entry; it is not applied"}},
 		{"a name set twice, a value that is no list, a line that is no entry, an empty list",
-			"[tests]\nunit = [\"a/**\"]\nunit = [\"b/**\"]\ne2e = \"e2e/**\"\njust text\nnone = []\n",
+			"[tests]\nunit = [\"a/**\"]\nunit = [\"b/**\"]\ne2e = \"e2e/**\"\njust text\nnone = []\nempty =\n",
 			[]snapshot.TestKind{{Name: "unit", Patterns: []string{"a/**"}}},
-			[]string{"`[tests]` `e2e` is not a list of text", "`[tests]` `unit` is set twice; its first entry decides",
+			[]string{"`[tests]` `e2e` is not a list of text", "`[tests]` `empty` is not a list of text", "`[tests]` `unit` is set twice; its first entry decides",
 				"`[tests]`: 1 line is no `name = [\"pattern\", …]` entry; it is not applied"}},
 		{"patterns outside their form are counted per kind",
 			"[tests]\nunit = [\"tests/**\", \"src/**.ts\", \"e2e/\", \"tests/**\"]\n",
@@ -306,13 +314,23 @@ func TestBuildReadsTheTestsTableOfTheOwnFile(t *testing.T) {
 		}
 	}
 
+	var many strings.Builder
+	many.WriteString("[tests]\n")
+	for k := range 51 {
+		fmt.Fprintf(&many, "k%d = [\"a%d/**\", \"b%d/**\"]\n", k, k, k)
+	}
+	capped := snapshot.Build(snapshottest.Files(nil, map[string]string{"src/a.ts": "a\n", ".plimsoll.toml": many.String()}), conventions.Default(), snapshottest.Readings(t))
+	if kinds := capped.TestKinds.Kinds; len(kinds) != 50 || !slices.Equal(capped.OwnFileProblems, []string{"`[tests]`: 2 patterns are beyond the first 100 not used"}) {
+		t.Errorf("102 patterns: %d kinds, problems %q; want 50 kinds and the 2 patterns beyond the cap counted", len(kinds), capped.OwnFileProblems)
+	}
+
 	ordered := snapshot.Build(snapshottest.Files(
 		map[string]string{"src/a.ts": "a\n", ".plimsoll.toml": "[tests]\nunit = [\"tests/**\", \"**/*_test.go\"]\ne2e = [\"e2e/**\"]\n"},
 		map[string]string{"src/a.ts": "a\n", ".plimsoll.toml": "[tests]\ne2e = [\"e2e/**\"]\nunit = [\"**/*_test.go\", \"tests/**\"]\nsmoke = [\"smoke/**\"]\n"}),
 		conventions.Default(), snapshottest.Readings(t))
 	want := []snapshot.DeclaredValues{{Table: "tests", Key: "tests", Name: "test kinds",
 		Now:    []string{"e2e: e2e/**", "unit: **/*_test.go", "unit: tests/**", "smoke: smoke/**"},
-		Before: []string{"unit: **/*_test.go", "unit: tests/**", "e2e: e2e/**"}, Whole: true, Compared: true, OrderChanged: true}}
+		Before: []string{"unit: **/*_test.go", "unit: tests/**", "e2e: e2e/**"}, Whole: true, Ordered: true, Compared: true, OrderChanged: true}}
 	if !reflect.DeepEqual(ordered.Declarations, want) {
 		t.Errorf("kinds reordered and one added: Declarations %+v, want %+v", ordered.Declarations, want)
 	}
