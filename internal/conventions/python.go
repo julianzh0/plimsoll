@@ -56,7 +56,7 @@ func pytestLayout() []Declaration {
 		{File: ".pytest.toml", Table: "pytest", Always: true},
 		{File: "pytest.ini", Table: "pytest", INI: true, Always: true},
 		{File: ".pytest.ini", Table: "pytest", INI: true, Always: true},
-		{File: "pyproject.toml", Table: "tool.pytest.ini_options"},
+		{File: "pyproject.toml", Table: "tool.pytest.ini_options", Present: true},
 		{File: "pyproject.toml", Table: "tool.pytest"},
 		{File: "tox.ini", Table: "pytest", INI: true},
 		{File: "setup.cfg", Table: "tool:pytest", INI: true},

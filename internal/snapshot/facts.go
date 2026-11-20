@@ -60,7 +60,7 @@ func WantsOf(rules conventions.Rules) Wants {
 // declaredBaseIn reads the default base from the own file's content: its name, or the problem that makes it
 // unusable; both are "" when the file declares none.
 func declaredBaseIn(rules conventions.Rules, content []byte) (name, problem string) {
-	o := readOwnFile(rules, map[string][]byte{rules.OwnFile: bytes.TrimPrefix(content, []byte(byteOrderMark))})
+	o := readOwnFile(rules, map[string][]byte{rules.OwnFile: bytes.TrimPrefix(content, []byte(byteOrderMark))}, nil)
 	at := slices.IndexFunc(rules.OwnKeys, func(k conventions.OwnKey) bool { return k.Holds == conventions.BaseName })
 	if at < 0 {
 		return "", ""

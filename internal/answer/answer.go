@@ -121,6 +121,8 @@ type Subject struct {
 	Kind  string   `json:"kind"`            // repository, file, files, folders, setting, rule
 	Paths []string `json:"paths,omitempty"` // one path for a file; two or more, sorted, for files
 	Names []string `json:"names,omitempty"` // settings or dependencies the mark names, sorted; for a rule, the imports it names, in order
+	// Unnamed counts further names the mark counts but does not print: values of the own file that are no plain names.
+	Unnamed int `json:"unnamed,omitempty"`
 }
 
 // Measured is the measurement behind a mark.

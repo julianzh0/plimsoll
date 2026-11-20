@@ -27,7 +27,7 @@ func cargoCrates(manifest string, content map[string][]byte, tracked map[string]
 		if path.Base(file) != manifest || content[file] == nil {
 			continue
 		}
-		document, _ := decodeTOML(content[file])
+		document, _ := decodeTOML(content[file]) // a file that is no TOML names no crate
 		name := tomlText(document, "package", "name")
 		if name == "" {
 			continue

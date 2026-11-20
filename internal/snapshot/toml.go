@@ -1,6 +1,8 @@
 package snapshot
 
 import (
+	"errors"
+	"fmt"
 	"maps"
 	"slices"
 	"strings"
@@ -10,13 +12,21 @@ import (
 	"github.com/julianzh0/plimsoll/internal/conventions"
 )
 
-// decodeTOML decodes a TOML file into plain maps. ok is false when it is not valid TOML: a reader then names the file
-// as unreadable, never the decoder's message, which quotes the file.
-func decodeTOML(content []byte) (document map[string]any, ok bool) {
-	if err := toml.Unmarshal(content, &document); err != nil {
-		return nil, false
+// decodeTOML decodes a TOML file into plain maps. An error means it is not valid TOML: a reader then names the file
+// as unreadable, never the error's message, which quotes the file (notTOML).
+func decodeTOML(content []byte) (document map[string]any, err error) {
+	err = toml.Unmarshal(content, &document)
+	return document, err
+}
+
+// notTOML says why a file is no valid TOML: the line where decoding stopped, never the decoder's message.
+func notTOML(err error) string {
+	if decodeError, ok := errors.AsType[*toml.DecodeError](err); ok {
+		if row, _ := decodeError.Position(); row > 0 {
+			return fmt.Sprintf("it is not valid TOML at line %d", row)
+		}
 	}
-	return document, true
+	return "it is not valid TOML"
 }
 
 // tomlAt is the value at a path of keys, each a table but the last; found is false when a step is missing or no
@@ -78,21 +88,18 @@ func readsConfig(content map[string][]byte, c conventions.Config) bool {
 	case c.INI:
 		return iniHolds(file, c.Table)
 	}
-	document, _ := decodeTOML(file)
+	document, _ := decodeTOML(file) // a file that is no TOML holds no section
+	if c.Present {
+		return tomlTableAt(document, strings.Split(c.Table, ".")...) != nil
+	}
 	return tomlHolds(document, c.Table)
 }
 
-// tomlHolds says whether a document holds a table of its own at a dotted path: one written empty, or one with a key
-// that is no table. A table that only holds other tables (tool.pytest above tool.pytest.ini_options) is none.
+// tomlHolds says whether a document holds a section at a dotted path: a table with a key of its own, one that is no
+// table. An empty table, or one that only holds other tables (tool.pytest above tool.pytest.ini_options), holds none,
+// as pytest counts its sections.
 func tomlHolds(document map[string]any, dotted string) bool {
-	table := tomlTableAt(document, strings.Split(dotted, ".")...)
-	if table == nil {
-		return false
-	}
-	if len(table) == 0 {
-		return true
-	}
-	for _, value := range table {
+	for _, value := range tomlTableAt(document, strings.Split(dotted, ".")...) {
 		if _, isTable := value.(map[string]any); !isTable {
 			return true
 		}
@@ -107,8 +114,8 @@ func tomlHolds(document map[string]any, dotted string) bool {
 // is no valid TOML, or a dependency table or a key in one cannot be read.
 // NOTE: the dependencies of workspace members are not counted. Upgrade: read every tracked Cargo.toml.
 func cargoDependencies(content []byte) (names []string, manifest, readable bool) {
-	document, ok := decodeTOML(content)
-	if !ok {
+	document, err := decodeTOML(content)
+	if err != nil {
 		return nil, true, false
 	}
 	tables := []any{}
@@ -138,18 +145,18 @@ func cargoDependencies(content []byte) (names []string, manifest, readable bool)
 			if name == "" || strings.ContainsAny(name, " \t") {
 				return nil, true, false
 			}
-			names = appendNew(names, name)
+			names = append(names, name)
 		}
 	}
 	slices.Sort(names)
-	return names, true, true
+	return slices.Compact(names), true, true
 }
 
 // pyprojectDependencies reads the names of [project] dependencies. manifest is false when the file has no [project]
 // table; readable is false when the file is no valid TOML, or its dependencies are no list of text or are dynamic.
 func pyprojectDependencies(content []byte) (names []string, manifest, readable bool) {
-	document, ok := decodeTOML(content)
-	if !ok {
+	document, err := decodeTOML(content)
+	if err != nil {
 		return nil, true, false
 	}
 	project, isTable := document["project"].(map[string]any)
@@ -197,9 +204,12 @@ func readDeclared(content []byte, d conventions.Declaration) ([]string, KeyState
 		}
 		return values, KeyRead
 	}
-	document, ok := decodeTOML(content)
-	if !ok {
-		return nil, 0 // the manifest reader names a file that is no valid TOML
+	document, err := decodeTOML(content)
+	switch {
+	case err != nil && d.Always: // the tool's own file: nothing else names it
+		return nil, KeyUnreadable
+	case err != nil:
+		return nil, 0 // the manifest reader names a manifest that is no valid TOML
 	}
 	value, found := tomlAt(document, append(strings.Split(d.Table, "."), d.Key)...)
 	switch {

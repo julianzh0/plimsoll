@@ -24,9 +24,8 @@ func Build(source Source, rules conventions.Rules, readings *Readings) Snapshot 
 	}
 	beforeEntries := unchangedFromNow(source.Before, source.Now, changed)
 	nowContent, beforeContent := contentOf(source.Now), contentOf(beforeEntries)
-	ownNow, ownBefore := readOwnFile(rules, nowContent), readOwnFile(rules, beforeContent)
 	tracked := trackedPaths(nowContent, beforeContent)
-	ownNow, ownBefore = ownNow.withWideValues(rules, tracked), ownBefore.withWideValues(rules, tracked)
+	ownNow, ownBefore := readOwnFile(rules, nowContent, tracked), readOwnFile(rules, beforeContent, tracked)
 	layout := ownLayout(declaredLayout(rules, nowContent, beforeContent, tracked), rules, ownNow, tracked)
 	importRules, ruleRecords := importRules(rules, ownNow)
 	layout.Rules = ruleRecords

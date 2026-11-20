@@ -1,54 +1,52 @@
 package snapshot
 
 import (
-	"bytes"
 	"strings"
 )
 
-// iniValue is the value of a key in a section of an INI file, as Python's configparser reads it: "key = value" or
-// "key: value", continuation lines indented below it, and comment lines that start with "#" or ";".
+// iniValue is the value of a key in a section of an INI file, as pytest's INI reader (iniconfig) reads it:
+// "key = value" or "key: value" with the key as written, continuation lines indented below it, and comment lines that
+// start with "#" or ";".
 func iniValue(content []byte, section, key string) (value string, found bool) {
 	inSection := false
 	var lines []string
-	collecting := false
-	for line := range strings.Lines(string(bytes.ReplaceAll(content, []byte("\r\n"), []byte("\n")))) {
+	for line := range strings.Lines(strings.ReplaceAll(string(content), "\r\n", "\n")) {
 		line = strings.TrimRight(line, "\n")
 		trimmed := strings.TrimSpace(line)
-		switch {
+		switch name, isHeader := iniSection(trimmed); {
 		case trimmed == "" || strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, ";"):
-			continue
-		case collecting && (line[0] == ' ' || line[0] == '\t'):
+		case found && (line[0] == ' ' || line[0] == '\t'):
 			lines = append(lines, trimmed)
-			continue
-		case collecting:
+		case found:
 			return strings.Join(lines, "\n"), true
-		case strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]"):
-			inSection = strings.TrimSpace(trimmed[1:len(trimmed)-1]) == section
-			continue
-		case !inSection:
-			continue
+		case isHeader:
+			inSection = name == section
+		case inSection:
+			at := strings.IndexAny(trimmed, "=:")
+			if at >= 0 && strings.TrimSpace(trimmed[:at]) == key {
+				lines, found = []string{strings.TrimSpace(trimmed[at+1:])}, true
+			}
 		}
-		at := strings.IndexAny(trimmed, "=:")
-		if at < 0 || strings.ToLower(strings.TrimSpace(trimmed[:at])) != key {
-			continue
-		}
-		lines, collecting = []string{strings.TrimSpace(trimmed[at+1:])}, true
 	}
-	if collecting {
-		return strings.Join(lines, "\n"), true
-	}
-	return "", false
+	return strings.Join(lines, "\n"), found
 }
 
 // iniHolds says whether an INI file has the given section.
 func iniHolds(content []byte, section string) bool {
 	for line := range strings.Lines(string(content)) {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]") && strings.TrimSpace(trimmed[1:len(trimmed)-1]) == section {
+		if name, isHeader := iniSection(strings.TrimSpace(line)); isHeader && name == section {
 			return true
 		}
 	}
 	return false
+}
+
+// iniSection is the name of a section header line, trimmed: "[name]".
+func iniSection(trimmed string) (name string, isHeader bool) {
+	if !strings.HasPrefix(trimmed, "[") || !strings.HasSuffix(trimmed, "]") {
+		return "", false
+	}
+	return strings.TrimSpace(trimmed[1 : len(trimmed)-1]), true
 }
 
 // shellWords splits a text as a POSIX shell splits arguments, as pytest splits an "args" option: at white space,

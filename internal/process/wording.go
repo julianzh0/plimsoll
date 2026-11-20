@@ -33,12 +33,19 @@ func (Detector) Wording(m answer.Mark) string {
 	case ruleDeclarationChange:
 		now, before := int(m.Measured.Value), int(*m.Measured.Before)
 		var parts []string
-		if added := m.Subject.Names; len(added) > declaredNamed {
-			parts = append(parts, fmt.Sprintf("added %s and %d more", answer.QuotedList(added[:declaredNamed]), len(added)-declaredNamed))
-		} else if len(added) > 0 {
-			parts = append(parts, "added "+answer.QuotedList(added))
+		var unnamed string
+		if m.Subject.Unnamed > 0 {
+			unnamed = fmt.Sprintf(" and %d that %s no plain name", m.Subject.Unnamed, map[bool]string{true: "is", false: "are"}[m.Subject.Unnamed == 1])
 		}
-		if removed := before + len(m.Subject.Names) - now; removed > 0 {
+		switch added := m.Subject.Names; {
+		case len(added) > declaredNamed:
+			parts = append(parts, fmt.Sprintf("added %s and %d more", answer.QuotedList(added[:declaredNamed]), len(added)-declaredNamed+m.Subject.Unnamed))
+		case len(added) > 0:
+			parts = append(parts, "added "+answer.QuotedList(added)+unnamed)
+		case m.Subject.Unnamed > 0:
+			parts = append(parts, fmt.Sprintf("added %d that %s no plain name", m.Subject.Unnamed, map[bool]string{true: "is", false: "are"}[m.Subject.Unnamed == 1]))
+		}
+		if removed := before + len(m.Subject.Names) + m.Subject.Unnamed - now; removed > 0 {
 			parts = append(parts, fmt.Sprintf("removed %d", removed))
 		}
 		return fmt.Sprintf("This change altered the %s declared in `%s`: %s; %d declared now, %d at the base.", m.Measured.Unit, m.Subject.Paths[0],

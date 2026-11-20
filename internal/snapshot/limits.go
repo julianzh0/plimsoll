@@ -8,6 +8,7 @@ type DeclaredLimit struct {
 	conventions.LimitKey
 	Default     float64
 	Now, Before *float64
+	Compared    bool // the own file was read on both sides, so a change of the limit is known
 }
 
 // declaredLimits are the limits of one question, from the own file of both sides: those it sets now, each with the
@@ -21,7 +22,7 @@ func declaredLimits(rules conventions.Rules, now, before ownFile) (limits conven
 			continue
 		}
 		limit := limits.ByKey(key.Key)
-		d := DeclaredLimit{LimitKey: key, Default: limit.Value}
+		d := DeclaredLimit{LimitKey: key, Default: limit.Value, Compared: !now.unreadable && !before.unreadable}
 		if setNow {
 			d.Now = &nowValue
 			*limit = conventions.Limit{Value: nowValue, Step: limit.Step, Source: "set by `" + rules.OwnFile + "`"}

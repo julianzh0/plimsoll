@@ -315,8 +315,8 @@ func TestNoAnswerPrintsADeclaredValueOutsideItsForm(t *testing.T) {
 	for _, want := range []string{"`checks/`", "5 values are no plain paths from the root", "3 values are no plain file-name patterns",
 		"`planning_folders`: 1 value is no plain path from the root", "`planning_files`: 1 value is no plain file-name pattern",
 		"`base` is not the name of a branch, a remote branch or a tag", "2 values are no import rule", "1 value is no import rule",
-		"value 2 of `test_folders` matches no tracked file", "value 6 of `test_folders` matches no tracked file",
-		"value 1 of `planning_folders` matches no tracked file", "value 1 of `never` matches no tracked folder",
+		"value 2 of `test_folders` matches no tracked folder", "value 6 of `test_folders` matches no tracked folder",
+		"value 1 of `planning_folders` matches no tracked folder", "value 1 of `never` matches no tracked folder",
 		"value 3 of `never` matches no tracked folder", "value 1 of `only` matches no tracked folder"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the report lacks %q:\n%s", want, text)

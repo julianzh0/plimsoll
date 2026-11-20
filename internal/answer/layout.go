@@ -114,12 +114,11 @@ func shadowedClause(d snapshot.Declared) string {
 
 // stateSentence says what became of a key that one side could not read, or "" when both sides read it or lack it.
 func stateSentence(d snapshot.Declared, things string) string {
-	problem := func(state snapshot.KeyState) bool { return state == snapshot.KeyUnreadable }
 	state, when, other, otherWhen := d.Now, "", d.AtBase, "at the base"
-	if !problem(state) {
+	if state != snapshot.KeyUnreadable {
 		state, when, other, otherWhen = d.AtBase, " at the base", d.Now, "now"
 	}
-	if !problem(state) {
+	if state != snapshot.KeyUnreadable {
 		return ""
 	}
 	phrase := fmt.Sprintf("`%s` `%s` could not be read%s", d.File, d.Key, when)

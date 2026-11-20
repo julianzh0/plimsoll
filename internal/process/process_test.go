@@ -273,6 +273,12 @@ func TestAChangeToTheRepositorysOwnFileIsMarked(t *testing.T) {
 			[]string{"This change altered the acknowledged items declared in `.plimsoll.toml`: added `links.cycle:a`; 1 declared now, 0 at the base."}},
 		{"an import rule loosened", ruleDeclarationChange, "[imports]\nnever = [\"src/domain -> src/adapters\"]\n", "[imports]\nnever = [\"./src/domain/ -> src/web\"]\n",
 			[]string{"This change altered the `never` import rules declared in `.plimsoll.toml`: added `src/domain -> src/web`, removed 1; 1 declared now, 1 at the base."}},
+		{"an entry with a space added, never printed", ruleDeclarationChange, "[acknowledged]\n\"links.cycle:z\" = \"x\"\n",
+			"[acknowledged]\n\"links.cycle:z\" = \"x\"\n\"links.cycle:My File.ts\" = \"kept\"\n\"links.cycle:a\" = \"x\"\n",
+			[]string{"This change altered the acknowledged items declared in `.plimsoll.toml`: added `links.cycle:a` and 1 that is no plain name; 3 declared now, 1 at the base."}},
+		{"only an entry with a space removed", ruleDeclarationChange, "[acknowledged]\n\"links.cycle:My File.ts\" = \"kept\"\n\"links.cycle:a\" = \"x\"\n",
+			"[acknowledged]\n\"links.cycle:a\" = \"x\"\n",
+			[]string{"This change altered the acknowledged items declared in `.plimsoll.toml`: removed 1; 1 declared now, 2 at the base."}},
 		{"a reason edited", ruleDeclarationChange, "[acknowledged]\n\"links.cycle:a\" = \"x\"\n", "[acknowledged]\n\"links.cycle:a\" = \"\"\n", nil},
 	}
 	for _, tc := range cases {

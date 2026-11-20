@@ -194,7 +194,10 @@ const ReasonLength = 200
 // hyphens, and a subject of letters, digits and the punctuation paths, functions and pairs hold. A space or a quote
 // has no place in it, so an identifier cannot carry a sentence into an answer.
 // A path with a space or a letter outside ASCII has no identifier in this form; WideMarkID admits it.
-var markID = regexp.MustCompile(`^[a-z]+(?:-[a-z]+)*\.[a-z]+(?:-[a-z]+)*:[A-Za-z0-9._\-+/:#~@$()\[\],=>]+$`)
+var markID = regexp.MustCompile(`^` + markPrefix + `[A-Za-z0-9._\-+/:#~@$()\[\],=>]+$`)
+
+// markPrefix is the detector and rule of a mark identifier, as answers print them.
+const markPrefix = `[a-z]+(?:-[a-z]+)*\.[a-z]+(?:-[a-z]+)*:`
 
 // MarkID says whether an acknowledged entry's identifier has the form of a mark identifier, within its cap.
 func MarkID(id string) bool {
@@ -217,7 +220,7 @@ var (
 // one leading "./" and one trailing "/", and "." or "./" is the root.
 func (v OwnValue) Form(value string) (formed string, usable bool) {
 	if v.ImportRule() {
-		return v.importRuleForm(value)
+		return v.ruleForm(value, folderForm)
 	}
 	if value == "" || len(value) > OwnValueLength {
 		return "", false
@@ -254,19 +257,15 @@ func folderForm(value string) (string, bool) {
 	return formed, true
 }
 
-// importRuleForm brings an import rule to "a -> b", rebuilt from its two folders so that nothing else of the value
+// ruleForm brings an import rule to "a -> b", rebuilt from its two folders so that nothing else of the value
 // as written is kept: one arrow, two folders from the root other than the root itself, each within OwnValueLength.
 // Under NeverImportRules the two folders differ and neither lies under the other.
-func (v OwnValue) importRuleForm(value string) (string, bool) {
-	return v.ruleForm(value, folderForm)
-}
-
-// ruleForm is importRuleForm with the given form of a folder.
+// folder is the form of each of the two folders: the plain or the widened one.
 func (v OwnValue) ruleForm(value string, folder func(string) (string, bool)) (string, bool) {
-	if len(value) > importRuleLength {
+	if len(value) > importRuleLength || strings.Count(value, importArrow) != 1 {
 		return "", false
 	}
-	from, to, _ := strings.Cut(value, importArrow) // a second arrow, or none, leaves an end outside the folder form
+	from, to, _ := strings.Cut(value, importArrow)
 	var ends [2]string
 	for i, end := range []string{from, to} {
 		formed, usable := folder(strings.Trim(end, " \t"))
@@ -289,9 +288,6 @@ func (v OwnValue) ruleForm(value string, folder func(string) (string, bool)) (st
 func (v OwnValue) WideForm(value string) (formed string, usable bool) {
 	switch {
 	case v.ImportRule():
-		if strings.Count(value, importArrow) != 1 {
-			return "", false
-		}
 		return v.ruleForm(value, wideFolderForm)
 	case v.Pattern() || v.Single() || len(value) > OwnValueLength:
 		return "", false
@@ -321,8 +317,8 @@ func wideText(text string) bool {
 	})
 }
 
-// wideMarkPrefix is the detector and rule of a mark identifier, as answers print them.
-var wideMarkPrefix = regexp.MustCompile(`^[a-z]+(?:-[a-z]+)*\.[a-z]+(?:-[a-z]+)*:`)
+// wideMarkPrefix finds the detector and rule at the start of an identifier.
+var wideMarkPrefix = regexp.MustCompile(`^` + markPrefix)
 
 // WideMarkID says whether an acknowledged entry's identifier has the widened form of a mark identifier: the plain
 // detector and rule, then a subject of any characters a widened value may hold. Such an entry applies only when it
@@ -490,12 +486,14 @@ type Declaration struct {
 }
 
 // Config is a section of a configuration file at the repository root. Always is true for a file the tool reads
-// whenever it is tracked, whatever it holds; otherwise the tool reads it only when it holds the section.
+// whenever it is tracked, whatever it holds; Present for a section the tool reads whenever it is there, even empty;
+// otherwise the tool reads it only when the section holds a key of its own.
 type Config struct {
-	File   string
-	Table  string // the TOML table, as its header names it, or the INI section
-	INI    bool
-	Always bool
+	File    string
+	Table   string // the TOML table, as its header names it, or the INI section
+	INI     bool
+	Always  bool
+	Present bool
 }
 
 // Default returns the rules of the first version.

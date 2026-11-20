@@ -106,6 +106,11 @@ func TestTheOwnFileReadsTheSameInEveryTOMLSpelling(t *testing.T) {
 	}
 }
 
+// notValidTOML is the problem an own file that is no valid TOML gives.
+func notValidTOML(line int) string {
+	return fmt.Sprintf("it is not valid TOML at line %d, so none of it is applied and its import rules were not checked", line)
+}
+
 // underscored writes a whole number with an underscore before its last three digits, as TOML allows.
 func underscored(n int) string {
 	if n < 1000 {
@@ -120,20 +125,23 @@ func TestTheOwnFileTakesWidenedValuesThatNameTrackedPaths(t *testing.T) {
 	files := map[string]string{"src/a.ts": "a\n", "My App/Tests/x.ts": "a\n", "Übersetzungen/de.ts": "a\n", ".plimsoll.toml": "[layout]\n" +
 		"test_folders = [\"My App/Tests\", \"Ünïts\", \"checks\"]\nplanning_folders = [\"Übersetzungen\"]\n" +
 		"[imports]\nnever = [\"src -> My App\", \"src -> Nowhere Else\"]\n" +
-		"[acknowledged]\n\"shape.file-size:My App/Tests/x.ts\" = \"kept\"\n\"shape.file-size:a`b\" = \"x\"\n"}
+		"[acknowledged]\n\"shape.file-size:My App/Tests/x.ts\" = \"kept\"\n\"shape.file-size:a`b\" = \"x\"\n\"shape.file-size:My App/y.ts\" = \"\"\n"}
 	s := snapshot.Build(snapshottest.Files(nil, files), conventions.Default(), snapshottest.Readings(t))
 	folders := func(key, name string, values ...string) snapshot.DeclaredValues {
 		return snapshot.DeclaredValues{Table: "layout", Key: key, Name: name, Now: values, Compared: true}
 	}
 	wantDeclared := []snapshot.DeclaredValues{folders("test_folders", "test folders", "My App/Tests", "checks"),
 		folders("planning_folders", "planning folders", "Übersetzungen"),
-		{Table: "imports", Key: "never", Name: "`never` import rules", Now: []string{"src -> My App"}, Compared: true}}
-	wantProblems := []string{"value 2 of `never` matches no tracked folder; it is not used", "value 2 of `test_folders` matches no tracked file; it is not used"}
+		{Table: "imports", Key: "never", Name: "`never` import rules", Now: []string{"src -> My App"}, Compared: true},
+		{Table: "acknowledged", Key: "acknowledged", Name: "acknowledged items", Whole: true, Compared: true,
+			Now: []string{"shape.file-size:My App/Tests/x.ts", "shape.file-size:My App/y.ts"}, Hidden: []string{"shape.file-size:My App/Tests/x.ts", "shape.file-size:My App/y.ts"}}}
+	wantProblems := []string{"value 2 of `never` matches no tracked folder; it is not used", "value 2 of `test_folders` matches no tracked folder; it is not used"}
 	if !reflect.DeepEqual(s.Declarations, wantDeclared) || !slices.Equal(s.OwnFileProblems, wantProblems) {
 		t.Errorf("Declarations %+v, problems %q; want %+v, %q", s.Declarations, s.OwnFileProblems, wantDeclared, wantProblems)
 	}
 	if !slices.Equal(s.Acknowledged.Widened, []string{"shape.file-size:My App/Tests/x.ts"}) ||
-		!slices.Equal(s.Acknowledged.Problems, []string{"1 identifier is no plain mark identifier; it is not applied"}) {
+		!slices.Equal(s.Acknowledged.Problems, []string{"1 entry that is no plain identifier has no reason written as text within its length; it is not applied",
+			"1 identifier is no plain mark identifier; it is not applied"}) {
 		t.Errorf("Acknowledged %+v; want the widened identifier applied and the one with a backtick counted", s.Acknowledged)
 	}
 }

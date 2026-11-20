@@ -77,7 +77,12 @@ func shadowedBy(d snapshot.Declared, file string) snapshot.Declared {
 func unreadableIn(table string) snapshot.Declared { return unreadableFile("pyproject.toml", table) }
 
 func unreadableFile(file, table string) snapshot.Declared {
+	return unreadableKey(file, table, "testpaths")
+}
+
+func unreadableKey(file, table, key string) snapshot.Declared {
 	d := inFile(file, table)
+	d.Key = key
 	d.Now, d.AtBase = snapshot.KeyUnreadable, snapshot.KeyUnreadable
 	return d
 }
@@ -143,10 +148,13 @@ func TestBuildReadsWhatAProjectDeclares(t *testing.T) {
 			one(inFile("setup.cfg", "tool:pytest", "checks", "more"))},
 		{"an INI quote that does not close", both(map[string]string{"pytest.ini": "[pytest]\ntestpaths = \"a\n"}),
 			snapshot.Layout{TestFolders: []snapshot.Declared{unreadableFile("pytest.ini", "pytest")}}},
-		{"an indented header", both(declaring("  [tool.pytest.ini_options]\ntestpaths = [\"checks\"]\n", "checks/h.py")), one(testpaths("checks"))},
-		{"an array of tables is no table", both(declaring("[[tool.pytest.ini_options]]\ntestpaths = [\"checks\"]\n", "checks/h.py")), snapshot.Layout{}},
-		{"a spaced and quoted header", both(declaring("[ tool.\"pytest\".ini_options ]\ntestpaths = [\"checks\"]\n", "checks/h.py")), one(testpaths("checks"))},
-		{"shadowing files without a table", both(declaring("[project]\n", "pytest.ini", "pytest.toml")), snapshot.Layout{}},
+		{"an empty ini_options table is pytest's configuration", both(map[string]string{"pyproject.toml": "[tool.pytest.ini_options]\n", "tox.ini": "[pytest]\ntestpaths = checks\n", "checks/t.py": "x\n"}),
+			one(shadowedBy(inFile("tox.ini", "pytest"), "pyproject.toml"))},
+		{"a pytest.toml that is no TOML", both(map[string]string{"pytest.toml": "[pytest\ntestpaths = [\"checks\"]\n", "checks/t.py": "x\n"}),
+			snapshot.Layout{TestFolders: []snapshot.Declared{unreadableFile("pytest.toml", "pytest")}, Roots: []snapshot.Declared{unreadableKey("pytest.toml", "pytest", "pythonpath")}}},
+		{"an empty pytest table shadows nothing", both(map[string]string{"pyproject.toml": "[tool.pytest]\n", "tox.ini": "[pytest]\ntestpaths = checks\n", "checks/t.py": "x\n"}),
+			one(inFile("tox.ini", "pytest", "checks"))},
+		{"pytest files with no testpaths", both(declaring("[project]\n", "pytest.ini", "pytest.toml")), snapshot.Layout{}},
 		{"pytest.ini at the base only", layoutOf(t, declaring(pytestTable+"testpaths = [\"checks\"]\n", "checks/h.py", "pytest.ini"), declaring(pytestTable+"testpaths = [\"checks\"]\n", "checks/h.py")),
 			one(testpaths("checks"))},
 		{"a byte order mark", both(declaring("\uFEFF"+pytestTable+"testpaths = [\"checks\"]\n", "checks/h.py")), one(testpaths("checks"))},

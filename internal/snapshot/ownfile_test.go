@@ -1,7 +1,6 @@
 package snapshot_test
 
 import (
-	"fmt"
 	"reflect"
 	"slices"
 	"strings"
@@ -27,9 +26,7 @@ func TestBuildReadsTheTextKeysOfTheOwnFile(t *testing.T) {
 		return d
 	}
 	notAList := "`test_folders` is not a list of text"
-	invalid := func(line int) []string {
-		return []string{fmt.Sprintf("it is not valid TOML at line %d, so none of it is applied and its import rules were not checked", line)}
-	}
+	invalid := func(line int) []string { return []string{notValidTOML(line)} }
 	cases := []struct {
 		name      string
 		base, now string // the content of .plimsoll.toml on each side; "" is no file
@@ -49,14 +46,6 @@ func TestBuildReadsTheTextKeysOfTheOwnFile(t *testing.T) {
 		{"one string", "", "[layout]\ntest_folders = \"checks\"\n", nil, []string{notAList}},
 		{"no string in the list, and a list that does not end", "", "[layout]\ntest_files = [1, \"a\"]\ntest_folders = [\n\"a\",\n",
 			nil, invalid(4)},
-		{"text after the list, and comments after lists", "", "[layout]\ntest_folders = [\"a\"] trailing\ntest_files = [\n  \"*.x\", # one\n] # end of list\n",
-			nil, invalid(2)},
-		{"a missing comma between values, and a comma after the last", "", "[layout]\ntest_folders = [\"a\" \"b\"]\ntest_files = [\"*.x\",]\n",
-			nil, invalid(2)},
-		{"a comma with no value before it", "", "[layout]\ntest_folders = [\"a\",,\"b\"]\ntest_files = [,\"*.x\"]\n",
-			nil, invalid(2)},
-		{"a list that ends and opens another", "", "[layout]\ntest_folders = [\"a\"] [\ntest_files = [\"*.x\"]\n",
-			nil, invalid(2)},
 		{"a key the table does not hold", "", "[layout]\ntest_folder = [\"x\"]\n", nil, []string{"`test_folder` is no key of `[layout]`"}},
 		{"a key twice", "", "[layout]\ntest_folders = [\"a\"]\ntest_folders = [\"b\"]\n", nil, invalid(3)},
 		{"a line that is no key = value", "", "[layout]\ntest_folders\n", nil, invalid(2)},
@@ -182,7 +171,7 @@ func TestBuildReadsTheAcknowledgedTableOfTheOwnFile(t *testing.T) {
 		s := snapshot.Build(snapshottest.Files(nil, map[string]string{"src/a.ts": "a\n", ".plimsoll.toml": tc.now}), conventions.Default(), snapshottest.Readings(t))
 		var fileProblems []string
 		if tc.invalidAt > 0 {
-			fileProblems = []string{fmt.Sprintf("it is not valid TOML at line %d, so none of it is applied and its import rules were not checked", tc.invalidAt)}
+			fileProblems = []string{notValidTOML(tc.invalidAt)}
 		}
 		if !slices.Equal(s.Acknowledged.IDs, tc.ids) || !slices.Equal(s.Acknowledged.Problems, tc.problems) || !slices.Equal(s.OwnFileProblems, fileProblems) {
 			t.Errorf("%s: ids %q, problems %q, file problems %q; want %q, %q, %q", tc.name, s.Acknowledged.IDs, s.Acknowledged.Problems, s.OwnFileProblems, tc.ids, tc.problems, fileProblems)

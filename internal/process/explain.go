@@ -108,11 +108,21 @@ func tableEvidence(ownFile string, d snapshot.DeclaredValues) []string {
 		fmt.Sprintf("`%s` `[%s]` at the base: %s", ownFile, d.Table, entries(d.Before)),
 		fmt.Sprintf("`%s` `[%s]` now: %s", ownFile, d.Table, entries(d.Now)),
 	}
-	for _, id := range answer.Added(d.Before, d.Now) {
-		lines = append(lines, fmt.Sprintf("added: `%s`", id))
-	}
-	for _, id := range answer.Added(d.Now, d.Before) {
-		lines = append(lines, fmt.Sprintf("removed: `%s`", id))
+	for _, change := range []struct {
+		verb string
+		ids  []string
+	}{{"added", answer.Added(d.Before, d.Now)}, {"removed", answer.Added(d.Now, d.Before)}} {
+		unnamed := 0
+		for _, id := range change.ids {
+			if slices.Contains(d.Hidden, id) {
+				unnamed++
+				continue
+			}
+			lines = append(lines, fmt.Sprintf("%s: `%s`", change.verb, id))
+		}
+		if unnamed > 0 {
+			lines = append(lines, fmt.Sprintf("%s: %s", change.verb, answer.Agree(unnamed, "entry that is no plain identifier", "entries that are no plain identifiers")))
+		}
 	}
 	return lines
 }

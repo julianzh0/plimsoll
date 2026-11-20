@@ -42,10 +42,7 @@ func (Detector) Detect(s snapshot.Snapshot) answer.Findings {
 	f := answer.Findings{
 		Statistics: []answer.Statistic{{Name: "tracked planning and review files", Value: &now, Before: &before, Unit: "files"}},
 		Notes:      planningNotes(s),
-		Marks:      planningMarks(s),
-	}
-	if !s.OwnFileUnreadAtBase { // a change to the own file is marked only when its base side was read
-		f.Marks = slices.Concat(f.Marks, limitMarks(s), declarationMarks(s))
+		Marks:      slices.Concat(planningMarks(s), limitMarks(s), declarationMarks(s)),
 	}
 	if named := namedNotes(s); len(named) > 0 {
 		f.Notes = append(f.Notes, "working-note words in the name of an added Markdown file: "+s.NoteRule,
@@ -174,7 +171,7 @@ func limitMarks(s snapshot.Snapshot) []answer.Mark {
 	var marks []answer.Mark
 	for _, d := range s.DeclaredLimits {
 		now, before := valueOr(d.Now, d.Default), valueOr(d.Before, d.Default)
-		if now == before {
+		if !d.Compared || now == before {
 			continue
 		}
 		defaultValue := d.Default
@@ -199,12 +196,13 @@ func declarationMarks(s snapshot.Snapshot) []answer.Mark {
 		if !d.Compared || len(added)+len(removed) == 0 {
 			continue
 		}
-		slices.Sort(added)
+		named := slices.DeleteFunc(slices.Clone(added), func(v string) bool { return slices.Contains(d.Hidden, v) })
+		slices.Sort(named)
 		before := float64(len(d.Before))
 		marks = append(marks, answer.Mark{
 			ID:         answer.ID(name, ruleDeclarationChange, d.Key),
 			Change:     answer.New,
-			Subject:    answer.Subject{Kind: "file", Paths: []string{s.OwnFile}, Names: added},
+			Subject:    answer.Subject{Kind: "file", Paths: []string{s.OwnFile}, Names: named, Unnamed: len(added) - len(named)},
 			Confidence: answer.Exact,
 			Measured:   answer.Measured{Value: float64(len(d.Now)), Before: &before, LimitSource: "any change", Unit: d.Name},
 			Hint:       declarationHint(d, s.OwnFile),

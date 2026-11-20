@@ -57,15 +57,15 @@ func TestBuildReadsTheLimitsARepositorySets(t *testing.T) {
 		{"a file without the table", "", "file_lines = 1500\n", defaults, nil, []string{"`file_lines` lies outside a table", "it holds no table plimsoll reads"}},
 		{"values that are no limit: not a number, a fraction of a count, text", "",
 			"[limits]\nfile_lines = nan\nshared_commits = 2.5\nhotspot_files = 1e19\ntest_ratio = \"2.5\"\n",
-			with(func(l *conventions.Limits) {}), nil,
+			conventions.Default().Limits, nil,
 			[]string{"`file_lines` is not a whole number above 0", "`hotspot_files` is not a whole number above 0",
 				"`shared_commits` is not a whole number above 0", "`test_ratio` is not a number above 0"}},
-		{"infinity, and a fraction", "", "[limits]\ntest_ratio = inf\n", with(func(l *conventions.Limits) {}), nil, []string{"`test_ratio` is not a number above 0"}},
+		{"infinity, and a fraction", "", "[limits]\ntest_ratio = inf\n", conventions.Default().Limits, nil, []string{"`test_ratio` is not a number above 0"}},
 		{"a whole number for a fraction", "", "[limits]\ntest_ratio = 3\n", with(func(l *conventions.Limits) { l.TestRatio = set(3, 0.1) }),
 			[]snapshot.DeclaredLimit{{LimitKey: key("test_ratio"), Default: 2, Now: value(3)}}, nil},
 		{"a key twice, a line that is no key, an array of tables: no valid TOML", "",
-			"[[limits]]\n[limits]\ntest_ratio = 2.5\ntest_ratio = 3\nfile_lines: 900\n", with(func(l *conventions.Limits) {}), nil,
-			[]string{"it is not valid TOML at line 2, so none of it is applied and its import rules were not checked"}},
+			"[[limits]]\n[limits]\ntest_ratio = 2.5\ntest_ratio = 3\nfile_lines: 900\n", conventions.Default().Limits, nil,
+			[]string{notValidTOML(2)}},
 		{"counts at and past the largest whole number a float holds exactly", "", "[limits]\nfile_lines = 9007199254740992\nshared_commits = 9007199254740993\n",
 			with(func(l *conventions.Limits) { l.FileLines = set(9007199254740992, 1) }),
 			[]snapshot.DeclaredLimit{{LimitKey: key("file_lines"), Default: 1000, Now: value(9007199254740992)}},
@@ -83,6 +83,9 @@ func TestBuildReadsTheLimitsARepositorySets(t *testing.T) {
 	}
 	for _, tc := range cases {
 		s := snapshot.Build(snapshottest.Files(side(tc.base), side(tc.now)), conventions.Default(), snapshottest.Readings(t))
+		for i := range tc.declared {
+			tc.declared[i].Compared = true // both sides read in every case here
+		}
 		if s.Limits != tc.limits || !reflect.DeepEqual(s.DeclaredLimits, tc.declared) || !slices.Equal(s.OwnFileProblems, tc.problems) {
 			t.Errorf("%s: Limits %+v, declared %+v, problems %q; want %+v, %+v, %q", tc.name, s.Limits, s.DeclaredLimits, s.OwnFileProblems, tc.limits, tc.declared, tc.problems)
 		}
