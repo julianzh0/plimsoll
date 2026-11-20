@@ -549,6 +549,8 @@ func Default() Rules {
 			{File: "build.gradle.kts", Format: GradleDependencies, Name: gradleName},
 			{File: "Cargo.toml", Format: CargoDependencies, Lockfiles: []string{"Cargo.lock"}, Name: crateName},
 			{File: dotnetProject, Format: CsprojDependencies, Name: nugetID},
+			{File: "Directory.Build.props", Format: CsprojDependencies, Name: nugetID},
+			{File: "Directory.Build.targets", Format: CsprojDependencies, Name: nugetID},
 			{File: "Package.swift", Format: SwiftDependencies, Lockfiles: []string{"Package.resolved"}, Name: swiftID},
 			{File: "vcpkg.json", Format: VcpkgDependencies, Recipes: []string{"ports"}, Name: vcpkgPort},
 		},

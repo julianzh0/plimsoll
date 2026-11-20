@@ -87,6 +87,12 @@ func TestBuildReadsRuntimeDependencies(t *testing.T) {
 		{"a pom without dependencies and without modules", oneFile("pom.xml", "<project><artifactId>x</artifactId></project>"), dependenciesOf("pom.xml")},
 		{"a pom with a name space, a byte order mark and CRLF", oneFile("pom.xml", "\uFEFF<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n<project xmlns=\"http://maven.apache.org/POM/4.0.0\">\r\n"+pomOwn+"\r\n</project>\r\n"), dependenciesOf("pom.xml", "a:b", "c:d")},
 		{"a file named pom.xml with another root element", oneFile("pom.xml", "<settings/>"), nil},
+		{"a pom fills its own group, its parent's and its own properties; a placeholder from elsewhere stays", oneFile("core/pom.xml", "<project>"+
+			"<parent><groupId>org.acme</groupId></parent><properties><db.group>org.postgresql</db.group></properties><dependencies>"+
+			"<dependency><groupId>${project.groupId}</groupId><artifactId>acme-api</artifactId></dependency>"+
+			"<dependency><groupId>${db.group}</groupId><artifactId>postgresql</artifactId></dependency>"+
+			"<dependency><groupId>${elsewhere}</groupId><artifactId>x</artifactId></dependency></dependencies></project>"),
+			dependenciesOf("core/pom.xml", "${elsewhere}:x", "org.acme:acme-api", "org.postgresql:postgresql")},
 		{"a nested pom", oneFile("core/pom.xml", "<project>"+pomOwn+"</project>"), dependenciesOf("core/pom.xml", "a:b", "c:d")},
 		{"csharp", snapshottest.Load(t, "testdata/csharp"), dependenciesOf("Acme.Notes/Acme.Notes.csproj", "Microsoft.Extensions.Configuration", "Npgsql", "System.Text.Json")},
 		{"cpp", snapshottest.Load(t, "testdata/cpp"), dependenciesOf("vcpkg.json", "fmt", "sqlite3")},
@@ -137,9 +143,11 @@ func TestBuildReadsRuntimeDependencies(t *testing.T) {
 			"examples/Demo/Demo.csproj": sdkProject(csprojOwn), "node_modules/x/X.csproj": sdkProject(csprojOwn)}), nil},
 		{"two projects", snapshottest.Files(nil, map[string]string{"src/A/A.csproj": sdkProject(csprojOwn), "src/B/B.csproj": sdkProject("")}),
 			[]snapshot.Manifest{{Path: "src/A/A.csproj", Dependencies: []string{"A.B", "C"}}, {Path: "src/B/B.csproj", Dependencies: []string{}}}},
-		{"central versions and a build props file are no manifest", snapshottest.Files(nil, map[string]string{
-			"Directory.Packages.props": `<Project><ItemGroup><PackageVersion Include="A" Version="1" /></ItemGroup></Project>`,
-			"Directory.Build.props":    `<Project>` + csprojOwn + `</Project>`}), nil},
+		{"central versions are no manifest; build props and targets with references are", snapshottest.Files(nil, map[string]string{
+			"Directory.Packages.props":    `<Project><ItemGroup><PackageVersion Include="A" Version="1" /></ItemGroup></Project>`,
+			"Directory.Build.props":       `<Project>` + csprojOwn + `</Project>`,
+			"src/Directory.Build.targets": `<Project><PropertyGroup><X>1</X></PropertyGroup></Project>`}),
+			dependenciesOf("Directory.Build.props", "A.B", "C")},
 		{"a vcpkg manifest: names, objects, a host tool, a repeated name; the dependencies of features left out", oneFile("vcpkg.json",
 			`{"dependencies": ["zlib", {"name": "boost-asio", "features": ["ssl"]}, {"name": "protobuf", "host": true}, "zlib"],`+
 				` "features": {"tests": {"description": "x", "dependencies": ["gtest"]}}}`), dependenciesOf("vcpkg.json", "boost-asio", "zlib")},
@@ -459,7 +467,7 @@ func TestWantsNamesWhatTheReaderReads(t *testing.T) {
 		"tsconfig.json": true, "web/tsconfig.json": false, "go.mod": true, "web/go.mod": true, "pyproject.toml": true, "web/pyproject.toml": true, "pytest.ini": true, "pytest.toml": true, "setup.cfg": true, "tox.ini": true,
 		"src/main/resources/application.properties": false, "docs/design.pdf": false, "src/main/resources/META-INF/services/a.B": false,
 		"pom.xml": true, "core/pom.xml": true, "build.gradle": true, "build.gradle.kts": true,
-		"Acme.sln": false, "Acme.slnx": false, "Directory.Build.props": false, "eng/Common.targets": false, "NuGet.Config": false,
+		"Acme.sln": false, "Acme.slnx": false, "Directory.Build.props": true, "eng/Common.targets": false, "NuGet.Config": false,
 		"nuget.config": false, "Acme.sln.DotSettings": false, "src/Acme/Strings.resx": false,
 		"src/Acme/Form1.Designer.cs": true, "src/Acme/Views.g.cs": true,
 		"src/Acme/Acme.csproj": true, "Acme.csproj": true, "tests/Acme.Tests/Acme.Tests.csproj": false, "Acme.Tests/Acme.Tests.csproj": false,

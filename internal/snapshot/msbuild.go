@@ -26,8 +26,9 @@ type msbuildProject struct {
 // is not Project, or when the project names no SDK and holds no package reference (an old-style project, whose
 // packages are listed in packages.config); readable is false when the XML cannot be decoded, an encoding other
 // than UTF-8 included, or when a name comes from a property, an item list or a pattern.
-// NOTE: references of Directory.Build.props, of an imported file and under Choose are not counted, and a project
-// reference is no dependency. Upgrade: read the imports.
+// Directory.Build.props and Directory.Build.targets are read as manifests of their own, item groups under a condition
+// in every branch. References under Choose or of another imported file are known only to MSBuild (README, "What
+// plimsoll does not read"); a project reference is no dependency.
 func csprojDependencies(content []byte) (names []string, manifest, readable bool) {
 	var project msbuildProject
 	if err := xml.Unmarshal(content, &project); err != nil {
