@@ -325,6 +325,35 @@ func TestIntegrationAPartialCloneIsReadAroundItsMissingContent(t *testing.T) {
 	}
 }
 
+// Content that only merges bring in (a conflict resolved by hand) is looked for in a partial clone too: a base on such
+// a merge is read around it, not refused.
+func TestIntegrationAPartialCloneIsReadAroundContentOnlyAMergeBringsIn(t *testing.T) {
+	big := func(fill string) string { return strings.Repeat(fill+"\n", 20000) } // 40 kB, over the clone's limit
+	origin := gitrepotest.New(t, gitrepotest.Commit{Message: "base", Files: map[string]string{"src/a.ts": "a\n"}})
+	mergeWithBigFile := func(branch, fill string) {
+		origin.Git("switch", "-q", "-c", branch)
+		origin.Commit(gitrepotest.Commit{Message: branch, Files: map[string]string{"src/" + branch + ".ts": "s\n"}})
+		origin.Git("switch", "-q", "main")
+		origin.Commit(gitrepotest.Commit{Message: "main " + branch, Files: map[string]string{"src/a.ts": "a\n" + branch + "\n"}})
+		origin.Git("merge", "-q", "--no-ff", "--no-commit", branch)
+		origin.Commit(gitrepotest.Commit{Message: "merge " + branch, Files: map[string]string{"data/big.txt": big(fill)}})
+	}
+	mergeWithBigFile("one", "1")
+	mergeWithBigFile("two", "2")
+	origin.Git("config", "uploadpack.allowFilter", "true")
+	clone := filepath.Join(t.TempDir(), "clone")
+	if out, err := exec.Command("git", "clone", "-q", "-c", "core.autocrlf=false", "--filter=blob:limit=10k", "file://"+origin.Dir, clone).CombinedOutput(); err != nil {
+		t.Fatalf("partial clone: %v: %s", err, out)
+	}
+	partial, err := read(t, clone, "HEAD^1")
+	if err != nil {
+		t.Fatalf("Read(partial clone, base holds content only a merge brought in) = %v, want an answer", err)
+	}
+	if want := []string{"data/big.txt"}; !slices.Equal(partial.Missing, want) {
+		t.Errorf("Read(partial clone).Missing = %q, want %q", partial.Missing, want)
+	}
+}
+
 // A partial clone can lack the old content of more files than one command line can name; the read goes on.
 func TestIntegrationAPartialCloneMissingManyFilesIsRead(t *testing.T) {
 	folder := "data/" + strings.Repeat("a-long-folder-name/", 4)

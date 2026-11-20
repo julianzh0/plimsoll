@@ -421,10 +421,8 @@ func before(run runner, base string, changes []snapshot.Change, wants snapshot.W
 }
 
 // missingContent finds, in a partial clone, the paths whose content some commit of the head's history lacks: the
-// objects git reports missing, named by the raw log, which needs no content. A full clone has none. Nothing is
-// fetched: lazy fetching is off in every git command.
-// NOTE: a content that only a merge brings in is not looked for, so a base that is such a merge can still be
-// refused. Upgrade: read the raw log with -m.
+// objects git reports missing, named by the raw log, which needs no content; with -m it names what a merge brings in
+// against each parent too. A full clone has none. Nothing is fetched: lazy fetching is off in every git command.
 func missingContent(run runner) ([]string, error) {
 	promisors, err := run(nil, "config", "--get-regexp", `^remote\..*\.promisor$`)
 	if failure, ok := errors.AsType[*gitError](err); ok && failure.code == 1 {
@@ -449,7 +447,7 @@ func missingContent(run runner) ([]string, error) {
 	if len(lost) == 0 {
 		return nil, nil
 	}
-	raw, err := run(nil, "log", "--raw", "--no-abbrev", "--no-renames", "-z", "--format=%x01%H", "HEAD")
+	raw, err := run(nil, "log", "--raw", "-m", "--no-abbrev", "--no-renames", "-z", "--format=%x01%H", "HEAD")
 	if err != nil {
 		return nil, gitFailed(err)
 	}
