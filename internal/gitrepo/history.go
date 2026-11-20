@@ -13,19 +13,19 @@ import (
 // logOptions are the options of every history command: fixed on the command line, so that a commit's record depends
 // on nothing but the commit, the parents git reports for it, the excluded paths and the attributes git reads (see
 // view). -M50% is git's rename similarity; -l1000 is git's rename-detection limit, the most candidates it compares in
-// one commit, not a count of commits.
+// one commit, not a count of commits. --full-history keeps a walk with excluded paths from skipping a merged side
+// branch, so a walk reads every commit as --no-walk reads it.
 func logOptions() []string {
-	return []string{"--no-merges", "--no-show-signature", "--root", "--numstat", "-z", "-M50%", "-l1000",
+	return []string{"--no-merges", "--full-history", "--no-show-signature", "--root", "--numstat", "-z", "-M50%", "-l1000",
 		"--diff-algorithm=myers", "--no-textconv", "--no-ext-diff", "--format=%x01%H"}
 }
 
-// repoHistory is what a reader keeps of one repository: the commit records of its most recent heads and the reads in
-// flight. records is never changed once published; a read that adds records publishes a new map.
+// repoHistory is what a reader keeps of one repository: the histories of its most recent heads and the reads in
+// flight. A published history is never changed.
 type repoHistory struct {
-	view    string                     // the excluded paths, the shallow boundary and info/attributes the records were read under
-	records map[string]snapshot.Commit // by record key: the commit id and the parents git listed for it
-	recent  []string                   // the heads of the most recent published reads, newest first
-	byHead  map[string]keptHistory     // the published reads of the recent heads
+	view    string                 // the excluded paths, the shallow boundary and info/attributes the records were read under
+	recent  []string               // the heads of the most recent published reads, newest first
+	byHead  map[string]keptHistory // the published reads of the recent heads
 	reading map[string]*readInFlight
 }
 
@@ -33,12 +33,12 @@ type repoHistory struct {
 // boundary has none), so a commit that gains a parent is read again.
 func recordKey(id, parents string) string { return id + " " + parents }
 
-// keptHistory is the history of one head: its non-merge commits, newest first, and the parents of every commit it
-// reaches, merges included.
+// keptHistory is the history of one head: its non-merge commits, newest first, the record key of each, and the names
+// their renamed paths have at the head, carried along every commit the head reaches, merges included.
 type keptHistory struct {
 	commits []snapshot.Commit
-	parents map[string][]string
-	keys    []string // the record key of each commit
+	keys    []string
+	names   map[string]map[string]string
 }
 
 // readInFlight is one read of a head: ready when read is closed. cancelled is a read that failed because the question
@@ -54,7 +54,7 @@ type readInFlight struct {
 // heads read neither again.
 const keptHeads = 2
 
-// history returns the non-merge history of a head, newest first, and the parents of every commit it reaches. Commits
+// history returns the non-merge history of a head, newest first, and the names its renamed paths have at the head. Commits
 // already read under the same parents and view are taken from the kept records; only the others are read. One read
 // of a head runs at a time: a question that comes while it runs waits for it, or until it is cancelled itself. A read
 // publishes its head's complete record set only when it succeeds, under the reader's lock, into the records as they
@@ -68,7 +68,7 @@ func (r *Reader) history(ctx context.Context, run runner, top, head string, excl
 		r.mu.Lock()
 		repo := r.histories[top]
 		if repo == nil || repo.view != view {
-			repo = &repoHistory{view: view, records: map[string]snapshot.Commit{}, byHead: map[string]keptHistory{}, reading: map[string]*readInFlight{}}
+			repo = &repoHistory{view: view, byHead: map[string]keptHistory{}, reading: map[string]*readInFlight{}}
 			r.histories[top] = repo
 		}
 		if kept, found := repo.byHead[head]; found {
@@ -89,20 +89,23 @@ func (r *Reader) history(ctx context.Context, run runner, top, head string, excl
 		}
 		inFlight := &readInFlight{read: make(chan struct{})}
 		repo.reading[head] = inFlight
-		records := repo.records
+		heads := make([]keptHistory, 0, len(repo.recent))
+		for _, h := range repo.recent {
+			heads = append(heads, repo.byHead[h])
+		}
 		r.mu.Unlock()
 
-		kept, read, err := readHistory(run, head, exclude, records)
+		kept, err := readHistory(run, head, exclude, records(heads))
+		unchanged := false
 		if err == nil {
-			if after, viewErr := historyView(run, top, exclude); viewErr != nil || after != view {
-				read = nil // the boundary or the attributes changed during the read: keep nothing
-			}
+			after, viewErr := historyView(run, top, exclude)
+			unchanged = viewErr == nil && after == view // else the boundary or the attributes changed during the read: keep nothing
 		}
 		r.mu.Lock()
 		inFlight.history, inFlight.err, inFlight.cancelled = kept, err, err != nil && ctx.Err() != nil
 		delete(repo.reading, head)
-		if err == nil && read != nil && r.histories[top] == repo {
-			repo.publish(head, kept, read)
+		if unchanged && r.histories[top] == repo {
+			repo.publish(head, kept)
 		}
 		r.mu.Unlock()
 		close(inFlight.read)
@@ -110,9 +113,9 @@ func (r *Reader) history(ctx context.Context, run runner, top, head string, excl
 	}
 }
 
-// publish adds a head's complete record set to the kept records as they are now, makes it the most recent head and
-// keeps the records of the most recent heads only. It runs under the reader's lock.
-func (repo *repoHistory) publish(head string, kept keptHistory, read map[string]snapshot.Commit) {
+// publish adds a head's history to the kept ones as they are now, makes it the most recent head and keeps the most
+// recent heads only. It runs under the reader's lock.
+func (repo *repoHistory) publish(head string, kept keptHistory) {
 	repo.recent = slices.Insert(slices.DeleteFunc(repo.recent, func(h string) bool { return h == head }), 0, head)
 	repo.byHead[head] = kept
 	if len(repo.recent) > keptHeads {
@@ -121,17 +124,17 @@ func (repo *repoHistory) publish(head string, kept keptHistory, read map[string]
 		}
 		repo.recent = repo.recent[:keptHeads]
 	}
-	records := make(map[string]snapshot.Commit, len(read))
-	for _, h := range repo.recent {
-		for _, key := range repo.byHead[h].keys {
-			if c, found := read[key]; found {
-				records[key] = c
-			} else if c, found := repo.records[key]; found {
-				records[key] = c
-			}
+}
+
+// records are the commit records of kept histories, by record key.
+func records(heads []keptHistory) map[string]snapshot.Commit {
+	found := map[string]snapshot.Commit{}
+	for _, h := range heads {
+		for i, key := range h.keys {
+			found[key] = h.commits[i]
 		}
 	}
-	repo.records = records
+	return found
 }
 
 // historyView is what a commit's record depends on besides the commit and its parents: the excluded paths, the
@@ -167,27 +170,29 @@ func readGitFile(p string) []byte {
 	return content
 }
 
-// readHistory reads a head's history: the non-merge commits it reaches in git's order, with their parents, and the
-// parents of every commit, merges included. A commit whose record the kept records hold under the same parents is
-// taken from there; the others are read in one git log, all of them when nothing is kept. read holds every record of
-// the head, new and reused.
-func readHistory(run runner, head string, exclude []string, kept map[string]snapshot.Commit) (keptHistory, map[string]snapshot.Commit, error) {
-	listing, err := run(nil, "rev-list", "--no-merges", "--parents", head)
-	if err != nil {
-		return keptHistory{}, nil, gitFailed(err)
-	}
+// readHistory reads a head's history: the non-merge commits it reaches in git's order, and the names of renamed paths
+// at the head, from the parents of every commit, merges included. A commit whose record the kept records hold under
+// the same parents is taken from there; the others are read in one git log, all of them when nothing is kept.
+func readHistory(run runner, head string, exclude []string, kept map[string]snapshot.Commit) (keptHistory, error) {
 	graph, err := run(nil, "rev-list", "--parents", head)
 	if err != nil {
-		return keptHistory{}, nil, gitFailed(err)
+		return keptHistory{}, gitFailed(err)
 	}
+	var history keptHistory
+	parents := map[string][]string{}
 	type listed struct{ id, parents string }
 	var ids []listed
 	var unknown []string
-	for line := range strings.Lines(string(listing)) {
-		id, parents, _ := strings.Cut(strings.TrimSpace(line), " ")
-		if id == "" {
+	for line := range strings.Lines(string(graph)) {
+		fields := strings.Fields(line)
+		if len(fields) == 0 {
 			continue
 		}
+		parents[fields[0]] = fields[1:]
+		if len(fields) > 2 {
+			continue // a merge: an edge of the graph, never a record
+		}
+		id, parents := fields[0], strings.Join(fields[1:], " ")
 		ids = append(ids, listed{id, parents})
 		if _, found := kept[recordKey(id, parents)]; !found {
 			unknown = append(unknown, id)
@@ -204,18 +209,17 @@ func readHistory(run runner, head string, exclude []string, kept map[string]snap
 		}
 		output, err := run(input, append(args, exclude...)...)
 		if err != nil {
-			return keptHistory{}, nil, gitFailed(err)
+			return keptHistory{}, gitFailed(err)
 		}
 		commits, err := parseLog(output)
 		if err != nil {
-			return keptHistory{}, nil, gitFailed(err)
+			return keptHistory{}, gitFailed(err)
 		}
 		for _, c := range commits {
 			readNow[c.ID] = c
 		}
 	}
-	history := keptHistory{commits: make([]snapshot.Commit, 0, len(ids)), parents: map[string][]string{}, keys: make([]string, 0, len(ids))}
-	read := make(map[string]snapshot.Commit, len(ids))
+	history.commits, history.keys = make([]snapshot.Commit, 0, len(ids)), make([]string, 0, len(ids))
 	for _, l := range ids {
 		key := recordKey(l.id, l.parents)
 		c, found := kept[key]
@@ -226,13 +230,8 @@ func readHistory(run runner, head string, exclude []string, kept map[string]snap
 				c = snapshot.Commit{ID: l.id}
 			}
 		}
-		read[key] = c
 		history.commits, history.keys = append(history.commits, c), append(history.keys, key)
 	}
-	for line := range strings.Lines(string(graph)) {
-		if fields := strings.Fields(line); len(fields) > 0 {
-			history.parents[fields[0]] = fields[1:]
-		}
-	}
-	return history, read, nil
+	history.names = snapshot.NamesAtHead(history.commits, parents)
+	return history, nil
 }

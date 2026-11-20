@@ -112,7 +112,7 @@ func (r *Reader) Read(ctx context.Context, repository, base string, wants snapsh
 	if err != nil {
 		return snapshot.Source{}, err
 	}
-	source.Commits, source.Parents = kept.commits, kept.parents
+	source.Commits, source.Names = kept.commits, kept.names
 	return source, nil
 }
 

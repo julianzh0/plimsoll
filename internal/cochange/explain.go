@@ -40,9 +40,10 @@ func (Detector) Explain(s snapshot.Snapshot, m answer.Mark) []string {
 	}, shared...)
 }
 
+// lists tells whether a commit changed the file of a name at the head.
 func lists(commit snapshot.Commit, path string) bool {
 	for _, change := range commit.Files {
-		if change.Path == path {
+		if change.Name == path {
 			return true
 		}
 	}

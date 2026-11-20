@@ -29,6 +29,10 @@ func TestTouchesFollowRenamesAlongTheGraph(t *testing.T) {
 			[]snapshot.Commit{commit("c3", change("a.go", "")), commit("c2", change("b.go", "a.go")), commit("c1", change("a.go", ""))},
 			map[string][]string{"c3": {"c2"}, "c2": {"c1"}, "c1": nil},
 			map[string]snapshot.Touches{"a.go": {All: 1, AtBase: 1}, "b.go": {All: 2, AtBase: 2}}},
+		{"a commit that changed two paths of one name at the head counts once",
+			[]snapshot.Commit{commit("c3", change("b.go", "a.go")), commit("c2", change("b.go", "")), commit("c1", change("a.go", ""), change("b.go", ""))},
+			map[string][]string{"c3": {"c2"}, "c2": {"c1"}, "c1": nil},
+			map[string]snapshot.Touches{"b.go": {All: 3, AtBase: 3}}},
 		{"two files that swap names keep their histories",
 			[]snapshot.Commit{commit("c2", change("b.go", "a.go"), change("a.go", "b.go")), commit("c1", change("a.go", ""), change("x.go", ""))},
 			map[string][]string{"c2": {"c1"}, "c1": nil},
@@ -47,7 +51,7 @@ func TestTouchesFollowRenamesAlongTheGraph(t *testing.T) {
 			map[string]snapshot.Touches{"new.go": {All: 2, AtBase: 2}, "x.go": {All: 1, AtBase: 1}}},
 	}
 	for _, tc := range cases {
-		source := snapshot.Source{Commits: tc.commits, Parents: tc.parents}
+		source := snapshot.Source{Commits: tc.commits, Names: snapshot.NamesAtHead(tc.commits, tc.parents)}
 		if got := snapshot.Build(source, conventions.Default(), snapshottest.Readings(t)).History.Touches(); !maps.Equal(got, tc.want) {
 			t.Errorf("%s: Touches() = %v, want %v", tc.name, got, tc.want)
 		}

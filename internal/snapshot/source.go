@@ -22,9 +22,9 @@ type Source struct {
 	Changes   []Change // every tracked file that differs between the base and the working tree
 	Since     []string // the commits in base..head, newest first
 	Commits   []Commit // the whole non-merge history, newest first
-	// Parents are the parents of every commit the head reaches, merges included: the ancestry along which a rename
-	// carries a file's earlier changes. Shared with the reader: never changed.
-	Parents map[string][]string
+	// Names are, per commit, the names its renamed paths have at the head (NamesAtHead). Shared with the reader:
+	// never changed.
+	Names map[string]map[string]string
 }
 
 // Entry is one tracked file on one side.

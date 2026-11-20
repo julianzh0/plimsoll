@@ -242,7 +242,12 @@ func (h History) Touches() map[string]Touches {
 		if !commit.Usable {
 			continue
 		}
+		counted := map[string]bool{} // two paths of one commit can have one name at the head
 		for _, file := range commit.Files {
+			if counted[file.Name] {
+				continue
+			}
+			counted[file.Name] = true
 			t := found[file.Name]
 			t.All++
 			if !commit.Since {

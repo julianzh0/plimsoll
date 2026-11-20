@@ -223,16 +223,21 @@ func TestNoPairsInsideOnePackageFolder(t *testing.T) {
 func TestARenamedFileKeepsItsPairs(t *testing.T) {
 	source := snapshottest.Files(nil, files())
 	source.Commits = []snapshot.Commit{{ID: "c7", Files: []snapshot.FileChange{{Path: a, From: "src/old.ts", Added: 1}}}}
-	source.Parents = map[string][]string{"c7": {"c6"}}
+	parents := map[string][]string{"c7": {"c6"}}
 	for i := 6; i >= 1; i-- {
 		id := fmt.Sprintf("c%d", i)
 		source.Commits = append(source.Commits, snapshottest.Commit(id, "src/old.ts", b))
 		if i > 1 {
-			source.Parents[id] = []string{fmt.Sprintf("c%d", i-1)}
+			parents[id] = []string{fmt.Sprintf("c%d", i-1)}
 		}
 	}
-	found := Detector{}.Detect(snapshot.Build(source, conventions.Default(), snapshottest.Readings(t))).Marks
+	source.Names = snapshot.NamesAtHead(source.Commits, parents)
+	s := snapshot.Build(source, conventions.Default(), snapshottest.Readings(t))
+	found := Detector{}.Detect(s).Marks
 	if len(found) != 1 || found[0].ID != "co-change.pair:"+a+"+"+b {
-		t.Errorf("six shared commits before a rename: marks = %+v, want the pair under the name at the head", found)
+		t.Fatalf("six shared commits before a rename: marks = %+v, want the pair under the name at the head", found)
+	}
+	if got := (Detector{}).Explain(s, found[0]); got[0] != "shared usable commits: 6; at the base: 6" {
+		t.Errorf("Explain(pair across a rename) = %q, want the six shared commits", got[0])
 	}
 }
