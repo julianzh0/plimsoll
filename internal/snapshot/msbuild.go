@@ -1,7 +1,6 @@
 package snapshot
 
 import (
-	"bytes"
 	"encoding/xml"
 	"slices"
 	"strings"
@@ -31,7 +30,7 @@ type msbuildProject struct {
 // reference is no dependency. Upgrade: read the imports.
 func csprojDependencies(content []byte) (names []string, manifest, readable bool) {
 	var project msbuildProject
-	if err := xml.Unmarshal(bytes.TrimPrefix(content, []byte(byteOrderMark)), &project); err != nil {
+	if err := xml.Unmarshal(content, &project); err != nil {
 		return nil, true, false
 	}
 	if project.XMLName.Local != "Project" {

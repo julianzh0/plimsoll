@@ -47,6 +47,8 @@ func TestBuildReadsRuntimeDependencies(t *testing.T) {
 		{"python", snapshottest.Load(t, "testdata/python"), pyprojectNames("httpx", "pydantic-settings")},
 		{"a nested manifest", snapshottest.Files(nil, map[string]string{"web/package.json": `{"dependencies": {"x": "1"}}`}), nil},
 		{"a comment in a require block", snapshottest.Files(nil, map[string]string{"go.mod": "module m\n\nrequire (\n\t// pinned\n\tgithub.com/a/b v1.0.0\n)\n"}), []snapshot.Manifest{{Path: "go.mod", Dependencies: []string{"github.com/a/b"}}}},
+		{"a package.json and a go.mod with a byte order mark", snapshottest.Files(nil, map[string]string{"package.json": "\uFEFF{\"dependencies\": {\"x\": \"1\"}}", "go.mod": "\uFEFFmodule m\n\nrequire github.com/a/b v1.0.0\n"}),
+			[]snapshot.Manifest{{Path: "go.mod", Dependencies: []string{"github.com/a/b"}}, {Path: "package.json", Dependencies: []string{"x"}}}},
 		{"a one-line require", snapshottest.Files(nil, map[string]string{"go.mod": "module m\n\nrequire github.com/a/b v1.0.0\n"}), []snapshot.Manifest{{Path: "go.mod", Dependencies: []string{"github.com/a/b"}}}},
 		{"pyproject", pyproject("[project]\ndependencies = [\"a\", 'b']\n"), pyprojectNames("a", "b")},
 		{"pyproject with comments over lines", pyproject("[project] # the package\ndependencies = [\n  \"a\",  # why\n  \"b @ https://x.example/b#egg=b\",\n]\n"), pyprojectNames("a", "b")},

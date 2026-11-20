@@ -21,7 +21,7 @@ var (
 // own build files, of convention plugins (build-logic/, buildSrc/) and of variant configurations are not counted.
 // Upgrade: read the catalogue and every tracked build file.
 func gradleDependencies(content []byte) (names []string, manifest, readable bool) {
-	text := strings.TrimPrefix(string(content), byteOrderMark)
+	text := string(content)
 	inBlock, indent := false, ""
 	names = []string{}
 	for line := range strings.Lines(text) {

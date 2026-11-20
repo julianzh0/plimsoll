@@ -14,7 +14,7 @@ import (
 // NOTE: the dependencies of workspace members are not counted, and a dependency renamed with package = "..." is
 // listed by its key. Upgrade: read every tracked Cargo.toml.
 func cargoDependencies(content []byte) (names []string, manifest, readable bool) {
-	text := strings.TrimPrefix(string(content), byteOrderMark)
+	text := string(content)
 	names = []string{}
 	inKeys, depth := false, 0
 	for line := range strings.Lines(text) {

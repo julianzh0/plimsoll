@@ -14,6 +14,7 @@ import (
 // Build classifies both sides of a source by the rules. It reads nothing and cannot fail. What each code file's content
 // says comes from readings, which keep it between questions.
 func Build(source Source, rules conventions.Rules, readings *Readings) Snapshot {
+	source.Now, source.Before = withoutByteOrderMark(source.Now), withoutByteOrderMark(source.Before)
 	changed := map[string]bool{}
 	for _, change := range source.Changes {
 		changed[change.Path] = true

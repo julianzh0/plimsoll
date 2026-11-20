@@ -87,14 +87,28 @@ func sideOf(tree Tree) side {
 	return s
 }
 
-// contentOf maps each entry's path to its content, a leading byte order mark dropped. A tracked path that was not
-// read maps to nil.
+// contentOf maps each entry's path to its content. A tracked path that was not read maps to nil.
 func contentOf(entries []Entry) map[string][]byte {
 	content := make(map[string][]byte, len(entries))
 	for _, entry := range entries {
-		content[entry.Path] = bytes.TrimPrefix(entry.Content, []byte(byteOrderMark))
+		content[entry.Path] = entry.Content
 	}
 	return content
+}
+
+// withoutByteOrderMark drops a leading byte order mark from every entry's content once, so that every reader, the
+// manifests and settings among them, reads the same bytes. Line numbers do not move.
+func withoutByteOrderMark(entries []Entry) []Entry {
+	out, cloned := entries, false
+	for i, entry := range entries {
+		if trimmed, found := bytes.CutPrefix(entry.Content, []byte(byteOrderMark)); found {
+			if !cloned {
+				out, cloned = slices.Clone(entries), true
+			}
+			out[i].Content = trimmed
+		}
+	}
+	return out
 }
 
 // target is a resolved import: the file or folder it names and the code files it reaches.

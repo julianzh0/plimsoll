@@ -57,7 +57,7 @@ func pubspecBlock(content []byte, key string) []string {
 // dependencies of workspace members are not counted. Upgrade: a YAML reader, and the members' manifests, if a field
 // check finds either in use.
 func pubspecDependencies(content []byte) (names []string, manifest, readable bool) {
-	text := []byte(strings.TrimPrefix(string(content), byteOrderMark))
+	text := content
 	if pubspecNameOf(text) == "" {
 		return nil, false, true
 	}

@@ -1,7 +1,6 @@
 package snapshot
 
 import (
-	"bytes"
 	"encoding/xml"
 	"strings"
 )
@@ -28,7 +27,7 @@ type pomProject struct {
 // Upgrade: read every tracked pom.xml.
 func pomDependencies(content []byte) (names []string, manifest, readable bool) {
 	var project pomProject
-	if err := xml.Unmarshal(bytes.TrimPrefix(content, []byte(byteOrderMark)), &project); err != nil {
+	if err := xml.Unmarshal(content, &project); err != nil {
 		return nil, true, false
 	}
 	switch {

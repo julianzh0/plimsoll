@@ -111,7 +111,7 @@ func swiftTargetFolders(content []byte) (map[string]string, bool) {
 
 // swiftManifest is a Package.swift's text with its comments blanked, and whether it declares a Package.
 func swiftManifest(content []byte) (string, bool) {
-	text := withoutComments(swiftComment, strings.TrimPrefix(string(content), byteOrderMark))
+	text := withoutComments(swiftComment, string(content))
 	return text, swiftPackageDeclaration.MatchString(text)
 }
 

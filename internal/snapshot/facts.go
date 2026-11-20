@@ -60,7 +60,7 @@ func WantsOf(rules conventions.Rules) Wants {
 // declaredBaseIn reads the default base from the own file's content: its name, or the problem that makes it
 // unusable; both are "" when the file declares none.
 func declaredBaseIn(rules conventions.Rules, content []byte) (name, problem string) {
-	o := readOwnFile(rules, map[string][]byte{rules.OwnFile: content})
+	o := readOwnFile(rules, map[string][]byte{rules.OwnFile: bytes.TrimPrefix(content, []byte(byteOrderMark))})
 	at := slices.IndexFunc(rules.OwnKeys, func(k conventions.OwnKey) bool { return k.Holds == conventions.BaseName })
 	if at < 0 {
 		return "", ""
@@ -198,7 +198,7 @@ var pyprojectKey = regexp.MustCompile(`(?m)^[ \t]*(dependencies|dynamic)[ \t]*=[
 // NOTE: a quoted key and a dotted key outside the table are not read, and a line inside a multi-line string that
 // starts like one of the two keys is taken for it. Upgrade: a TOML reader.
 func pyprojectDependencies(content []byte) (names []string, manifest, readable bool) {
-	table, found := tomlTable(strings.TrimPrefix(string(content), byteOrderMark), "project")
+	table, found := tomlTable(string(content), "project")
 	if !found {
 		return nil, false, true
 	}

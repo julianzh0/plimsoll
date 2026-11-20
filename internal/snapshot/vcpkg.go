@@ -1,7 +1,6 @@
 package snapshot
 
 import (
-	"bytes"
 	"encoding/json"
 	"slices"
 )
@@ -15,7 +14,7 @@ func vcpkgDependencies(content []byte) (names []string, manifest, readable bool)
 	var parsed struct {
 		Dependencies []json.RawMessage `json:"dependencies"`
 	}
-	if err := json.Unmarshal(bytes.TrimPrefix(content, []byte(byteOrderMark)), &parsed); err != nil {
+	if err := json.Unmarshal(content, &parsed); err != nil {
 		return nil, true, false
 	}
 	names = []string{}

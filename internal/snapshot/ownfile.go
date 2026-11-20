@@ -116,7 +116,7 @@ func readOwnFile(rules conventions.Rules, content map[string][]byte) ownFile {
 	problem := func(format string, args ...any) { o.problems = append(o.problems, fmt.Sprintf(format, args...)) }
 	seen := map[string]bool{}
 	table, found := "", false
-	lines := tomlLines(strings.TrimPrefix(string(file), byteOrderMark))
+	lines := tomlLines(string(file))
 	for i := 0; i < len(lines); i++ {
 		if header, isHeader := tomlHeader(lines[i]); isHeader {
 			table = header
