@@ -50,10 +50,11 @@ type Commit struct {
 	Usable bool // the commit touches between one and the most paths a history detector reads
 }
 
-// FileChange is one path a commit changed. Area is set by Build, from the path alone.
+// FileChange is one path a commit changed. Area is set by Build, from the path as the commit wrote it.
 type FileChange struct {
 	Path    string
 	From    string // the path before a rename git reports in this commit; "" otherwise
+	Name    string // the name the file has at the head, set by Build: its renames since carried over
 	Added   int
 	Removed int
 	Area    Area

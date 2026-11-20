@@ -130,9 +130,9 @@ func pairs(s snapshot.Snapshot) []pair {
 			continue
 		}
 		var paths []string
-		for _, change := range commit.Files {
-			if _, ok := files[change.Path]; ok {
-				paths = append(paths, change.Path)
+		for _, change := range commit.Files { // by the name a file has at the head: a renamed file keeps its pairs
+			if _, ok := files[change.Name]; ok {
+				paths = append(paths, change.Name)
 			}
 		}
 		slices.Sort(paths)

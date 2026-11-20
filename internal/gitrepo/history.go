@@ -144,7 +144,7 @@ func historyView(run runner, top string, exclude []string) (string, error) {
 	}
 	var view strings.Builder
 	view.WriteString(strings.Join(exclude, "\x00"))
-	for _, p := range strings.Fields(string(paths)) {
+	for p := range strings.FieldsSeq(string(paths)) {
 		if !filepath.IsAbs(p) {
 			p = filepath.Join(top, p)
 		}

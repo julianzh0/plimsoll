@@ -234,9 +234,8 @@ func (h History) SinceBase() []Commit {
 // Touches counts the usable commits that list one path: all of them, and those that are not since the base.
 type Touches struct{ All, AtBase int }
 
-// Touches counts, per path, the usable commits that list it.
-// NOTE: a path is counted by its name; the changes of a renamed file before its rename are not carried over.
-// Upgrade: follow the renames of the history's records.
+// Touches counts, per path, the usable commits that list it, by the name the file has at the head: the changes a
+// renamed file had under its old name count for it.
 func (h History) Touches() map[string]Touches {
 	found := map[string]Touches{}
 	for _, commit := range h.Commits {
@@ -244,12 +243,12 @@ func (h History) Touches() map[string]Touches {
 			continue
 		}
 		for _, file := range commit.Files {
-			t := found[file.Path]
+			t := found[file.Name]
 			t.All++
 			if !commit.Since {
 				t.AtBase++
 			}
-			found[file.Path] = t
+			found[file.Name] = t
 		}
 	}
 	return found

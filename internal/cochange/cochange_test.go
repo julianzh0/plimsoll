@@ -219,3 +219,20 @@ func TestNoPairsInsideOnePackageFolder(t *testing.T) {
 		t.Errorf("C# files of two folders: marks %+v, want one", found)
 	}
 }
+
+func TestARenamedFileKeepsItsPairs(t *testing.T) {
+	source := snapshottest.Files(nil, files())
+	source.Commits = []snapshot.Commit{{ID: "c7", Files: []snapshot.FileChange{{Path: a, From: "src/old.ts", Added: 1}}}}
+	source.Parents = map[string][]string{"c7": {"c6"}}
+	for i := 6; i >= 1; i-- {
+		id := fmt.Sprintf("c%d", i)
+		source.Commits = append(source.Commits, snapshottest.Commit(id, "src/old.ts", b))
+		if i > 1 {
+			source.Parents[id] = []string{fmt.Sprintf("c%d", i-1)}
+		}
+	}
+	found := Detector{}.Detect(snapshot.Build(source, conventions.Default(), snapshottest.Readings(t))).Marks
+	if len(found) != 1 || found[0].ID != "co-change.pair:"+a+"+"+b {
+		t.Errorf("six shared commits before a rename: marks = %+v, want the pair under the name at the head", found)
+	}
+}

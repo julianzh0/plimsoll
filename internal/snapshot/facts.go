@@ -359,8 +359,9 @@ func testLinesOf(files []File) map[string]int {
 	return found
 }
 
-// history flags each commit as since the base and as usable, and gives each path its area.
-func history(rules conventions.Rules, commits []Commit, since []string) History {
+// history flags each commit as since the base and as usable, and gives each path its area and its name at the head.
+func history(rules conventions.Rules, commits []Commit, since []string, parents map[string][]string) History {
+	names := namesAtHead(commits, parents)
 	result := History{Commits: make([]Commit, 0, len(commits)), Read: len(commits)}
 	inSince := make(map[string]bool, len(since))
 	for _, id := range since {
@@ -372,6 +373,7 @@ func history(rules conventions.Rules, commits []Commit, since []string) History 
 		files := make([]FileChange, len(commit.Files))
 		for i, file := range commit.Files {
 			file.Area = area(rules, file.Path)
+			file.Name = nameOf(names[commit.ID], file.Path)
 			files[i] = file
 		}
 		commit.Files = files
