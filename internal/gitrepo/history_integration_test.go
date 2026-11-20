@@ -68,12 +68,13 @@ func TestIntegrationReadParsesTheHistory(t *testing.T) {
 	// the file is kept out of the working tree.
 	repo.Write("blob", "a\n")
 	blob := repo.Git("hash-object", "-w", "blob")
-	repo.Git("-c", "core.protectNTFS=false", "update-index", "--add", "--cacheinfo", "100644,"+blob+",src/line\nbreak.ts")
+	repo.Git("config", "core.protectNTFS", "false") // Git for Windows refuses the name in the index otherwise
+	repo.Git("update-index", "--add", "--cacheinfo", "100644,"+blob+",src/line\nbreak.ts")
 	if err := os.Remove(filepath.Join(repo.Dir, "blob")); err != nil {
 		t.Fatal(err)
 	}
 	repo.Git("commit", "-q", "-m", "newline")
-	repo.Git("-c", "core.protectNTFS=false", "update-index", "--skip-worktree", "src/line\nbreak.ts")
+	repo.Git("update-index", "--skip-worktree", "src/line\nbreak.ts")
 	repo.Git("mv", "src/grüße.ts", "src/moved.ts")
 	repo.Commit(gitrepotest.Commit{Message: "rename"})
 	repo.Commit(gitrepotest.Commit{Message: "binary", Files: map[string]string{"logo.bin": "BIN\x00"}})
