@@ -79,21 +79,31 @@ func inFoldersMatching(filePath string, patterns []string) bool {
 	})
 }
 
-// manifestOf finds the known manifest a tracked path is: a root file by its name, or, for a nested format, a file
-// whose name matches the pattern, wherever it lies outside skipped folders, test code and other code.
+// manifestOf finds the known manifest a tracked path is: a file whose name matches a manifest's, wherever it lies
+// outside skipped folders, test code and other code.
 func manifestOf(rules conventions.Rules, filePath string) (conventions.Manifest, bool) {
+	if !manifestPlace(rules, filePath) {
+		return conventions.Manifest{}, false
+	}
 	for _, m := range rules.Manifests {
-		if !m.Nested {
-			if m.File == filePath {
-				return m, true
-			}
-			continue
-		}
-		if onPaths(rules, filePath, []string{m.File}) && !testPath(rules, filePath) && !otherPath(rules, filePath) {
+		if nameMatches(m.File, filePath) && !inFolders(filePath, m.Recipes) {
 			return m, true
 		}
 	}
 	return conventions.Manifest{}, false
+}
+
+// manifestPlace says whether a manifest or a lockfile at this path counts: outside skipped folders, the ignored ones,
+// test code and other code.
+func manifestPlace(rules conventions.Rules, filePath string) bool {
+	return !leftOut(rules, filePath) && !testPath(rules, filePath) && !otherPath(rules, filePath)
+}
+
+// isLockfile says whether a tracked path is a lockfile of a known manifest, in a place where manifests count.
+func isLockfile(rules conventions.Rules, filePath string) bool {
+	name := path.Base(filePath)
+	return manifestPlace(rules, filePath) &&
+		slices.ContainsFunc(rules.Manifests, func(m conventions.Manifest) bool { return slices.Contains(m.Lockfiles, name) })
 }
 
 // withSharedSuffixes is the rules of one question: each suffix that several entries list is left to one of them, the

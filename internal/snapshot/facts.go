@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"maps"
 	"math"
+	"path"
 	"regexp"
 	"slices"
 	"strings"
@@ -31,7 +32,7 @@ func WantsOf(rules conventions.Rules) Wants {
 			if !strings.Contains(path, "/") && rules.FunctionRules.RootLicence.MatchString(path) {
 				return true
 			}
-			if _, known := manifestOf(rules, path); known || slices.ContainsFunc(rules.Manifests, func(m conventions.Manifest) bool { return slices.Contains(m.Lockfiles, path) }) {
+			if _, known := manifestOf(rules, path); known || isLockfile(rules, path) {
 				return true
 			}
 			if onPaths(rules, path, rules.ComposeFiles) {
@@ -104,7 +105,10 @@ func settings(entries []Entry) *Settings {
 func manifests(rules conventions.Rules, entries []Entry) ([]Manifest, []string) {
 	var found []Manifest
 	var unreadable []string
-	var locks [][]byte
+	content := make(map[string][]byte, len(entries))
+	for _, entry := range entries {
+		content[entry.Path] = entry.Content
+	}
 	for _, entry := range entries {
 		known, isManifest := manifestOf(rules, entry.Path)
 		if !isManifest || entry.Content == nil {
@@ -120,12 +124,8 @@ func manifests(rules conventions.Rules, entries []Entry) ([]Manifest, []string) 
 		}
 		slices.Sort(names)
 		m := Manifest{Path: entry.Path, Dependencies: names}
-		for _, lockfile := range known.Lockfiles {
-			if i := slices.IndexFunc(entries, func(e Entry) bool { return e.Path == lockfile && e.Content != nil }); i >= 0 {
-				m.Lockfiles = append(m.Lockfiles, lockfile)
-				locks = append(locks, entries[i].Content)
-			}
-		}
+		var locks [][]byte
+		m.Lockfiles, locks = nearestLockfiles(content, path.Dir(entry.Path), known.Lockfiles)
 		if len(m.Lockfiles) > 0 {
 			m.Unlocked = []string{}
 			for _, name := range names {
@@ -134,11 +134,26 @@ func manifests(rules conventions.Rules, entries []Entry) ([]Manifest, []string) 
 				}
 			}
 		}
-		locks = locks[:0]
 		found = append(found, m)
 	}
 	slices.SortFunc(found, func(a, b Manifest) int { return strings.Compare(a.Path, b.Path) })
 	return found, unreadable
+}
+
+// nearestLockfiles are the lockfiles of the given names in the nearest folder, at or above a manifest's, that holds
+// one: a workspace's members share the lockfile at its root. Only lockfiles that were read count.
+func nearestLockfiles(content map[string][]byte, folder string, names []string) (paths []string, locks [][]byte) {
+	for {
+		for _, name := range names {
+			if lock := content[path.Join(folder, name)]; lock != nil {
+				paths, locks = append(paths, path.Join(folder, name)), append(locks, lock)
+			}
+		}
+		if len(paths) > 0 || folder == "." {
+			return paths, locks
+		}
+		folder = path.Dir(folder)
+	}
 }
 
 // dependencies reads a manifest's runtime dependencies. manifest is false when the file declares no project at all;

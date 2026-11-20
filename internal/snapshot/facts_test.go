@@ -45,7 +45,15 @@ func TestBuildReadsRuntimeDependencies(t *testing.T) {
 		{"mixed", snapshottest.Load(t, "testdata/mixed"), []snapshot.Manifest{{Path: "go.mod", Dependencies: []string{}}, {Path: "package.json", Dependencies: []string{}}}},
 		{"unproven", snapshottest.Load(t, "testdata/unproven"), nil},
 		{"python", snapshottest.Load(t, "testdata/python"), pyprojectNames("httpx", "pydantic-settings")},
-		{"a nested manifest", snapshottest.Files(nil, map[string]string{"web/package.json": `{"dependencies": {"x": "1"}}`}), nil},
+		{"a nested manifest", snapshottest.Files(nil, map[string]string{"web/package.json": `{"dependencies": {"x": "1"}}`}), dependenciesOf("web/package.json", "x")},
+		{"members of a workspace share its lockfile; one with its own keeps it", snapshottest.Files(nil, map[string]string{
+			"Cargo.toml": "[workspace]\nmembers = [\"crates/*\"]\n", "Cargo.lock": "[[package]]\nname = \"log\"\n",
+			"crates/a/Cargo.toml": "[package]\nname = \"a\"\n\n[dependencies]\nlog = \"0.4\"\nserde = \"1\"\n",
+			"tools/x/Cargo.toml":  "[package]\nname = \"x\"\n\n[dependencies]\nserde = \"1\"\n", "tools/x/Cargo.lock": "[[package]]\nname = \"serde\"\n",
+			"examples/demo/Cargo.toml": "[package]\nname = \"demo\"\n\n[dependencies]\nrand = \"1\"\n"}),
+			[]snapshot.Manifest{
+				{Path: "crates/a/Cargo.toml", Dependencies: []string{"log", "serde"}, Lockfiles: []string{"Cargo.lock"}, Unlocked: []string{"serde"}},
+				{Path: "tools/x/Cargo.toml", Dependencies: []string{"serde"}, Lockfiles: []string{"tools/x/Cargo.lock"}, Unlocked: []string{}}}},
 		{"a comment in a require block", snapshottest.Files(nil, map[string]string{"go.mod": "module m\n\nrequire (\n\t// pinned\n\tgithub.com/a/b v1.0.0\n)\n"}), []snapshot.Manifest{{Path: "go.mod", Dependencies: []string{"github.com/a/b"}}}},
 		{"a package.json and a go.mod with a byte order mark", snapshottest.Files(nil, map[string]string{"package.json": "\uFEFF{\"dependencies\": {\"x\": \"1\"}}", "go.mod": "\uFEFFmodule m\n\nrequire github.com/a/b v1.0.0\n"}),
 			[]snapshot.Manifest{{Path: "go.mod", Dependencies: []string{"github.com/a/b"}}, {Path: "package.json", Dependencies: []string{"x"}}}},
@@ -60,7 +68,7 @@ func TestBuildReadsRuntimeDependencies(t *testing.T) {
 		{"pyproject for tools only", pyproject("[tool.ruff]\nline-length = 120\n"), nil},
 		{"pyproject with inline tables and a long string first", pyproject("[project]\nauthors = [{name = \"a\", email = \"b\"}]\ndescription = \"\"\"\nline\n\"\"\"\ndependencies = [\"httpx\"]\n"), pyprojectNames("httpx")},
 		{"pyproject with a byte order mark", pyproject("\uFEFF[project]\ndependencies = [\"a\"]\n"), pyprojectNames("a")},
-		{"a nested pyproject", snapshottest.Files(nil, map[string]string{"pkg/pyproject.toml": "[project]\ndependencies = [\"a\"]\n"}), nil},
+		{"a nested pyproject", snapshottest.Files(nil, map[string]string{"pkg/pyproject.toml": "[project]\ndependencies = [\"a\"]\n"}), dependenciesOf("pkg/pyproject.toml", "a")},
 		{"dart", snapshottest.Load(t, "testdata/dart"), pubspecNames("flutter", "http", "provider")},
 		{"pubspec with quoted names and a nested git entry", pubspec("name: 'x'\ndependencies:\n    'a': ^1.0.0\n    b:\n      git:\n        url: https://x.example/b\n    c: any # why\nflutter:\n  assets: []\n"),
 			pubspecNames("a", "b", "c")},
@@ -75,13 +83,14 @@ func TestBuildReadsRuntimeDependencies(t *testing.T) {
 		{"a pom without dependencies and without modules", oneFile("pom.xml", "<project><artifactId>x</artifactId></project>"), dependenciesOf("pom.xml")},
 		{"a pom with a name space, a byte order mark and CRLF", oneFile("pom.xml", "\uFEFF<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n<project xmlns=\"http://maven.apache.org/POM/4.0.0\">\r\n"+pomOwn+"\r\n</project>\r\n"), dependenciesOf("pom.xml", "a:b", "c:d")},
 		{"a file named pom.xml with another root element", oneFile("pom.xml", "<settings/>"), nil},
-		{"a nested pom", oneFile("core/pom.xml", "<project>"+pomOwn+"</project>"), nil},
+		{"a nested pom", oneFile("core/pom.xml", "<project>"+pomOwn+"</project>"), dependenciesOf("core/pom.xml", "a:b", "c:d")},
 		{"csharp", snapshottest.Load(t, "testdata/csharp"), dependenciesOf("Acme.Notes/Acme.Notes.csproj", "Microsoft.Extensions.Configuration", "Npgsql", "System.Text.Json")},
 		{"cpp", snapshottest.Load(t, "testdata/cpp"), dependenciesOf("vcpkg.json", "fmt", "sqlite3")},
 		{"c: no manifest", snapshottest.Load(t, "testdata/c"), nil},
 		{"swift", snapshottest.Load(t, "testdata/swift"), []snapshot.Manifest{{Path: "Package.swift", Dependencies: []string{"swift-argument-parser", "swift-log"},
 			Lockfiles: []string{"Package.resolved"}, Unlocked: []string{"swift-log"}}}},
-		{"rust", snapshottest.Load(t, "testdata/rust"), dependenciesOf("Cargo.toml", "anyhow", "clap", "libc", "log", "notes-store", "serde")},
+		{"rust", snapshottest.Load(t, "testdata/rust"), append(dependenciesOf("Cargo.toml", "anyhow", "clap", "libc", "log", "notes-store", "serde"),
+			dependenciesOf("crates/notes-store/Cargo.toml")...)},
 		{"java", snapshottest.Load(t, "testdata/java"), dependenciesOf("pom.xml", "com.fasterxml.jackson.core:jackson-databind", "org.postgresql:postgresql")},
 		{"kotlin", snapshottest.Load(t, "testdata/kotlin"), dependenciesOf("build.gradle.kts", ":shared", "io.ktor:ktor-bom", "io.ktor:ktor-client-core", "libs.kotlinx.coroutines.core", "org.slf4j:slf4j-simple")},
 		{"a Groovy build file", oneFile("build.gradle", "dependencies {\n  implementation 'org.springframework.boot:spring-boot-starter-web'\n"+
@@ -95,7 +104,7 @@ func TestBuildReadsRuntimeDependencies(t *testing.T) {
 			dependenciesOf("build.gradle.kts", ":x", "g:a")},
 		{"a Gradle block with test and compile-only lines alone", oneFile("build.gradle.kts", "dependencies {\n    testImplementation(kotlin(\"test\"))\n    compileOnly(\"g:a:1\")\n}\n"),
 			dependenciesOf("build.gradle.kts")},
-		{"a nested build file", oneFile("app/build.gradle.kts", "dependencies {\n    implementation(\"g:a:1\")\n}\n"), nil},
+		{"a nested build file", oneFile("app/build.gradle.kts", "dependencies {\n    implementation(\"g:a:1\")\n}\n"), dependenciesOf("app/build.gradle.kts", "g:a")},
 		{"a project file's references, with and without a version", oneFile("src/App/App.csproj", sdkProject(csprojOwn)), dependenciesOf("src/App/App.csproj", "A.B", "C")},
 		{"a project file at the root", oneFile("App.csproj", sdkProject(csprojOwn)), dependenciesOf("App.csproj", "A.B", "C")},
 		{"private assets, as an attribute and as an element, left out", oneFile("src/App/App.csproj", sdkProject(`<ItemGroup><PackageReference Include="A" PrivateAssets="All" />`+
@@ -139,7 +148,7 @@ func TestBuildReadsRuntimeDependencies(t *testing.T) {
 			dependenciesOf("Package.swift", "swift-log")},
 		{"a Swift package without dependencies", oneFile("Package.swift", "import PackageDescription\n\nlet package = Package(name: \"x\", targets: [.target(name: \"X\")])\n"), dependenciesOf("Package.swift")},
 		{"a file named Package.swift that declares no package", oneFile("Package.swift", "print(1)\n"), nil},
-		{"a nested Package.swift", oneFile("Tools/Package.swift", "let package = Package(name: \"x\", dependencies: [.package(path: \"..\")])\n"), nil},
+		{"a nested Package.swift", oneFile("Tools/Package.swift", "let package = Package(name: \"x\", dependencies: [.package(path: \"..\")])\n"), dependenciesOf("Tools/Package.swift", "..")},
 		{"a Cargo package: keys, a value over lines, a dotted key, a sub-table, a target table", oneFile("Cargo.toml",
 			"[package]\nname = \"x\"\n\n[dependencies]\nanyhow = \"1\"\nserde = { version = \"1\", features = [\n    \"derive\",\n] }\nlog.workspace = true\n\n"+
 				"[dependencies.clap]\nversion = \"4\"\nfeatures = [\"derive\"]\n\n[target.'cfg(unix)'.dependencies]\nlibc = \"0.2\"\n\n"+
@@ -157,7 +166,7 @@ func TestBuildReadsRuntimeDependencies(t *testing.T) {
 		{"a Cargo array over lines outside the dependencies, with a bracket in a string and a comment", oneFile("Cargo.toml",
 			"[package]\nname = \"x\"\n\n[features]\ndefault = [ # all\n  \"a[\",\n]\n[dependencies]\nx = \"1\"\n"),
 			dependenciesOf("Cargo.toml", "x")},
-		{"a nested Cargo.toml", oneFile("crates/a/Cargo.toml", "[package]\nname = \"a\"\n\n[dependencies]\nlog = \"0.4\"\n"), nil},
+		{"a nested Cargo.toml", oneFile("crates/a/Cargo.toml", "[package]\nname = \"a\"\n\n[dependencies]\nlog = \"0.4\"\n"), dependenciesOf("crates/a/Cargo.toml", "log")},
 	}
 	for _, tc := range cases {
 		if got := snapshot.Build(tc.source, conventions.Default(), snapshottest.Readings(t)).Now.Manifests; !reflect.DeepEqual(got, tc.want) {
@@ -397,10 +406,10 @@ func TestBuildGivesEachHistoryPathItsArea(t *testing.T) {
 func TestWantsNamesWhatTheReaderReads(t *testing.T) {
 	w := snapshot.WantsOf(conventions.Default())
 	paths := map[string]bool{
-		"src/a.ts": true, "README.md": false, "package.json": true, "web/package.json": false, ".env.example": true,
-		"tsconfig.json": true, "web/tsconfig.json": false, "go.mod": true, "web/go.mod": false, "pyproject.toml": true, "web/pyproject.toml": false, "pytest.ini": true, "pytest.toml": true, "setup.cfg": true, "tox.ini": true,
+		"src/a.ts": true, "README.md": false, "package.json": true, "web/package.json": true, ".env.example": true,
+		"tsconfig.json": true, "web/tsconfig.json": false, "go.mod": true, "web/go.mod": true, "pyproject.toml": true, "web/pyproject.toml": true, "pytest.ini": true, "pytest.toml": true, "setup.cfg": true, "tox.ini": true,
 		"src/main/resources/application.properties": false, "docs/design.pdf": false, "src/main/resources/META-INF/services/a.B": false,
-		"pom.xml": true, "core/pom.xml": false, "build.gradle": true, "build.gradle.kts": true,
+		"pom.xml": true, "core/pom.xml": true, "build.gradle": true, "build.gradle.kts": true,
 		"Acme.sln": false, "Acme.slnx": false, "Directory.Build.props": false, "eng/Common.targets": false, "NuGet.Config": false,
 		"nuget.config": false, "Acme.sln.DotSettings": false, "src/Acme/Strings.resx": false,
 		"src/Acme/Form1.Designer.cs": true, "src/Acme/Views.g.cs": true,

@@ -50,7 +50,7 @@ type Rules struct {
 	Generated          *regexp.Regexp // the generated-file marker, searched in the first GeneratedHeaderLines lines
 	// GeneratedNames are file-name patterns of generated files: such a file is read, and it is no code file.
 	GeneratedNames []string
-	Manifests      []Manifest // the known dependency manifests, read at the repository root
+	Manifests      []Manifest // the known dependency manifests, read wherever tracked
 	CommitPaths    int        // the most paths a commit may touch and still count for a history detector
 	// OwnFile is the file at a repository's root in which it sets its own limits and declares its layout. LimitsTable
 	// is its table of limits and LimitKeys the keys of that table, in the order an answer names them; OwnKeys are the
@@ -82,13 +82,13 @@ type Rules struct {
 }
 
 // Manifest is a known dependency manifest and how its runtime dependencies are read.
+// A manifest is read wherever it is tracked outside skipped folders, test code and other code.
 type Manifest struct {
-	File      string
+	File      string // the file name, or a pattern for it
 	Format    ManifestFormat
-	Lockfiles []string // the lockfiles at the root that record what the manifest's dependencies resolved to
-	// Nested makes File a pattern for the file name: the manifest is read wherever it is tracked outside skipped
-	// folders, test code and other code.
-	Nested bool
+	Lockfiles []string // the names of the lockfiles that record what its dependencies resolved to, in its folder or above
+	// Recipes are folders whose files of this name describe other packages, not the project's own: vcpkg's ports.
+	Recipes []string
 }
 
 // ManifestFormat says how a manifest lists its runtime dependencies.
@@ -526,9 +526,9 @@ func Default() Rules {
 			{File: "build.gradle", Format: GradleDependencies},
 			{File: "build.gradle.kts", Format: GradleDependencies},
 			{File: "Cargo.toml", Format: CargoDependencies, Lockfiles: []string{"Cargo.lock"}},
-			{File: dotnetProject, Format: CsprojDependencies, Nested: true},
+			{File: dotnetProject, Format: CsprojDependencies},
 			{File: "Package.swift", Format: SwiftDependencies, Lockfiles: []string{"Package.resolved"}},
-			{File: "vcpkg.json", Format: VcpkgDependencies},
+			{File: "vcpkg.json", Format: VcpkgDependencies, Recipes: []string{"ports"}},
 		},
 		OwnFile:           ".plimsoll.toml",
 		LimitsTable:       "limits",
