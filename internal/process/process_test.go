@@ -87,7 +87,7 @@ func TestADeclaredPlanningFolderMarksItsFiles(t *testing.T) {
 	if _, f := detect(t, declaring("")); len(marksOf(f, rulePlanning)) != 1 {
 		t.Errorf("without a declaration: planning marks %v, want docs/PLAN.md alone", marksOf(f, rulePlanning))
 	}
-	s, f := detect(t, declaring("[layout]\nplanning_folders = [\"backlog\", \"a b\"]\nplanning_files = [\"*.idea.md\"]\n"))
+	s, f := detect(t, declaring("[layout]\nplanning_folders = [\"backlog\", \"a`b\"]\nplanning_files = [\"*.idea.md\"]\n"))
 	for path, want := range map[string]string{
 		"notes/auth.idea.md": "matches `*.idea.md`, declared in `.plimsoll.toml` (`[layout]` `planning_files`)",
 		"docs/PLAN.md":       "matches `PLAN.md`, a default planning and review path",
@@ -260,7 +260,7 @@ func TestAChangeToTheRepositorysOwnFileIsMarked(t *testing.T) {
 		}},
 		{"reordered", ruleDeclarationChange, layout("test_folders = [\"a\", \"b\"]\n"), layout("test_folders = [\"b\", \"a\"]\n"), nil},
 		{"written another way", ruleDeclarationChange, layout("test_folders = [\"checks/\"]\n"), layout("test_folders = [\"./checks\"]\n"), nil},
-		{"a value without its form added", ruleDeclarationChange, layout("test_folders = [\"checks\"]\n"), layout("test_folders = [\"checks\", \"a b\"]\n"), nil},
+		{"a value without its form added", ruleDeclarationChange, layout("test_folders = [\"checks\"]\n"), layout("test_folders = [\"checks\", \"a`b\"]\n"), nil},
 		{"the default base changed", ruleDeclarationChange, "[defaults]\nbase = \"main\"\n", "[defaults]\nbase = \"develop\"\n",
 			[]string{"This change altered the default base declared in `.plimsoll.toml`: added `develop`, removed 1; 1 declared now, 1 at the base."}},
 		{"not read at the base", ruleDeclarationChange, layout("test_folders = 3\n"), layout("test_folders = [\"checks\"]\n"), nil},

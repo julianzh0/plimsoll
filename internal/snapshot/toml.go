@@ -66,6 +66,40 @@ func tomlTexts(value any) (texts []string, ok bool) {
 	return texts, true
 }
 
+// readsConfig says whether a tool reads a configuration of the given content: a file it reads whenever tracked, or
+// one that holds the configuration's section.
+func readsConfig(content map[string][]byte, c conventions.Config) bool {
+	file, tracked := content[c.File]
+	switch {
+	case !tracked:
+		return false
+	case c.Always:
+		return true
+	case c.INI:
+		return iniHolds(file, c.Table)
+	}
+	document, _ := decodeTOML(file)
+	return tomlHolds(document, c.Table)
+}
+
+// tomlHolds says whether a document holds a table of its own at a dotted path: one written empty, or one with a key
+// that is no table. A table that only holds other tables (tool.pytest above tool.pytest.ini_options) is none.
+func tomlHolds(document map[string]any, dotted string) bool {
+	table := tomlTableAt(document, strings.Split(dotted, ".")...)
+	if table == nil {
+		return false
+	}
+	if len(table) == 0 {
+		return true
+	}
+	for _, value := range table {
+		if _, isTable := value.(map[string]any); !isTable {
+			return true
+		}
+	}
+	return false
+}
+
 // cargoDependencies reads the runtime dependencies of a Cargo.toml: the entries of [dependencies] and of every target
 // table's dependencies ([target.<...>.dependencies]), in any TOML spelling. An entry renamed with package = "..." is
 // named by its package. The dev, build and workspace tables add nothing. manifest is false when the file has neither
@@ -145,19 +179,34 @@ func pyprojectDependencies(content []byte) (names []string, manifest, readable b
 	return names, true, true
 }
 
-// readDeclared reads one declared key from a file's content: its values, and what the file says about it. The value
-// is a list of text, or one text that holds values separated by white space.
+// readDeclared reads one declared key from a file's content: its values, and what the file says about it. In TOML the
+// value is a list of text, or one text that holds values separated by white space; in INI it holds values separated
+// as a shell separates arguments. A TOML file that holds the declaration's rival table beside its own cannot be read.
 func readDeclared(content []byte, d conventions.Declaration) ([]string, KeyState) {
 	if content == nil {
 		return nil, 0
+	}
+	if d.INI {
+		value, found := iniValue(content, d.Table, d.Key)
+		if !found {
+			return nil, 0
+		}
+		values, ok := shellWords(value)
+		if !ok {
+			return nil, KeyUnreadable
+		}
+		return values, KeyRead
 	}
 	document, ok := decodeTOML(content)
 	if !ok {
 		return nil, 0 // the manifest reader names a file that is no valid TOML
 	}
 	value, found := tomlAt(document, append(strings.Split(d.Table, "."), d.Key)...)
-	if !found {
+	switch {
+	case !found:
 		return nil, 0
+	case d.Rival != "" && tomlHolds(document, d.Rival):
+		return nil, KeyUnreadable
 	}
 	if text, isText := value.(string); isText {
 		return strings.Fields(text), KeyRead

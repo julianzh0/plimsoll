@@ -250,7 +250,7 @@ func TestTheSamplesShowEveryRuleAndChange(t *testing.T) {
 		"run without an import of them",
 		"test folders declared in `pyproject.toml`", "roots declared in `pyproject.toml`", "names the repository root",
 		"is or holds a package root", "holds test folders of its own", "leaves the repository or holds a pattern",
-		"`pythonpath` could not be read", "is not read: test folders", "depend on each other in a cycle", "folder cycles: between the folders",
+		"`pythonpath` could not be read", "depend on each other in a cycle", "folder cycles: between the folders",
 		"a package that lies in several folders", "under a test folder directly in `src/`", "an import names a package, not a file",
 		"counts as test lines, not as product lines", "the footprint counts, in 1 changed product file",
 		"a crate's modules use each other", "not seen: a path written in code",
@@ -312,9 +312,12 @@ func TestNoAnswerPrintsADeclaredValueOutsideItsForm(t *testing.T) {
 		}
 	}
 	text := q.Text(report)
-	for _, want := range []string{"`checks/`", "7 values are no plain paths from the root", "3 values are no plain file-name patterns",
-		"`planning_folders`: 2 values are no plain paths from the root", "`planning_files`: 1 value is no plain file-name pattern",
-		"`base` is not the name of a branch, a remote branch or a tag", "4 values are no import rule", "2 values are no import rule"} {
+	for _, want := range []string{"`checks/`", "5 values are no plain paths from the root", "3 values are no plain file-name patterns",
+		"`planning_folders`: 1 value is no plain path from the root", "`planning_files`: 1 value is no plain file-name pattern",
+		"`base` is not the name of a branch, a remote branch or a tag", "2 values are no import rule", "1 value is no import rule",
+		"value 2 of `test_folders` matches no tracked file", "value 6 of `test_folders` matches no tracked file",
+		"value 1 of `planning_folders` matches no tracked file", "value 1 of `never` matches no tracked folder",
+		"value 3 of `never` matches no tracked folder", "value 1 of `only` matches no tracked folder"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the report lacks %q:\n%s", want, text)
 		}

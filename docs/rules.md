@@ -151,8 +151,12 @@ an acknowledged item is still measured and counted, only listed apart, and `[ign
 bare name is a folder at the root. A file pattern matches a file's name in any folder, never a path across folders. A test folder that is the root or a package root, a planning folder that is the
 root, and a file name that is only `*`, are not applied. A file under a declared planning path is a planning record
 like one under a default path: it keeps its role and its lines, and is left out of hotspots, pairs, the churn rows and
-the footprint's documentation lines; so a planning folder that holds code takes that code out of them too. Values are
-ASCII: a folder whose name has a space or another letter is counted as no plain path.
+the footprint's documentation lines; so a planning folder that holds code takes that code out of them too. A folder,
+an end of an import rule or an acknowledged identifier may hold a space or a letter outside ASCII (no quote, no
+backtick, no control or invisible character): it is then used only when it names a tracked path, or, for an
+identifier, an item of the answer, written exactly as git and the answer write it (no other Unicode normalisation and
+no other case). One that names nothing is not used and never printed: the answer names its key and its position, or,
+for the acknowledged table, counts it.
 
 The file is read as TOML, in any of its spellings (tables, dotted keys, inline tables, multi-line strings). A file that
 is no valid TOML, a key set twice among them, applies nothing: the answer names the file and the line, first under "not

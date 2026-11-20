@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 // The two shared patterns are compiled once; everything else is built by Default. Each language's own patterns live
@@ -191,9 +193,7 @@ const ReasonLength = 200
 // markID is a mark identifier as answers print it: a detector and a rule, each lower-case words joined by single
 // hyphens, and a subject of letters, digits and the punctuation paths, functions and pairs hold. A space or a quote
 // has no place in it, so an identifier cannot carry a sentence into an answer.
-// NOTE: a path with a space or a letter outside ASCII has no identifier in this form, so its item cannot be
-// acknowledged (279 code files of the validation clones, 257 of them for a space). Upgrade: print such identifiers
-// quoted, then admit the quote's content.
+// A path with a space or a letter outside ASCII has no identifier in this form; WideMarkID admits it.
 var markID = regexp.MustCompile(`^[a-z]+(?:-[a-z]+)*\.[a-z]+(?:-[a-z]+)*:[A-Za-z0-9._\-+/:#~@$()\[\],=>]+$`)
 
 // MarkID says whether an acknowledged entry's identifier has the form of a mark identifier, within its cap.
@@ -202,9 +202,8 @@ func MarkID(id string) bool {
 }
 
 var (
-	// ownFolder is a folder path from the root: segments of letters, digits and ._+- joined by "/".
-	// NOTE: a folder whose name holds another character (a space, a letter outside ASCII) cannot be declared. Upgrade:
-	// widen the set once a field case needs it.
+	// ownFolder is a folder path from the root: segments of letters, digits and ._+- joined by "/". A folder whose name
+	// holds another character has the widened form instead (WideForm).
 	ownFolder = regexp.MustCompile(`^[A-Za-z0-9._+-]+(/[A-Za-z0-9._+-]+)*$`)
 	// ownName is a file-name pattern of path.Match: letters, digits, ._+- and the wildcards * and ?.
 	// A pattern matches a file name, never a path across folders, as docs/rules.md states.
@@ -259,13 +258,18 @@ func folderForm(value string) (string, bool) {
 // as written is kept: one arrow, two folders from the root other than the root itself, each within OwnValueLength.
 // Under NeverImportRules the two folders differ and neither lies under the other.
 func (v OwnValue) importRuleForm(value string) (string, bool) {
+	return v.ruleForm(value, folderForm)
+}
+
+// ruleForm is importRuleForm with the given form of a folder.
+func (v OwnValue) ruleForm(value string, folder func(string) (string, bool)) (string, bool) {
 	if len(value) > importRuleLength {
 		return "", false
 	}
 	from, to, _ := strings.Cut(value, importArrow) // a second arrow, or none, leaves an end outside the folder form
 	var ends [2]string
 	for i, end := range []string{from, to} {
-		formed, usable := folderForm(strings.Trim(end, " \t"))
+		formed, usable := folder(strings.Trim(end, " \t"))
 		if !usable || formed == "." || len(formed) > OwnValueLength {
 			return "", false
 		}
@@ -275,6 +279,57 @@ func (v OwnValue) importRuleForm(value string) (string, bool) {
 		return "", false
 	}
 	return ImportRule(ends[0], ends[1]), true
+}
+
+// WideForm brings a folder or an import rule written with other characters (a space, a letter outside ASCII) to its
+// widened form, and says whether it has it: segments that are neither empty, "." nor "..", no quote, no backtick and
+// no control, format or line-separating character, within the same caps. A widened value is used only when it names
+// a tracked path, so it is never printed unless it is the leading part of one. File-name patterns and the base have
+// no widened form.
+func (v OwnValue) WideForm(value string) (formed string, usable bool) {
+	switch {
+	case v.ImportRule():
+		if strings.Count(value, importArrow) != 1 {
+			return "", false
+		}
+		return v.ruleForm(value, wideFolderForm)
+	case v.Pattern() || v.Single() || len(value) > OwnValueLength:
+		return "", false
+	}
+	return wideFolderForm(value)
+}
+
+// wideFolderForm is a folder path from the root in the widened form, without one leading "./" and one trailing "/".
+func wideFolderForm(value string) (string, bool) {
+	formed := strings.TrimSuffix(strings.TrimPrefix(value, "./"), "/")
+	if formed == "" || !wideText(formed) {
+		return "", false
+	}
+	for segment := range strings.SplitSeq(formed, "/") {
+		if segment == "" || segment == "." || segment == ".." {
+			return "", false
+		}
+	}
+	return formed, true
+}
+
+// wideText says whether a text holds no character a widened value may not hold: a quote, a backtick, or a control,
+// format, line or paragraph separator character, which could break the line or the markup of an answer.
+func wideText(text string) bool {
+	return utf8.ValidString(text) && !strings.ContainsFunc(text, func(r rune) bool {
+		return r == '"' || r == '`' || unicode.In(r, unicode.Cc, unicode.Cf, unicode.Zl, unicode.Zp)
+	})
+}
+
+// wideMarkPrefix is the detector and rule of a mark identifier, as answers print them.
+var wideMarkPrefix = regexp.MustCompile(`^[a-z]+(?:-[a-z]+)*\.[a-z]+(?:-[a-z]+)*:`)
+
+// WideMarkID says whether an acknowledged entry's identifier has the widened form of a mark identifier: the plain
+// detector and rule, then a subject of any characters a widened value may hold. Such an entry applies only when it
+// equals the identifier of an item an answer holds, so its subject is never printed.
+func WideMarkID(id string) bool {
+	prefix := wideMarkPrefix.FindString(id)
+	return prefix != "" && len(id) > len(prefix) && len(id) <= MarkIDLength && wideText(id[len(prefix):])
 }
 
 // ImportRule prints an import rule from its two folders.
@@ -423,14 +478,24 @@ const (
 )
 
 // Declaration is one key of a standard file in which a project declares part of its layout: a key of a TOML table
-// whose value is an array of strings, or one string that holds the values separated by white space.
+// whose value is an array of strings or one string, or a key of an INI section whose value holds the values
+// separated as a shell separates arguments.
 type Declaration struct {
-	File     string // read at the repository root
-	Table    string // the TOML table that holds the key, as its header names it
+	Config
 	Key      string
 	Means    LayoutKind
 	Tool     string   // the tool that reads File, as a sentence names it
-	Shadowed []string // root files the tool reads instead of File, the one it reads first first
+	Shadowed []Config // configurations the tool reads instead of this one, the one it reads first first
+	Rival    string   // a TOML table that, standing beside Table in File, makes the tool refuse the file; "" for none
+}
+
+// Config is a section of a configuration file at the repository root. Always is true for a file the tool reads
+// whenever it is tracked, whatever it holds; otherwise the tool reads it only when it holds the section.
+type Config struct {
+	File   string
+	Table  string // the TOML table, as its header names it, or the INI section
+	INI    bool
+	Always bool
 }
 
 // Default returns the rules of the first version.

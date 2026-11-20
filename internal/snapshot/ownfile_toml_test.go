@@ -42,6 +42,24 @@ func FuzzBuildReadsAnyOwnFile(f *testing.F) {
 	})
 }
 
+// Reading a pytest.ini of any content ends, and every test folder it yields is one of its words: nothing is made up.
+func FuzzBuildReadsAnyPytestINI(f *testing.F) {
+	for _, seed := range []string{"[pytest]\ntestpaths = \"my tests\" unit\n", "[pytest]\ntestpaths =\n    a\n    b\n", "[pytest]\ntestpaths = 'a\n", "x"} {
+		f.Add(seed)
+	}
+	readings := snapshottest.Readings(f)
+	f.Fuzz(func(t *testing.T, ini string) {
+		s := snapshot.Build(snapshottest.Files(nil, map[string]string{"src/a.py": "a\n", "pytest.ini": ini}), conventions.Default(), readings)
+		for _, d := range s.Layout.TestFolders {
+			for _, folder := range d.InUse {
+				if !strings.Contains(ini, strings.Split(folder.Path, "/")[0]) {
+					t.Fatalf("Build(pytest.ini %q) uses the folder %q, which it does not name", ini, folder.Path)
+				}
+			}
+		}
+	})
+}
+
 // The advisory GHSA-frc4-6h9q-39fq: deeply nested arrays ended the process in go-toml before v2.4.3. An own file that
 // nests them is no valid TOML, and the question is answered.
 func TestBuildReadsADeeplyNestedOwnFile(t *testing.T) {
@@ -94,4 +112,28 @@ func underscored(n int) string {
 		return fmt.Sprint(n)
 	}
 	return fmt.Sprintf("%d_%03d", n/1000, n%1000)
+}
+
+// Folders and identifiers with a space or a letter outside ASCII are used when they name a tracked path or an item;
+// one that names nothing is named by its key and position, never printed.
+func TestTheOwnFileTakesWidenedValuesThatNameTrackedPaths(t *testing.T) {
+	files := map[string]string{"src/a.ts": "a\n", "My App/Tests/x.ts": "a\n", "Übersetzungen/de.ts": "a\n", ".plimsoll.toml": "[layout]\n" +
+		"test_folders = [\"My App/Tests\", \"Ünïts\", \"checks\"]\nplanning_folders = [\"Übersetzungen\"]\n" +
+		"[imports]\nnever = [\"src -> My App\", \"src -> Nowhere Else\"]\n" +
+		"[acknowledged]\n\"shape.file-size:My App/Tests/x.ts\" = \"kept\"\n\"shape.file-size:a`b\" = \"x\"\n"}
+	s := snapshot.Build(snapshottest.Files(nil, files), conventions.Default(), snapshottest.Readings(t))
+	folders := func(key, name string, values ...string) snapshot.DeclaredValues {
+		return snapshot.DeclaredValues{Table: "layout", Key: key, Name: name, Now: values, Compared: true}
+	}
+	wantDeclared := []snapshot.DeclaredValues{folders("test_folders", "test folders", "My App/Tests", "checks"),
+		folders("planning_folders", "planning folders", "Übersetzungen"),
+		{Table: "imports", Key: "never", Name: "`never` import rules", Now: []string{"src -> My App"}, Compared: true}}
+	wantProblems := []string{"value 2 of `never` matches no tracked folder; it is not used", "value 2 of `test_folders` matches no tracked file; it is not used"}
+	if !reflect.DeepEqual(s.Declarations, wantDeclared) || !slices.Equal(s.OwnFileProblems, wantProblems) {
+		t.Errorf("Declarations %+v, problems %q; want %+v, %q", s.Declarations, s.OwnFileProblems, wantDeclared, wantProblems)
+	}
+	if !slices.Equal(s.Acknowledged.Widened, []string{"shape.file-size:My App/Tests/x.ts"}) ||
+		!slices.Equal(s.Acknowledged.Problems, []string{"1 identifier is no plain mark identifier; it is not applied"}) {
+		t.Errorf("Acknowledged %+v; want the widened identifier applied and the one with a backtick counted", s.Acknowledged)
+	}
 }

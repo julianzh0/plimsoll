@@ -60,6 +60,28 @@ func testpaths(inUse ...string) snapshot.Declared {
 	return declared("tool.pytest.ini_options", "testpaths", inUse...)
 }
 
+// inFile is a testpaths record of another of pytest's configurations.
+func inFile(file, table string, inUse ...string) snapshot.Declared {
+	d := testpaths(inUse...)
+	d.File, d.Table = file, table
+	return d
+}
+
+// shadowedBy is a record that pytest does not read, because it reads file instead.
+func shadowedBy(d snapshot.Declared, file string) snapshot.Declared {
+	d.ShadowedBy, d.InUse = file, nil
+	return d
+}
+
+// unreadableIn and unreadableFile are testpaths records that could not be read on either side.
+func unreadableIn(table string) snapshot.Declared { return unreadableFile("pyproject.toml", table) }
+
+func unreadableFile(file, table string) snapshot.Declared {
+	d := inFile(file, table)
+	d.Now, d.AtBase = snapshot.KeyUnreadable, snapshot.KeyUnreadable
+	return d
+}
+
 func TestBuildReadsWhatAProjectDeclares(t *testing.T) {
 	both := func(tree map[string]string) snapshot.Layout { return layoutOf(t, tree, tree) }
 	one := func(d snapshot.Declared) snapshot.Layout { return snapshot.Layout{TestFolders: []snapshot.Declared{d}} }
@@ -90,8 +112,8 @@ func TestBuildReadsWhatAProjectDeclares(t *testing.T) {
 		{"one string", both(declaring(pytestTable+"testpaths = \"tests checks\"\n", "tests/test_a.py", "checks/h.py")), one(testpaths("tests", "checks"))},
 		{"the tool.pytest table", both(declaring("[tool.pytest]\ntestpaths = [\"checks\"]\n", "checks/h.py")),
 			one(declared("tool.pytest", "testpaths", "checks"))},
-		{"both tables", both(declaring(pytestTable+"testpaths = [\"tests\"]\n\n[tool.pytest]\ntestpaths = [\"checks\"]\n", "tests/test_a.py", "checks/h.py")),
-			snapshot.Layout{TestFolders: []snapshot.Declared{testpaths("tests"), declared("tool.pytest", "testpaths", "checks")}}},
+		{"both tables: pytest refuses the file", both(declaring(pytestTable+"testpaths = [\"tests\"]\n\n[tool.pytest]\ntestpaths = [\"checks\"]\n", "tests/test_a.py", "checks/h.py")),
+			snapshot.Layout{TestFolders: []snapshot.Declared{unreadable, unreadableIn("tool.pytest")}}},
 		{"held and unusable values", both(declaring(pytestTable+"testpaths = [\".\", \"src\", \"pkg\", \"checks/\", \"./checks\", \"/abs\", \"../out\", \"tests/**\", \"nowhere\"]\n",
 			"src/app/__init__.py", "pkg/core.py", "pkg/tests/test_core.py", "checks/h.py")), one(edge)},
 		{"a shared name at the root", both(declaring(pytestTable+"testpaths = [\"tests\"]\n", "tests/unit/tests/test_x.py")), one(testpaths("tests"))},
@@ -107,11 +129,24 @@ func TestBuildReadsWhatAProjectDeclares(t *testing.T) {
 		{"a dotted key in tool.pytest", both(declaring("[tool.pytest]\nini_options.testpaths = [\"checks\"]\n", "checks/h.py")), one(testpaths("checks"))},
 		{"an inline table", both(declaring("[tool.pytest]\nini_options = { testpaths = [\"checks\"] }\n", "checks/h.py")), one(testpaths("checks"))},
 		{"a tracked pytest.ini", both(declaring(pytestTable+"testpaths = [\"checks\"]\n", "checks/h.py", "pytest.ini")),
-			snapshot.Layout{TestFolders: []snapshot.Declared{shadowed}, Shadowing: []string{"pytest.ini"}}},
+			snapshot.Layout{TestFolders: []snapshot.Declared{shadowed}}},
+		{"pytest.ini with quoted values", both(map[string]string{"pytest.ini": "[pytest]\ntestpaths = \"my tests\" unit\n", "my tests/t.py": "x\n", "unit/t.py": "x\n"}),
+			one(inFile("pytest.ini", "pytest", "my tests", "unit"))},
+		{"pytest.toml before pyproject.toml", both(map[string]string{"pytest.toml": "[pytest]\ntestpaths = [\"checks\"]\n",
+			"pyproject.toml": pytestTable + "testpaths = [\"other\"]\n", "checks/t.py": "x\n", "other/t.py": "x\n"}),
+			snapshot.Layout{TestFolders: []snapshot.Declared{inFile("pytest.toml", "pytest", "checks"), shadowedBy(testpaths(), "pytest.toml")}}},
+		{"pyproject.toml before the ini of tox", both(map[string]string{"tox.ini": "[pytest]\ntestpaths = other\n",
+			"pyproject.toml": pytestTable + "testpaths = [\"checks\"]\n", "checks/t.py": "x\n", "other/t.py": "x\n"}),
+			snapshot.Layout{TestFolders: []snapshot.Declared{testpaths("checks"), shadowedBy(inFile("tox.ini", "pytest"), "pyproject.toml")}}},
+		{"an ini of tox without pytest's section shadows nothing", both(map[string]string{"tox.ini": "[tox]\nenvlist = py\n",
+			"setup.cfg": "# ours\n[tool:pytest]\ntestpaths =\n    checks\n    more\n", "checks/t.py": "x\n", "more/t.py": "x\n"}),
+			one(inFile("setup.cfg", "tool:pytest", "checks", "more"))},
+		{"an INI quote that does not close", both(map[string]string{"pytest.ini": "[pytest]\ntestpaths = \"a\n"}),
+			snapshot.Layout{TestFolders: []snapshot.Declared{unreadableFile("pytest.ini", "pytest")}}},
 		{"an indented header", both(declaring("  [tool.pytest.ini_options]\ntestpaths = [\"checks\"]\n", "checks/h.py")), one(testpaths("checks"))},
 		{"an array of tables is no table", both(declaring("[[tool.pytest.ini_options]]\ntestpaths = [\"checks\"]\n", "checks/h.py")), snapshot.Layout{}},
 		{"a spaced and quoted header", both(declaring("[ tool.\"pytest\".ini_options ]\ntestpaths = [\"checks\"]\n", "checks/h.py")), one(testpaths("checks"))},
-		{"shadowing files without a table", both(declaring("[project]\n", "pytest.ini", "pytest.toml")), snapshot.Layout{Shadowing: []string{"pytest.toml", "pytest.ini"}}},
+		{"shadowing files without a table", both(declaring("[project]\n", "pytest.ini", "pytest.toml")), snapshot.Layout{}},
 		{"pytest.ini at the base only", layoutOf(t, declaring(pytestTable+"testpaths = [\"checks\"]\n", "checks/h.py", "pytest.ini"), declaring(pytestTable+"testpaths = [\"checks\"]\n", "checks/h.py")),
 			one(testpaths("checks"))},
 		{"a byte order mark", both(declaring("\uFEFF"+pytestTable+"testpaths = [\"checks\"]\n", "checks/h.py")), one(testpaths("checks"))},
@@ -148,7 +183,7 @@ func TestBuildReadsWhatAProjectDeclares(t *testing.T) {
 	}{
 		{"own: in use", both(owning("test_folders = [\"checks\", \"tools/harness\"]\ntest_files = [\"*.check.ts\"]\n", "checks/h.py", "tools/harness/run.py", "src/a.check.ts")),
 			snapshot.Layout{Own: []snapshot.Declared{own("test_folders", "test folders", false, "checks", "tools/harness"), own("test_files", "test files", true, "*.check.ts")}}},
-		{"own: held, unmatched, unusable", both(owning("test_folders = [\".\", \"src\", \"nowhere\", \"Checks\", \"a b\", \"tests\"]\ntest_files = [\"*\", \"**\", \"*_nope.rb\", \"checks\", \"a/b\", \"*.CHECK.ts\"]\n",
+		{"own: held, unmatched, unusable", both(owning("test_folders = [\".\", \"src\", \"nowhere\", \"Checks\", \"a`b\", \"tests\"]\ntest_files = [\"*\", \"**\", \"*_nope.rb\", \"checks\", \"a/b\", \"*.CHECK.ts\"]\n",
 			"src/app/__init__.py", "tests/test_a.py", "checks/h.py", "src/a.check.ts")),
 			snapshot.Layout{Own: []snapshot.Declared{ownFolders, ownFiles}}},
 		{"own: no guard for a folder holding test folders", both(owning("test_folders = [\"pkg\"]\n", "pkg/core.py", "pkg/tests/test_core.py")),
@@ -160,7 +195,7 @@ func TestBuildReadsWhatAProjectDeclares(t *testing.T) {
 			snapshot.Layout{OwnBase: []snapshot.Declared{{File: ".plimsoll.toml", Table: "defaults", Key: "base", Name: "default base", AsWritten: true,
 				Now: snapshot.KeyRead, InUse: []snapshot.DeclaredFolder{{Path: "main"}}}}}},
 		{"own: an empty list", both(owning("test_folders = []\n", "src/a.py")), snapshot.Layout{}},
-		{"own: planning keys apart, a code folder applied", both(owning("planning_folders = [\".\", \"backlog/\", \"src\", \"nowhere\", \"a b\"]\nplanning_files = [\"*\", \"*.plan.md\", \"*.nope.md\"]\n",
+		{"own: planning keys apart, a code folder applied", both(owning("planning_folders = [\".\", \"backlog/\", \"src\", \"nowhere\", \"a`b\"]\nplanning_files = [\"*\", \"*.plan.md\", \"*.nope.md\"]\n",
 			"backlog/US-12.md", "src/app/__init__.py", "docs/x/AUTH.PLAN.md")),
 			snapshot.Layout{Planning: []snapshot.Declared{planningFolders, planningFiles}}},
 		{"own: beside pytest", both(pytestAndOwn),

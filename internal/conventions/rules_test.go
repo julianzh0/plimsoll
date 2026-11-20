@@ -180,6 +180,34 @@ func TestOwnValuesAreBroughtToTheirForm(t *testing.T) {
 			t.Errorf("%v.Form(%q) = %q, %v; want %q, %v", c.kind, c.value, formed, usable, c.formed, c.formed != "")
 		}
 	}
+	wide := []struct {
+		kind   OwnValue
+		value  string
+		formed string // "" is not usable in the widened form
+	}{
+		{TestFolderPaths, "My App/Tests", "My App/Tests"}, {TestFolderPaths, "./Übersetzungen/", "Übersetzungen"},
+		{TestFolderPaths, `a\b`, `a\b`}, {TestFolderPaths, "café", "café"}, {IgnoredFolderPaths, "a b/c d", "a b/c d"},
+		{TestFolderPaths, "a//b", ""}, {TestFolderPaths, "a/../b", ""}, {TestFolderPaths, "/abs", ""}, {TestFolderPaths, "", ""},
+		{TestFolderPaths, "a\"b", ""}, {TestFolderPaths, "a`b", ""}, {TestFolderPaths, "a\nb", ""}, {TestFolderPaths, "a\u200bb", ""},
+		{TestFolderPaths, "a\u2028b", ""}, {TestFolderPaths, "a\x7fb", ""}, {TestFolderPaths, strings.Repeat("ü", 101), ""},
+		{TestFileNames, "x y.go", ""}, {BaseName, "my branch", ""},
+		{NeverImportRules, "My App/core -> My App/ui", "My App/core -> My App/ui"},
+		{NeverImportRules, "a b -> c -> d", ""}, {NeverImportRules, "a b -> a b", ""}, {OnlyImportRules, " a b ->  c ", "a b -> c"},
+	}
+	for _, c := range wide {
+		if formed, usable := c.kind.WideForm(c.value); formed != c.formed || usable != (c.formed != "") {
+			t.Errorf("%v.WideForm(%q) = %q, %v; want %q, %v", c.kind, c.value, formed, usable, c.formed, c.formed != "")
+		}
+	}
+	for id, want := range map[string]bool{
+		"shape.file-size:My App/Main.cs": true, "shape.file-size:lib/Größe.kt": true, "links.never:a b->c": true,
+		"shape.file-size:a`b": false, "shape.file-size:a\"b": false, "shape.file-size:a\nb": false, "Shape.file-size:a b": false,
+		"shape.file-size:": false, "shape:a b": false,
+	} {
+		if WideMarkID(id) != want {
+			t.Errorf("WideMarkID(%q) = %v, want %v", id, !want, want)
+		}
+	}
 	rules := Default()
 	want := []OwnKey{
 		{Table: "layout", Key: "test_folders", Name: "test folders", Holds: TestFolderPaths},

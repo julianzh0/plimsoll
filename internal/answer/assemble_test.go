@@ -509,6 +509,21 @@ func TestAcknowledgedStandingItemsAreListedApartAndStaleEntriesNamed(t *testing.
 		t.Errorf("not analysed about the table = %q, want %q", notAnalysed, want)
 	}
 
+	widened := sample()
+	widened.OwnFile = ".plimsoll.toml"
+	widened.Acknowledged = snapshot.Acknowledged{Table: "acknowledged", Widened: []string{"shape.file-size:src/c.ts", "shape.file-size:My Gone.ts", "shape.file-size:Ünïts.ts"}}
+	w := Assemble(Report, "0.1.0", widened, []Result{{"shape", f}})
+	var wideNotAnalysed []string
+	for _, n := range w.NotAnalysed {
+		if strings.HasPrefix(n.What, "`.plimsoll.toml` `[acknowledged]`: ") {
+			wideNotAnalysed = append(wideNotAnalysed, n.What)
+		}
+	}
+	wantWide := []string{"`.plimsoll.toml` `[acknowledged]`: 2 entries that are no plain identifiers match no item of this answer; they acknowledge nothing"}
+	if !slices.Equal(ids(w.Acknowledged), []string{"shape.file-size:src/c.ts"}) || !slices.Equal(wideNotAnalysed, wantWide) {
+		t.Errorf("widened identifiers: acknowledged %v, not analysed %q; want src/c.ts applied and %q", ids(w.Acknowledged), wideNotAnalysed, wantWide)
+	}
+
 	onlyStale := sample()
 	onlyStale.OwnFile, onlyStale.Acknowledged = ".plimsoll.toml", snapshot.Acknowledged{Table: "acknowledged", IDs: []string{"shape.file-size:src/gone.ts"}}
 	if stale := Assemble(Report, "0.1.0", onlyStale, []Result{{"shape", f}}); stale.Acknowledged != nil || stale.AcknowledgedIn != "" {

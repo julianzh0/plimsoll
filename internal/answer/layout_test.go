@@ -91,11 +91,8 @@ func TestLayoutSaysWhatIsDeclaredAndWhatIsNotUsed(t *testing.T) {
 		{"shadowing files", func() snapshot.Layout {
 			d := testpaths()
 			d.ShadowedBy = "pytest.toml"
-			return snapshot.Layout{TestFolders: []snapshot.Declared{d}, Shadowing: []string{"pytest.toml", "pytest.ini"}}
-		}(), lines{testGaps: []string{
-			"`pytest.toml` is not read: test folders and roots declared there are not seen, and `testpaths` in `pyproject.toml` is not used, because pytest reads `pytest.toml` instead",
-			"`pytest.ini` is not read: test folders and roots declared there are not seen",
-		}}},
+			return snapshot.Layout{TestFolders: []snapshot.Declared{d}}
+		}(), lines{testGaps: []string{"`testpaths` in `pyproject.toml` is not used, because pytest reads `pytest.toml` instead"}}},
 		{"own: folders in use", snapshot.Layout{Own: []snapshot.Declared{ownFolders("checks", "tools/harness")}},
 			lines{ownNotes: []string{"test folders declared in `.plimsoll.toml` (`[layout]` `test_folders`): `checks/`, `tools/harness/`"}}},
 		{"own: names in use", snapshot.Layout{Own: []snapshot.Declared{ownFiles("*_spec.rb", "*IT.java")}},
@@ -125,14 +122,11 @@ func TestLayoutSaysWhatIsDeclaredAndWhatIsNotUsed(t *testing.T) {
 		}),
 			lines{ownNotes: []string{"`never` import rules declared in `.plimsoll.toml` (`[imports]` `never`): `src/domain -> src/adapters`"},
 				ownGaps: []string{"`.plimsoll.toml` `never`: 2 values are no import rule of the form `folder -> folder` (two different folders from the root, neither inside the other); they are not used"}}},
-		{"a shadowing file alone", snapshot.Layout{Shadowing: []string{"pytest.ini"}},
-			lines{testGaps: []string{"`pytest.ini` is not read: test folders and roots declared there are not seen"}}},
 		{"a shadowed root key", func() snapshot.Layout {
 			d := roots(testpaths())
 			d.ShadowedBy = "pytest.ini"
-			return snapshot.Layout{Roots: []snapshot.Declared{d}, Shadowing: []string{"pytest.ini"}}
-		}(), lines{testGaps: []string{"`pytest.ini` is not read: test folders and roots declared there are not seen"},
-			rootGaps: []string{"`python`: `pythonpath` in `pyproject.toml` is not used, because pytest reads `pytest.ini` instead"}}},
+			return snapshot.Layout{Roots: []snapshot.Declared{d}}
+		}(), lines{rootGaps: []string{"`python`: `pythonpath` in `pyproject.toml` is not used, because pytest reads `pytest.ini` instead"}}},
 	}
 	for _, tc := range cases {
 		own := tc.layout.Own

@@ -45,16 +45,37 @@ func pythonImports() Imports {
 	}
 }
 
-// pytestLayout is what pytest's table in pyproject.toml declares: where tests are collected and which folders join
-// the import path. pytest reads the first of its own files it finds instead, so a tracked one shadows the table.
+// pytestLayout is what pytest's configuration declares: where tests are collected and which folders join the import
+// path. pytest reads the first configuration it finds, in this order, and never merges two
+// (https://docs.pytest.org/en/stable/reference/customize.html): pytest.toml, .pytest.toml, pytest.ini and .pytest.ini
+// whenever tracked, then pyproject.toml, tox.ini and setup.cfg when they hold pytest's section. A pyproject.toml with
+// both of its pytest tables is refused by pytest 9.
 func pytestLayout() []Declaration {
-	shadowed := []string{"pytest.toml", ".pytest.toml", "pytest.ini", ".pytest.ini"}
+	order := []Config{
+		{File: "pytest.toml", Table: "pytest", Always: true},
+		{File: ".pytest.toml", Table: "pytest", Always: true},
+		{File: "pytest.ini", Table: "pytest", INI: true, Always: true},
+		{File: ".pytest.ini", Table: "pytest", INI: true, Always: true},
+		{File: "pyproject.toml", Table: "tool.pytest.ini_options"},
+		{File: "pyproject.toml", Table: "tool.pytest"},
+		{File: "tox.ini", Table: "pytest", INI: true},
+		{File: "setup.cfg", Table: "tool:pytest", INI: true},
+	}
+	rivals := map[string]string{"tool.pytest.ini_options": "tool.pytest", "tool.pytest": "tool.pytest.ini_options"}
 	var rows []Declaration
-	for _, table := range []string{"tool.pytest.ini_options", "tool.pytest"} {
-		rows = append(rows,
-			Declaration{File: "pyproject.toml", Table: table, Key: "testpaths", Means: TestFolders, Tool: "pytest", Shadowed: shadowed},
-			Declaration{File: "pyproject.toml", Table: table, Key: "pythonpath", Means: Roots, Tool: "pytest", Shadowed: shadowed},
-		)
+	for i, config := range order {
+		var shadowed []Config
+		for _, earlier := range order[:i] {
+			if earlier.File != config.File {
+				shadowed = append(shadowed, earlier)
+			}
+		}
+		for _, key := range []struct {
+			name  string
+			means LayoutKind
+		}{{"testpaths", TestFolders}, {"pythonpath", Roots}} {
+			rows = append(rows, Declaration{Config: config, Key: key.name, Means: key.means, Tool: "pytest", Shadowed: shadowed, Rival: rivals[config.Table]})
+		}
 	}
 	return rows
 }

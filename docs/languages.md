@@ -92,7 +92,7 @@ still run, interpreted and about 80 times slower.
 - **Imports:** `import x` and `from x import y`, relative with leading dots, `import_module()`, the project's packages at
   the root and under `src/`.
 - **Type-only imports,** left out of rings: imports under `if TYPE_CHECKING:`.
-- **Declared test folders and roots:** pytest's `testpaths` and `pythonpath` in `pyproject.toml`.
+- **Declared test folders and roots:** pytest's `testpaths` and `pythonpath`, from the one configuration pytest reads: the first of `pytest.toml`, `.pytest.toml`, `pytest.ini`, `.pytest.ini`, `pyproject.toml` with a pytest table, `tox.ini` with `[pytest]` and `setup.cfg` with `[tool:pytest]`. A `pyproject.toml` with both of pytest's tables is refused, as pytest refuses it.
 - **Runtime dependencies:** `pyproject.toml`, `[project] dependencies`.
 
 ### Rust

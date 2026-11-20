@@ -356,5 +356,6 @@ type FileCount struct {
 type Acknowledged struct {
 	Table    string
 	IDs      []string
+	Widened  []string // identifiers in the widened form, applied only to an item of exactly that identifier; never printed
 	Problems []string
 }

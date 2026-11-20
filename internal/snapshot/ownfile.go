@@ -28,20 +28,30 @@ type DeclaredValues struct {
 
 // ownFile is what one side's own file says.
 type ownFile struct {
-	unreadable bool                // tracked, and its content could not be read
-	limits     map[string]float64  // the limits it sets, by key
-	values     map[string][]string // per text key that was read: its usable values, in file order, each once
-	unusable   map[string]int      // per text key: the values that have not their form
-	unread     map[string]bool     // text keys whose value could not be read
-	single     map[string]string   // per key that holds one name and could not be used: its problem phrase
-	problems   []string            // what the file says that is not read: phrases, sorted, each once
-	ack        acknowledged        // its acknowledged table
+	unreadable bool                  // tracked, and its content could not be read
+	limits     map[string]float64    // the limits it sets, by key
+	values     map[string][]string   // per text key that was read: its usable values, in file order, each once
+	unusable   map[string]int        // per text key: the values that have not their form
+	unread     map[string]bool       // text keys whose value could not be read
+	single     map[string]string     // per key that holds one name and could not be used: its problem phrase
+	problems   []string              // what the file says that is not read: phrases, sorted, each once
+	ack        acknowledged          // its acknowledged table
+	written    map[string][]ownEntry // per list key: its usable values as written, plain and widened, in file order
+}
+
+// ownEntry is one usable value of a list key: in its form, whether that form is the widened one, and its position in
+// the list as written (from 1).
+type ownEntry struct {
+	value    string
+	wide     bool
+	position int
 }
 
 // acknowledged is what one side's acknowledged table says: the identifiers in their form, sorted, those whose entry
 // has a usable reason (applied), and its problem phrases.
 type acknowledged struct {
 	inForm, applied []string
+	widened         []string // identifiers in the widened form with a usable reason, sorted; never printed
 	notInForm       int
 	named           []string // phrases that name an identifier in its form, by identifier
 }
@@ -49,12 +59,19 @@ type acknowledged struct {
 // read reads one entry of the acknowledged table: an identifier and a reason written as text. The identifier is kept
 // byte for byte; the reason is only checked.
 func (a *acknowledged) read(id string, value any) {
-	if !conventions.MarkID(id) {
+	wide := !conventions.MarkID(id)
+	if wide && !conventions.WideMarkID(id) {
 		a.notInForm++
 		return
 	}
-	a.inForm = append(a.inForm, id)
 	reason, isText := value.(string)
+	if wide { // applied only when an answer holds an item of this identifier; never named
+		if isText && strings.TrimSpace(reason) != "" && utf8.RuneCountInString(reason) <= conventions.ReasonLength {
+			a.widened = append(a.widened, id)
+		}
+		return
+	}
+	a.inForm = append(a.inForm, id)
 	switch {
 	case !isText || strings.TrimSpace(reason) == "":
 		a.named = append(a.named, fmt.Sprintf("`%s` has no reason written as text; it is not applied", id))
@@ -87,7 +104,10 @@ func counted(n int, one, many string) string {
 // phrase, and what it names keeps plimsoll's default. Values are brought to their form; one without it is counted,
 // never kept.
 func readOwnFile(rules conventions.Rules, content map[string][]byte) ownFile {
-	o := ownFile{limits: map[string]float64{}, values: map[string][]string{}, unusable: map[string]int{}, unread: map[string]bool{}, single: map[string]string{}}
+	o := ownFile{
+		limits: map[string]float64{}, values: map[string][]string{}, unusable: map[string]int{}, unread: map[string]bool{},
+		single: map[string]string{}, written: map[string][]ownEntry{},
+	}
 	file, tracked := content[rules.OwnFile]
 	switch {
 	case !tracked:
@@ -223,16 +243,54 @@ func (o *ownFile) readList(key conventions.OwnKey, value any, problem func(strin
 		return
 	}
 	var values []string
-	for _, text := range texts {
+	for i, text := range texts {
 		formed, usable := key.Holds.Form(text)
-		switch {
-		case !usable:
-			o.unusable[key.Key]++
-		default:
+		if usable {
 			values = appendNew(values, formed)
+			o.written[key.Key] = append(o.written[key.Key], ownEntry{value: formed, position: i + 1})
+			continue
 		}
+		if formed, usable = key.Holds.WideForm(text); usable {
+			o.written[key.Key] = append(o.written[key.Key], ownEntry{value: formed, wide: true, position: i + 1})
+			continue
+		}
+		o.unusable[key.Key]++
 	}
 	o.values[key.Key] = values
+}
+
+// withWideValues adds each widened value that names a tracked path to its key's values, in file order: a folder
+// under which a tracked path lies, an import rule whose two folders both do. Such a value is the leading part of a
+// tracked path, which answers print anyway. A widened value that names none is not used, and only its key and
+// position are named.
+func (o ownFile) withWideValues(rules conventions.Rules, tracked []string) ownFile {
+	names := func(folder string) bool {
+		return slices.ContainsFunc(tracked, func(p string) bool { _, in := under(p, folder); return in })
+	}
+	for _, k := range rules.OwnKeys {
+		entries := o.written[k.Key]
+		if !slices.ContainsFunc(entries, func(e ownEntry) bool { return e.wide }) {
+			continue
+		}
+		var values []string
+		for _, e := range entries {
+			from, to := conventions.ImportRuleEnds(e.value)
+			switch {
+			case !e.wide:
+			case k.Holds.ImportRule() && names(from) && names(to), !k.Holds.ImportRule() && names(e.value):
+			case k.Holds.ImportRule():
+				o.problems = append(o.problems, fmt.Sprintf("value %d of `%s` matches no tracked folder; it is not used", e.position, k.Key))
+				continue
+			default:
+				o.problems = append(o.problems, fmt.Sprintf("value %d of `%s` matches no tracked file; it is not used", e.position, k.Key))
+				continue
+			}
+			values = appendNew(values, e.value)
+		}
+		o.values[k.Key] = values
+	}
+	slices.Sort(o.problems)
+	return o
 }
 
 // readString reads one text, which must have its key's form.

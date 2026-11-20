@@ -14,7 +14,6 @@ import (
 type Layout struct {
 	TestFolders []Declared // one per test-folder key found on either side, in the entries' order
 	Roots       []Declared // one per root key found on either side, in the entries' order
-	Shadowing   []string   // root files tracked now that are not read and that a tool reads before a declaring file
 	// Own are the list keys of the repository's own file that hold a value now, in the order of the rules, and
 	// OwnBase the default base it declares now, if any.
 	Own     []Declared
@@ -95,11 +94,6 @@ func declaredLayout(rules conventions.Rules, now, before map[string][]byte, trac
 	var layout Layout
 	for _, language := range rules.Languages {
 		for _, d := range language.Layout {
-			for _, shadow := range d.Shadowed {
-				if _, isTracked := now[shadow]; isTracked && !slices.Contains(layout.Shadowing, shadow) {
-					layout.Shadowing = append(layout.Shadowing, shadow)
-				}
-			}
 			nowValues, nowState := readDeclared(now[d.File], d)
 			baseValues, baseState := readDeclared(before[d.File], d)
 			if nowState == 0 && baseState == 0 {
@@ -108,8 +102,8 @@ func declaredLayout(rules conventions.Rules, now, before map[string][]byte, trac
 			record := Declared{
 				Language: language.Name, File: d.File, Table: d.Table, Key: d.Key, Tool: d.Tool, Now: nowState, AtBase: baseState,
 			}
-			if i := slices.IndexFunc(d.Shadowed, func(p string) bool { _, isTracked := now[p]; return isTracked }); i >= 0 {
-				record.ShadowedBy = d.Shadowed[i]
+			if i := slices.IndexFunc(d.Shadowed, func(c conventions.Config) bool { return readsConfig(now, c) }); i >= 0 {
+				record.ShadowedBy = d.Shadowed[i].File
 			} else {
 				record.decide(rules, tracked, nowValues, baseValues, d.Means == conventions.TestFolders)
 			}

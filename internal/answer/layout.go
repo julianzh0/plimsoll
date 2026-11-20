@@ -19,21 +19,9 @@ func TestFolderNotes(l snapshot.Layout) []string {
 // RootNotes are the note lines of the root declarations with a folder in use; each starts with its language.
 func RootNotes(l snapshot.Layout) []string { return layoutNotes(l.Roots, "roots", true) }
 
-// TestFoldersNotUsed are the "not analysed" sentences about declared test folders and about shadowing files.
+// TestFoldersNotUsed are the "not analysed" sentences about declared test folders.
 func TestFoldersNotUsed(l snapshot.Layout) []string {
-	sentences := layoutGaps(l.TestFolders, "test folders", false)
-	for _, file := range l.Shadowing {
-		parts := []string{fmt.Sprintf("`%s` is not read: test folders and roots declared there are not seen", file)}
-		named := map[string]bool{}
-		for _, d := range l.TestFolders {
-			if d.ShadowedBy == file && !named[d.File+" "+d.Key] {
-				named[d.File+" "+d.Key] = true
-				parts = append(parts, "and "+shadowedClause(d))
-			}
-		}
-		sentences = append(sentences, strings.Join(parts, ", "))
-	}
-	return sentences
+	return layoutGaps(l.TestFolders, "test folders", false)
 }
 
 // OwnNotes are the note lines of the keys of a repository's own file with a value in use.
@@ -78,9 +66,7 @@ func layoutGaps(declared []snapshot.Declared, things string, lead bool) []string
 	var sentences []string
 	for _, d := range declared {
 		if d.ShadowedBy != "" {
-			if lead {
-				sentences = append(sentences, leadOf(d, lead)+shadowedClause(d))
-			}
+			sentences = append(sentences, leadOf(d, lead)+shadowedClause(d))
 			continue
 		}
 		if state := stateSentence(d, things); state != "" {

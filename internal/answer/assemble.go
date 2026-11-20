@@ -47,7 +47,7 @@ func Assemble(q Question, version string, s snapshot.Snapshot, results []Result)
 	var first []NotAnalysed
 	var ran []string                  // the kinds of the rules that ran, of every detector
 	acknowledged := map[string]bool{} // the table's identifiers; true once a detector returned an item with it
-	for _, id := range s.Acknowledged.IDs {
+	for _, id := range slices.Concat(s.Acknowledged.IDs, s.Acknowledged.Widened) {
 		acknowledged[id] = false
 	}
 	for _, result := range results {
@@ -286,6 +286,12 @@ func acknowledgedNotAnalysed(s snapshot.Snapshot, returned map[string]bool) []No
 		if !returned[id] {
 			entries = append(entries, NotAnalysed{Detector: repositoryEntry, What: prefix + fmt.Sprintf("`%s` matches no item of this answer; it acknowledges nothing", id)})
 		}
+	}
+	// An identifier in the widened form is counted, never printed: it is no path an answer printed.
+	if stale := len(slices.DeleteFunc(slices.Clone(s.Acknowledged.Widened), func(id string) bool { return returned[id] })); stale > 0 {
+		entries = append(entries, NotAnalysed{Detector: repositoryEntry, What: prefix + Agree(stale,
+			"entry that is no plain identifier matches no item of this answer; it acknowledges nothing",
+			"entries that are no plain identifiers match no item of this answer; they acknowledge nothing")})
 	}
 	return entries
 }
