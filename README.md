@@ -131,7 +131,10 @@ not know:
 - **MSBuild.** Package references that come through `Choose` or an imported file.
 - **Package.swift.** Anything beyond literal names, paths and dependency lists.
 - **vcpkg.** Dependencies of features that are not default.
-- **Macros.** What a C or C++ macro stands for, and a module or name a Rust macro creates.
+- **Macros.** What a C or C++ macro defined under a condition or outside the repository stands for, and a module or
+  name a Rust macro creates.
+- **Preprocessor.** Which branch of an `#if` a build takes, unless its condition is a literal (`0`, `1`, `true`,
+  `false`).
 - **tsconfig.** A base configuration that comes from an installed package.
 - **trigger.dev.** Task folders that `dirs` computes in code.
 
