@@ -100,8 +100,10 @@ Read, without changing anything: the build and package files (`package.json` scr
 `pom.xml`, `build.gradle(.kts)`, `Cargo.toml`, `Package.swift`, `*.csproj`, `Makefile`, `CMakeLists.txt`), the test
 runners' configuration (Jest, Vitest, Playwright, Cypress, Karma, pytest, tox, nox, Maven Surefire and Failsafe,
 Gradle suites, test plans), the CI workflows, the folder tree, and the documents (README, `docs/`, architecture and
-decision records). Note for each finding the file it came from. Then ask plimsoll `report` with base `HEAD`: it lists
-what plimsoll recognizes today, the standing items and what it could not read.
+decision records, and the READMEs of modules and packages in subfolders). Note for each finding the file it came from.
+Then ask plimsoll `report` with base `HEAD`: it lists what plimsoll recognizes today, the standing items and what it
+could not read. Look up each standing item's mark in the table at the end of this page: what it says for setup goes
+into proposal 1 (layout, ignore) or proposal 2 (an acknowledged item), so a later run finds nothing you passed over.
 
 ## 4. Proposal 1: layout, ignore, tests, base
 
