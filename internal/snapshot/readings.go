@@ -89,6 +89,7 @@ type readingKey struct {
 	declarations   bool // the reading holds the file's declarations too
 	functions      bool // the reading holds the file's measured functions too
 	content        [sha256.Size]byte
+	macros         string // the digest of the side's learned macro names its functions were read with
 }
 
 // keptReading is a reading, or the promise of one: read is closed once r is made. question is the latest question
@@ -131,11 +132,15 @@ func (rs *Readings) end(question uint64) {
 type wanted struct {
 	declarations, functions bool
 	functionRules           *conventions.FunctionRules
+	macros                  *macroNames // the side's learned macro names, for an entry that learns them
 }
 
 // of returns the reading of one file's content for its language entry and grammar, made once per content.
 func (rs *Readings) of(language conventions.Language, grammar string, content []byte, question uint64, w wanted) reading {
 	key := readingKey{entry: language.Name, grammar: grammar, declarations: w.declarations, functions: w.functions, content: sha256.Sum256(content)}
+	if w.functions && w.macros != nil {
+		key.macros = w.macros.digest
+	}
 	rs.mu.Lock()
 	if kept, found := rs.kept[key]; found {
 		kept.question = max(kept.question, question)
@@ -164,12 +169,25 @@ func (rs *Readings) of(language conventions.Language, grammar string, content []
 // a file in measures is read with its functions.
 func (rs *Readings) side(rules conventions.Rules, content map[string][]byte, files []File, question uint64, declares, measures map[string]bool) map[string]reading {
 	found := map[string]reading{}
+	learned := map[string]*macroNames{} // per entry that learns macro names, from this side's files of it
+	for _, language := range rules.Languages {
+		if language.MacroNames == nil {
+			continue
+		}
+		var contents [][]byte
+		for _, file := range files {
+			if l, known := rules.LanguageOf(file.Path); known && l.MacroNames != nil && content[file.Path] != nil {
+				contents = append(contents, content[file.Path]) // C and C++ share their headers' definitions
+			}
+		}
+		learned[language.Name] = learnMacroNames(language.MacroNames, contents)
+	}
 	for _, file := range files {
 		language, known := rules.LanguageOf(file.Path)
 		if !known || content[file.Path] == nil {
 			continue
 		}
-		w := wanted{declarations: declares[file.Path], functions: measures[file.Path], functionRules: &rules.FunctionRules}
+		w := wanted{declarations: declares[file.Path], functions: measures[file.Path], functionRules: &rules.FunctionRules, macros: learned[language.Name]}
 		found[file.Path] = rs.of(language, language.GrammarOf(file.Path), content[file.Path], question, w)
 	}
 	return found
@@ -229,7 +247,7 @@ func (rs *Readings) readFile(language conventions.Language, grammar string, cont
 			return r, !errors.Is(err, parse.ErrUnavailable)
 		}
 		functions := functionsOf(language.Functions, language.Tokens, *w.functionRules, tree, content, nil)
-		functions = rs.readRewritten(language, grammar, content, *w.functionRules, functions)
+		functions = rs.readRewritten(language, grammar, content, *w.functionRules, functions, w.macros)
 		for _, f := range functions {
 			if !inSpans(r.testSpans, f.start) {
 				r.functions = append(r.functions, f)
@@ -252,11 +270,11 @@ func readByText(language conventions.Language, content []byte) reading {
 // copy with those macros rewritten, and takes its functions where the written file gave none it could read. A copy
 // the parser cannot read leaves the functions as they were.
 func (rs *Readings) readRewritten(language conventions.Language, grammar string, content []byte, rules conventions.FunctionRules,
-	functions []function) []function {
+	functions []function, learned *macroNames) []function {
 	if len(language.Macros) == 0 || !slices.ContainsFunc(functions, func(f function) bool { return f.broken }) {
 		return functions
 	}
-	rewritten := rewriteMacros(language.Macros, content)
+	rewritten := rewriteMacros(language.Macros, content, learned)
 	if rewritten == nil {
 		return functions
 	}

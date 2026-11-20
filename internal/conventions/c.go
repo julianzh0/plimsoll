@@ -38,6 +38,10 @@ func cFamily(name string, extensions, units []string) Language {
 	return Language{
 		Name: name, Extensions: extensions, Literals: cComments, Functions: functions, Macros: macros, Tokens: cLikeTokens(`(?:u8|[uUL])?(?:`+doubleQuoted+"|"+character+`)`, strings),
 		Grammar: name, Query: cQuery, Declarations: declarations, Units: unitQuery, Peers: HeaderPeers, LineReadWhenBroken: true,
+		MacroNames: &MacroNames{
+			Attributes:       []string{"__attribute__((", "__declspec(", "[[", "inline", "static", "extern", "constexpr", "noexcept"},
+			DeclarationStart: `(?m)(?:^[ \t]*|\b(?:static|inline|constexpr|virtual|explicit|const|extern|friend)[ \t]+|>[ \t]*)`,
+		},
 		Imports: Imports{
 			Statements: []ImportForm{{Pattern: cIncludeQuoted}, {Pattern: cIncludeAngled}},
 			Computed:   ImportForm{Pattern: cIncludeComputed},
@@ -129,9 +133,10 @@ func cLoopMacro() MacroRule {
 //   - a loop macro, *_FOREACH or *_FOR_EACH, read as while: its arguments are one condition (LIST_FOREACH(x, l, link));
 //   - GLib's cleanup attributes and types, type-definition and attribute macros, and assertions that take an operator.
 //
-// NOTE: conventions, not rules of the language; a capitalised type or constant written where an attribute stands is
-// blanked as well, which only the functions that could not be read as written ever see. Other frameworks' macros are
-// not rewritten. Upgrade: learn the names from the repository's own #define lines.
+// These are conventions, not rules of the language. The repository's own #define lines refine them per side
+// (MacroNames): a name defined as an attribute is blanked whatever its spelling, and a capitalised name the code
+// declares as a type, or defines as something else, is left as written. What a macro defined under a condition, or
+// outside the repository, stands for is not known.
 func cMacros() []MacroRule {
 	return slices.Concat(cDeclarationMacros(), []MacroRule{cLoopMacro()}, glibMacros())
 }
@@ -165,4 +170,13 @@ func glibMacros() []MacroRule {
 		{Pattern: regexp.MustCompile(`\b(?P<macro>G_GNUC_\w+(?:\s*\([^()]*\))?|G_BEGIN_DECLS|G_END_DECLS)`)},
 		{Pattern: regexp.MustCompile(`\b(?P<macro>g_assert_cmp\w+\s*\((?:[^()]|\([^()]*\))*\)\s*;)`)},
 	}
+}
+
+// MacroNames is how an entry learns, per side, what the repository's own macros stand for: a name defined, outside
+// any condition but an include guard, by exactly one file as nothing or as a text that starts with one of Attributes
+// is an attribute, blanked where DeclarationStart matches before it; a name the code declares as a type, or one file
+// defines as something else, is no attribute and stays as written.
+type MacroNames struct {
+	Attributes       []string
+	DeclarationStart string
 }
