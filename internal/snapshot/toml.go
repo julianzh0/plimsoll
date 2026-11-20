@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"path"
 	"slices"
 	"strings"
 
@@ -107,13 +108,29 @@ func tomlHolds(document map[string]any, dotted string) bool {
 	return false
 }
 
+// cargoWorkspace is the [workspace.dependencies] table of the nearest tracked Cargo.toml at or above a folder that has
+// a [workspace] table, from which an entry with workspace = true takes its package; nil when there is none.
+func cargoWorkspace(content map[string][]byte, folder string) map[string]any {
+	for {
+		if file := content[path.Join(folder, "Cargo.toml")]; file != nil {
+			if document, err := decodeTOML(file); err == nil && document["workspace"] != nil {
+				return tomlTableAt(document, "workspace", "dependencies")
+			}
+		}
+		if folder == "." {
+			return nil
+		}
+		folder = path.Dir(folder)
+	}
+}
+
 // cargoDependencies reads the runtime dependencies of a Cargo.toml: the entries of [dependencies] and of every target
 // table's dependencies ([target.<...>.dependencies]), in any TOML spelling. An entry renamed with package = "..." is
-// named by its package. The dev, build and workspace tables add nothing. manifest is false when the file has neither
+// named by its package, also one that inherits its entry from the workspace (workspace = true). The dev, build and
+// workspace tables add nothing. manifest is false when the file has neither
 // a [package] table nor a dependency table: a workspace root that only lists members. readable is false when the file
 // is no valid TOML, or a dependency table or a key in one cannot be read.
-// NOTE: the dependencies of workspace members are not counted. Upgrade: read every tracked Cargo.toml.
-func cargoDependencies(content []byte) (names []string, manifest, readable bool) {
+func cargoDependencies(content []byte, workspace map[string]any) (names []string, manifest, readable bool) {
 	document, err := decodeTOML(content)
 	if err != nil {
 		return nil, true, false
@@ -139,6 +156,11 @@ func cargoDependencies(content []byte) (names []string, manifest, readable bool)
 		}
 		for _, key := range slices.Sorted(maps.Keys(table)) {
 			name := key
+			if inherits, _ := tomlAt(table, key, "workspace"); inherits == true {
+				if renamed := tomlText(workspace, key, "package"); renamed != "" {
+					name = renamed
+				}
+			}
 			if renamed := tomlText(table, key, "package"); renamed != "" {
 				name = renamed
 			}

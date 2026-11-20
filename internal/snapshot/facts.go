@@ -97,11 +97,8 @@ func settings(entries []Entry) *Settings {
 	return nil
 }
 
-// manifests reads the runtime dependencies of the known manifests: at the root, and a nested format's wherever it is
-// tracked. A manifest that cannot be read as its format is returned as unreadable.
-// NOTE: only a nested format's manifests are read below the repository root; a monorepo's other nested manifests are
-// not seen.
-// Upgrade: read every tracked manifest.
+// manifests reads the runtime dependencies of the known manifests wherever they are tracked, each with its nearest
+// lockfiles. A manifest that cannot be read as its format is returned as unreadable.
 func manifests(rules conventions.Rules, entries []Entry) ([]Manifest, []string) {
 	var found []Manifest
 	var unreadable []string
@@ -119,7 +116,13 @@ func manifests(rules conventions.Rules, entries []Entry) ([]Manifest, []string) 
 		if !isManifest || entry.Content == nil {
 			continue
 		}
-		names, manifest, readable := dependencies(known.Format, entry.Content)
+		var names []string
+		var manifest, readable bool
+		if known.Format == conventions.CargoDependencies {
+			names, manifest, readable = cargoDependencies(entry.Content, cargoWorkspace(content, path.Dir(entry.Path)))
+		} else {
+			names, manifest, readable = dependencies(known.Format, entry.Content)
+		}
 		if known.Name != nil && slices.ContainsFunc(names, func(name string) bool { return !known.Name.MatchString(name) }) {
 			readable = false // a name outside its ecosystem's form is never printed
 		}
@@ -197,8 +200,6 @@ func dependencies(format conventions.ManifestFormat, content []byte) (names []st
 		return swiftDependencies(content)
 	case conventions.VcpkgDependencies:
 		return vcpkgDependencies(content)
-	case conventions.CargoDependencies:
-		return cargoDependencies(content)
 	case conventions.JSONDependencies:
 		var parsed struct {
 			Dependencies map[string]json.RawMessage `json:"dependencies"`
@@ -418,9 +419,8 @@ func environmentKey(entry string) (key string, fromHost, ok bool) {
 }
 
 // holdsName says whether a lockfile's text holds a dependency name as a whole name: not as part of a longer name
-// (letters, digits, "_", "." and "-" around it).
-// NOTE: the name is matched by text, not by the lockfile's format; a name that only appears inside another
-// package's metadata counts as held. Upgrade: read each lockfile format.
+// (letters, digits, "_", "." and "-" around it). It reads a lockfile in a layout lockNames does not know; a name that
+// only appears inside another package's metadata then counts as held.
 func holdsName(lock []byte, name string) bool {
 	part := func(b byte) bool {
 		return b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z' || b >= '0' && b <= '9' || b == '_' || b == '.' || b == '-'

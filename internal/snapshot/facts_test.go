@@ -68,6 +68,10 @@ func TestBuildReadsRuntimeDependencies(t *testing.T) {
 		{"pyproject for tools only", pyproject("[tool.ruff]\nline-length = 120\n"), nil},
 		{"pyproject with inline tables and a long string first", pyproject("[project]\nauthors = [{name = \"a\", email = \"b\"}]\ndescription = \"\"\"\nline\n\"\"\"\ndependencies = [\"httpx\"]\n"), pyprojectNames("httpx")},
 		{"pyproject with a byte order mark", pyproject("\uFEFF[project]\ndependencies = [\"a\"]\n"), pyprojectNames("a")},
+		{"a member inherits a renamed dependency from its workspace", snapshottest.Files(nil, map[string]string{
+			"Cargo.toml":          "[workspace]\nmembers = [\"crates/*\"]\n\n[workspace.dependencies]\nserde = { package = \"serde_fork\", version = \"1\" }\nlog = \"0.4\"\n",
+			"crates/a/Cargo.toml": "[package]\nname = \"a\"\n\n[dependencies]\nserde.workspace = true\nlog = { workspace = true }\n"}),
+			dependenciesOf("crates/a/Cargo.toml", "log", "serde_fork")},
 		{"a nested pyproject", snapshottest.Files(nil, map[string]string{"pkg/pyproject.toml": "[project]\ndependencies = [\"a\"]\n"}), dependenciesOf("pkg/pyproject.toml", "a")},
 		{"dart", snapshottest.Load(t, "testdata/dart"), pubspecNames("flutter", "http", "provider")},
 		{"pubspec with quoted names and a nested git entry", pubspec("name: 'x'\ndependencies:\n    'a': ^1.0.0\n    b:\n      git:\n        url: https://x.example/b\n    c: any # why\nflutter:\n  assets: []\n"),
