@@ -55,21 +55,53 @@ type topName struct {
 // additions are the names the changes declared in product files that the base did not declare, each with its uses.
 // A file the grammar could not read on either side declares nothing for the list.
 func additions(rules conventions.Rules, changes []Change, now Tree, atBasePath map[string]bool, entries []Entry, nowReadings, beforeReadings map[string]reading) []Addition {
-	// NOTE: one set of names for every changed file, so code moved between files is no addition; a new name that
-	// another changed file declared at the base is not listed either. Upgrade: match names per moved body.
-	atBase := map[string]bool{}
+	// A name is new in a file whose base declared no such name. It is left out as moved only when, among the changed
+	// files of its language, exactly one base declaration of the name disappeared and exactly one appeared, in another
+	// file; each of several namesakes is listed.
 	basePaths := map[string]string{}
+	atBase := map[string]map[string]bool{} // a changed file to the names its base declared
+	type moves struct{ gone, came int }
+	moved := map[string]map[string]*moves{} // per language, per name
 	for _, change := range changes {
 		basePath := change.From
 		if basePath == "" && atBasePath[change.Path] {
 			basePath = change.Path
 		}
 		basePaths[change.Path] = basePath
+		before, now := map[string]bool{}, map[string]bool{}
 		if basePath != "" {
 			for _, d := range beforeReadings[basePath].declarations {
-				atBase[d.name] = true
+				before[d.name] = true
 			}
 		}
+		for _, d := range nowReadings[change.Path].declarations {
+			now[d.name] = true
+		}
+		atBase[change.Path] = before
+		language, _ := rules.LanguageOf(cmp.Or(change.Path, basePath))
+		if moved[language.Name] == nil {
+			moved[language.Name] = map[string]*moves{}
+		}
+		count := func(name string) *moves {
+			if moved[language.Name][name] == nil {
+				moved[language.Name][name] = &moves{}
+			}
+			return moved[language.Name][name]
+		}
+		for name := range before {
+			if !now[name] {
+				count(name).gone++
+			}
+		}
+		for name := range now {
+			if !before[name] {
+				count(name).came++
+			}
+		}
+	}
+	movedHere := func(language, name string) bool {
+		m := moved[language][name]
+		return m != nil && m.gone == 1 && m.came == 1
 	}
 	roles := rolesOf(now.Files)
 	tracked, byFolder := map[string]bool{}, map[string][]string{}
@@ -92,7 +124,7 @@ func additions(rules conventions.Rules, changes []Change, now Tree, atBasePath m
 		language, _ := rules.LanguageOf(change.Path)
 		library := inLibrary(language.Library, byFolder, content, change.Path)
 		for _, d := range r.declarations {
-			if d.kind == 0 || d.implicit || atBase[d.name] || !listable(rules.Additions, d.name) ||
+			if d.kind == 0 || d.implicit || atBase[change.Path][d.name] || movedHere(language.Name, d.name) || !listable(rules.Additions, d.name) ||
 				loadedByConvention(language, tracked, content, change.Path, d.name) || d.exported && library {
 				continue
 			}
@@ -119,12 +151,12 @@ func mayDeclare(rules conventions.Additions, filePath string) bool {
 }
 
 // listable says whether a name may be listed: not one a runtime calls, longer than one letter, not __x__, and made only
-// of ASCII letters, digits and underscores.
+// of letters, digits and underscores, of any script.
 func listable(rules conventions.Additions, name string) bool {
-	if len(name) < 2 || slices.Contains(rules.SkippedNames, name) || strings.HasPrefix(name, "__") && strings.HasSuffix(name, "__") {
+	if utf8.RuneCountInString(name) < 2 || slices.Contains(rules.SkippedNames, name) || strings.HasPrefix(name, "__") && strings.HasSuffix(name, "__") {
 		return false
 	}
-	return !strings.ContainsFunc(name, func(r rune) bool { return !wordByte(r) })
+	return !strings.ContainsFunc(name, func(r rune) bool { return r != '_' && !unicode.IsLetter(r) && !unicode.IsDigit(r) })
 }
 
 // withUses marks each addition used when a file that is not test code holds its name, and its declaring file when the

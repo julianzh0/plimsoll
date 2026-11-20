@@ -251,3 +251,28 @@ func TestBuildLeavesOutWhatAFrameworkLoadsAndWhatALibraryExports(t *testing.T) {
 		}
 	}
 }
+
+// A name is moved, not added, only when exactly one declaration of it disappeared and exactly one appeared, in another
+// file of the language; each of several namesakes is listed, and a name of any script is.
+func TestBuildListsNamesakesAndNamesOfAnyScript(t *testing.T) {
+	fn := func(name string) string { return "export function " + name + "() {}\n" }
+	for _, tc := range []struct {
+		name      string
+		base, now map[string]string
+		want      []string
+	}{
+		{"one moved", map[string]string{"src/a.ts": fn("parse")}, map[string]string{"src/a.ts": "", "src/b.ts": fn("parse")}, nil},
+		{"one removed, two added", map[string]string{"src/a.ts": fn("parse")},
+			map[string]string{"src/a.ts": "", "src/b.ts": fn("parse"), "src/c.ts": fn("parse")},
+			[]string{"src/b.ts parse function used=false tests=false", "src/c.ts parse function used=false tests=false"}},
+		{"kept at its place and added elsewhere", map[string]string{"src/a.ts": fn("parse") + fn("keep")},
+			map[string]string{"src/a.ts": fn("parse") + fn("keep") + "parse();\n", "src/b.ts": fn("parse")},
+			[]string{"src/b.ts parse function used=true tests=false"}},
+		{"a name outside ASCII", map[string]string{"src/a.ts": ""}, map[string]string{"src/a.ts": fn("größe")},
+			[]string{"src/a.ts größe function used=false tests=false"}},
+	} {
+		if got := additionsOf(t, tc.base, tc.now); !slices.Equal(got, tc.want) {
+			t.Errorf("%s: additions = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
