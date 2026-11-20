@@ -187,7 +187,7 @@ type Footprint struct {
 	Product        Lines
 	Test           Lines
 	Docs           Lines
-	HoldsTestCode  int      // changed product files that hold test code now or at the base; their split is by growth
+	HoldsTestCode  int      // changed product files that hold test code and whose lines could not be compared; their split is by growth
 	TestPerProduct *float64 // test lines added per product line added; nil when no product line was added
 }
 

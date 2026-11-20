@@ -95,7 +95,7 @@ func Build(source Source, rules conventions.Rules, readings *Readings) Snapshot 
 		Before:              before,
 		Now:                 now,
 		Changes:             source.Changes,
-		Footprint:           footprint(rules, source.Changes, len(source.Since), now, before),
+		Footprint:           footprint(rules, source.Changes, len(source.Since), now, before, nowContent, beforeContent, nowReadings, beforeReadings),
 		History:             history(rules, source.Commits, source.Since, source.Names),
 		Layout:              layout,
 		TestRule:            rules.TestRule(),

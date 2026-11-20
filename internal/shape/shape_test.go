@@ -414,10 +414,16 @@ func TestTestCodeInsideProductFilesCountsAsTestLines(t *testing.T) {
 		t.Errorf("largest code file src/a.rs = %v lines, want the whole file's 21", got)
 	}
 	note := "`rust`: test code inside 1 product file counts as test lines, not as product lines: 9 lines"
-	footprint := "the footprint counts, in 1 changed product file that holds test code, only the growth of that test code " +
-		"as test lines and every other changed line as a product line"
-	if !slices.Contains(findings.Notes, note) || !slices.Contains(findings.NotAnalysed, footprint) {
-		t.Errorf("notes %q, not analysed %q; want %q and %q", findings.Notes, findings.NotAnalysed, note, footprint)
+	footprint := "the footprint counts, in 1 changed product file that holds test code and changed too much to be compared line by line, " +
+		"only the growth of that test code as test lines and every other changed line as a product line"
+	if !slices.Contains(findings.Notes, note) || slices.Contains(findings.NotAnalysed, footprint) {
+		t.Errorf("notes %q, not analysed %q; want %q and no footprint sentence: its lines were compared", findings.Notes, findings.NotAnalysed, note)
+	}
+	rewritten := map[string]string{"src/a.rs": rustLines(10, 2600), "src/b.rs": rustLines(4, 0)}
+	large := snapshottest.Files(rewritten, map[string]string{"src/a.rs": strings.ReplaceAll(rewritten["src/a.rs"], "// t", "// u"), "src/b.rs": rustLines(4, 0)})
+	large.Changes = []snapshot.Change{{Path: "src/a.rs", Added: 2597, Removed: 2597}}
+	if got := detect(t, large, conventions.Default()); !slices.Contains(got.NotAnalysed, footprint) {
+		t.Errorf("a change too large to compare: not analysed %q, want %q", got.NotAnalysed, footprint)
 	}
 	if same := detect(t, snapshottest.Files(now, now), conventions.Default()); !slices.Contains(same.Notes, note) || slices.Contains(same.NotAnalysed, footprint) {
 		t.Errorf("an unchanged tree: notes %q, not analysed %q; want the note and no footprint sentence", same.Notes, same.NotAnalysed)

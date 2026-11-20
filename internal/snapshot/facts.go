@@ -301,11 +301,11 @@ func rolesOf(lists ...[]File) map[string]Role {
 }
 
 // footprint sums the changes since the base by area: the role of the file now, else at the base; documentation
-// by path; anything else counts only as a changed file. In a product file whose test code grew, as many of the added
-// lines as it grew by are test lines; in one whose test code shrank, as many of the removed lines.
-// NOTE: a changed line of test code counts as a product line added and removed. Upgrade: read the changed line
-// ranges from git and count them against the blocks of both sides.
-func footprint(rules conventions.Rules, changes []Change, since int, now, before Tree) Footprint {
+// by path; anything else counts only as a changed file. In a product file that holds test code, an added line is a
+// test line when it lies in the file's test code now, a removed one when it lay in the base's, by plimsoll's own line
+// comparison, within git's totals for the file; where that comparison gives up at its bound, as many of the added
+// lines as the test code grew by are test lines, or as many of the removed lines as it shrank by.
+func footprint(rules conventions.Rules, changes []Change, since int, now, before Tree, nowContent, beforeContent map[string][]byte, nowReadings, beforeReadings map[string]reading) Footprint {
 	result := Footprint{Commits: since, Files: len(changes)}
 	roles := rolesOf(before.Files, now.Files)
 	testNow, testBefore := testLinesOf(now.Files), testLinesOf(before.Files)
@@ -320,10 +320,19 @@ func footprint(rules conventions.Rules, changes []Change, since int, now, before
 			lines = &result.Product
 			basePath := cmp.Or(change.From, change.Path)
 			added, removed := change.Added, change.Removed
+			var lc lineChange
 			if testNow[change.Path] > 0 || testBefore[basePath] > 0 {
-				result.HoldsTestCode++
+				lc = compareLines(beforeContent[basePath], nowContent[change.Path])
+				if !lc.exact {
+					result.HoldsTestCode++
+				}
 			}
-			if grew := testNow[change.Path] - testBefore[basePath]; grew > 0 {
+			if lc.exact {
+				testAdded := min(linesIn(lc.added, nowReadings[change.Path].testSpans, nowContent[change.Path]), added)
+				testRemoved := min(linesIn(lc.removed, beforeReadings[basePath].testSpans, beforeContent[basePath]), removed)
+				result.Test.Added, result.Test.Removed = result.Test.Added+testAdded, result.Test.Removed+testRemoved
+				added, removed = added-testAdded, removed-testRemoved
+			} else if grew := testNow[change.Path] - testBefore[basePath]; grew > 0 {
 				moved := min(grew, added)
 				result.Test.Added, added = result.Test.Added+moved, added-moved
 			} else if grew < 0 {
@@ -484,4 +493,21 @@ func sortedKeys(set map[string]bool) []string {
 		return nil
 	}
 	return slices.Sorted(maps.Keys(set))
+}
+
+// linesIn counts the lines of ranges that lie in a file's test code, by the spans' first and last lines.
+func linesIn(ranges []LineRange, spans []span, content []byte) int {
+	if len(spans) == 0 {
+		return 0
+	}
+	lineOf := func(at int) int { return 1 + bytes.Count(content[:min(at, len(content))], []byte("\n")) }
+	n := 0
+	for _, r := range ranges {
+		for line := r.Start; line <= r.End; line++ {
+			if slices.ContainsFunc(spans, func(s span) bool { return lineOf(s.start) <= line && line <= lineOf(s.end) }) {
+				n++
+			}
+		}
+	}
+	return n
 }

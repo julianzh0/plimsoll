@@ -252,7 +252,7 @@ func TestTheSamplesShowEveryRuleAndChange(t *testing.T) {
 		"is or holds a package root", "holds test folders of its own", "leaves the repository or holds a pattern",
 		"`pythonpath` could not be read", "depend on each other in a cycle", "folder cycles: between the folders",
 		"a package that lies in several folders", "under a test folder directly in `src/`", "an import names a package, not a file",
-		"counts as test lines, not as product lines", "the footprint counts, in 1 changed product file",
+		"counts as test lines, not as product lines",
 		"a crate's modules use each other", "not seen: a path written in code",
 		"not seen: use of the same namespace", "declared by its files",
 		"not seen: use between the files of one module", "no `Package.swift` at the root",

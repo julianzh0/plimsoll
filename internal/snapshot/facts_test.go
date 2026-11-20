@@ -403,7 +403,7 @@ func TestBuildSumsTheFootprintByArea(t *testing.T) {
 			snapshot.Change{Added: 1}, snapshot.Lines{}, snapshot.Lines{Added: 1}},
 		{"test code that shrinks", product(10) + tests(9), product(7) + tests(5), snapshot.Change{Removed: 7}, snapshot.Lines{Removed: 3}, snapshot.Lines{Removed: 4}},
 		{"test code rewritten at its size", product(10) + tests(5), product(10) + strings.ReplaceAll(tests(5), "// t", "// u"),
-			snapshot.Change{Added: 2, Removed: 2}, snapshot.Lines{Added: 2, Removed: 2}, snapshot.Lines{}},
+			snapshot.Change{Added: 2, Removed: 2}, snapshot.Lines{}, snapshot.Lines{Added: 2, Removed: 2}},
 		{"a new file", "", product(3) + tests(4), snapshot.Change{Added: 7}, snapshot.Lines{Added: 3}, snapshot.Lines{Added: 4}},
 		{"a deleted file", product(3) + tests(4), "", snapshot.Change{Removed: 7}, snapshot.Lines{Removed: 3}, snapshot.Lines{Removed: 4}},
 	} {

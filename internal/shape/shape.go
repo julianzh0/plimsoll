@@ -48,7 +48,7 @@ func (Detector) Detect(s snapshot.Snapshot) answer.Findings {
 	f.Notes = append(f.Notes, testCodeInsideNotes(s.Now.Files)...)
 	if n := s.Footprint.HoldsTestCode; n > 0 {
 		f.NotAnalysed = append(f.NotAnalysed, "the footprint counts, in "+answer.Agree(n, "changed product file that holds", "changed product files that hold")+
-			" test code, only the growth of that test code as test lines and every other changed line as a product line")
+			" test code and changed too much to be compared line by line, only the growth of that test code as test lines and every other changed line as a product line")
 	}
 	f.Statistics = append(f.Statistics,
 		stat("product lines", "", now.product, before.product, true, "lines"),

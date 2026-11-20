@@ -22,13 +22,14 @@ const (
 type lineChange struct {
 	added   []LineRange // lines of the content now
 	removed []LineRange // lines of the base content
+	exact   bool        // false when the comparison gave up at its step bound and marked every middle line changed
 }
 
 // compareLines aligns the lines of two contents by their bytes (a line keeps its "\r").
 func compareLines(base, now []byte) lineChange {
 	a, b := interned(splitLines(base), splitLines(now))
-	keptA, keptB := common(a, b)
-	return lineChange{added: dropped(keptB), removed: dropped(keptA)}
+	keptA, keptB, exact := common(a, b)
+	return lineChange{added: dropped(keptB), removed: dropped(keptA), exact: exact}
 }
 
 // alike is how alike two lists of lines are: twice the lines they share in order, over the lines of both; 0 for two
@@ -38,7 +39,7 @@ func alike(a, b [][]byte) float64 {
 		return 0
 	}
 	ia, ib := interned(a, b)
-	keptA, _ := common(ia, ib)
+	keptA, _, _ := common(ia, ib)
 	shared := 0
 	for _, k := range keptA {
 		if k {
@@ -82,7 +83,7 @@ func interned(a, b [][]byte) ([]int32, []int32) {
 
 // common marks the lines of a and b that a shortest edit script keeps: the common first and last lines, and between
 // them Myers' algorithm while it stays within compareCells; past that the lines between are not kept.
-func common(a, b []int32) (keptA, keptB []bool) {
+func common(a, b []int32) (keptA, keptB []bool, exact bool) {
 	keptA, keptB = make([]bool, len(a)), make([]bool, len(b))
 	lo := 0
 	for lo < len(a) && lo < len(b) && a[lo] == b[lo] {
@@ -95,17 +96,20 @@ func common(a, b []int32) (keptA, keptB []bool) {
 		hiB--
 		keptA[hiA], keptB[hiB] = true, true
 	}
-	myers(a[lo:hiA], b[lo:hiB], keptA[lo:hiA], keptB[lo:hiB])
-	return keptA, keptB
+	exact = myers(a[lo:hiA], b[lo:hiB], keptA[lo:hiA], keptB[lo:hiB])
+	return keptA, keptB, exact
 }
 
 // myers marks the lines of a and b on a shortest edit script's diagonals. It keeps, for each step d, the furthest
 // reach of each diagonal before the step, and reads the path back from them; it gives up, marking nothing, past
-// compareSteps steps, and for a side whose line count an int32 reach cannot hold twice.
-func myers(a, b []int32, keptA, keptB []bool) {
+// compareSteps steps, and for a side whose line count an int32 reach cannot hold twice, and says whether it finished.
+func myers(a, b []int32, keptA, keptB []bool) bool {
 	la, lb := len(a), len(b)
-	if la == 0 || lb == 0 || la > math.MaxInt32/2 || lb > math.MaxInt32/2 {
-		return
+	if la == 0 || lb == 0 {
+		return true
+	}
+	if la > math.MaxInt32/2 || lb > math.MaxInt32/2 {
+		return false
 	}
 	n, m := int32(la), int32(lb)
 	limit := min(n+m, compareSteps)
@@ -114,7 +118,7 @@ func myers(a, b []int32, keptA, keptB []bool) {
 	var trace [][]int32 // trace[d]: the reach of diagonals -(d-1)..d-1 before step d
 	for d := int32(0); d <= limit; d++ {
 		if d == compareSteps {
-			return
+			return false
 		}
 		trace = append(trace, append([]int32(nil), v[limit+1-max(d-1, 0):limit+1+max(d-1, 0)+1]...))
 		for k := -d; k <= d; k += 2 {
@@ -132,10 +136,11 @@ func myers(a, b []int32, keptA, keptB []bool) {
 			*at(k) = x
 			if x >= n && y >= m {
 				walkBack(trace, la, lb, keptA, keptB)
-				return
+				return true
 			}
 		}
 	}
+	return false
 }
 
 // walkBack follows the path from (n, m) to (0, 0) through the kept reaches, marking the lines of its diagonal moves.
