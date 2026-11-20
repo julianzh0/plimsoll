@@ -21,7 +21,7 @@ After a change, your agent asks plimsoll and gets back the areas the change made
 what it altered, and a few findings, each measured, each with its limit and a way to check it. Here is a real answer for the last 30 commits of [Obtainium](https://github.com/ImranR98/Obtainium):
 
 ```text
-plimsoll 0.10.0 status: base `HEAD~30` e9087ce099, head 35c3e7fea4
+plimsoll 0.11.0 status: base `HEAD~30` e9087ce099, head 35c3e7fea4
 Areas: 3 worse (dependencies 1, wiring 1, functions 2); not analysed: settings
 Blast radius: 50 files outside the change use or import what it altered or removed (25 product, 25 test)
 3 new, 1 grown, 0 resolved; 14 more in `report` only
@@ -161,15 +161,15 @@ not know:
 ## Speed
 
 The first question on a repository takes a few seconds; every later one, also after an edit, is much faster
-(about a third of a second on a few thousand files), because plimsoll keeps what it has read in memory while it runs. Measured with plimsoll 0.10.0 on an
-Apple M6 (12 cores, 32 GB) against the last 30 commits, while other work was running (load average 7 to 12):
+(about a quarter of a second on a few thousand files), because plimsoll keeps what it has read in memory while it runs. Measured with plimsoll 0.11.0 on an
+Apple M6 (12 cores, 32 GB) against the last 30 commits, medians of three runs, while other work was running (load average 1.5 to 3.2):
 
 | Repository | Files | First question | Later questions | Peak memory |
 |---|--:|--:|--:|--:|
-| [Obtainium](https://github.com/ImranR98/Obtainium) | 320 | 3.0 s | 0.21 s | 0.2 GB |
-| [LocalSend](https://github.com/localsend/localsend) | 1,037 | 3.0 s | 0.25 s | 0.3 GB |
-| [nlohmann/json](https://github.com/nlohmann/json) | 1,674 | 12 s | 0.31 s | 0.7 GB |
-| [swc](https://github.com/swc-project/swc) | 83,143 | 54 s | 7.7 s | 2.5 GB |
+| [Obtainium](https://github.com/ImranR98/Obtainium) | 320 | 2.3 s | 0.18 s | 0.2 GB |
+| [LocalSend](https://github.com/localsend/localsend) | 1,037 | 2.5 s | 0.21 s | 0.4 GB |
+| [nlohmann/json](https://github.com/nlohmann/json) | 1,674 | 10 s | 0.26 s | 0.7 GB |
+| [swc](https://github.com/swc-project/swc) | 83,143 | 42 s | 6.7 s | 2.5 GB |
 
 ## Install
 
