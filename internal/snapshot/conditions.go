@@ -85,10 +85,13 @@ func reachableStatements(language conventions.Language, content []byte, statemen
 	if c == nil || !bytes.Contains(content, []byte("#")) {
 		return statements
 	}
-	spans := unreachable(c, masked(language, content)) // a directive inside a comment, a string or a raw string is none
+	// a directive inside a comment, a string or a raw string is none: the text is masked only when the plain scan finds
+	// a branch to leave out, which literal conditions alone make
+	spans := unreachable(c, content)
 	if len(spans) == 0 {
 		return statements
 	}
+	spans = unreachable(c, masked(language, content))
 	return slices.DeleteFunc(statements, func(st statement) bool {
 		return slices.ContainsFunc(spans, func(s span) bool { return s.start <= st.at && st.at < s.end })
 	})

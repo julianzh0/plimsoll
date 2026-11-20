@@ -15,7 +15,7 @@ import (
 // rule found anything.
 func rewriteMacros(rules []conventions.MacroRule, content []byte, learned *macroNames) []byte {
 	rewritten, changed := slices.Clone(content), false
-	if learned != nil {
+	if learned != nil && learned.attributes != nil {
 		rules = append([]conventions.MacroRule{{Pattern: learned.attributes}}, rules...)
 	}
 	for _, rule := range rules {
@@ -190,7 +190,7 @@ func mergedMacroNames(rules *conventions.MacroNames, facts []fileMacros) *macroN
 	kept := slices.Sorted(maps.Keys(learned.kept))
 	learned.digest = strings.Join(attributes, ",") + ";" + strings.Join(kept, ",")
 	if len(attributes) == 0 {
-		attributes = []string{"\\b\\B"} // matches nothing
+		return learned
 	}
 	learned.attributes = regexp.MustCompile(rules.DeclarationStart + `(?P<macro>(?:\b(?:` + strings.Join(attributes, "|") +
 		`)\b(?:[ \t]*\((?:[^()]|\([^()]*\))*\))?[ \t]*)+)[A-Za-z_~]`)

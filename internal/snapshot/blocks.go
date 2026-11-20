@@ -18,7 +18,7 @@ func masked(language conventions.Language, content []byte) []byte {
 		return content
 	}
 	if language.Tokens.Strings == conventions.CppRawStrings {
-		content = withoutRawStrings(language.Tokens, content)
+		content = withoutRawStrings(content)
 	}
 	return language.Literals.ReplaceAllFunc(content, func(match []byte) []byte {
 		if match[0] == '"' || match[0] == '\'' {
@@ -31,21 +31,41 @@ func masked(language conventions.Language, content []byte) []byte {
 }
 
 // withoutRawStrings is the content with every C++ raw string blanked, line ends kept; the content itself when it holds
-// none.
-func withoutRawStrings(tokens conventions.Tokens, content []byte) []byte {
+// none. A raw string starts at an R" (with its prefix) that no name runs into, and ends at its closing delimiter.
+func withoutRawStrings(content []byte) []byte {
 	out, cloned := content, false
-	if !bytes.Contains(content, []byte(`R"`)) {
-		return content
-	}
-	for t := range eachToken(tokens, content, 1) {
-		if _, _, raw := cppRawAt(content, t.start); raw && t.word && !t.identifier {
-			if !cloned {
-				out, cloned = slices.Clone(content), true
-			}
-			blankKeepingLines(out[t.start:t.end])
+	for at := 0; ; {
+		i := bytes.Index(content[at:], []byte(`R"`))
+		if i < 0 {
+			return out
 		}
+		start := at + i
+		for _, prefix := range []string{"u8", "u", "U", "L"} {
+			if start >= len(prefix) && string(content[start-len(prefix):start]) == prefix {
+				start -= len(prefix)
+				break
+			}
+		}
+		form, length, raw := cppRawAt(content, start)
+		if !raw || start > 0 && identifierByte(content[start-1]) {
+			at = at + i + 2
+			continue
+		}
+		end := len(content)
+		if close := bytes.Index(content[start+length:], []byte(form.closer)); close >= 0 {
+			end = start + length + close + len(form.closer)
+		}
+		if !cloned {
+			out, cloned = slices.Clone(content), true
+		}
+		blankKeepingLines(out[start:end])
+		at = end
 	}
-	return out
+}
+
+// identifierByte says whether a byte can stand in a C name.
+func identifierByte(c byte) bool {
+	return c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
 }
 
 // span is a stretch of a file's text, both ends included, and the name of the block that opens it, if it has one.
