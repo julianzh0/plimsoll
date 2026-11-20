@@ -116,13 +116,7 @@ func manifests(rules conventions.Rules, entries []Entry) ([]Manifest, []string) 
 		if !isManifest || entry.Content == nil {
 			continue
 		}
-		var names []string
-		var manifest, readable bool
-		if known.Format == conventions.CargoDependencies {
-			names, manifest, readable = cargoDependencies(entry.Content, cargoWorkspace(content, path.Dir(entry.Path)))
-		} else {
-			names, manifest, readable = dependencies(known.Format, entry.Content)
-		}
+		names, manifest, readable := dependencies(known.Format, entry.Content, func() map[string]any { return cargoWorkspace(content, path.Dir(entry.Path)) })
 		if known.Name != nil && slices.ContainsFunc(names, func(name string) bool { return !known.Name.MatchString(name) }) {
 			readable = false // a name outside its ecosystem's form is never printed
 		}
@@ -182,10 +176,13 @@ func nearestLockfiles(content map[string][]byte, folder string, names []string) 
 }
 
 // dependencies reads a manifest's runtime dependencies. manifest is false when the file declares no project at all;
-// readable is false when it does but its dependencies cannot be read.
-func dependencies(format conventions.ManifestFormat, content []byte) (names []string, manifest, readable bool) {
+// readable is false when it does but its dependencies cannot be read. workspace gives a Cargo manifest's workspace
+// dependencies.
+func dependencies(format conventions.ManifestFormat, content []byte, workspace func() map[string]any) (names []string, manifest, readable bool) {
 	names = []string{}
 	switch format {
+	case conventions.CargoDependencies:
+		return cargoDependencies(content, workspace())
 	case conventions.PyprojectDependencies:
 		return pyprojectDependencies(content)
 	case conventions.PubspecDependencies:
