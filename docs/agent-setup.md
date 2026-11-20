@@ -25,6 +25,8 @@ Reference, fetched the same way when you need it:
 6. If `.plimsoll.toml` is a symbolic link (`test -L .plimsoll.toml` succeeds) or a conflicted entry
    (`git ls-files -u -- .plimsoll.toml` prints a line), do not read, write or stage it: tell the user why and stop.
    Check this before you first read the file and again before each write.
+7. Where the repository leaves room for judgement (is this folder a fixture, is this module test support, is this a
+   group of its own), do not decide alone: say what you found and what you would propose, and ask the user.
 
 ## 1. Where you stand
 
