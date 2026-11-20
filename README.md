@@ -34,6 +34,19 @@ Blast radius: 50 files outside the change use or import what it altered or remov
 …
 ```
 
+## Let your agent set it up
+
+Paste this into your coding agent (Claude Code, Codex, OpenCode, Cursor or any other with a shell). It installs
+plimsoll, connects it, reads your repository and proposes a `.plimsoll.toml`, writing nothing without your yes:
+
+```text
+Fetch https://raw.githubusercontent.com/julianzh0/plimsoll/main/docs/agent-setup.md with `curl -fsSL` and follow it.
+```
+
+In Windows PowerShell the command is `curl.exe -fsSL`; an agent without a shell needs
+[the setup page](docs/agent-setup.md) pasted in. Then ask it, for example: *"Use plimsoll to check what this branch
+did to the repository since `main`."* To install and connect by hand instead, see [Install](#install).
+
 ## What it catches
 
 - **Which areas got worse:** one line per answer counts the areas the change made worse or better (size,
@@ -204,16 +217,7 @@ opencode mcp add --global plimsoll -- plimsoll
 }
 ```
 
-**Let your agent set it up.** Paste this line into your agent; it installs and connects plimsoll, reads your
-repository and proposes a `.plimsoll.toml`, writing nothing without your yes:
-
-```text
-Fetch https://raw.githubusercontent.com/julianzh0/plimsoll/main/docs/agent-setup.md with `curl -fsSL` and follow it.
-```
-
-In Windows PowerShell the command is `curl.exe -fsSL`; an agent without a shell needs the page pasted in.
-
-Then ask your agent, for example: *"Use plimsoll to check what this branch did to the repository since `main`."*
+Or let your agent do all of this: see [Let your agent set it up](#let-your-agent-set-it-up).
 
 ## Tools
 
