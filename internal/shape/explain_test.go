@@ -64,7 +64,7 @@ func TestExplainGivesTheEvidenceOfEachRule(t *testing.T) {
 			"test lines now: 30 in 1 file; at the base: 30 in 1 file", "product lines now: 10 in 1 file; at the base: 10 in 1 file",
 			"other code, outside the ratio: 0 lines in 0 files", "test code recognized by: " + conventions.Default().TestRule(),
 			"test folders declared in `pyproject.toml` (`[tool.pytest.ini_options]` `testpaths`): `checks/`",
-			"limit: 2.0 (plimsoll's rule: test code at most twice the product code)", "`checks/h.ts`: 30 lines, test infrastructure",
+			"limit: 2.0 (plimsoll's rule: test code at most twice the product code)", "`checks/check_h.py`: 30 lines, test infrastructure",
 		}},
 		{"test ratio with a folder the own file declares", snapshottest.Files(
 			map[string]string{"src/a.ts": snapshottest.Lines(10), "checks/h.ts": snapshottest.Lines(30)},

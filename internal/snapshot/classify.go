@@ -56,6 +56,14 @@ func testPath(rules conventions.Rules, filePath string) bool {
 	if slices.ContainsFunc(rules.TestNames, func(pattern string) bool { return nameMatches(pattern, filePath) }) {
 		return true
 	}
+	for _, f := range rules.TestFileFolders {
+		if _, in := under(filePath, f.Folder); in && slices.ContainsFunc(f.Names, func(pattern string) bool {
+			matched, _ := path.Match(pattern, name)
+			return matched
+		}) {
+			return true
+		}
+	}
 	stem := strings.TrimSuffix(name, conventions.Suffix(filePath))
 	for _, ending := range rules.TestEndings {
 		if strings.HasSuffix(stem, ending) {

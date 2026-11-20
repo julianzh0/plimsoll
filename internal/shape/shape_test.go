@@ -89,7 +89,7 @@ func TestDetectOnEachLanguageSample(t *testing.T) {
 			map[string]string{"Cargo.toml": "anyhow, clap, libc, log, notes-store, serde"}, []string{"no `.env.example`, so no settings were counted or compared"}},
 		{"mixed", 8, 10, 0, 1.3, []string{"service/main_test.go", "service/main.go", "web/src/app.test.ts"},
 			map[string]string{"go.mod": "", "package.json": ""}, []string{"no `.env.example`, so no settings were counted or compared"}},
-		{"python-declared", 9, 12, 0, 1.3, []string{"checks/test_flow.py", "src/app/service.py", "tests/test_service.py"},
+		{"python-declared", 11, 10, 0, 0.9, []string{"checks/test_flow.py", "src/app/service.py", "tests/test_service.py"},
 			map[string]string{"pyproject.toml": ""}, []string{"no `.env.example`, so no settings were counted or compared"}},
 		{"unproven", 4, 3, 0, 0.8, []string{"bin/run.sh", "tests/check.sh"}, nil, []string{
 			"no `.env.example`, so no settings were counted or compared", "no known dependency manifest outside test and other code, so no dependency count",
@@ -149,8 +149,9 @@ func TestDetectOnEachLanguageSample(t *testing.T) {
 
 // declaredRatioSource declares checks/ a test folder now only; one rule then classifies both sides.
 func declaredRatioSource() snapshot.Source {
-	base := map[string]string{"src/a.ts": snapshottest.Lines(10), "checks/h.ts": snapshottest.Lines(30)}
-	now := map[string]string{"src/a.ts": snapshottest.Lines(10), "checks/h.ts": snapshottest.Lines(30), "pyproject.toml": "[tool.pytest.ini_options]\ntestpaths = [\"checks\"]\n"}
+	base := map[string]string{"src/a.ts": snapshottest.Lines(10), "checks/check_h.py": snapshottest.Lines(30)}
+	now := map[string]string{"src/a.ts": snapshottest.Lines(10), "checks/check_h.py": snapshottest.Lines(30),
+		"pyproject.toml": "[tool.pytest.ini_options]\ntestpaths = [\"checks\"]\npython_files = [\"check_*.py\"]\n"}
 	return snapshottest.Files(base, now)
 }
 

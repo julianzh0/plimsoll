@@ -39,6 +39,9 @@ type Declared struct {
 	ShadowedBy       string           // the file the tool reads instead, tracked now; then no value is looked at
 	Unmatched        []string         // values that match no tracked path of either side, in file order
 	Form             string           // what a usable value looks like, for a key whose values are no paths or patterns
+	// Files, for a tool that collects tests by name (pytest), are the file names that are test code in its folders in
+	// use; nil when every file in them is.
+	Files []string
 }
 
 // KeyState is what one side's file says about a declared key.
@@ -107,6 +110,13 @@ func declaredLayout(rules conventions.Rules, now, before map[string][]byte, trac
 			} else {
 				record.decide(rules, tracked, nowValues, baseValues, d.Means == conventions.TestFolders)
 			}
+			if d.Means == conventions.TestFolders && d.Tool == "pytest" {
+				config := now[d.File] // the side that declares the folders: now, else the base
+				if nowState == 0 {
+					config = before[d.File]
+				}
+				record.Files = pytestFiles(config, d)
+			}
 			if d.Means == conventions.TestFolders {
 				layout.TestFolders = append(layout.TestFolders, record)
 			} else {
@@ -148,8 +158,8 @@ func (d *Declared) decide(rules conventions.Rules, tracked, nowValues, baseValue
 // heldBecause is why a declared test folder is not used, or 0 when it is used: a shared test folder name at the root
 // is used as it is; the root, a package root of an entry or a folder above one, and a folder that holds test
 // folders of its own are held.
-// NOTE: a package whose tests are colocated only as test-named files, with no test folder, is taken whole as test
-// code. Upgrade: hold a value that product code outside it imports.
+// In a folder pytest declares, only the files it collects are test code (pytestFiles), so a package whose tests sit
+// beside its code keeps its code.
 func heldBecause(rules conventions.Rules, tracked []string, folder string) HeldReason {
 	if why := heldAsRoot(rules, folder); why != 0 || sharedTestFolder(rules, folder) {
 		return why
@@ -260,9 +270,14 @@ func withLayout(rules conventions.Rules, layout Layout) conventions.Rules {
 	rules.TestPaths, rules.TestNames = slices.Clone(rules.TestPaths), slices.Clone(rules.TestNames)
 	rules.IgnoredPaths, rules.IgnoredNames = slices.Clone(rules.IgnoredPaths), slices.Clone(rules.IgnoredNames)
 	rules.PlanningFolders, rules.PlanningNames = slices.Clone(rules.PlanningFolders), slices.Clone(rules.PlanningNames)
+	rules.TestFileFolders = slices.Clone(rules.TestFileFolders)
 	for _, d := range layout.TestFolders {
 		for _, value := range d.InUse {
-			rules.TestPaths = appendNew(rules.TestPaths, value.Path)
+			if d.Files != nil {
+				rules.TestFileFolders = append(rules.TestFileFolders, conventions.TestFileFolder{Folder: value.Path, Names: d.Files})
+			} else {
+				rules.TestPaths = appendNew(rules.TestPaths, value.Path)
+			}
 		}
 	}
 	for _, d := range slices.Concat(layout.Own, layout.Planning) {
@@ -313,4 +328,16 @@ func ownValueOf(rules conventions.Rules, d Declared) conventions.OwnValue {
 		}
 	}
 	return 0
+}
+
+// pytestFiles are the file names pytest collects as test code by the same configuration's python_files, else its
+// defaults, with conftest.py: a pattern that holds a / is not used.
+func pytestFiles(content []byte, d conventions.Declaration) []string {
+	d.Key = "python_files"
+	values, _ := readDeclared(content, d)
+	values = slices.DeleteFunc(values, func(v string) bool { return strings.Contains(v, "/") })
+	if len(values) == 0 {
+		return conventions.PytestFiles()
+	}
+	return append(values, "conftest.py")
 }

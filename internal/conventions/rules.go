@@ -43,11 +43,14 @@ type Rules struct {
 	TestSourceSets []string // name patterns of a folder directly in a folder src that holds test code, beside TestFolders
 	// TestFolderPatterns are name patterns of a folder, at any depth, that make it hold test code.
 	TestFolderPatterns []string
-	TestPaths          []string       // folders, as paths from the repository root, that hold test code; empty in the shared rules
-	TestEndings        []string       // endings of a file name without its suffix
-	TestBeginnings     []string       // beginnings of a file name
-	TestDefinition     *regexp.Regexp // a line that defines a test, anchored to the start of a statement
-	Generated          *regexp.Regexp // the generated-file marker, searched in the first GeneratedHeaderLines lines
+	TestPaths          []string // folders, as paths from the repository root, that hold test code; empty in the shared rules
+	// TestFileFolders are folders, as paths from the repository root, in which the files of certain names are test code;
+	// empty in the shared rules.
+	TestFileFolders []TestFileFolder
+	TestEndings     []string       // endings of a file name without its suffix
+	TestBeginnings  []string       // beginnings of a file name
+	TestDefinition  *regexp.Regexp // a line that defines a test, anchored to the start of a statement
+	Generated       *regexp.Regexp // the generated-file marker, searched in the first GeneratedHeaderLines lines
 	// GeneratedNames are file-name patterns of generated files: such a file is read, and it is no code file.
 	GeneratedNames []string
 	Manifests      []Manifest // the known dependency manifests, read wherever tracked
@@ -707,3 +710,13 @@ type Area struct {
 	Name  string
 	Kinds []string
 }
+
+// TestFileFolder is a folder in which only the files whose names match one of Names are test code.
+type TestFileFolder struct {
+	Folder string
+	Names  []string
+}
+
+// PytestFiles are the file names pytest collects as tests when its configuration sets no python_files, and the
+// file it always reads.
+func PytestFiles() []string { return []string{"test_*.py", "*_test.py", "conftest.py"} }

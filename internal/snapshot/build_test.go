@@ -45,7 +45,7 @@ func TestBuildClassifiesEachSampleLanguage(t *testing.T) {
 			{"internal/store/store_test.go", "go", snapshot.Test, 8},
 		},
 		"python-declared": {
-			{"checks/helpers.py", "python", snapshot.TestInfrastructure, 2}, {"checks/test_flow.py", "python", snapshot.Test, 5},
+			{"checks/helpers.py", "python", snapshot.Product, 2}, {"checks/test_flow.py", "python", snapshot.Test, 5},
 			{"lib/core/__init__.py", "python", snapshot.Product, 1}, {"lib/core/model.py", "python", snapshot.Product, 2},
 			{"src/app/__init__.py", "python", snapshot.Product, 1}, {"src/app/service.py", "python", snapshot.Product, 5},
 			{"tests/test_service.py", "python", snapshot.Test, 5},

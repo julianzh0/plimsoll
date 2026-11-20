@@ -35,6 +35,9 @@ func declared(table, key string, inUse ...string) snapshot.Declared {
 	for _, p := range inUse {
 		d.InUse = append(d.InUse, snapshot.DeclaredFolder{Path: p})
 	}
+	if key == "testpaths" {
+		d.Files = conventions.PytestFiles()
+	}
 	return d
 }
 
@@ -83,6 +86,9 @@ func unreadableFile(file, table string) snapshot.Declared {
 func unreadableKey(file, table, key string) snapshot.Declared {
 	d := inFile(file, table)
 	d.Key = key
+	if key != "testpaths" {
+		d.Files = nil
+	}
 	d.Now, d.AtBase = snapshot.KeyUnreadable, snapshot.KeyUnreadable
 	return d
 }
@@ -231,7 +237,9 @@ func roleOf(tree snapshot.Tree, p string) (snapshot.Role, bool) {
 }
 
 func TestBuildCountsADeclaredTestFolderAsTestCode(t *testing.T) {
-	declare := func(values string) string { return "[tool.pytest.ini_options]\ntestpaths = [" + values + "]\n" }
+	declare := func(values string) string {
+		return "[tool.pytest.ini_options]\ntestpaths = [" + values + "]\npython_files = [\"*.py\"]\n"
+	}
 	none := snapshot.Role(0)
 	cases := []struct {
 		name  string
@@ -247,7 +255,11 @@ func TestBuildCountsADeclaredTestFolderAsTestCode(t *testing.T) {
 			tree["pkg/tests/test_core.py"] = "def test_x(): pass\n"
 			return tree
 		}(), map[string]snapshot.Role{"src/app/x.py": snapshot.Product, "pkg/core.py": snapshot.Product, "pkg/tests/test_core.py": snapshot.Test}},
-		{"every language", declaring(declare(`"checks"`), "checks/helper.ts"), map[string]snapshot.Role{"checks/helper.ts": snapshot.TestInfrastructure}},
+		{"pytest declares Python test files only", declaring(declare(`"checks"`), "checks/helper.ts"), map[string]snapshot.Role{"checks/helper.ts": snapshot.Product}},
+		{"pytest's default names", declaring("[tool.pytest.ini_options]\ntestpaths = [\"checks\"]\n", "checks/test_a.py", "checks/b_test.py", "checks/conftest.py", "checks/helpers.py"),
+			map[string]snapshot.Role{"checks/test_a.py": snapshot.TestInfrastructure, "checks/b_test.py": snapshot.TestInfrastructure, "checks/conftest.py": snapshot.TestInfrastructure, "checks/helpers.py": snapshot.Product}},
+		{"a python_files pattern with a / is not used", declaring("[tool.pytest.ini_options]\ntestpaths = [\"checks\"]\npython_files = [\"sub/*.py\", \"check_*.py\"]\n", "checks/check_a.py", "checks/sub/x.py"),
+			map[string]snapshot.Role{"checks/check_a.py": snapshot.TestInfrastructure, "checks/sub/x.py": snapshot.Product}},
 		{"under other code", declaring(declare(`"scripts/checks"`), "scripts/checks/x.py", "scripts/seed.py"),
 			map[string]snapshot.Role{"scripts/checks/x.py": snapshot.TestInfrastructure, "scripts/seed.py": snapshot.Other}},
 		{"under a skipped folder", declaring(declare(`"build/checks"`), "build/checks/x.py"), map[string]snapshot.Role{"build/checks/x.py": none}},
