@@ -96,6 +96,10 @@ func TestLearnedMacroNamesRefineTheRewrite(t *testing.T) {
 		[]byte("#define OTHER_API \\\n  __attribute__((visibility(\"default\")))\n#define THIRD_API /* nothing */\n"),
 		[]byte("#ifndef _GNU_SOURCE\n#define _GNU_SOURCE\n#endif\n#ifdef _WIN32\n#define WIN_CALL __stdcall\n#endif\n"),
 	})
+	code := learnMacroNames(c.MacroNames, [][]byte{[]byte("#define LIB_NAMESPACE_BEGIN namespace lib {\n#define LIB_EXPORT export\n")})
+	if code.kept["LIB_NAMESPACE_BEGIN"] || code.kept["LIB_EXPORT"] {
+		t.Errorf("a macro of code and one that names export: kept %v, want both left to the shared rules", code.kept)
+	}
 	for _, name := range []string{"LIB_API", "WIN_CALL"} {
 		if exports.kept[name] {
 			t.Errorf("learned %s as a name to keep, want it left to the shared rules", name)

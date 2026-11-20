@@ -39,7 +39,7 @@ func cFamily(name string, extensions, units []string) Language {
 		Name: name, Extensions: extensions, Literals: cComments, Functions: functions, Macros: macros, Tokens: cLikeTokens(`(?:u8|[uUL])?(?:`+doubleQuoted+"|"+character+`)`, strings),
 		Grammar: name, Query: cQuery, Declarations: declarations, Units: unitQuery, Peers: HeaderPeers, LineReadWhenBroken: true,
 		MacroNames: &MacroNames{
-			Attributes:       []string{"__attribute__((", "__declspec(", "[[", "inline", "static", "extern", "constexpr", "noexcept"},
+			Attributes:       []string{"__attribute__((", "__declspec(", "[[", "inline", "static", "extern", "constexpr", "noexcept", "export"},
 			DeclarationStart: `(?m)(?:^[ \t]*|\b(?:static|inline|constexpr|virtual|explicit|const|extern|friend)[ \t]+|>[ \t]*)`,
 			Define:           regexp.MustCompile(`^[ \t]*#[ \t]*define[ \t]+([A-Za-z_][A-Za-z0-9_]*)(\([^)]*\))?[ \t]*(.*)$`),
 			// a type a declaration names: struct, class, enum or union and its name before a body, a semicolon or a

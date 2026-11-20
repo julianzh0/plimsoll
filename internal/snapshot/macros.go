@@ -139,9 +139,10 @@ func macrosOf(rules *conventions.MacroNames, content []byte) fileMacros {
 				if depth > 1 || depth == 1 && !guardOpen {
 					break // a definition under a condition
 				}
-				if body == "" || slices.ContainsFunc(rules.Attributes, func(a string) bool { return strings.HasPrefix(body, a) }) {
+				switch {
+				case body == "" || slices.ContainsFunc(rules.Attributes, func(a string) bool { return strings.HasPrefix(body, a) }):
 					f.attribute[name] = true
-				} else {
+				case !strings.ContainsAny(body, "{};"): // a body of code (namespace a {) decides nothing: blanking it reads best
 					f.other[name] = true
 				}
 			}
