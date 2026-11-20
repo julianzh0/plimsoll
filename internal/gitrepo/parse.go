@@ -157,7 +157,7 @@ func parseLog(output []byte) ([]snapshot.Commit, error) {
 				return nil, err
 			}
 			last := &commits[len(commits)-1]
-			last.Files = append(last.Files, snapshot.FileChange{Path: change.Path, Added: change.Added, Removed: change.Removed})
+			last.Files = append(last.Files, snapshot.FileChange{Path: change.Path, From: change.From, Added: change.Added, Removed: change.Removed})
 			i = next
 			continue
 		}

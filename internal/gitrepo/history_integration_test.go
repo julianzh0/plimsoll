@@ -94,7 +94,7 @@ func TestIntegrationReadParsesTheHistory(t *testing.T) {
 	want := [][]snapshot.FileChange{
 		{{Path: "side.ts", Added: 1}},
 		{{Path: "logo.bin"}},
-		{{Path: "src/moved.ts"}},
+		{{Path: "src/moved.ts", From: "src/grüße.ts"}},
 		{{Path: "src/line\nbreak.ts", Added: 1}},
 		{{Path: "src/grüße.ts", Added: 2}},
 		{{Path: "docs/a b.md", Added: 1}},
@@ -152,6 +152,64 @@ func TestIntegrationKeptHistoryEqualsAFreshRead(t *testing.T) {
 	after, _ := reader.Read(context.Background(), repo.Dir, "HEAD", wants)
 	if len(after.Commits) != 2 || after.Commits[0].ID != next {
 		t.Errorf("after a new commit the reader keeps %d commits, newest %v; want 2, %s", len(after.Commits), after.Commits, next)
+	}
+
+	// Whatever the reader keeps, after each step a question reads as a fresh reader does.
+	same := func(step string) {
+		t.Helper()
+		kept, err := reader.Read(context.Background(), repo.Dir, "HEAD~1", wants)
+		if err != nil {
+			t.Fatalf("%s: Read = %v", step, err)
+		}
+		fresh, err := NewReader(os.Environ()).Read(context.Background(), repo.Dir, "HEAD~1", wants)
+		if err != nil {
+			t.Fatalf("%s: fresh Read = %v", step, err)
+		}
+		if !reflect.DeepEqual(kept.Commits, fresh.Commits) || !reflect.DeepEqual(kept.Parents, fresh.Parents) {
+			t.Errorf("%s: kept history %+v, want the fresh read's %+v", step, kept.Commits, fresh.Commits)
+		}
+	}
+	repo.Git("mv", "b.ts", "c.ts")
+	repo.Commit(gitrepotest.Commit{Message: "rename"})
+	same("a rename")
+	repo.Git("commit", "-q", "--amend", "-m", "rename, amended")
+	same("an amend")
+	repo.Git("switch", "-q", "-c", "side", "HEAD~1")
+	repo.Commit(gitrepotest.Commit{Message: "side", Files: map[string]string{"s.ts": "s\n"}})
+	same("a branch switch")
+	repo.Git("rebase", "-q", "main")
+	same("a rebase")
+	repo.Git("switch", "-q", "main")
+	repo.Git("merge", "-q", "--no-ff", "-m", "merge", "side")
+	same("a merge")
+}
+
+// A shallow clone deepened: its old boundary commit gains a parent, and the reader reads it again.
+func TestIntegrationADeepenedCloneReadsAsAFreshReadDoes(t *testing.T) {
+	origin := gitrepotest.New(t,
+		gitrepotest.Commit{Message: "one", Files: map[string]string{"a.ts": "a\n"}},
+		gitrepotest.Commit{Message: "two", Files: map[string]string{"a.ts": "a\nb\n"}},
+		gitrepotest.Commit{Message: "three", Files: map[string]string{"a.ts": "a\nb\nc\n"}},
+	)
+	clone := filepath.Join(t.TempDir(), "clone")
+	if out, err := exec.Command("git", "clone", "-q", "-c", "core.autocrlf=false", "--depth", "1", "file://"+origin.Dir, clone).CombinedOutput(); err != nil {
+		t.Fatalf("shallow clone: %v: %s", err, out)
+	}
+	reader := NewReader(os.Environ())
+	wants := snapshot.WantsOf(conventions.Default())
+	if _, err := reader.Read(context.Background(), clone, "HEAD", wants); err != nil {
+		t.Fatalf("Read = %v", err)
+	}
+	if out, err := exec.Command("git", "-C", clone, "fetch", "-q", "--deepen", "2").CombinedOutput(); err != nil {
+		t.Fatalf("deepen: %v: %s", err, out)
+	}
+	kept, err := reader.Read(context.Background(), clone, "HEAD", wants)
+	if err != nil {
+		t.Fatalf("Read = %v", err)
+	}
+	fresh, _ := NewReader(os.Environ()).Read(context.Background(), clone, "HEAD", wants)
+	if !reflect.DeepEqual(kept.Commits, fresh.Commits) || len(kept.Commits) != 3 {
+		t.Errorf("after deepening: kept %+v, want the fresh read's %+v (three commits)", kept.Commits, fresh.Commits)
 	}
 }
 

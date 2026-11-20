@@ -15,30 +15,19 @@ import (
 )
 
 // Reader reads a repository through git plumbing without changing it. It starts no goroutine. It keeps the parsed
-// history of each repository for its head commit, which is a pure function of that commit, so a kept history equals a
-// fresh read; questions that need the same history at the same time share one read of it, the heaviest work of a
-// question (about 780 MB of git on a repository of 4,686 commits).
-// NOTE: one full read per new head commit (2.6 s on a repository of 981 commits). Upgrade: read only
-// <old head>..<new head> when the old head is an ancestor.
+// records of each repository's commits for its most recent heads: a commit's record is a pure function of the
+// commit, the parents git reports for it and the view it was read under, so a kept history equals a fresh read, and a
+// new head reads only the commits it adds. Questions that need the same head's history at the same time share one
+// read of it, the heaviest work of a question (about 780 MB of git on a repository of 4,686 commits).
 type Reader struct {
 	env       []string
 	mu        sync.Mutex              // guards histories: questions may be answered at the same time
-	histories map[string]*keptHistory // by top folder
-}
-
-// keptHistory is the history of one head commit: read once, and ready when read is closed. cancelled is a read that
-// failed because the question that ran it was cancelled.
-type keptHistory struct {
-	head      string
-	read      chan struct{}
-	commits   []snapshot.Commit
-	err       error
-	cancelled bool
+	histories map[string]*repoHistory // by top folder
 }
 
 // NewReader returns a reader that starts git with the given process environment.
 func NewReader(environ []string) *Reader {
-	return &Reader{env: gitEnvironment(environ), histories: map[string]*keptHistory{}}
+	return &Reader{env: gitEnvironment(environ), histories: map[string]*repoHistory{}}
 }
 
 // Read reads the tracked files at the base and in the working tree, the changes between them and the state of the
@@ -119,66 +108,12 @@ func (r *Reader) Read(ctx context.Context, repository, base string, wants snapsh
 		return snapshot.Source{}, gitFailed(err)
 	}
 	source.Since = strings.Fields(string(since))
-	if source.Commits, err = r.history(ctx, run, top, source.Head, exclude); err != nil {
+	kept, err := r.history(ctx, run, top, source.Head, exclude)
+	if err != nil {
 		return snapshot.Source{}, err
 	}
+	source.Commits, source.Parents = kept.commits, kept.parents
 	return source, nil
-}
-
-// history returns the whole non-merge history, newest first, read once per head commit, without the excluded paths. A
-// question that comes while that read runs waits for it, or until it is cancelled itself. A failed read is not kept;
-// when it failed only because the question that ran it was cancelled, a waiting question reads it again.
-func (r *Reader) history(ctx context.Context, run runner, top, head string, exclude []string) ([]snapshot.Commit, error) {
-	for {
-		r.mu.Lock()
-		kept, found := r.histories[top]
-		if found && kept.head == head {
-			r.mu.Unlock()
-			select {
-			case <-kept.read:
-			case <-ctx.Done():
-				return nil, gitFailed(ctx.Err())
-			}
-			if kept.cancelled && ctx.Err() == nil {
-				continue
-			}
-			return kept.commits, kept.err
-		}
-		kept = &keptHistory{head: head, read: make(chan struct{})}
-		r.histories[top] = kept
-		r.mu.Unlock()
-		commits, err := readHistory(run, exclude)
-		r.mu.Lock()
-		kept.commits, kept.err, kept.cancelled = commits, err, err != nil && ctx.Err() != nil
-		if err != nil && r.histories[top] == kept {
-			delete(r.histories, top) // before the waiters wake, so one that reads again starts a new read
-		}
-		r.mu.Unlock()
-		close(kept.read)
-		return commits, err
-	}
-}
-
-// readHistory runs git for the whole non-merge history, without the excluded paths.
-func readHistory(run runner, exclude []string) ([]snapshot.Commit, error) {
-	output, err := run(nil, append([]string{"log", "--no-merges", "--no-show-signature", "--numstat", "-z", "-M50%", "-l1000", "--no-textconv", "--no-ext-diff", "--format=%x01%H"}, exclude...)...)
-	if err != nil {
-		return nil, gitFailed(err)
-	}
-	commits, err := parseLog(output)
-	if err != nil {
-		return nil, gitFailed(err)
-	}
-	if len(exclude) > 0 {
-		// A path left out also leaves out the commits that changed nothing else; they stay, with no files, so the
-		// history keeps its length and every window over it stays the same.
-		ids, err := run(nil, "rev-list", "--no-merges", "HEAD")
-		if err != nil {
-			return nil, gitFailed(err)
-		}
-		commits = withEveryCommit(strings.Fields(string(ids)), commits)
-	}
-	return commits, nil
 }
 
 type runner func(input []byte, args ...string) ([]byte, error)
@@ -519,23 +454,6 @@ func missingContent(run runner) ([]string, error) {
 		return nil, gitFailed(err)
 	}
 	return pathsOfObjects(raw, lost), nil
-}
-
-// withEveryCommit is the commits in the order of ids, each one read where it was, else with no files.
-func withEveryCommit(ids []string, read []snapshot.Commit) []snapshot.Commit {
-	byID := make(map[string]snapshot.Commit, len(read))
-	for _, c := range read {
-		byID[c.ID] = c
-	}
-	all := make([]snapshot.Commit, 0, len(ids))
-	for _, id := range ids {
-		c, found := byID[id]
-		if !found {
-			c = snapshot.Commit{ID: id}
-		}
-		all = append(all, c)
-	}
-	return all
 }
 
 // excluding is the pathspec that leaves the missing paths out, or nil when there are none: a folder in which no

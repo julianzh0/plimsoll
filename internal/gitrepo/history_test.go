@@ -4,48 +4,96 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"testing/synctest"
 )
 
+// fakeGit answers the history commands for a repository: rev-list lists the commits a head reaches ("id parents"
+// lines, newest first, from heads), and log prints every commit it is asked for. A log call blocks on gate when it is
+// set, fails with fail when that is set, and is counted with the commits it was asked for.
+type fakeGit struct {
+	mu    sync.Mutex
+	heads map[string]string
+	gate  chan struct{}
+	fail  error
+	logs  [][]string // per log call: the commits asked for
+}
+
+func (g *fakeGit) run(input []byte, args ...string) ([]byte, error) {
+	switch args[0] {
+	case "rev-parse":
+		return nil, nil
+	case "rev-list":
+		g.mu.Lock()
+		defer g.mu.Unlock()
+		return []byte(g.heads[args[len(args)-1]]), nil
+	}
+	g.mu.Lock()
+	var asked []string
+	if slices.Contains(args, "--stdin") {
+		asked = strings.Fields(string(input))
+	} else {
+		for line := range strings.Lines(g.heads[args[len(args)-1]]) {
+			asked = append(asked, strings.Fields(line)[0])
+		}
+	}
+	g.logs = append(g.logs, asked)
+	gate, fail := g.gate, g.fail
+	g.mu.Unlock()
+	if gate != nil {
+		<-gate
+	}
+	if fail != nil {
+		return nil, fail
+	}
+	var out strings.Builder
+	for _, id := range asked {
+		out.WriteString("\x01" + id + "\x00")
+	}
+	return []byte(out.String()), nil
+}
+
+// asked are the commits each log call was asked for.
+func (g *fakeGit) asked() [][]string {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return slices.Clone(g.logs)
+}
+
+func ids(k keptHistory) []string {
+	var out []string
+	for _, c := range k.commits {
+		out = append(out, c.ID)
+	}
+	return out
+}
+
 func TestQuestionsAtTheSameTimeShareOneHistoryRead(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		r := NewReader(nil)
-		release := make(chan struct{})
-		var mu sync.Mutex
-		reads := 0
-		run := func(_ []byte, args ...string) ([]byte, error) {
-			mu.Lock()
-			reads++
-			mu.Unlock()
-			<-release
-			return []byte("\x01c1\x00"), nil
-		}
+		git := &fakeGit{heads: map[string]string{"c1": "c1\n"}, gate: make(chan struct{})}
 		results := make([][]string, 3)
 		var done sync.WaitGroup
 		for i := range results {
 			done.Go(func() {
-				commits, err := r.history(context.Background(), run, "/repo", "c1", nil)
+				kept, err := r.history(context.Background(), git.run, "/repo", "c1", nil)
 				if err != nil {
 					t.Errorf("history = %v", err)
 				}
-				for _, c := range commits {
-					results[i] = append(results[i], c.ID)
-				}
+				results[i] = ids(kept)
 			})
 		}
 		synctest.Wait() // all three are waiting: one in git, two for its result
-		mu.Lock()
-		if reads != 1 {
-			t.Errorf("three questions at the same time read the history %d times, want once", reads)
+		if n := len(git.asked()); n != 1 {
+			t.Errorf("three questions at the same time read the history %d times, want once", n)
 		}
-		mu.Unlock()
-		close(release)
+		close(git.gate)
 		done.Wait()
-		for i, ids := range results {
-			if !slices.Equal(ids, []string{"c1"}) {
-				t.Errorf("question %d: commits %q, want [c1]", i, ids)
+		for i, got := range results {
+			if !slices.Equal(got, []string{"c1"}) {
+				t.Errorf("question %d: commits %q, want [c1]", i, got)
 			}
 		}
 	})
@@ -54,23 +102,12 @@ func TestQuestionsAtTheSameTimeShareOneHistoryRead(t *testing.T) {
 func TestAQuestionThatReadsTheHistoryForOthersMayBeCancelled(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		r := NewReader(nil)
-		release := make(chan struct{})
-		killed := func(_ []byte, _ ...string) ([]byte, error) { // git, stopped with the question that started it
-			<-release
-			return nil, errors.New("signal: killed")
-		}
-		var mu sync.Mutex
-		reads := 0
-		works := func(_ []byte, _ ...string) ([]byte, error) {
-			mu.Lock()
-			reads++
-			mu.Unlock()
-			return []byte("\x01c1\x00"), nil
-		}
+		killed := &fakeGit{heads: map[string]string{"c1": "c1\n"}, gate: make(chan struct{}), fail: errors.New("signal: killed")}
+		works := &fakeGit{heads: map[string]string{"c1": "c1\n"}}
 		first, cancel := context.WithCancel(context.Background())
 		var done sync.WaitGroup
 		done.Go(func() {
-			if _, err := r.history(first, killed, "/repo", "c1", nil); err == nil {
+			if _, err := r.history(first, killed.run, "/repo", "c1", nil); err == nil {
 				t.Errorf("the cancelled question's history read succeeded, want its error")
 			}
 		})
@@ -78,21 +115,19 @@ func TestAQuestionThatReadsTheHistoryForOthersMayBeCancelled(t *testing.T) {
 		results := make([][]string, 2)
 		for i := range results {
 			done.Go(func() {
-				commits, err := r.history(context.Background(), works, "/repo", "c1", nil)
+				kept, err := r.history(context.Background(), works.run, "/repo", "c1", nil)
 				if err != nil {
 					t.Errorf("waiting question %d: %v, want the history read again", i, err)
 				}
-				for _, c := range commits {
-					results[i] = append(results[i], c.ID)
-				}
+				results[i] = ids(kept)
 			})
 		}
 		synctest.Wait() // both wait for the first question's read
 		cancel()
-		close(release)
+		close(killed.gate)
 		done.Wait()
-		if reads != 1 || !slices.Equal(results[0], []string{"c1"}) || !slices.Equal(results[1], []string{"c1"}) {
-			t.Errorf("after the reading question was cancelled: %d new reads, results %q; want one read shared by both", reads, results)
+		if n := len(works.asked()); n != 1 || !slices.Equal(results[0], []string{"c1"}) || !slices.Equal(results[1], []string{"c1"}) {
+			t.Errorf("after the reading question was cancelled: %d new reads, results %q; want one read shared by both", n, results)
 		}
 	})
 }
@@ -100,18 +135,14 @@ func TestAQuestionThatReadsTheHistoryForOthersMayBeCancelled(t *testing.T) {
 func TestAWaitingQuestionMayBeCancelled(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		r := NewReader(nil)
-		release := make(chan struct{})
-		slow := func(_ []byte, _ ...string) ([]byte, error) {
-			<-release
-			return []byte("\x01c1\x00"), nil
-		}
+		slow := &fakeGit{heads: map[string]string{"c1": "c1\n"}, gate: make(chan struct{})}
 		var done sync.WaitGroup
-		done.Go(func() { _, _ = r.history(context.Background(), slow, "/repo", "c1", nil) })
+		done.Go(func() { _, _ = r.history(context.Background(), slow.run, "/repo", "c1", nil) })
 		synctest.Wait()
 		waiting, cancel := context.WithCancel(context.Background())
 		returned := make(chan error, 1)
 		go func() {
-			_, err := r.history(waiting, slow, "/repo", "c1", nil)
+			_, err := r.history(waiting, slow.run, "/repo", "c1", nil)
 			returned <- err
 		}()
 		synctest.Wait()
@@ -125,7 +156,75 @@ func TestAWaitingQuestionMayBeCancelled(t *testing.T) {
 		default:
 			t.Errorf("a cancelled waiting question still waits for another question's read")
 		}
-		close(release)
+		close(slow.gate)
 		done.Wait()
+	})
+}
+
+// A new head reads only the commits it adds; a commit whose parents changed (a shallow clone deepened) is read again;
+// two heads alternate without a read; a failed read keeps nothing.
+func TestANewHeadReadsOnlyTheCommitsItAdds(t *testing.T) {
+	r := NewReader(nil)
+	git := &fakeGit{heads: map[string]string{
+		"c2": "c2 c1\nc1\n", "c3": "c3 c2\nc2 c1\nc1\n", "b1": "b1 c1\nc1\n",
+	}}
+	ask := func(head string) []string {
+		t.Helper()
+		kept, err := r.history(context.Background(), git.run, "/repo", head, nil)
+		if err != nil {
+			t.Fatalf("history(%s) = %v", head, err)
+		}
+		return ids(kept)
+	}
+	if got := ask("c2"); !slices.Equal(got, []string{"c2", "c1"}) {
+		t.Fatalf("history(c2) = %q", got)
+	}
+	ask("c3")
+	ask("b1")
+	ask("c3") // c3 and b1 are the two most recent heads: no read
+	want := [][]string{{"c2", "c1"}, {"c3"}, {"b1"}}
+	if got := git.asked(); !slices.EqualFunc(got, want, slices.Equal) {
+		t.Errorf("log calls asked for %q, want %q", got, want)
+	}
+
+	git.heads["c4"] = "c4 c3\nc3 c2\nc2 c1\nc1 c0\n" // deepened: c1 now has a parent
+	ask("c4")
+	if got := git.asked(); !slices.Equal(got[len(got)-1], []string{"c4", "c1"}) {
+		t.Errorf("after deepening, the last log asked for %q, want [c4 c1]", got[len(got)-1])
+	}
+
+	git.fail = errors.New("git failed")
+	git.heads["d1"] = "d1 c4\nc4 c3\nc3 c2\nc2 c1\nc1 c0\n"
+	if _, err := r.history(context.Background(), git.run, "/repo", "d1", nil); err == nil {
+		t.Fatalf("a failing read succeeded")
+	}
+	git.fail = nil
+	ask("d1")
+	if got := git.asked(); !slices.Equal(got[len(got)-1], []string{"d1"}) {
+		t.Errorf("after a failed read, the next asked for %q, want only [d1]: the failed read kept nothing and the rest was kept", got[len(got)-1])
+	}
+}
+
+// Two reads of different heads that end close together both publish their records.
+func TestTwoHeadsReadAtTheSameTimeBothStay(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		r := NewReader(nil)
+		git := &fakeGit{heads: map[string]string{"a": "a c1\nc1\n", "b": "b c1\nc1\n"}, gate: make(chan struct{})}
+		var done sync.WaitGroup
+		for _, head := range []string{"a", "b"} {
+			done.Go(func() { _, _ = r.history(context.Background(), git.run, "/repo", head, nil) })
+		}
+		synctest.Wait()
+		close(git.gate)
+		done.Wait()
+		before := len(git.asked())
+		for _, head := range []string{"a", "b"} {
+			if _, err := r.history(context.Background(), git.run, "/repo", head, nil); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if got := git.asked(); len(got) != before {
+			t.Errorf("asking again for both heads read %q, want no read", got[before:])
+		}
 	})
 }

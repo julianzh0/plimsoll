@@ -22,6 +22,9 @@ type Source struct {
 	Changes   []Change // every tracked file that differs between the base and the working tree
 	Since     []string // the commits in base..head, newest first
 	Commits   []Commit // the whole non-merge history, newest first
+	// Parents are the parents of every commit the head reaches, merges included: the ancestry along which a rename
+	// carries a file's earlier changes. Shared with the reader: never changed.
+	Parents map[string][]string
 }
 
 // Entry is one tracked file on one side.
@@ -50,6 +53,7 @@ type Commit struct {
 // FileChange is one path a commit changed. Area is set by Build, from the path alone.
 type FileChange struct {
 	Path    string
+	From    string // the path before a rename git reports in this commit; "" otherwise
 	Added   int
 	Removed int
 	Area    Area
