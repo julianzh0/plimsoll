@@ -74,7 +74,11 @@ func pytestLayout() []Declaration {
 			name  string
 			means LayoutKind
 		}{{"testpaths", TestFolders}, {"pythonpath", Roots}} {
-			rows = append(rows, Declaration{Config: config, Key: key.name, Means: key.means, Tool: "pytest", Shadowed: shadowed, Rival: rivals[config.Table]})
+			d := Declaration{Config: config, Key: key.name, Means: key.means, Tool: "pytest", Shadowed: shadowed, Rival: rivals[config.Table]}
+			if key.means == TestFolders {
+				d.FilesKey, d.Files = "python_files", PytestFiles()
+			}
+			rows = append(rows, d)
 		}
 	}
 	return rows

@@ -316,8 +316,11 @@ func typescriptImports(rules conventions.Rules, language conventions.Language, c
 	} else if tracked["tsconfig.json"] || len(packages) > 0 {
 		state = PrefixRead
 	}
-	for file := range tracked { // a config whose extends names no tracked file: its base was not read
-		if cfg := configs.load(file, nil); path.Base(file) == "tsconfig.json" && state == PrefixRead && cfg != nil && cfg.baseUnread {
+	for file := range tracked { // a config, where manifests count, whose extends names no tracked file: its base was not read
+		if path.Base(file) != "tsconfig.json" || state != PrefixRead || !manifestPlace(rules, file) {
+			continue
+		}
+		if cfg := configs.load(file, nil); cfg != nil && cfg.baseUnread {
 			state = PrefixExtends
 		}
 	}

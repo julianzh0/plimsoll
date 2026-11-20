@@ -55,8 +55,11 @@ func swiftDependencies(content []byte) (names []string, manifest, readable bool)
 	return names, true, true
 }
 
-// swiftTargetCall is one target of a manifest: its kind, its name and the text of its dependencies list.
-type swiftTargetCall struct{ kind, name, dependencies string }
+// swiftTargetCall is one target of a manifest: its kind, its name and the entries of its dependencies list.
+type swiftTargetCall struct {
+	kind, name   string
+	dependencies []string
+}
 
 var (
 	// swiftDependencyEntry is one literal entry of a target's dependencies: a name, a product of a package, a target or
@@ -72,8 +75,13 @@ var (
 // list, or a by-name entry is no local target: then every package counts.
 func swiftReached(text string) (runtime, tests map[string]bool, literal bool) {
 	targets := map[string]swiftTargetCall{}
+	end := -1 // the end of the last target read: a target named inside it is a reference
 	for _, m := range swiftTarget.FindAllStringSubmatchIndex(text, -1) {
-		args := text[m[1]:balanced(text, m[1]-1)]
+		if m[0] < end {
+			continue
+		}
+		end = balanced(text, m[1]-1)
+		args := text[m[1]:end]
 		name := swiftName.FindStringSubmatch(args)
 		if name == nil {
 			return nil, nil, false
@@ -84,16 +92,14 @@ func swiftReached(text string) (runtime, tests map[string]bool, literal bool) {
 			if open < 0 {
 				return nil, nil, false
 			}
-			t.dependencies = args[at+open+1 : balanced(args, at+open)]
+			t.dependencies = splitTopLevel(args[at+open+1 : balanced(args, at+open)])
 		}
-		targets[t.name] = t
-	}
-	for _, t := range targets { // every list must be literal, also those no root reaches
-		for _, entry := range splitTopLevel(t.dependencies) {
+		for _, entry := range t.dependencies { // every list must be literal, also those no root reaches
 			if !swiftDependencyEntry.MatchString(entry) {
 				return nil, nil, false
 			}
 		}
+		targets[t.name] = t
 	}
 	var roots, testRoots []string
 	products := swiftProductTargets.FindAllStringSubmatch(text, -1)
@@ -127,7 +133,7 @@ func reachedPackages(targets map[string]swiftTargetCall, roots []string) (map[st
 			continue
 		}
 		seen[name] = true
-		for _, entry := range splitTopLevel(t.dependencies) {
+		for _, entry := range t.dependencies {
 			m := swiftDependencyEntry.FindStringSubmatch(entry)
 			if m == nil {
 				return nil, false

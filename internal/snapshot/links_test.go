@@ -1182,6 +1182,9 @@ func TestBuildSkipsImportsInBranchesNoBuildReads(t *testing.T) {
 			[]string{"src/r.h"}},
 		{"a continued condition", "src/a.c", "#if \\\n  0\n#include \"p.h\"\n#endif\n#include \"s.h\"\n", []string{"src/s.h"}},
 		{"true and false are no literals in C", "src/a.c", "#if false\n#include \"p.h\"\n#endif\n", []string{"src/p.h"}},
+		{"a directive word with a comment glued on", "src/a.c", "#if 0\n#ifdef X\n#endif//X\n#else/* x */\n#include \"q.h\"\n#endif\n", []string{"src/q.h"}},
+		{"a tab before the condition", "src/a.c", "#if\t0\n#include \"p.h\"\n#endif\n#include \"q.h\"\n", []string{"src/q.h"}},
+		{"#if 0 inside a comment", "src/a.c", "/*\n#if 0\n*/\n#include \"q.h\"\n", []string{"src/q.h"}},
 	} {
 		files := maps.Clone(headers)
 		files[tc.file] = tc.text

@@ -41,6 +41,12 @@ func cFamily(name string, extensions, units []string) Language {
 		MacroNames: &MacroNames{
 			Attributes:       []string{"__attribute__((", "__declspec(", "[[", "inline", "static", "extern", "constexpr", "noexcept"},
 			DeclarationStart: `(?m)(?:^[ \t]*|\b(?:static|inline|constexpr|virtual|explicit|const|extern|friend)[ \t]+|>[ \t]*)`,
+			Define:           regexp.MustCompile(`^[ \t]*#[ \t]*define[ \t]+([A-Za-z_][A-Za-z0-9_]*)(\([^)]*\))?[ \t]*(.*)$`),
+			// a type a declaration names: struct, class, enum or union and its name before a body, a semicolon or a
+			// base list (class EXPORT Widget names Widget, not EXPORT), using N =, and typedef … N;
+			Type: regexp.MustCompile(`\b(?:struct|class|enum(?:[ \t]+class)?|union)[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*[{;:]|` +
+				`\busing[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*=|\btypedef\b[^;{]*?\b([A-Za-z_][A-Za-z0-9_]*)[ \t]*;`),
+			Shape: regexp.MustCompile(`^[A-Z][A-Z0-9]*_[A-Z0-9_]+$`),
 		},
 		Imports: Imports{
 			Statements: []ImportForm{{Pattern: cIncludeQuoted}, {Pattern: cIncludeAngled}},
@@ -179,4 +185,7 @@ func glibMacros() []MacroRule {
 type MacroNames struct {
 	Attributes       []string
 	DeclarationStart string
+	Define           *regexp.Regexp // a #define line: its name, its parameters and its body
+	Type             *regexp.Regexp // a type declaration; its name is the first group that matched
+	Shape            *regexp.Regexp // the names the shared rules blank as attributes by convention
 }

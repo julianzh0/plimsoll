@@ -225,6 +225,8 @@ func TestBuildLeavesOutWhatAFrameworkLoadsAndWhatALibraryExports(t *testing.T) {
 		{"a folder the config's dirs names", map[string]string{"trigger.config.ts": "export default defineConfig({ dirs: [\"./src/jobs\"] });\n", "src/jobs/jobs.ts": jobs}, nil},
 		{"a trigger folder when dirs names another", map[string]string{"trigger.config.ts": "export default defineConfig({ dirs: [\"./src/jobs\"] });\n", "src/trigger/jobs.ts": jobs}, []string{"sendMail"}},
 		{"an empty dirs names none", map[string]string{"trigger.config.ts": "export default { dirs: [] };\n", "src/trigger/jobs.ts": jobs}, []string{"sendMail"}},
+		{"commented-out dirs are no setting", map[string]string{"trigger.config.ts": "export default {\n  // dirs: [\"./jobs\"],\n};\n", "src/trigger/jobs.ts": jobs}, nil},
+		{"dirs that name the config's folder", map[string]string{"trigger.config.ts": "export default { dirs: [\".\"] };\n", "src/other/jobs.ts": jobs}, nil},
 		{"dirs that are no literal list keep the trigger folder", map[string]string{"trigger.config.ts": "export default { dirs: [base + \"/jobs\"] };\n", "src/trigger/jobs.ts": jobs}, nil},
 		{"an MkDocs hook", map[string]string{"mkdocs.yml": "hooks:\n  - hooks/copy.py\n", "hooks/copy.py": hooks}, []string{"helper"}},
 		{"no MkDocs", map[string]string{"hooks/copy.py": hooks}, []string{"helper", "on_post_build"}},

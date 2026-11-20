@@ -27,7 +27,7 @@ func rewriteMacros(rules []conventions.MacroRule, content []byte, learned *macro
 			blankKeepingLines(rewritten[start+len(rule.As) : end])
 			if learned != nil && rule.As == "" { // a name the code declares or defines as no attribute stays
 				for _, w := range macroWord.FindAllIndex(original, -1) {
-					if word := original[w[0]:w[1]]; learned.kept[string(word)] && capitalisedMacro.Match(word) {
+					if word := original[w[0]:w[1]]; learned.kept[string(word)] && learned.shape.Match(word) {
 						copy(rewritten[start+w[0]:start+w[1]], original[w[0]:w[1]])
 					}
 				}
@@ -73,79 +73,104 @@ func overlapsAny(functions []function, f function) bool {
 	return slices.ContainsFunc(functions, func(g function) bool { return g.start < f.end && f.start < g.end })
 }
 
-var (
-	// macroWord is a name inside a rewritten macro use.
-	macroWord = regexp.MustCompile(`[A-Za-z_][A-Za-z0-9_]*`)
-	// capitalisedMacro is the shape of a name the declaration rule blanks as an attribute by convention.
-	capitalisedMacro = regexp.MustCompile(`^[A-Z][A-Z0-9]*_[A-Z0-9_]+$`)
-)
+// macroWord is a name inside a rewritten macro use.
+var macroWord = regexp.MustCompile(`[A-Za-z_][A-Za-z0-9_]*`)
 
 // macroNames is what one side's own #define lines say: a pattern of the attribute macros it defines, where a
-// declaration starts, and the names it keeps as written; digest names it for the reading cache.
+// declaration starts, the names it keeps as written, and the shape of the names that rule blanks by convention;
+// digest names it for the reading cache.
 type macroNames struct {
 	attributes *regexp.Regexp
 	kept       map[string]bool
+	shape      *regexp.Regexp
 	digest     string
 }
 
-var (
-	cDefine   = regexp.MustCompile(`^[ \t]*#[ \t]*define[ \t]+([A-Za-z_][A-Za-z0-9_]*)(\([^)]*\))?[ \t]*(.*)$`)
-	cTypeName = regexp.MustCompile(`\b(?:struct|class|enum(?:[ \t]+class)?|union)[ \t]+([A-Za-z_][A-Za-z0-9_]*)|\busing[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*=|\btypedef\b[^;{]*?\b([A-Za-z_][A-Za-z0-9_]*)[ \t]*;`)
-)
-
-// learnMacroNames reads the #define lines and type declarations of one side's files of an entry. A name exactly one
-// file defines, outside any condition but its include guard, as nothing or an attribute text is an attribute; a name
-// such a file defines as anything else, or the code declares as a type, is kept; names several files define decide
-// nothing.
+// learnMacroNames reads the #define lines and type declarations of one side's files of the entries that learn macro
+// names. A name exactly one file defines, outside any condition but its open include guard (an #ifndef first, its
+// #define next), as nothing or an attribute text is an attribute; a name such a file defines as anything else, or
+// the code declares as a type, is kept; names several files define decide nothing. Continued lines are joined and
+// comments left out before a body is judged.
 func learnMacroNames(rules *conventions.MacroNames, contents [][]byte) *macroNames {
-	definedBy := map[string]int{}
-	attribute, other, types := map[string]bool{}, map[string]bool{}, map[string]bool{}
+	facts := make([]fileMacros, 0, len(contents))
 	for _, content := range contents {
-		mine := map[string]bool{}
-		depth, guard, first := 0, "", true
-		for line := range strings.Lines(string(content)) {
-			trimmed := strings.TrimSpace(line)
-			if !strings.HasPrefix(trimmed, "#") {
-				continue
-			}
-			directive := strings.Fields(strings.TrimPrefix(trimmed, "#"))
+		facts = append(facts, macrosOf(rules, content))
+	}
+	return mergedMacroNames(rules, facts)
+}
+
+// fileMacros is what one file's #define lines and declarations say: the names it defines unconditionally as an
+// attribute or as something else, and the types it declares.
+type fileMacros struct {
+	attribute, other, types map[string]bool
+}
+
+// macrosOf reads one file's definitions and type declarations (see learnMacroNames).
+func macrosOf(rules *conventions.MacroNames, content []byte) fileMacros {
+	f := fileMacros{attribute: map[string]bool{}, other: map[string]bool{}, types: map[string]bool{}}
+	{
+		depth, guard, guardOpen, directives := 0, "", false, 0
+		for line := range directiveLines(content) {
+			directives++
+			directive := strings.Fields(strings.TrimPrefix(strings.TrimSpace(line), "#"))
 			if len(directive) == 0 {
 				continue
 			}
-			switch word := directive[0]; {
+			switch word := directiveWord(directive[0]); {
 			case strings.HasPrefix(word, "if"):
-				if first && word == "ifndef" && len(directive) > 1 {
+				if directives == 1 && word == "ifndef" && len(directive) > 1 {
 					guard = directive[1]
 				}
 				depth++
 			case word == "endif":
-				depth--
+				if depth--; depth == 0 {
+					guardOpen = false
+				}
 			case word == "define":
-				m := cDefine.FindStringSubmatch(trimmed)
+				m := rules.Define.FindStringSubmatch(strings.TrimSpace(line))
 				if m == nil {
 					break
 				}
-				name, body := m[1], strings.TrimSpace(m[3])
-				if name == guard || depth > 1 || depth == 1 && guard == "" {
-					break // the guard itself, or a definition under a condition
+				name, body := m[1], strings.TrimSpace(withoutComments(cCommentsOnly(), m[3]))
+				if directives == 2 && name == guard && depth == 1 {
+					guardOpen = true
+					break
 				}
-				if !mine[name] {
-					mine[name] = true
-					definedBy[name]++
+				if depth > 1 || depth == 1 && !guardOpen {
+					break // a definition under a condition
 				}
 				if body == "" || slices.ContainsFunc(rules.Attributes, func(a string) bool { return strings.HasPrefix(body, a) }) {
-					attribute[name] = true
+					f.attribute[name] = true
 				} else {
-					other[name] = true
+					f.other[name] = true
 				}
 			}
-			first = false
 		}
-		for _, m := range cTypeName.FindAllStringSubmatch(string(content), -1) {
-			types[m[1]+m[2]+m[3]] = true
+		for _, m := range rules.Type.FindAllStringSubmatch(string(content), -1) {
+			f.types[m[1]+m[2]+m[3]] = true
 		}
 	}
-	learned := &macroNames{kept: map[string]bool{}}
+	return f
+}
+
+// mergedMacroNames decides, from the files' facts, which names are attributes and which stay (see learnMacroNames).
+func mergedMacroNames(rules *conventions.MacroNames, facts []fileMacros) *macroNames {
+	definedBy := map[string]int{}
+	attribute, other, types := map[string]bool{}, map[string]bool{}, map[string]bool{}
+	for _, f := range facts {
+		for name := range f.attribute {
+			definedBy[name]++
+			attribute[name] = true
+		}
+		for name := range f.other {
+			if !f.attribute[name] {
+				definedBy[name]++
+			}
+			other[name] = true
+		}
+		maps.Copy(types, f.types)
+	}
+	learned := &macroNames{kept: map[string]bool{}, shape: rules.Shape}
 	var attributes []string
 	for name, files := range definedBy {
 		switch {
@@ -170,4 +195,36 @@ func learnMacroNames(rules *conventions.MacroNames, contents [][]byte) *macroNam
 	learned.attributes = regexp.MustCompile(rules.DeclarationStart + `(?P<macro>(?:\b(?:` + strings.Join(attributes, "|") +
 		`)\b(?:[ \t]*\((?:[^()]|\([^()]*\))*\))?[ \t]*)+)[A-Za-z_~]`)
 	return learned
+}
+
+// directiveLines are the preprocessor lines of a text, each with the lines it continues joined.
+func directiveLines(content []byte) func(yield func(string) bool) {
+	return func(yield func(string) bool) {
+		joined := ""
+		for line := range strings.Lines(string(content)) {
+			line = strings.TrimRight(line, "\r\n")
+			if before, ok := strings.CutSuffix(line, `\`); ok {
+				joined += before + " "
+				continue
+			}
+			line, joined = joined+line, ""
+			if strings.HasPrefix(strings.TrimSpace(line), "#") && !yield(line) {
+				return
+			}
+		}
+	}
+}
+
+// directiveWord is a directive's name: the letters it starts with (#endif//x, #else/* … */).
+func directiveWord(word string) string {
+	end := strings.IndexFunc(word, func(r rune) bool { return r < 'a' || r > 'z' })
+	if end < 0 {
+		return word
+	}
+	return word[:end]
+}
+
+// cCommentsOnly matches C's line and block comments, and its strings so a marker inside one starts none.
+func cCommentsOnly() *regexp.Regexp {
+	return regexp.MustCompile(`"(?:[^"\\\n]|\\.)*"|//[^\n]*|/\*(?:[^*]|\*+[^*/])*\*+/`)
 }

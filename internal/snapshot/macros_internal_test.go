@@ -89,4 +89,19 @@ func TestLearnedMacroNamesRefineTheRewrite(t *testing.T) {
 	if got := string(rewriteMacros(c.Macros, []byte(content), learned)); got != want {
 		t.Errorf("rewriteMacros with learned names =\n%s\nwant\n%s", got, want)
 	}
+	// an export macro on a class names no type; a continued or commented definition is still an attribute; a first
+	// #ifndef that is no include guard leaves its definitions conditional
+	exports := learnMacroNames(c.MacroNames, [][]byte{
+		[]byte("#if defined(_WIN32)\n#define LIB_API __declspec(dllexport)\n#endif\nclass LIB_API Widget {};\n"),
+		[]byte("#define OTHER_API \\\n  __attribute__((visibility(\"default\")))\n#define THIRD_API /* nothing */\n"),
+		[]byte("#ifndef _GNU_SOURCE\n#define _GNU_SOURCE\n#endif\n#ifdef _WIN32\n#define WIN_CALL __stdcall\n#endif\n"),
+	})
+	for _, name := range []string{"LIB_API", "WIN_CALL"} {
+		if exports.kept[name] {
+			t.Errorf("learned %s as a name to keep, want it left to the shared rules", name)
+		}
+	}
+	if got := string(rewriteMacros(c.Macros, []byte("OTHER_API int f(void);\nTHIRD_API int g(void);\n"), exports)); got != "          int f(void);\n          int g(void);\n" {
+		t.Errorf("continued and commented attribute definitions: rewrite = %q, want both blanked", got)
+	}
 }

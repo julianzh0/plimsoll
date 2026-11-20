@@ -588,7 +588,7 @@ let package = Package(
     targets: [
         .target(name: "App", dependencies: [.product(name: "Logging", package: "swift-log")]),
         .target(name: "Helpers", dependencies: [` + helpers + `]),
-        .testTarget(name: "AppTests", dependencies: ["App", "Helpers"]),
+        .testTarget(name: "AppTests", dependencies: [.target(name: "App"), "Helpers", .product(name: "Logging", package: "swift-log")]),
     ]
 )
 `

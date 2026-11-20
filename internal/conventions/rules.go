@@ -526,6 +526,10 @@ type Declaration struct {
 	Tool     string   // the tool that reads File, as a sentence names it
 	Shadowed []Config // configurations the tool reads instead of this one, the one it reads first first
 	Rival    string   // a TOML table that, standing beside Table in File, makes the tool refuse the file; "" for none
+	// FilesKey, for a tool that collects tests by name, is the key that names the files it collects in its test folders,
+	// and Files the names it collects when the key is unset (the always collected ones last); "" when every file is.
+	FilesKey string
+	Files    []string
 }
 
 // Config is a section of a configuration file at the repository root. Always is true for a file the tool reads
@@ -720,5 +724,5 @@ type TestFileFolder struct {
 }
 
 // PytestFiles are the file names pytest collects as tests when its configuration sets no python_files, and the
-// file it always reads.
+// file it always reads, last.
 func PytestFiles() []string { return []string{"test_*.py", "*_test.py", "conftest.py"} }

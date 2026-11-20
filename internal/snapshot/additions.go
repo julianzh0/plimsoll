@@ -274,10 +274,9 @@ func loadedByConvention(language conventions.Language, tracked map[string]bool, 
 		}
 		for folder := path.Dir(filePath); ; folder = path.Dir(folder) {
 			if i := slices.IndexFunc(c.Beside, func(file string) bool { return tracked[path.Join(folder, file)] }); i >= 0 {
-				if dirs, literal := literalDirs(c.Dirs, content[path.Join(folder, c.Beside[i])]); literal {
-					return slices.ContainsFunc(dirs, func(dir string) bool {
-						return strings.HasPrefix(filePath, path.Join(folder, dir)+"/")
-					})
+				config := withoutComments(cCommentsOnly(), string(content[path.Join(folder, c.Beside[i])]))
+				if dirs, literal := literalDirs(c.Dirs, []byte(config)); literal {
+					return slices.ContainsFunc(dirs, func(dir string) bool { _, in := under(filePath, path.Join(folder, dir)); return in })
 				}
 				below := strings.TrimPrefix(path.Dir(filePath), folder)
 				return c.Folder == "" || slices.Contains(strings.Split(below, "/"), c.Folder)

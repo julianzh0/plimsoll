@@ -500,13 +500,15 @@ func linesIn(ranges []LineRange, spans []span, content []byte) int {
 	if len(spans) == 0 {
 		return 0
 	}
-	lineOf := func(at int) int { return 1 + bytes.Count(content[:min(at, len(content))], []byte("\n")) }
+	lines := linesOf(content)
+	var tests []LineRange
+	for _, s := range spans {
+		tests = append(tests, LineRange{Start: lines.line(s.start), End: lines.line(min(s.end, len(content)-1))})
+	}
 	n := 0
 	for _, r := range ranges {
-		for line := r.Start; line <= r.End; line++ {
-			if slices.ContainsFunc(spans, func(s span) bool { return lineOf(s.start) <= line && line <= lineOf(s.end) }) {
-				n++
-			}
+		for _, t := range tests {
+			n += max(0, min(r.End, t.End)-max(r.Start, t.Start)+1)
 		}
 	}
 	return n

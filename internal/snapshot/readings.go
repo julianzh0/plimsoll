@@ -33,6 +33,7 @@ type Readings struct {
 	// changed files it compares; each depends on a content alone and is kept and dropped like the readings.
 	identifiers byContent[identifiers]
 	prints      byContent[prints]
+	macros      byContent[fileMacros] // what each C or C++ content defines, for the names a side learns
 }
 
 // printsOfReading gives the prints of a content read with its units by a grammar, made once per content and grammar
@@ -123,6 +124,7 @@ func (rs *Readings) end(question uint64) {
 		maps.DeleteFunc(rs.kept, func(_ readingKey, kept *keptReading) bool { return kept.question < question })
 	}
 	rs.identifiers.drop(question, rs.bound)
+	rs.macros.drop(question, rs.bound)
 	rs.prints.drop(question, rs.bound)
 }
 
@@ -169,25 +171,31 @@ func (rs *Readings) of(language conventions.Language, grammar string, content []
 // a file in measures is read with its functions.
 func (rs *Readings) side(rules conventions.Rules, content map[string][]byte, files []File, question uint64, declares, measures map[string]bool) map[string]reading {
 	found := map[string]reading{}
-	learned := map[string]*macroNames{} // per entry that learns macro names, from this side's files of it
-	for _, language := range rules.Languages {
-		if language.MacroNames == nil {
+	learned := map[*conventions.MacroNames]*macroNames{} // per macro rules, from this side's files of the entries that share them
+	for _, file := range files {
+		l, known := rules.LanguageOf(file.Path)
+		if !known || l.MacroNames == nil || !measures[file.Path] || learned[l.MacroNames] != nil {
 			continue
 		}
-		var contents [][]byte
-		for _, file := range files {
-			if l, known := rules.LanguageOf(file.Path); known && l.MacroNames != nil && content[file.Path] != nil {
-				contents = append(contents, content[file.Path]) // C and C++ share their headers' definitions
+		var facts []fileMacros // C and C++ share their headers' definitions; each content is read once while kept
+		for _, other := range files {
+			if o, known := rules.LanguageOf(other.Path); known && o.MacroNames == l.MacroNames && content[other.Path] != nil {
+				facts = append(facts, keptOrMade(rs, &rs.macros, contentKey("macros\x00", content[other.Path]), question, func() (fileMacros, bool) {
+					return macrosOf(l.MacroNames, content[other.Path]), true
+				}))
 			}
 		}
-		learned[language.Name] = learnMacroNames(language.MacroNames, contents)
+		learned[l.MacroNames] = mergedMacroNames(l.MacroNames, facts)
 	}
 	for _, file := range files {
 		language, known := rules.LanguageOf(file.Path)
 		if !known || content[file.Path] == nil {
 			continue
 		}
-		w := wanted{declarations: declares[file.Path], functions: measures[file.Path], functionRules: &rules.FunctionRules, macros: learned[language.Name]}
+		w := wanted{declarations: declares[file.Path], functions: measures[file.Path], functionRules: &rules.FunctionRules}
+		if language.MacroNames != nil {
+			w.macros = learned[language.MacroNames]
+		}
 		found[file.Path] = rs.of(language, language.GrammarOf(file.Path), content[file.Path], question, w)
 	}
 	return found

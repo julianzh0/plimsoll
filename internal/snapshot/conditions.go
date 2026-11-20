@@ -1,6 +1,7 @@
 package snapshot
 
 import (
+	"bytes"
 	"slices"
 	"strings"
 
@@ -37,8 +38,9 @@ func unreachable(c *conventions.Conditions, content []byte) []span {
 		if !isDirective || directive != "" {
 			continue
 		}
-		word, condition, _ := strings.Cut(strings.TrimSpace(condition), " ")
-		word, _, _ = strings.Cut(word, "\t")
+		condition = strings.TrimSpace(condition)
+		word := directiveWord(condition)
+		condition = condition[len(word):]
 		before := readable()
 		switch isTrue, isFalse := literal(condition); {
 		case strings.HasPrefix(word, "if"):
@@ -80,10 +82,10 @@ func unreachable(c *conventions.Conditions, content []byte) []span {
 // reachableStatements drops the statements an entry's literal conditions rule out.
 func reachableStatements(language conventions.Language, content []byte, statements []statement) []statement {
 	c := language.Imports.Conditions
-	if c == nil || !strings.Contains(string(content), "#") {
+	if c == nil || !bytes.Contains(content, []byte("#")) {
 		return statements
 	}
-	spans := unreachable(c, content)
+	spans := unreachable(c, masked(language, content)) // a directive inside a comment, a string or a raw string is none
 	if len(spans) == 0 {
 		return statements
 	}

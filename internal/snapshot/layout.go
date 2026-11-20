@@ -110,7 +110,7 @@ func declaredLayout(rules conventions.Rules, now, before map[string][]byte, trac
 			} else {
 				record.decide(rules, tracked, nowValues, baseValues, d.Means == conventions.TestFolders)
 			}
-			if d.Means == conventions.TestFolders && d.Tool == "pytest" {
+			if d.FilesKey != "" {
 				config := now[d.File] // the side that declares the folders: now, else the base
 				if nowState == 0 {
 					config = before[d.File]
@@ -330,14 +330,14 @@ func ownValueOf(rules conventions.Rules, d Declared) conventions.OwnValue {
 	return 0
 }
 
-// pytestFiles are the file names pytest collects as test code by the same configuration's python_files, else its
-// defaults, with conftest.py: a pattern that holds a / is not used.
+// pytestFiles are the file names a tool collects as test code by the same configuration's FilesKey, else its
+// defaults, with the file it always reads (the last default): a pattern that holds a / is not used.
 func pytestFiles(content []byte, d conventions.Declaration) []string {
-	d.Key = "python_files"
+	d.Key = d.FilesKey
 	values, _ := readDeclared(content, d)
 	values = slices.DeleteFunc(values, func(v string) bool { return strings.Contains(v, "/") })
 	if len(values) == 0 {
-		return conventions.PytestFiles()
+		return d.Files
 	}
-	return append(values, "conftest.py")
+	return append(values, d.Files[len(d.Files)-1])
 }
