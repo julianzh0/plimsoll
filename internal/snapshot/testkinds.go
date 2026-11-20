@@ -146,7 +146,7 @@ func listDepth(depth int, line string) int {
 				return 0
 			}
 		case '"', '\'':
-			for i++; i < len(line) && line[i] != c && line[i] != '\n'; i++ {
+			for i++; i < len(line) && line[i] != c; i++ {
 				if c == '"' && line[i] == '\\' {
 					i++
 				}

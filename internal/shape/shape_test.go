@@ -532,13 +532,19 @@ func TestDeclaredTestKindsGetRowsThatAddUpToTheTestLines(t *testing.T) {
 	if remainder, found := statistic(unowned, "test lines of no declared kind", ""); !found || *remainder.Value == 0 {
 		t.Errorf("a table none of whose kinds owns test code: remainder %+v, want every test line in it", remainder)
 	}
-	for _, sentence := range []string{
+	var kindSentences []string
+	for _, sentence := range one.NotAnalysed {
+		if strings.HasPrefix(sentence, "`.plimsoll.toml` `[tests]`") {
+			kindSentences = append(kindSentences, sentence)
+		}
+	}
+	if want := []string{
 		"`.plimsoll.toml` `[tests]` `unit`: `docs/**` matches no test code this kind owns; it is not used",
 		"`.plimsoll.toml` `[tests]` `all`: `src/**` matches 1 product code file; a kind labels test code only, so it is not counted",
-	} {
-		if !slices.Contains(one.NotAnalysed, sentence) {
-			t.Errorf("not analysed %q lacks %q", one.NotAnalysed, sentence)
-		}
+		"`.plimsoll.toml` `[tests]` `all`: `**` matches 1 product code file; a kind labels test code only, so it is not counted",
+		"`.plimsoll.toml` `[tests]` `all` owns no test code: test files it matches belong to `unit`, which comes before it in `[tests]`",
+	}; !slices.Equal(kindSentences, want) {
+		t.Errorf("sentences on the tests table %q, want exactly %q", kindSentences, want)
 	}
 	plain := detect(t, snapshottest.Files(nil, map[string]string{"src/a.ts": "a\n", "tests/a.test.ts": "test(\"a\", () => {});\n"}), conventions.Default())
 	for _, s := range plain.Statistics {
