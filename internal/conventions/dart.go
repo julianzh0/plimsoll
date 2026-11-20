@@ -2,7 +2,7 @@ package conventions
 
 // dartLanguage is the entry for Dart and Flutter.
 func dartLanguage() Language {
-	return Language{Name: "dart", Functions: dartFunctions(), Tokens: cLikeTokens(doubleQuoted+"|"+singleQuoted, DartStrings), Extensions: []string{".dart"}, Imports: dartImports(), Grammar: "dart", Query: dartQuery, Declarations: dartDeclarations, Units: dartUnits}
+	return Language{Name: "dart", Functions: dartFunctions(), Tokens: cLikeTokens("", DartStrings), Extensions: []string{".dart"}, Imports: dartImports(), Grammar: "dart", Query: dartQuery, Declarations: dartDeclarations, Units: dartUnits}
 }
 
 // dartQuery reads import, export, part and part of with a quoted target (a conditional import's first target is the

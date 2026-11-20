@@ -103,12 +103,15 @@ const (
 
 // cLikeTokens splits code with // and /* */ comments into tokens; literals are the language's string forms.
 func cLikeTokens(literals string, strings StringSyntax) Tokens {
+	if literals != "" { // "" for a language whose scanner reads every string
+		literals += "|"
+	}
 	return Tokens{Strings: strings, Pattern: regexp.MustCompile(`(?P<ws>\s+)|(?P<com>//[^\n]*|/\*[\s\S]*?(?:\*/|\z))|(?P<lit>` + literals +
-		`|[0-9][\pL\pN_.]*|\.[0-9][\pL\pN_]*)|(?P<id>[\pL_$][\pL\pN_$]*)|(?P<p>.)`)}
+		`[0-9][\pL\pN_.]*|\.[0-9][\pL\pN_]*)|(?P<id>[\pL_$][\pL\pN_$]*)|(?P<p>.)`)}
 }
 
 func pythonTokens() Tokens {
-	return Tokens{Strings: PythonStrings, Pattern: regexp.MustCompile(`(?P<ws>\s+)|(?P<com>#[^\n]*)|(?P<lit>(?i:[rbuf]{0,2})(?:"""[\s\S]*?"""|'''[\s\S]*?'''|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*')|[0-9][\pL\pN_.]*|\.[0-9][\pL\pN_]*)|(?P<id>[\pL_][\pL\pN_]*)|(?P<p>.)`)}
+	return Tokens{Strings: PythonStrings, Pattern: regexp.MustCompile(`(?P<ws>\s+)|(?P<com>#[^\n]*)|(?P<lit>(?i:[rbu]{0,2})(?:"""[\s\S]*?"""|'''[\s\S]*?'''|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*')|[0-9][\pL\pN_.]*|\.[0-9][\pL\pN_]*)|(?P<id>[\pL_][\pL\pN_]*)|(?P<p>.)`)}
 }
 
 // rustLiterals are Rust's strings and characters the token pattern reads; the scanner reads raw strings.

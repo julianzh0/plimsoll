@@ -75,7 +75,9 @@ func eachToken(tokens conventions.Tokens, text []byte, firstLine int) iter.Seq[t
 				}
 				if h.depth == 0 && h.form.pythonHoles {
 					if length := pythonSpecAt(text, at); length > 0 {
-						stack[n-1] = scanFrame{form: stringForm{closer: "}", holeOpen: "{", holeClose: "}", doubled: true, pythonHoles: true}, spec: true, piece: at}
+						spec := h.form // the f-string's: a format text ends at a line end where the string does
+						spec.closer, spec.escape = "}", ""
+						stack[n-1] = scanFrame{form: spec, spec: true, piece: at}
 						at += length
 						continue
 					}
@@ -121,7 +123,12 @@ func scanString(text []byte, stack []scanFrame, at int, emit func(start, end int
 	for i := at; i < len(text); {
 		switch rest := text[i:]; {
 		case f.singleLine && text[i] == '\n':
-			return stack[:len(stack)-1], i, emit(s.piece, i, true, false)
+			ok := s.piece >= i || emit(s.piece, i, true, false)
+			stack = stack[:len(stack)-1]
+			if s.spec { // the f-string a format text stands in ends with it
+				stack = stack[:len(stack)-1]
+			}
+			return stack, i, ok
 		case f.quoteTwice && bytes.HasPrefix(rest, []byte(`""`)):
 			i += 2
 		case bytes.HasPrefix(rest, []byte(f.closer)):
@@ -141,6 +148,10 @@ func scanString(text []byte, stack []scanFrame, at int, emit func(start, end int
 		case f.doubled && (bytes.HasPrefix(rest, []byte("{{")) || bytes.HasPrefix(rest, []byte("}}"))):
 			i += 2
 		case f.escape != "" && bytes.HasPrefix(rest, []byte(f.escape)):
+			if f.pythonHoles && i+1 < len(text) && (text[i+1] == '{' || text[i+1] == '}') {
+				i++ // Python escapes no brace: the brace keeps its meaning
+				continue
+			}
 			i += len(f.escape) + 1
 		case f.dollarName && text[i] == '$' && identifierEnd(text, i+1) > i+1:
 			end := identifierEnd(text, i+1)

@@ -56,23 +56,16 @@ func TestStringsAreLiteralPiecesAndTheirHolesCode(t *testing.T) {
 		{"a.dart", `'a $b' r'$c' "${d}"`, []string{`='a $`, "@b", `='`, `=r'$c'`, `="${`, "@d", `=}"`}},
 		{"a.py", `f"{x // 2}"`, []string{`=f"{`, "@x", "/", "/", "2", `=}"`}},
 		{"a.ts", "`a ${ /* } */ b }`", []string{"=`a ${", "@b", "=}`"}},
-	} {
-		if got := kinds(t, tc.language, tc.text); !slices.Equal(got, tc.want) {
-			t.Errorf("%s tokens(%s) = %q, want %q", tc.language, tc.text, got, tc.want)
-		}
-	}
-}
-
-// A string or a hole still open at the end of the text: what was handed out stays, the rest is one literal piece.
-func TestAnUnclosedStringEndsWithTheText(t *testing.T) {
-	for _, tc := range []struct {
-		language, text string
-		want           []string
-	}{
+		{"a.py", `rf"\{{{x}\}}" rf"^\{{(\w+)\}}$"`, []string{`=rf"\{{{`, "@x", `=}\}}"`, `=rf"^\{{(\w+)\}}$"`}},
+		{"a.kt", `"a ñ$größe"`, []string{`="a ñ$`, "@größe", `="`}},
+		{"a.swift", "###x", []string{"#", "#", "#", "@x"}},
+		// still open at a line end or the end of the text: what was handed out stays, the rest is one literal piece
 		{"a.py", `f"""a {b} c`, []string{`=f"""a {`, "@b", `=} c`}},
 		{"a.ts", "`a ${b", []string{"=`a ${", "@b"}},
 		{"a.swift", `#"a`, []string{`=#"a`}},
 		{"a.py", "f'a\nb'", []string{`=f'a`, "@b", "'"}},
+		{"a.kt", "\"a $name\nx", []string{`="a $`, "@name", "@x"}},
+		{"a.py", "f'{x:\ny = 1", []string{`=f'{`, "@x", "=:", "@y", "=", "1"}},
 	} {
 		if got := kinds(t, tc.language, tc.text); !slices.Equal(got, tc.want) {
 			t.Errorf("%s tokens(%q) = %q, want %q", tc.language, tc.text, got, tc.want)

@@ -1,6 +1,7 @@
 package snapshot
 
 import (
+	"bytes"
 	"regexp"
 	"slices"
 	"strings"
@@ -33,6 +34,9 @@ func masked(language conventions.Language, content []byte) []byte {
 // none.
 func withoutRawStrings(tokens conventions.Tokens, content []byte) []byte {
 	out, cloned := content, false
+	if !bytes.Contains(content, []byte(`R"`)) {
+		return content
+	}
 	for t := range eachToken(tokens, content, 1) {
 		if _, _, raw := cppRawAt(content, t.start); raw && t.word && !t.identifier {
 			if !cloned {

@@ -2,6 +2,8 @@ package snapshot
 
 import (
 	"bytes"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/julianzh0/plimsoll/internal/conventions"
 )
@@ -20,57 +22,67 @@ type stringForm struct {
 }
 
 // stringAt is the string, of the forms a language's scanner reads, that starts at a token's start, and the length of
-// its opening delimiter. Other strings are no match here: the token pattern reads them.
+// its opening delimiter. Other strings are no match here: the token pattern reads them. Its first byte is checked
+// before anything else, so code that starts no string costs one comparison.
 func stringAt(syntax conventions.StringSyntax, text []byte, at int) (stringForm, int, bool) {
+	c := text[at]
 	switch syntax {
 	case conventions.CppRawStrings:
-		return cppRawAt(text, at)
+		if c == 'R' || c == 'u' || c == 'U' || c == 'L' {
+			return cppRawAt(text, at)
+		}
 	case conventions.RustRawStrings:
-		return rustRawAt(text, at)
+		if c == 'r' || c == 'b' || c == 'c' {
+			return rustRawAt(text, at)
+		}
 	case conventions.SwiftStrings:
-		return swiftStringAt(text, at)
+		// a run of # is tried at its first byte only: where the first starts no string, no later one does
+		if c == '"' || c == '#' && (at == 0 || text[at-1] != '#') {
+			return swiftStringAt(text, at)
+		}
 	case conventions.CSharpStrings:
-		return csharpStringAt(text, at)
+		if c == '$' || c == '@' || c == '"' {
+			return csharpStringAt(text, at)
+		}
 	case conventions.PythonStrings:
-		return pythonStringAt(text, at)
+		if bytes.IndexByte([]byte("rRbBuUfF"), c) >= 0 {
+			return pythonStringAt(text, at)
+		}
 	case conventions.TemplateStrings:
-		if text[at] == '`' {
+		if c == '`' {
 			return stringForm{closer: "`", escape: `\`, holeOpen: "${", holeClose: "}"}, 1, true
 		}
 	case conventions.KotlinStrings:
-		return quotedAt(text, at, `"`, stringForm{holeOpen: "${", holeClose: "}", dollarName: true}, false)
+		if c == '"' {
+			return quotedAt(text, at, stringForm{holeOpen: "${", holeClose: "}", dollarName: true}, false)
+		}
 	case conventions.DartStrings:
-		form := stringForm{holeOpen: "${", holeClose: "}", dollarName: true}
-		if text[at] == 'r' && at+1 < len(text) && (text[at+1] == '\'' || text[at+1] == '"') { // raw: no holes, no escapes
-			raw, length, _ := quotedAt(text, at+1, string(text[at+1]), stringForm{}, false)
+		if c == 'r' && at+1 < len(text) && (text[at+1] == '\'' || text[at+1] == '"') { // raw: no holes, no escapes
+			raw, length, _ := quotedAt(text, at+1, stringForm{}, false)
 			raw.escape = ""
 			return raw, length + 1, true
 		}
-		if text[at] == '\'' {
-			return quotedAt(text, at, "'", form, true)
+		if c == '\'' || c == '"' {
+			return quotedAt(text, at, stringForm{holeOpen: "${", holeClose: "}", dollarName: true}, true)
 		}
-		return quotedAt(text, at, `"`, form, true)
 	case conventions.PlainStrings:
 	}
 	return stringForm{}, 0, false
 }
 
-// quotedAt is a string in quote or three of them: a single one ends at a line end and reads escapes; three end with
-// three and read escapes when escapesInTriple is set.
-func quotedAt(text []byte, at int, quote string, form stringForm, escapesInTriple bool) (stringForm, int, bool) {
-	triple := quote + quote + quote
-	switch {
-	case bytes.HasPrefix(text[at:], []byte(triple)):
-		form.closer = triple
+// quotedAt is a string in the quote at, or in three of them: a single one ends at a line end and reads escapes; three
+// end with three and read escapes when escapesInTriple is set.
+func quotedAt(text []byte, at int, form stringForm, escapesInTriple bool) (stringForm, int, bool) {
+	quote := text[at]
+	if run(text, at, quote) >= 3 {
+		form.closer = string([]byte{quote, quote, quote})
 		if escapesInTriple {
 			form.escape = `\`
 		}
 		return form, 3, true
-	case bytes.HasPrefix(text[at:], []byte(quote)):
-		form.closer, form.escape, form.singleLine = quote, `\`, true
-		return form, 1, true
 	}
-	return stringForm{}, 0, false
+	form.closer, form.escape, form.singleLine = string(quote), `\`, true
+	return form, 1, true
 }
 
 // cppRawAt is a C++ raw string, R"d(…)d" with an optional u8, u, U or L before it: d is at most 16 characters, none of
@@ -180,7 +192,7 @@ func pythonStringAt(text []byte, at int) (stringForm, int, bool) {
 	if !formatted || i >= len(text) || (text[i] != '"' && text[i] != '\'') {
 		return stringForm{}, 0, false
 	}
-	form, length, _ := quotedAt(text, i, string(text[i]), stringForm{holeOpen: "{", holeClose: "}", doubled: true, pythonHoles: true}, true)
+	form, length, _ := quotedAt(text, i, stringForm{holeOpen: "{", holeClose: "}", doubled: true, pythonHoles: true}, true)
 	return form, i - at + length, true
 }
 
@@ -193,17 +205,16 @@ func run(text []byte, at int, c byte) int {
 	return n
 }
 
-// identifierEnd is the end of a $name: letters, digits and underscores after its first letter or underscore; at
-// itself when none starts there.
+// identifierEnd is the end of a $name: letters, digits and underscores after its first letter or underscore, as the
+// token pattern reads a name; at itself when none starts there.
 func identifierEnd(text []byte, at int) int {
 	i := at
 	for i < len(text) {
-		c := text[i]
-		if c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || i > at && c >= '0' && c <= '9' {
-			i++
-			continue
+		r, size := utf8.DecodeRune(text[i:])
+		if r != '_' && !unicode.IsLetter(r) && (i == at || !unicode.IsNumber(r)) {
+			break
 		}
-		break
+		i += size
 	}
 	return i
 }
