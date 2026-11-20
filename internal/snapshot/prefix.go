@@ -25,7 +25,8 @@ const (
 	PrefixExtends
 )
 
-// byteOrderMark is skipped at the start of a source file or a config.
+// byteOrderMark is dropped from the start of every entry once, where a snapshot is built (withoutByteOrderMark), and
+// from the own file read for a declared base (declaredBaseIn).
 const byteOrderMark = "\uFEFF"
 
 // ownImports gives the paths from the root that an import that is not relative may mean, when it is the project's

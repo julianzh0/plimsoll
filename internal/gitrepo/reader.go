@@ -351,12 +351,12 @@ func readFolder(root *os.Root, folder string, indexes []int, files []trackedEntr
 	dir := root
 	if folder != "." {
 		sub, err := root.OpenRoot(folder)
-		if info, statErr := root.Lstat(folder); err != nil && statErr == nil && !info.IsDir() {
-			// Something else stands where the folder was: its tracked files are gone, as git status says, on every
-			// system (Windows reports them as absent, Unix as no directory).
-			err = os.ErrNotExist
-		}
 		if err != nil {
+			if info, statErr := root.Lstat(folder); statErr == nil && !info.IsDir() {
+				// Something else stands where the folder was: its tracked files are gone, as git status says, on every
+				// system (Windows reports them as absent, Unix as no directory).
+				err = os.ErrNotExist
+			}
 			for _, i := range indexes {
 				read[i] = missing(files[i].path, wants, err)
 			}

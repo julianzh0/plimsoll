@@ -56,8 +56,7 @@ func pubspecBlock(content []byte, key string) []string {
 // NOTE: only the block form is read; a flow-style map ("dependencies: {a: ^1}") is named unreadable, and the
 // dependencies of workspace members are not counted. Upgrade: a YAML reader, and the members' manifests, if a field
 // check finds either in use.
-func pubspecDependencies(content []byte) (names []string, manifest, readable bool) {
-	text := content
+func pubspecDependencies(text []byte) (names []string, manifest, readable bool) {
 	if pubspecNameOf(text) == "" {
 		return nil, false, true
 	}

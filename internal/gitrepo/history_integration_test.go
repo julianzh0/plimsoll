@@ -66,13 +66,13 @@ func TestIntegrationReadParsesTheHistory(t *testing.T) {
 	repo.Commit(gitrepotest.Commit{Message: "umlaut", Files: map[string]string{"src/grüße.ts": "a\nb\n"}})
 	// A name with a line break cannot exist in a Windows working tree, so this commit is made in the index alone and
 	// the file is kept out of the working tree.
-	repo.Write("blob", "a\n")
-	blob := repo.Git("hash-object", "-w", "blob")
-	repo.Git("config", "core.protectNTFS", "false") // Git for Windows refuses the name in the index otherwise
-	repo.Git("update-index", "--add", "--cacheinfo", "100644,"+blob+",src/line\nbreak.ts")
-	if err := os.Remove(filepath.Join(repo.Dir, "blob")); err != nil {
+	file := filepath.Join(t.TempDir(), "blob")
+	if err := os.WriteFile(file, []byte("a\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	blob := repo.Git("hash-object", "-w", file)
+	repo.Git("config", "core.protectNTFS", "false") // Git for Windows refuses the name in the index otherwise
+	repo.Git("update-index", "--add", "--cacheinfo", "100644,"+blob+",src/line\nbreak.ts")
 	repo.Git("commit", "-q", "-m", "newline")
 	repo.Git("update-index", "--skip-worktree", "src/line\nbreak.ts")
 	repo.Git("mv", "src/grüße.ts", "src/moved.ts")
